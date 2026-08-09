@@ -11,6 +11,7 @@ import type {
   RefereeCoaching,
   RoundFact,
 } from "../types.js";
+import { clampToEnvelope, computePriceEnvelope } from "./price-envelope.js";
 
 // ─── Style-based margin for opening anchor ───
 const STYLE_MARGIN: Record<BuddyDNA["style"], number> = {
@@ -141,6 +142,26 @@ function _computeCoaching(
       min: boundaries.my_floor,
       max: recommended_price + rangePadding,
     };
+  }
+
+  // ─── Bound everything to what this party may actually offer ───
+  // The anchor above is computed from my_target/my_floor alone, so it happily quotes
+  // outside the negotiation: a seller's OPENING is `my_target * (1 + margin)` and a
+  // seller's target IS the published asking price, which is how a $120 listing answered
+  // a $95 offer with $130. The envelope also carries "never move backwards" and "never
+  // cross the offer on the table". DISCOVERY has no price to bound (recommended is 0).
+  if (recommended_price > 0) {
+    const envelope = computePriceEnvelope(memory);
+    recommended_price = clampToEnvelope(recommended_price, envelope);
+    // The range feeds the harness box the LLM chooses inside, so an unclamped range
+    // would hand back exactly the freedom just taken away from the baseline.
+    acceptable_range = {
+      min: clampToEnvelope(acceptable_range.min, envelope),
+      max: clampToEnvelope(acceptable_range.max, envelope),
+    };
+    if (acceptable_range.max < acceptable_range.min) {
+      acceptable_range = { min: envelope.min, max: envelope.max };
+    }
   }
 
   // ─── Opponent pattern classification (EMA-based) ───

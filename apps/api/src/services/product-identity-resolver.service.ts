@@ -4,12 +4,7 @@ import {
   parseStorageGb,
 } from "../lib/hfmi-title-parser.js";
 
-export type ProductAlignment =
-  | "exact"
-  | "variant"
-  | "related"
-  | "different"
-  | "unknown";
+export type ProductAlignment = "exact" | "variant" | "related" | "different" | "unknown";
 
 export interface ProductIdentity {
   raw: string;
@@ -126,8 +121,10 @@ export function compareProductIdentity(
   rememberedInput: string | ProductIdentity,
   selectedInput: string | ProductIdentity,
 ): ProductIdentityComparison {
-  const remembered = typeof rememberedInput === "string" ? resolveProductIdentity(rememberedInput) : rememberedInput;
-  const selected = typeof selectedInput === "string" ? resolveProductIdentity(selectedInput) : selectedInput;
+  const remembered =
+    typeof rememberedInput === "string" ? resolveProductIdentity(rememberedInput) : rememberedInput;
+  const selected =
+    typeof selectedInput === "string" ? resolveProductIdentity(selectedInput) : selectedInput;
 
   const reasonCodes: string[] = [];
   let score = 0;
@@ -173,8 +170,10 @@ export function compareProductIdentity(
   }
 
   const roundedScore = Math.min(1, Number(score.toFixed(2)));
-  if (roundedScore >= 0.9) return result("exact", roundedScore, false, false, reasonCodes, remembered, selected);
-  if (roundedScore >= 0.58) return result("variant", roundedScore, false, true, reasonCodes, remembered, selected);
+  if (roundedScore >= 0.9)
+    return result("exact", roundedScore, false, false, reasonCodes, remembered, selected);
+  if (roundedScore >= 0.58)
+    return result("variant", roundedScore, false, true, reasonCodes, remembered, selected);
   if (remembered.canonicalFamily === selected.canonicalFamily) {
     return result("related", roundedScore, false, true, reasonCodes, remembered, selected);
   }

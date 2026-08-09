@@ -27,9 +27,9 @@ export function createTrustedHnpPublicKey(jwk: HnpTrustedJwk): KeyObject {
 }
 
 export function isSupportedTrustedHnpJwk(jwk: HnpTrustedJwk): boolean {
-  return jwk.kty === "RSA"
-    && typeof jwk.alg === "string"
-    && SUPPORTED_HNP_JWS_ALGORITHMS.has(jwk.alg);
+  return (
+    jwk.kty === "RSA" && typeof jwk.alg === "string" && SUPPORTED_HNP_JWS_ALGORITHMS.has(jwk.alg)
+  );
 }
 
 export function validateTrustedHnpJwks(raw: string | undefined): HnpTrustedJwksValidationResult {
@@ -53,9 +53,7 @@ export function validateTrustedHnpJwks(raw: string | undefined): HnpTrustedJwksV
     try {
       createTrustedHnpPublicKey(jwk);
       usableKeys += 1;
-    } catch {
-      continue;
-    }
+    } catch {}
   }
 
   return usableKeys > 0

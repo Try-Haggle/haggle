@@ -28,13 +28,10 @@
 // handoff/ARCHITECT-BRIEF-step60-62.md §Step 61 decision 2.
 
 import OpenAI from "openai";
+import { usageExtractors, withLLMTelemetry } from "../lib/llm-telemetry.js";
 import {
-  withLLMTelemetry,
-  usageExtractors,
-} from "../lib/llm-telemetry.js";
-import {
-  TAG_PLACEMENT_SYSTEM_PROMPT,
   selectFewShots,
+  TAG_PLACEMENT_SYSTEM_PROMPT,
   toChatMessages,
 } from "../prompts/tag-placement/index.js";
 import type { TagCandidate } from "./tag-candidate.service.js";
@@ -57,7 +54,13 @@ export interface ProposedTag {
 }
 
 export const PROPOSED_TAG_CATEGORIES = [
-  "condition", "style", "size", "material", "feature", "compatibility", "other",
+  "condition",
+  "style",
+  "size",
+  "material",
+  "feature",
+  "compatibility",
+  "other",
 ] as const;
 
 export interface LlmPlacementSuccess {
@@ -150,8 +153,7 @@ export function buildRefMap(candidates: TagCandidate[]): {
     const parentRefs = cand.parentIds
       .map((pid) => idToRef.get(pid))
       .filter((r): r is string => r !== undefined);
-    const parentStr =
-      parentRefs.length > 0 ? `, parent=${parentRefs.join(",")}` : "";
+    const parentStr = parentRefs.length > 0 ? `, parent=${parentRefs.join(",")}` : "";
     return `${ref} ${cand.label} [idf=${cand.idf.toFixed(1)}${parentStr}]`;
   });
 
@@ -160,10 +162,7 @@ export function buildRefMap(candidates: TagCandidate[]): {
 
 // ─── User message assembly ───────────────────────────────────────────
 
-function buildUserMessage(
-  input: LlmPlacementInput,
-  refLines: string[],
-): string {
+function buildUserMessage(input: LlmPlacementInput, refLines: string[]): string {
   const desc = (input.description ?? "").slice(0, 300);
   const parts: Array<string | null> = [
     "LISTING:",
@@ -195,16 +194,13 @@ export function resolveLlmOutput(
   refToId: Map<string, string>,
 ): { selectedTagIds: string[]; reasoning: string; proposedTags: ProposedTag[] } {
   const selectedRefs = Array.isArray(rawJson?.selected_tag_ids)
-    ? (rawJson.selected_tag_ids as unknown[]).filter(
-        (r): r is string => typeof r === "string",
-      )
+    ? (rawJson.selected_tag_ids as unknown[]).filter((r): r is string => typeof r === "string")
     : [];
   const selectedTagIds = selectedRefs
     .map((ref) => refToId.get(ref))
     .filter((id): id is string => id !== undefined);
 
-  const reasoning =
-    typeof rawJson?.reasoning === "string" ? (rawJson.reasoning as string) : "";
+  const reasoning = typeof rawJson?.reasoning === "string" ? (rawJson.reasoning as string) : "";
 
   const categorySet = new Set<string>(PROPOSED_TAG_CATEGORIES);
   const proposedTags: ProposedTag[] = [];
@@ -215,9 +211,8 @@ export function resolveLlmOutput(
       if (typeof obj.label !== "string") continue;
       const label = obj.label.trim().toLowerCase().replace(/\s+/g, "-");
       if (label.length === 0) continue;
-      const category = typeof obj.category === "string" && categorySet.has(obj.category)
-        ? obj.category
-        : "other";
+      const category =
+        typeof obj.category === "string" && categorySet.has(obj.category) ? obj.category : "other";
       const reason = typeof obj.reason === "string" ? obj.reason : "";
       proposedTags.push({ label, category, reason });
     }
@@ -241,8 +236,7 @@ export async function placeTagsWithLlm(
   input: LlmPlacementInput,
   openai?: OpenAIClientLike,
 ): Promise<LlmPlacementResult> {
-  const modelVersion =
-    process.env.TAG_PLACEMENT_MODEL || TAG_PLACEMENT_MODEL_DEFAULT;
+  const modelVersion = process.env.TAG_PLACEMENT_MODEL || TAG_PLACEMENT_MODEL_DEFAULT;
 
   if (input.candidates.length === 0) {
     return {
@@ -271,58 +265,66 @@ export async function placeTagsWithLlm(
       },
       () =>
         client.chat.completions.create({
-      model: modelVersion,
-      temperature: 0,
-      messages: [
-        { role: "system", content: TAG_PLACEMENT_SYSTEM_PROMPT },
-        ...fewShotMessages,
-        { role: "user", content: userMessage },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "tag_selection",
-          strict: true,
-          schema: {
-            type: "object",
-            properties: {
-              selected_tag_ids: {
-                type: "array",
-                items: { type: "string", pattern: "^t[0-9]{2}$" },
-                minItems: 1,
-                maxItems: 6,
-              },
-              reasoning: { type: "string", maxLength: 200 },
-              proposed_tags: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    label: {
-                      type: "string",
-                      description: "lowercase-hyphenated tag label, e.g. 'esim-only'",
-                    },
-                    category: {
-                      type: "string",
-                      enum: ["condition", "style", "size", "material", "feature", "compatibility", "other"],
-                    },
-                    reason: {
-                      type: "string",
-                      description: "1-sentence justification why this tag is needed",
-                    },
+          model: modelVersion,
+          temperature: 0,
+          messages: [
+            { role: "system", content: TAG_PLACEMENT_SYSTEM_PROMPT },
+            ...fewShotMessages,
+            { role: "user", content: userMessage },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "tag_selection",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: {
+                  selected_tag_ids: {
+                    type: "array",
+                    items: { type: "string", pattern: "^t[0-9]{2}$" },
+                    minItems: 1,
+                    maxItems: 6,
                   },
-                  required: ["label", "category", "reason"],
-                  additionalProperties: false,
+                  reasoning: { type: "string", maxLength: 200 },
+                  proposed_tags: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        label: {
+                          type: "string",
+                          description: "lowercase-hyphenated tag label, e.g. 'esim-only'",
+                        },
+                        category: {
+                          type: "string",
+                          enum: [
+                            "condition",
+                            "style",
+                            "size",
+                            "material",
+                            "feature",
+                            "compatibility",
+                            "other",
+                          ],
+                        },
+                        reason: {
+                          type: "string",
+                          description: "1-sentence justification why this tag is needed",
+                        },
+                      },
+                      required: ["label", "category", "reason"],
+                      additionalProperties: false,
+                    },
+                    maxItems: 3,
+                  },
                 },
-                maxItems: 3,
+                required: ["selected_tag_ids", "reasoning", "proposed_tags"],
+                additionalProperties: false,
               },
             },
-            required: ["selected_tag_ids", "reasoning", "proposed_tags"],
-            additionalProperties: false,
           },
-        },
-      },
-    }),
+        }),
       { extractUsage: usageExtractors.openaiChat },
     );
 

@@ -1,7 +1,7 @@
-import type { FastifyInstance } from "fastify";
 import type { Database } from "@haggle/db";
+import type { FastifyInstance } from "fastify";
 import { requireAuth } from "../middleware/require-auth.js";
-import { getListingsByUserId, getListingByIdForUser } from "../services/draft.service.js";
+import { getListingByIdForUser, getListingsByUserId } from "../services/draft.service.js";
 
 export function registerListingsRoutes(app: FastifyInstance, db: Database) {
   // GET /api/listings

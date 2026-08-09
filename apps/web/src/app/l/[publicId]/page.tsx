@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
+import { apiServerFireAndForget, serverApi } from "@/lib/api-server";
 import { createClient } from "@/lib/supabase/server";
-import { serverApi, apiServerFireAndForget } from "@/lib/api-server";
 import { BuyerLanding } from "./buyer-landing";
 import { SimilarListings } from "./similar-listings";
 
@@ -19,6 +19,7 @@ interface ListingData {
   sellingDeadline: string | null;
   subtype: string | null;
   attributes: Record<string, unknown> | null;
+  sellerRequiredCriteria: Array<{ checkId: string; ask: string }> | null;
 }
 
 const VALID_ORIGINS = ["browse", "buy-dashboard", "sell-dashboard"] as const;
@@ -26,9 +27,7 @@ type Origin = (typeof VALID_ORIGINS)[number];
 
 function parseOrigin(raw: string | undefined): Origin | null {
   if (!raw) return null;
-  return (VALID_ORIGINS as readonly string[]).includes(raw)
-    ? (raw as Origin)
-    : null;
+  return (VALID_ORIGINS as readonly string[]).includes(raw) ? (raw as Origin) : null;
 }
 
 export default async function BuyerListingPage({
@@ -66,19 +65,25 @@ export default async function BuyerListingPage({
     ? {
         id: user.id,
         email: user.email ?? "",
-        name: (user.user_metadata?.display_name || user.user_metadata?.name || null) as string | null,
-        avatarUrl: (user.user_metadata?.custom_avatar_url || user.user_metadata?.avatar_url || null) as string | null,
+        name: (user.user_metadata?.display_name || user.user_metadata?.name || null) as
+          | string
+          | null,
+        avatarUrl: (user.user_metadata?.custom_avatar_url ||
+          user.user_metadata?.avatar_url ||
+          null) as string | null,
       }
     : null;
 
   // Record view for logged-in buyers (fire-and-forget, don't block render)
   if (user) {
-    const { data: { session } } = await supabase.auth.getSession();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
     const authHeaders: Record<string, string> = {
       "Content-Type": "application/json",
     };
     if (session?.access_token) {
-      authHeaders["Authorization"] = `Bearer ${session.access_token}`;
+      authHeaders.Authorization = `Bearer ${session.access_token}`;
     }
     apiServerFireAndForget(`/api/viewed`, { userId: user.id, publicId }, authHeaders);
   }

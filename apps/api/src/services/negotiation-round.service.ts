@@ -1,10 +1,4 @@
-import {
-  and,
-  eq,
-  sql,
-  negotiationRounds,
-  type Database,
-} from "@haggle/db";
+import { and, type Database, eq, negotiationRounds, sql } from "@haggle/db";
 
 type SenderRole = "BUYER" | "SELLER";
 type MessageType = "OFFER" | "COUNTER" | "ACCEPT" | "REJECT" | "ESCALATE";
@@ -77,10 +71,9 @@ export async function getRoundByIdempotencyKey(db: Database, sessionId: string, 
   const rows = await db
     .select()
     .from(negotiationRounds)
-    .where(and(
-      eq(negotiationRounds.sessionId, sessionId),
-      eq(negotiationRounds.idempotencyKey, key),
-    ))
+    .where(
+      and(eq(negotiationRounds.sessionId, sessionId), eq(negotiationRounds.idempotencyKey, key)),
+    )
     .limit(1);
 
   return rows[0] ?? null;
@@ -95,4 +88,41 @@ export async function getLatestRound(db: Database, sessionId: string) {
     .limit(1);
 
   return rows[0] ?? null;
+}
+
+/** One requirement the buyer answered when the negotiation paused. */
+export interface RecordedPauseAnswer {
+  checkId: string;
+  /** The question as it was put to the buyer. */
+  ask: string;
+  /** The canonical stance stored on their criteria. */
+  stance: string;
+  /** The tappable label that produced it, when the check has canonical options. */
+  label?: string;
+}
+
+/**
+ * Attach the buyer's pause answers to the round that asked for them.
+ *
+ * The transcript is where people go to check what they agreed to, so an answer that
+ * lives only in the buyer's criteria is invisible: the question stays on screen with no
+ * reply under it, and after a reload there is no trace the buyer ever responded. Written
+ * onto the asking round's metadata so it travels with the round it belongs to.
+ */
+export async function recordPauseAnswersOnRound(
+  db: Database,
+  roundId: string,
+  answers: RecordedPauseAnswer[],
+): Promise<void> {
+  if (answers.length === 0) return;
+  const rows = await db
+    .select({ metadata: negotiationRounds.metadata })
+    .from(negotiationRounds)
+    .where(eq(negotiationRounds.id, roundId))
+    .limit(1);
+  const existing = rows[0]?.metadata ?? {};
+  await db
+    .update(negotiationRounds)
+    .set({ metadata: { ...existing, buyer_pause_answers: answers } })
+    .where(eq(negotiationRounds.id, roundId));
 }

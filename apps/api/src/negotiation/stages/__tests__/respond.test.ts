@@ -85,7 +85,7 @@ describe("Stage 5: respond", () => {
     });
 
     expect(result.message).toBeTruthy();
-    expect(result.message).toContain("$860.00");
+    expect(result.message).toContain("$860");
     expect(result.tone).toBe("professional");
   });
 
@@ -123,6 +123,47 @@ describe("Stage 5: respond", () => {
     });
 
     expect(result.message.toLowerCase()).toMatch(/review|think|pause/);
+  });
+
+  it("drops an ACCEPT LLM message that confirms the wrong price and uses the agreed one", () => {
+    // final_decision.price is the agreed price ($13,400); the LLM confirmed at $13,500.
+    const validated = makeValidateOutput("ACCEPT", 1_340_000);
+    validated.final_decision.message = "Confirming the agreement at $13,500.00. Ready to proceed.";
+    const result = respond({
+      validated,
+      memory: makeMemory(),
+      adapter,
+      skill,
+      config: makeConfig(),
+    });
+    expect(result.message).not.toContain("13500");
+    expect(result.message).toContain("$13,400");
+  });
+
+  it("keeps an ACCEPT LLM message that confirms the correct price", () => {
+    const validated = makeValidateOutput("ACCEPT", 1_340_000);
+    validated.final_decision.message = "Deal — $13,400 it is. Ready to proceed to settlement.";
+    const result = respond({
+      validated,
+      memory: makeMemory(),
+      adapter,
+      skill,
+      config: makeConfig(),
+    });
+    expect(result.message).toBe("Deal — $13,400 it is. Ready to proceed to settlement.");
+  });
+
+  it("keeps an LLM message that states the correct price", () => {
+    const validated = makeValidateOutput("COUNTER", 1_345_000); // $13,450
+    validated.final_decision.message = "How about $13,450? That's my best.";
+    const result = respond({
+      validated,
+      memory: makeMemory(),
+      adapter,
+      skill,
+      config: makeConfig(),
+    });
+    expect(result.message).toBe("How about $13,450? That's my best.");
   });
 
   it("falls back to template for llm mode", () => {

@@ -8,6 +8,9 @@ export * from "./agent-presets/index.js";
 // ─── Agent Stats (8-stat system, see docs/engine/06_에이전트_스탯.md) ────────
 export * from "./agent-stats/index.js";
 
+// ─── Category Taxonomy (TAX backbone — category → negotiation checks) ────────
+export * from "./category-taxonomy/index.js";
+
 // ─── Constants ───────────────────────────────────────────────
 export {
   ITEM_CONDITIONS,

@@ -212,8 +212,8 @@ describe("6-Stage Pipeline E2E", () => {
 
     expect(result.stages.decide.decision.action).toBe("ACCEPT");
     expect(result.stages.validate.final_decision.price).toBe(90000);
-    expect(result.stages.respond.message).toContain("$900.00");
-    expect(result.stages.respond.message).not.toContain("$820.00");
+    expect(result.stages.respond.message).toContain("$900");
+    expect(result.stages.respond.message).not.toContain("$820");
   });
 
   it("includes context with memo snapshot", async () => {

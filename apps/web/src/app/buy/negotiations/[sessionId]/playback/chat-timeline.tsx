@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef } from "react";
 import { ChatBubble } from "./chat-bubble";
+import { PauseAnswerReply } from "./pause-answer-reply";
 import { ThinkingDots } from "./thinking-dots";
 import type { AgentCard, AgentRole, PlaybackRound } from "./types";
 import type { PlaybackEngine } from "./use-playback-engine";
@@ -72,18 +73,22 @@ export function ChatTimeline({
             : round.message;
           const state: "typing" | "settled" = isInFlightTyping ? "typing" : "settled";
           return (
-            <ChatBubble
-              key={round.roundIndex}
-              round={round}
-              agent={agent}
-              state={state}
-              typedText={partial}
-              currency={currency}
-              isFocused={focusedRoundIndex === round.roundIndex}
-              onSelect={() =>
-                onFocusRound(focusedRoundIndex === round.roundIndex ? null : round.roundIndex)
-              }
-            />
+            <div key={round.roundIndex} className="flex flex-col">
+              <ChatBubble
+                round={round}
+                agent={agent}
+                state={state}
+                typedText={partial}
+                currency={currency}
+                isFocused={focusedRoundIndex === round.roundIndex}
+                onSelect={() =>
+                  onFocusRound(focusedRoundIndex === round.roundIndex ? null : round.roundIndex)
+                }
+              />
+              {round.pauseAnswers?.length ? (
+                <PauseAnswerReply answers={round.pauseAnswers} side={round.sender} />
+              ) : null}
+            </div>
           );
         })}
 

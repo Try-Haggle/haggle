@@ -1,15 +1,12 @@
-import { eq, desc, sql, and, buddies, buddyTrades, agentLevels, type Database } from "@haggle/db";
+import { agentLevels, and, buddies, buddyTrades, type Database, desc, eq, sql } from "@haggle/db";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export type Species =
-  | "FOX" | "RABBIT" | "BEAR" | "CAT"
-  | "OWL" | "DRAGON" | "EAGLE" | "WOLF";
+export type Species = "FOX" | "RABBIT" | "BEAR" | "CAT" | "OWL" | "DRAGON" | "EAGLE" | "WOLF";
 
-export type Rarity =
-  | "COMMON" | "UNCOMMON" | "RARE" | "EPIC" | "LEGENDARY" | "MYTHIC";
+export type Rarity = "COMMON" | "UNCOMMON" | "RARE" | "EPIC" | "LEGENDARY" | "MYTHIC";
 
 export type NegotiationOutcome = "DEAL" | "REJECT" | "TIMEOUT" | "WALKAWAY";
 
@@ -32,22 +29,22 @@ export interface AwakenPerk {
 
 export interface TradeCompletedParams {
   sessionId: string;
-  odUserId: string;         // buyer or seller — called for EACH side
+  odUserId: string; // buyer or seller — called for EACH side
   outcome: NegotiationOutcome;
-  amount: number;           // USD
-  savingPct: number;        // 0-1
+  amount: number; // USD
+  savingPct: number; // 0-1
   category: string;
   skillsUsed: string[];
   presetUsed?: string;
-  buddyId?: string;         // equipped buddy (representative)
+  buddyId?: string; // equipped buddy (representative)
   isJuryVerdict?: boolean;
   isDisputeFree?: boolean;
   roundsUsed?: number;
   maxRounds?: number;
-  mutualRating?: number;    // counterpart's rating of me (1-5), undefined if not yet rated
-  myRating?: number;        // my rating of counterpart (1-5)
-  trustScore?: number;      // user's current trust score
-  consecutiveDealsOverride?: number;  // pre-computed from caller
+  mutualRating?: number; // counterpart's rating of me (1-5), undefined if not yet rated
+  myRating?: number; // my rating of counterpart (1-5)
+  trustScore?: number; // user's current trust score
+  consecutiveDealsOverride?: number; // pre-computed from caller
 }
 
 export interface QualityMultiplier {
@@ -143,11 +140,11 @@ const DYNAMIC_RATES: ReadonlyArray<{ rarity: Rarity; baseRate: number }> = [
 const MYTHIC_CAP = 24; // 3 per species × 8 species
 
 // Pity thresholds — dual ceiling (volume OR quality trade count)
-const PITY_EPIC_VOLUME = 3_000;       // $3,000 effective contribution
-const PITY_EPIC_TRADES = 15;          // 15 quality trades
+const PITY_EPIC_VOLUME = 3_000; // $3,000 effective contribution
+const PITY_EPIC_TRADES = 15; // 15 quality trades
 const PITY_LEGENDARY_VOLUME = 15_000; // $15,000 effective contribution
-const PITY_LEGENDARY_TRADES = 40;     // 40 quality trades
-const PITY_MIN_TRADE_AMOUNT = 20;     // $20 minimum to count
+const PITY_LEGENDARY_TRADES = 40; // 40 quality trades
+const PITY_MIN_TRADE_AMOUNT = 20; // $20 minimum to count
 
 // HC rewards per trade
 const HC_TRADE_BASE = 2;
@@ -170,26 +167,106 @@ export const BUDDY_RELEASE_HC: Record<Rarity, number> = {
 // All abilities are FAIR — public data / symmetric / reward-only.
 // NO asymmetric abilities (opponent manipulation, hidden info, forced concession).
 export const LEGENDARY_ABILITIES: Record<Species, BuddyAbility> = {
-  FOX: { id: "price_insight", name: "시세 감각", description: "공개 시장 평균가 대비 현재 제안가 위치 표시", effect: "market_price_hint" },
-  RABBIT: { id: "trend_sense", name: "트렌드 감지", description: "공개 수요 트렌드 힌트 제공", effect: "demand_signal" },
-  BEAR: { id: "endurance", name: "인내력", description: "타임아웃 전 추가 1라운드 (양측 모두 혜택)", effect: "extra_round" },
-  CAT: { id: "practical_eye", name: "생활 감정", description: "생활용품 실용 가치 평가 기준 briefing 추가", effect: "practical_value_hint" },
-  OWL: { id: "appraisal", name: "감정안", description: "공개 경매 데이터 기반 컨디션 정보 제공", effect: "condition_insight" },
-  DRAGON: { id: "gem_knowledge", name: "보석 지식", description: "공개 보석/귀금속 시세 데이터 briefing 추가", effect: "gem_market_hint" },
-  EAGLE: { id: "wide_view", name: "넓은 시야", description: "공개 유사 거래 비교 데이터 1건 제공", effect: "comparable_hint" },
-  WOLF: { id: "adaptability", name: "적응력", description: "어떤 카테고리에서든 버디 XP 감소 없음", effect: "no_category_penalty" },
+  FOX: {
+    id: "price_insight",
+    name: "시세 감각",
+    description: "공개 시장 평균가 대비 현재 제안가 위치 표시",
+    effect: "market_price_hint",
+  },
+  RABBIT: {
+    id: "trend_sense",
+    name: "트렌드 감지",
+    description: "공개 수요 트렌드 힌트 제공",
+    effect: "demand_signal",
+  },
+  BEAR: {
+    id: "endurance",
+    name: "인내력",
+    description: "타임아웃 전 추가 1라운드 (양측 모두 혜택)",
+    effect: "extra_round",
+  },
+  CAT: {
+    id: "practical_eye",
+    name: "생활 감정",
+    description: "생활용품 실용 가치 평가 기준 briefing 추가",
+    effect: "practical_value_hint",
+  },
+  OWL: {
+    id: "appraisal",
+    name: "감정안",
+    description: "공개 경매 데이터 기반 컨디션 정보 제공",
+    effect: "condition_insight",
+  },
+  DRAGON: {
+    id: "gem_knowledge",
+    name: "보석 지식",
+    description: "공개 보석/귀금속 시세 데이터 briefing 추가",
+    effect: "gem_market_hint",
+  },
+  EAGLE: {
+    id: "wide_view",
+    name: "넓은 시야",
+    description: "공개 유사 거래 비교 데이터 1건 제공",
+    effect: "comparable_hint",
+  },
+  WOLF: {
+    id: "adaptability",
+    name: "적응력",
+    description: "어떤 카테고리에서든 버디 XP 감소 없음",
+    effect: "no_category_penalty",
+  },
 };
 
 // MYTHIC = enhanced LEGENDARY + unique MYTHIC-only ability
 export const MYTHIC_ABILITIES: Record<Species, BuddyAbility> = {
-  FOX: { id: "market_forecast", name: "시장 예언", description: "가격 변동 추세 예측 힌트", effect: "market_forecast" },
-  RABBIT: { id: "resale_data", name: "스타일 오라", description: "브랜드 리세일 가치 데이터 추가", effect: "resale_value_data" },
-  BEAR: { id: "double_endurance", name: "불굴의 의지", description: "추가 2라운드 + 장기전 XP 보너스", effect: "double_endurance" },
-  CAT: { id: "mutual_satisfaction", name: "편안한 거래", description: "양측 모두 만족 시 HC 보너스", effect: "mutual_satisfaction_hc" },
-  OWL: { id: "master_appraisal", name: "마스터 감정", description: "경매 이력 + 출처 정보 종합", effect: "master_appraisal" },
-  DRAGON: { id: "dragon_hoard", name: "용의 보물", description: "$1000+ 거래 성사 시 보너스 에그 확정", effect: "guaranteed_bonus_egg" },
-  EAGLE: { id: "triple_comparable", name: "전략적 시야", description: "유사 거래 3건 비교 데이터", effect: "triple_comparable" },
-  WOLF: { id: "universal_xp", name: "만능 적응", description: "모든 카테고리에서 버디/에이전트 XP 보너스", effect: "universal_xp_boost" },
+  FOX: {
+    id: "market_forecast",
+    name: "시장 예언",
+    description: "가격 변동 추세 예측 힌트",
+    effect: "market_forecast",
+  },
+  RABBIT: {
+    id: "resale_data",
+    name: "스타일 오라",
+    description: "브랜드 리세일 가치 데이터 추가",
+    effect: "resale_value_data",
+  },
+  BEAR: {
+    id: "double_endurance",
+    name: "불굴의 의지",
+    description: "추가 2라운드 + 장기전 XP 보너스",
+    effect: "double_endurance",
+  },
+  CAT: {
+    id: "mutual_satisfaction",
+    name: "편안한 거래",
+    description: "양측 모두 만족 시 HC 보너스",
+    effect: "mutual_satisfaction_hc",
+  },
+  OWL: {
+    id: "master_appraisal",
+    name: "마스터 감정",
+    description: "경매 이력 + 출처 정보 종합",
+    effect: "master_appraisal",
+  },
+  DRAGON: {
+    id: "dragon_hoard",
+    name: "용의 보물",
+    description: "$1000+ 거래 성사 시 보너스 에그 확정",
+    effect: "guaranteed_bonus_egg",
+  },
+  EAGLE: {
+    id: "triple_comparable",
+    name: "전략적 시야",
+    description: "유사 거래 3건 비교 데이터",
+    effect: "triple_comparable",
+  },
+  WOLF: {
+    id: "universal_xp",
+    name: "만능 적응",
+    description: "모든 카테고리에서 버디/에이전트 XP 보너스",
+    effect: "universal_xp_boost",
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -200,11 +277,22 @@ export const COMMON_PERKS: ReadonlyArray<AwakenPerk> = [
   { id: "extra_round", name: "추가 라운드", effect: "max_rounds_+1", pool: "common" },
   { id: "bonus_egg", name: "보너스 에그", effect: "double_egg_chance", pool: "common" },
   { id: "rarity_upgrade", name: "등급 승급", effect: "rarity_tier_+1", pool: "common" },
-  { id: "hc_boost", name: "HC 부스트", effect: "hc_multiplier", value: 1.20, pool: "common" },
+  { id: "hc_boost", name: "HC 부스트", effect: "hc_multiplier", value: 1.2, pool: "common" },
   { id: "xp_boost", name: "XP 부스트", effect: "xp_multiplier", value: 1.15, pool: "common" },
-  { id: "buddy_xp_boost", name: "버디 XP 부스트", effect: "buddy_xp_multiplier", value: 1.25, pool: "common" },
+  {
+    id: "buddy_xp_boost",
+    name: "버디 XP 부스트",
+    effect: "buddy_xp_multiplier",
+    value: 1.25,
+    pool: "common",
+  },
   { id: "market_context", name: "시장 맥락", effect: "market_data_access", pool: "common" },
-  { id: "deal_streak_bonus", name: "연속 딜 보너스", effect: "streak_xp_multiplier", pool: "common" },
+  {
+    id: "deal_streak_bonus",
+    name: "연속 딜 보너스",
+    effect: "streak_xp_multiplier",
+    pool: "common",
+  },
 ];
 
 export const SPECIES_PERKS: Record<Species, ReadonlyArray<AwakenPerk>> = {
@@ -217,7 +305,12 @@ export const SPECIES_PERKS: Record<Species, ReadonlyArray<AwakenPerk>> = {
   RABBIT: [
     { id: "trend_radar", name: "트렌드 레이더", effect: "season_demand_trend", pool: "RABBIT" },
     { id: "brand_knowledge", name: "브랜드 지식", effect: "resale_value_brief", pool: "RABBIT" },
-    { id: "condition_eye", name: "컨디션 감정", effect: "clothing_condition_check", pool: "RABBIT" },
+    {
+      id: "condition_eye",
+      name: "컨디션 감정",
+      effect: "clothing_condition_check",
+      pool: "RABBIT",
+    },
     { id: "fashion_network", name: "패션 네트워크", effect: "category_hc_bonus", pool: "RABBIT" },
   ],
   BEAR: [
@@ -235,7 +328,12 @@ export const SPECIES_PERKS: Record<Species, ReadonlyArray<AwakenPerk>> = {
   OWL: [
     { id: "appraisal_eye", name: "감정안", effect: "auction_data_ref", pool: "OWL" },
     { id: "provenance_check", name: "출처 확인", effect: "item_history_check", pool: "OWL" },
-    { id: "collector_network", name: "수집가 네트워크", effect: "rarity_upgrade_double", pool: "OWL" },
+    {
+      id: "collector_network",
+      name: "수집가 네트워크",
+      effect: "rarity_upgrade_double",
+      pool: "OWL",
+    },
     { id: "patience_reward", name: "인내의 보상", effect: "final_round_xp_double", pool: "OWL" },
   ],
   DRAGON: [
@@ -279,7 +377,7 @@ export function computeXP(
   isDisputeFree: boolean,
 ): number {
   const base = 100;
-  const amountBonus = Math.pow(Math.max(amount, 0), 0.4) * 5;
+  const amountBonus = Math.max(amount, 0) ** 0.4 * 5;
   const streakBonus = Math.min(consecutiveWins, 10) * 15;
   const juryBonus = isJuryVerdict ? 50 : 0;
   const disputeFreeBonus = isDisputeFree ? 25 : 0;
@@ -311,7 +409,7 @@ export function computeRarity(
   }
 
   // Fixed rates for COMMON~EPIC
-  const fixed = FIXED_RATES.map(r => ({ ...r }));
+  const fixed = FIXED_RATES.map((r) => ({ ...r }));
 
   // Dynamic rates for LEGENDARY/MYTHIC
   const dynamicMultiplier = Math.log(1 + amount / 100) / Math.sqrt(1 + totalMintedBySpecies / 5000);
@@ -323,7 +421,7 @@ export function computeRarity(
   // Combine and normalize to 100%
   const allRates = [...fixed, ...dynamic];
   const rawTotal = allRates.reduce((sum, r) => sum + r.rate, 0);
-  const normalized = allRates.map(r => ({ ...r, rate: r.rate / rawTotal }));
+  const normalized = allRates.map((r) => ({ ...r, rate: r.rate / rawTotal }));
 
   const roll = Math.random();
   let cumulative = 0;
@@ -344,7 +442,7 @@ export function computeQualityMultiplier(params: {
   isDisputeFree: boolean;
   roundsUsed?: number;
   maxRounds?: number;
-  mutualPositiveRating: boolean;  // both sides rated 3+
+  mutualPositiveRating: boolean; // both sides rated 3+
   consecutiveDeals: number;
   trustScore?: number;
 }): QualityMultiplier {
@@ -411,7 +509,10 @@ export function checkPityCeiling(
   pityTradesLegendary: number,
 ): "EPIC" | "LEGENDARY" | null {
   // Check LEGENDARY first (higher priority)
-  if (pityVolumeLegendary >= PITY_LEGENDARY_VOLUME || pityTradesLegendary >= PITY_LEGENDARY_TRADES) {
+  if (
+    pityVolumeLegendary >= PITY_LEGENDARY_VOLUME ||
+    pityTradesLegendary >= PITY_LEGENDARY_TRADES
+  ) {
     return "LEGENDARY";
   }
   if (pityVolumeEpic >= PITY_EPIC_VOLUME || pityTradesEpic >= PITY_EPIC_TRADES) {
@@ -426,15 +527,18 @@ export function checkPityCeiling(
  */
 export function computeRatingXPMultiplier(myRating?: number, mutualRating?: number): number {
   if (myRating != null && myRating >= 4 && mutualRating != null && mutualRating >= 4) {
-    return 1.20; // mutual positive
+    return 1.2; // mutual positive
   }
   if (mutualRating != null && mutualRating >= 4) {
-    return 1.10; // counterpart rated me positively
+    return 1.1; // counterpart rated me positively
   }
   return 1.0;
 }
 
-export function resolveLevel(totalXP: number, table: ReadonlyArray<{ level: number; xp: number }>): number {
+export function resolveLevel(
+  totalXP: number,
+  table: ReadonlyArray<{ level: number; xp: number }>,
+): number {
   let resolved = table[0]!.level;
   for (const entry of table) {
     if (totalXP >= entry.xp) resolved = entry.level;
@@ -443,13 +547,13 @@ export function resolveLevel(totalXP: number, table: ReadonlyArray<{ level: numb
   return resolved;
 }
 
-export function getAbilityForBuddy(species: Species, rarity: Rarity): BuddyAbility | BuddyAbility[] | null {
+export function getAbilityForBuddy(
+  species: Species,
+  rarity: Rarity,
+): BuddyAbility | BuddyAbility[] | null {
   if (rarity === "MYTHIC") {
     // MYTHIC gets enhanced LEGENDARY + unique MYTHIC ability
-    return [
-      { ...LEGENDARY_ABILITIES[species], enhanced: true },
-      MYTHIC_ABILITIES[species],
-    ];
+    return [{ ...LEGENDARY_ABILITIES[species], enhanced: true }, MYTHIC_ABILITIES[species]];
   }
   if (rarity === "LEGENDARY") return LEGENDARY_ABILITIES[species];
   return null;
@@ -465,10 +569,22 @@ export function getAvailablePerks(species: Species): AwakenPerk[] {
 
 export async function onTradeCompleted(db: Database, params: TradeCompletedParams) {
   const {
-    odUserId: userId, sessionId, outcome, amount, savingPct,
-    category, skillsUsed, presetUsed, buddyId,
-    isJuryVerdict = false, isDisputeFree = true,
-    roundsUsed, maxRounds, mutualRating, myRating, trustScore,
+    odUserId: userId,
+    sessionId,
+    outcome,
+    amount,
+    savingPct,
+    category,
+    skillsUsed,
+    presetUsed,
+    buddyId,
+    isJuryVerdict = false,
+    isDisputeFree = true,
+    roundsUsed,
+    maxRounds,
+    mutualRating,
+    myRating,
+    trustScore,
   } = params;
 
   // Only DEAL outcomes produce eggs
@@ -478,7 +594,8 @@ export async function onTradeCompleted(db: Database, params: TradeCompletedParam
   const ratingMultiplier = computeRatingXPMultiplier(myRating, mutualRating);
 
   // 2. Quality multiplier (for pity accumulation)
-  const mutualPositiveRating = (myRating != null && myRating >= 3 && mutualRating != null && mutualRating >= 3);
+  const mutualPositiveRating =
+    myRating != null && myRating >= 3 && mutualRating != null && mutualRating >= 3;
   const quality = computeQualityMultiplier({
     isDisputeFree,
     roundsUsed,
@@ -496,8 +613,12 @@ export async function onTradeCompleted(db: Database, params: TradeCompletedParam
     .limit(1);
 
   const consecutiveWins = existingAgent[0]
-    ? (isDeal ? existingAgent[0].consecutiveDeals + 1 : 0)
-    : (isDeal ? 1 : 0);
+    ? isDeal
+      ? existingAgent[0].consecutiveDeals + 1
+      : 0
+    : isDeal
+      ? 1
+      : 0;
 
   const baseXP = computeXP(outcome, amount, consecutiveWins, isJuryVerdict, isDisputeFree);
   const xpGained = Math.floor(baseXP * ratingMultiplier);
@@ -509,22 +630,25 @@ export async function onTradeCompleted(db: Database, params: TradeCompletedParam
     const totalDeals = existingAgent[0].totalDeals + (isDeal ? 1 : 0);
     const totalTrades = existingAgent[0].totalTrades + 1;
     const totalVolume = Number(existingAgent[0].totalVolume) + amount;
-    const totalSaved = Number(existingAgent[0].totalSaved) + (amount * savingPct);
+    const totalSaved = Number(existingAgent[0].totalSaved) + amount * savingPct;
     const newAvgSaving = totalVolume > 0 ? (totalSaved / totalVolume).toString() : "0";
     const newBestSaving = Math.max(Number(existingAgent[0].bestSavingPct), savingPct);
 
-    await db.update(agentLevels).set({
-      xp: currentTotalXP,
-      level: newLevel,
-      totalTrades,
-      totalDeals,
-      totalVolume: totalVolume.toFixed(2),
-      totalSaved: totalSaved.toFixed(2),
-      avgSavingPct: newAvgSaving,
-      bestSavingPct: newBestSaving.toFixed(4),
-      consecutiveDeals: consecutiveWins,
-      updatedAt: new Date(),
-    }).where(eq(agentLevels.userId, userId));
+    await db
+      .update(agentLevels)
+      .set({
+        xp: currentTotalXP,
+        level: newLevel,
+        totalTrades,
+        totalDeals,
+        totalVolume: totalVolume.toFixed(2),
+        totalSaved: totalSaved.toFixed(2),
+        avgSavingPct: newAvgSaving,
+        bestSavingPct: newBestSaving.toFixed(4),
+        consecutiveDeals: consecutiveWins,
+        updatedAt: new Date(),
+      })
+      .where(eq(agentLevels.userId, userId));
   } else {
     currentTotalXP = xpGained;
     const newLevel = resolveLevel(currentTotalXP, AGENT_LEVEL_TABLE);
@@ -544,7 +668,9 @@ export async function onTradeCompleted(db: Database, params: TradeCompletedParam
   }
 
   // 4. HC reward
-  const hcReward = isDeal ? computeTradeHC(amount, mutualPositiveRating) : { tradeReward: 0, ratingBonus: 0, total: 0 };
+  const hcReward = isDeal
+    ? computeTradeHC(amount, mutualPositiveRating)
+    : { tradeReward: 0, ratingBonus: 0, total: 0 };
 
   // 5. Create buddy egg (DEAL only, both sides get one)
   let newBuddyId: string | null = null;
@@ -585,20 +711,23 @@ export async function onTradeCompleted(db: Database, params: TradeCompletedParam
     const ability = getAbilityForBuddy(species, rarity);
     const now = new Date();
 
-    const [newBuddy] = await db.insert(buddies).values({
-      userId,
-      species,
-      rarity,
-      birthTradeId: sessionId,
-      birthCategory: category,
-      birthSkills: skillsUsed,
-      birthPreset: presetUsed ?? null,
-      birthSavingPct: savingPct.toFixed(4),
-      status: "ACTIVE",
-      hatchedAt: now,
-      ability: Array.isArray(ability) ? ability : ability ? ability : null,
-      abilityUnlockedAt: ability ? now : null,
-    }).returning();
+    const [newBuddy] = await db
+      .insert(buddies)
+      .values({
+        userId,
+        species,
+        rarity,
+        birthTradeId: sessionId,
+        birthCategory: category,
+        birthSkills: skillsUsed,
+        birthPreset: presetUsed ?? null,
+        birthSavingPct: savingPct.toFixed(4),
+        status: "ACTIVE",
+        hatchedAt: now,
+        ability: Array.isArray(ability) ? ability : ability ? ability : null,
+        abilityUnlockedAt: ability ? now : null,
+      })
+      .returning();
 
     newBuddyId = newBuddy!.id;
 
@@ -608,34 +737,43 @@ export async function onTradeCompleted(db: Database, params: TradeCompletedParam
 
       if (rarity === "LEGENDARY" || rarity === "MYTHIC") {
         // Got LEGENDARY+, reset both pity counters
-        await db.update(agentLevels).set({
-          pityVolumeEpic: "0",
-          pityTradesEpic: 0,
-          pityVolumeLegendary: "0",
-          pityTradesLegendary: 0,
-        }).where(eq(agentLevels.userId, userId));
+        await db
+          .update(agentLevels)
+          .set({
+            pityVolumeEpic: "0",
+            pityTradesEpic: 0,
+            pityVolumeLegendary: "0",
+            pityTradesLegendary: 0,
+          })
+          .where(eq(agentLevels.userId, userId));
       } else if (rarity === "EPIC") {
         // Got EPIC, reset epic pity, accumulate legendary
         const prevLegVol = existingAgent[0] ? Number(existingAgent[0].pityVolumeLegendary) : 0;
         const prevLegTrades = existingAgent[0] ? existingAgent[0].pityTradesLegendary : 0;
-        await db.update(agentLevels).set({
-          pityVolumeEpic: "0",
-          pityTradesEpic: 0,
-          pityVolumeLegendary: (prevLegVol + effectiveVolume).toFixed(2),
-          pityTradesLegendary: prevLegTrades + 1,
-        }).where(eq(agentLevels.userId, userId));
+        await db
+          .update(agentLevels)
+          .set({
+            pityVolumeEpic: "0",
+            pityTradesEpic: 0,
+            pityVolumeLegendary: (prevLegVol + effectiveVolume).toFixed(2),
+            pityTradesLegendary: prevLegTrades + 1,
+          })
+          .where(eq(agentLevels.userId, userId));
       } else {
         // COMMON~RARE: accumulate both pity counters
         const prevEpicVol = existingAgent[0] ? Number(existingAgent[0].pityVolumeEpic) : 0;
         const prevEpicTrades = existingAgent[0] ? existingAgent[0].pityTradesEpic : 0;
         const prevLegVol = existingAgent[0] ? Number(existingAgent[0].pityVolumeLegendary) : 0;
         const prevLegTrades = existingAgent[0] ? existingAgent[0].pityTradesLegendary : 0;
-        await db.update(agentLevels).set({
-          pityVolumeEpic: (prevEpicVol + effectiveVolume).toFixed(2),
-          pityTradesEpic: prevEpicTrades + 1,
-          pityVolumeLegendary: (prevLegVol + effectiveVolume).toFixed(2),
-          pityTradesLegendary: prevLegTrades + 1,
-        }).where(eq(agentLevels.userId, userId));
+        await db
+          .update(agentLevels)
+          .set({
+            pityVolumeEpic: (prevEpicVol + effectiveVolume).toFixed(2),
+            pityTradesEpic: prevEpicTrades + 1,
+            pityVolumeLegendary: (prevLegVol + effectiveVolume).toFixed(2),
+            pityTradesLegendary: prevLegTrades + 1,
+          })
+          .where(eq(agentLevels.userId, userId));
       }
     }
   }
@@ -655,11 +793,7 @@ export async function onTradeCompleted(db: Database, params: TradeCompletedParam
       savingPct: savingPct.toFixed(4),
     });
 
-    const [existingBuddy] = await db
-      .select()
-      .from(buddies)
-      .where(eq(buddies.id, buddyId))
-      .limit(1);
+    const [existingBuddy] = await db.select().from(buddies).where(eq(buddies.id, buddyId)).limit(1);
 
     if (existingBuddy) {
       const newBuddyXp = existingBuddy.buddyXp + buddyXpGained;
@@ -667,18 +801,21 @@ export async function onTradeCompleted(db: Database, params: TradeCompletedParam
       const newTotalTrades = existingBuddy.totalTrades + 1;
       const outcomeKey = outcome.toLowerCase() as "deals" | "rejects" | "timeouts" | "walkaways";
 
-      await db.update(buddies).set({
-        buddyXp: newBuddyXp,
-        buddyLevel: newBuddyLevel,
-        totalTrades: newTotalTrades,
-        [outcomeKey]: (existingBuddy[outcomeKey] ?? 0) + 1,
-        avgSavingPct: (
-          ((Number(existingBuddy.avgSavingPct) || 0) * existingBuddy.totalTrades + savingPct)
-          / newTotalTrades
-        ).toFixed(4),
-        bestSavingPct: Math.max(Number(existingBuddy.bestSavingPct) || 0, savingPct).toFixed(4),
-        updatedAt: new Date(),
-      }).where(eq(buddies.id, buddyId));
+      await db
+        .update(buddies)
+        .set({
+          buddyXp: newBuddyXp,
+          buddyLevel: newBuddyLevel,
+          totalTrades: newTotalTrades,
+          [outcomeKey]: (existingBuddy[outcomeKey] ?? 0) + 1,
+          avgSavingPct: (
+            ((Number(existingBuddy.avgSavingPct) || 0) * existingBuddy.totalTrades + savingPct) /
+            newTotalTrades
+          ).toFixed(4),
+          bestSavingPct: Math.max(Number(existingBuddy.bestSavingPct) || 0, savingPct).toFixed(4),
+          updatedAt: new Date(),
+        })
+        .where(eq(buddies.id, buddyId));
     }
   }
 
@@ -707,13 +844,17 @@ export async function hatchEgg(db: Database, buddyId: string) {
 
   const ability = getAbilityForBuddy(buddy.species as Species, buddy.rarity as Rarity);
 
-  const [hatched] = await db.update(buddies).set({
-    status: "ACTIVE",
-    hatchedAt: new Date(),
-    ability,
-    abilityUnlockedAt: ability ? new Date() : null,
-    updatedAt: new Date(),
-  }).where(eq(buddies.id, buddyId)).returning();
+  const [hatched] = await db
+    .update(buddies)
+    .set({
+      status: "ACTIVE",
+      hatchedAt: new Date(),
+      ability,
+      abilityUnlockedAt: ability ? new Date() : null,
+      updatedAt: new Date(),
+    })
+    .where(eq(buddies.id, buddyId))
+    .returning();
 
   return { ok: true as const, buddy: hatched };
 }
@@ -752,7 +893,7 @@ export async function checkAwakenEligibility(db: Database, buddyId: string) {
     .orderBy(desc(agentLevels.xp))
     .limit(rankThreshold);
 
-  const isTopAgent = topAgents.some(a => a.userId === buddy.userId);
+  const isTopAgent = topAgents.some((a) => a.userId === buddy.userId);
 
   if (!isTopAgent) return { eligible: false as const, reason: "AGENT_RANK_TOO_LOW" };
 
@@ -772,20 +913,24 @@ export async function awakenBuddy(db: Database, buddyId: string, selectedPerkIds
     return { ok: false as const, error: `MUST_SELECT_EXACTLY_${maxPerks}_PERKS` };
   }
 
-  const availableIds = new Set(availablePerks.map(p => p.id));
-  if (selectedPerkIds.some(id => !availableIds.has(id))) {
+  const availableIds = new Set(availablePerks.map((p) => p.id));
+  if (selectedPerkIds.some((id) => !availableIds.has(id))) {
     return { ok: false as const, error: "INVALID_PERK_IDS" };
   }
   if (new Set(selectedPerkIds).size !== selectedPerkIds.length) {
     return { ok: false as const, error: "DUPLICATE_PERKS" };
   }
 
-  const [awakened] = await db.update(buddies).set({
-    isAwakened: true,
-    awakenPerks: selectedPerkIds,
-    awakenedAt: new Date(),
-    updatedAt: new Date(),
-  }).where(eq(buddies.id, buddyId)).returning();
+  const [awakened] = await db
+    .update(buddies)
+    .set({
+      isAwakened: true,
+      awakenPerks: selectedPerkIds,
+      awakenedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(buddies.id, buddyId))
+    .returning();
 
   return { ok: true as const, buddy: awakened };
 }
@@ -840,8 +985,10 @@ export function applyBuddyAbility(
     case "guaranteed_bonus_egg":
       return [{ field: "guaranteedBonusEgg", action: "set", value: true, source }];
     case "triple_comparable":
-      return [{ field: "includeComparables", action: "set", value: true, source },
-              { field: "comparableCount", action: "set", value: 3, source }];
+      return [
+        { field: "includeComparables", action: "set", value: true, source },
+        { field: "comparableCount", action: "set", value: 3, source },
+      ];
     case "universal_xp_boost":
       return [
         { field: "noCategoryXpPenalty", action: "set", value: true, source },

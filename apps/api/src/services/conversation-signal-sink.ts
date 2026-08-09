@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 import {
-  extractConversationSignals,
   type ConversationSignal,
+  extractConversationSignals,
   type RolePerspective,
 } from "./conversation-signal-extractor.js";
 import { queueProposedTags } from "./tag-placement.service.js";
@@ -371,6 +371,9 @@ function resultHasRows(result: unknown): boolean {
   return true;
 }
 
-function userIdForRole(input: RecordRoundConversationSignalsInput, role: "BUYER" | "SELLER"): string {
+function userIdForRole(
+  input: RecordRoundConversationSignalsInput,
+  role: "BUYER" | "SELLER",
+): string {
   return role === "BUYER" ? input.buyerId : input.sellerId;
 }

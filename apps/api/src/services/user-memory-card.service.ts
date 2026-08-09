@@ -1,4 +1,4 @@
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 import type { ConversationSignal } from "./conversation-signal-extractor.js";
 
 type UserMemoryCardType = "preference" | "constraint" | "pricing" | "style" | "trust" | "interest";
@@ -81,7 +81,10 @@ export async function loadUserMemoryBrief(
   if (!input.userId) return null;
 
   const limit = Math.max(1, Math.min(input.limit ?? DEFAULT_MEMORY_BRIEF_LIMIT, 12));
-  const minStrength = Math.max(0, Math.min(input.minStrength ?? DEFAULT_MEMORY_BRIEF_MIN_STRENGTH, 1));
+  const minStrength = Math.max(
+    0,
+    Math.min(input.minStrength ?? DEFAULT_MEMORY_BRIEF_MIN_STRENGTH, 1),
+  );
 
   try {
     const result = await db.execute(sql`
@@ -239,7 +242,9 @@ export async function recordUserMemoryCards(
 ): Promise<RecordUserMemoryCardsResult> {
   if (!input.userId) return { observed: 0 };
 
-  const candidates = dedupeCandidates(input.signals.flatMap((signal) => candidateFromSignal(signal, input.sourceKey)));
+  const candidates = dedupeCandidates(
+    input.signals.flatMap((signal) => candidateFromSignal(signal, input.sourceKey)),
+  );
   if (candidates.length === 0) return { observed: 0 };
 
   let observed = 0;
@@ -361,7 +366,10 @@ export async function recordUserMemoryCards(
       `);
       if (resultHasRows(result)) observed++;
     } catch (err) {
-      console.error("[user-memory-card] failed to record memory candidate:", (err as Error).message);
+      console.error(
+        "[user-memory-card] failed to record memory candidate:",
+        (err as Error).message,
+      );
     }
   }
 
@@ -474,7 +482,11 @@ function rowToBriefItem(row: Record<string, unknown>): UserMemoryBriefItem | nul
   const cardType = row.cardType;
   const memoryKey = row.memoryKey;
   const summary = row.summary;
-  if (!isUserMemoryCardType(cardType) || typeof memoryKey !== "string" || typeof summary !== "string") {
+  if (
+    !isUserMemoryCardType(cardType) ||
+    typeof memoryKey !== "string" ||
+    typeof summary !== "string"
+  ) {
     return null;
   }
 
@@ -510,12 +522,14 @@ function parseStrength(value: unknown): number {
 }
 
 function isUserMemoryCardType(value: unknown): value is UserMemoryCardType {
-  return value === "preference"
-    || value === "constraint"
-    || value === "pricing"
-    || value === "style"
-    || value === "trust"
-    || value === "interest";
+  return (
+    value === "preference" ||
+    value === "constraint" ||
+    value === "pricing" ||
+    value === "style" ||
+    value === "trust" ||
+    value === "interest"
+  );
 }
 
 function isUserMemoryCardStatus(value: unknown): value is UserMemoryCardListItem["status"] {

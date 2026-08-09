@@ -1,9 +1,4 @@
-import {
-  eq,
-  and,
-  negotiationGroups,
-  type Database,
-} from "@haggle/db";
+import { and, type Database, eq, negotiationGroups } from "@haggle/db";
 
 type GroupTopology = "1_BUYER_N_SELLERS" | "N_BUYERS_1_SELLER";
 type GroupStatus = "ACTIVE" | "RESOLVED" | "EXPIRED" | "CANCELLED";
@@ -77,12 +72,7 @@ export async function updateGroupStatus(
       version: expectedVersion + 1,
       updatedAt: new Date(),
     })
-    .where(
-      and(
-        eq(negotiationGroups.id, groupId),
-        eq(negotiationGroups.version, expectedVersion),
-      ),
-    )
+    .where(and(eq(negotiationGroups.id, groupId), eq(negotiationGroups.version, expectedVersion)))
     .returning();
 
   return rows[0] ?? null;
@@ -106,12 +96,7 @@ export async function updateGroupMetadata(
       version: expectedVersion + 1,
       updatedAt: new Date(),
     })
-    .where(
-      and(
-        eq(negotiationGroups.id, groupId),
-        eq(negotiationGroups.version, expectedVersion),
-      ),
-    )
+    .where(and(eq(negotiationGroups.id, groupId), eq(negotiationGroups.version, expectedVersion)))
     .returning();
 
   return rows[0] ?? null;

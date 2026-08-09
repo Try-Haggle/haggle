@@ -1,5 +1,5 @@
-import type { FastifyInstance, FastifyRequest } from "fastify";
 import { createHnpProfile } from "@haggle/engine-session";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { defaultAttemptControlPolicy } from "../services/attempt-control.service.js";
 
 export function registerHnpProfileRoutes(app: FastifyInstance) {

@@ -1,14 +1,11 @@
-import {
-  eq,
-  and,
-  desc,
-  sql,
-  skills,
-  skillExecutions,
-  type Database,
-} from "@haggle/db";
+import { and, type Database, desc, eq, skillExecutions, skills, sql } from "@haggle/db";
 
-type SkillCategory = "STRATEGY" | "DATA" | "INTERPRETATION" | "AUTHENTICATION" | "DISPUTE_RESOLUTION";
+type SkillCategory =
+  | "STRATEGY"
+  | "DATA"
+  | "INTERPRETATION"
+  | "AUTHENTICATION"
+  | "DISPUTE_RESOLUTION";
 type SkillProvider = "FIRST_PARTY" | "THIRD_PARTY" | "COMMUNITY";
 type SkillStatus = "DRAFT" | "ACTIVE" | "SUSPENDED" | "DEPRECATED";
 
@@ -17,11 +14,7 @@ type SkillStatus = "DRAFT" | "ACTIVE" | "SUSPENDED" | "DEPRECATED";
 // ---------------------------------------------------------------------------
 
 export async function getSkillBySkillId(db: Database, skillId: string) {
-  const rows = await db
-    .select()
-    .from(skills)
-    .where(eq(skills.skillId, skillId))
-    .limit(1);
+  const rows = await db.select().from(skills).where(eq(skills.skillId, skillId)).limit(1);
 
   return rows[0] ?? null;
 }
@@ -48,7 +41,7 @@ export async function listSkills(
   if (filters?.hookPoint) {
     return rows.filter((r) => {
       const hooks = r.hookPoints as string[] | null;
-      return hooks != null && hooks.includes(filters.hookPoint!);
+      return hooks?.includes(filters.hookPoint!);
     });
   }
 
@@ -91,11 +84,7 @@ export async function createSkill(
   return row;
 }
 
-export async function updateSkillStatus(
-  db: Database,
-  skillId: string,
-  status: SkillStatus,
-) {
+export async function updateSkillStatus(db: Database, skillId: string, status: SkillStatus) {
   const [row] = await db
     .update(skills)
     .set({
@@ -161,11 +150,7 @@ export async function recordExecution(
   return row;
 }
 
-export async function getExecutionsBySkillId(
-  db: Database,
-  skillId: string,
-  limit?: number,
-) {
+export async function getExecutionsBySkillId(db: Database, skillId: string, limit?: number) {
   const rows = await db
     .select()
     .from(skillExecutions)

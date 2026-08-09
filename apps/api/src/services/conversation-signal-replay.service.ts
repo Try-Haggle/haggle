@@ -1,9 +1,9 @@
-import { sql, type Database } from "@haggle/db";
-import {
-  recordConversationSignalsForRound,
-  type RecordConversationSignalsInput,
-} from "./conversation-signal-sink.js";
+import { type Database, sql } from "@haggle/db";
 import type { RolePerspective } from "./conversation-signal-extractor.js";
+import {
+  type RecordConversationSignalsInput,
+  recordConversationSignalsForRound,
+} from "./conversation-signal-sink.js";
 
 export interface ReplayConversationSignalSourcesInput {
   limit?: number;
@@ -107,11 +107,11 @@ function mapSourceRowToRecordInput(row: SourceRow): RecordConversationSignalsInp
 
 function rowToSourceRow(row: Record<string, unknown>): SourceRow | null {
   if (
-    typeof row.sourceKey !== "string"
-    || typeof row.sessionId !== "string"
-    || typeof row.rawText !== "string"
-    || !isRolePerspective(row.rolePerspective)
-    || !isSourceLabel(row.sourceLabel)
+    typeof row.sourceKey !== "string" ||
+    typeof row.sessionId !== "string" ||
+    typeof row.rawText !== "string" ||
+    !isRolePerspective(row.rolePerspective) ||
+    !isSourceLabel(row.sourceLabel)
   ) {
     return null;
   }

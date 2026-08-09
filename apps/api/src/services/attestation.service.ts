@@ -13,17 +13,15 @@
  * `attestation_imei_key`. Neither the service nor the route ever logs
  * plaintext IMEIs — only `imei_encrypted` is returned from GET.
  */
-import { sql } from "@haggle/db";
+
 import type { Database } from "@haggle/db";
+import { sql } from "@haggle/db";
 import { buildCanonicalAttestationRecord } from "../lib/attestation-canonical-record.js";
 import {
-  validateAttestationStoragePath,
   ATTESTATION_BUCKET,
+  validateAttestationStoragePath,
 } from "../lib/supabase-storage-paths.js";
-import {
-  attestationObjectExists,
-  createAttestationViewUrl,
-} from "./supabase-storage.service.js";
+import { attestationObjectExists, createAttestationViewUrl } from "./supabase-storage.service.js";
 
 /** Name of the pgsodium/Vault key used for IMEI encryption. */
 const IMEI_VAULT_KEY_NAME = "attestation_imei_key";
@@ -115,9 +113,7 @@ export async function createAttestationCommit(
   );
   const missing = existChecks.find((c) => !c.exists);
   if (missing) {
-    throw new AttestationStorageError(
-      `attestation: photo not found in bucket: ${missing.path}`,
-    );
+    throw new AttestationStorageError(`attestation: photo not found in bucket: ${missing.path}`);
   }
 
   // 2) Build canonical record + hash in a single pass via the helper.
@@ -180,8 +176,7 @@ export async function createAttestationCommit(
     // Postgres unique_violation on uq_seller_attestation_commits_listing_id.
     // Check both direct shape and any driver wrapper that exposes `.cause`.
     const code =
-      (err as { code?: string }).code ??
-      (err as { cause?: { code?: string } }).cause?.code;
+      (err as { code?: string }).code ?? (err as { cause?: { code?: string } }).cause?.code;
     if (code === PG_UNIQUE_VIOLATION) {
       throw new AttestationConflictError(req.listingId);
     }
@@ -252,13 +247,8 @@ export async function loadCommitByListing(
     commitHash: String(row.commitHash),
     canonicalPayload: (row.canonicalPayload as Record<string, unknown>) ?? {},
     committedAt:
-      row.committedAt instanceof Date
-        ? row.committedAt.toISOString()
-        : String(row.committedAt),
-    expiresAt:
-      row.expiresAt instanceof Date
-        ? row.expiresAt.toISOString()
-        : String(row.expiresAt),
+      row.committedAt instanceof Date ? row.committedAt.toISOString() : String(row.committedAt),
+    expiresAt: row.expiresAt instanceof Date ? row.expiresAt.toISOString() : String(row.expiresAt),
   };
 }
 
@@ -266,10 +256,7 @@ export async function loadCommitByListing(
  * Resolve the seller uuid for a listing by walking
  * listings_published.draft_id → listing_drafts.user_id.
  */
-export async function getListingSellerId(
-  db: Database,
-  listingId: string,
-): Promise<string | null> {
+export async function getListingSellerId(db: Database, listingId: string): Promise<string | null> {
   const res = await db.execute(sql`
     SELECT ld.user_id AS "sellerId"
     FROM listings_published lp
@@ -287,10 +274,7 @@ export async function getListingSellerId(
  * Resolve the buyer uuid for a listing by looking up the commerce order.
  * Returns null if no order exists yet.
  */
-export async function getListingBuyerId(
-  db: Database,
-  listingId: string,
-): Promise<string | null> {
+export async function getListingBuyerId(db: Database, listingId: string): Promise<string | null> {
   const res = await db.execute(sql`
     SELECT buyer_id AS "buyerId"
     FROM commerce_orders

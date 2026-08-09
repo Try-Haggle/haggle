@@ -25,6 +25,11 @@ export type {
   SessionState,
 } from "./decision/types.js";
 export { applyFeatures } from "./features/apply.js";
+// Seed category feature rules (feature → bounded V_p effect) — backlog H6 / L5
+export { SEED_CATEGORY_FEATURE_RULES } from "./features/category-rules.js";
+export type { FeatureDef, FeatureValueType, TermKind } from "./features/schema.js";
+// Feature schema (vocabulary the engine understands) — backlog H4
+export { FEATURE_SCHEMA, getFeatureDef, isKnownFeatureKey } from "./features/schema.js";
 // Feature contract (sensor ↔ engine seam) — backlog H4/H5/H6
 export type {
   CategoryFeatureRule,

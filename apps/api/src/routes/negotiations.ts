@@ -13,9 +13,15 @@ import {
   validateHnpTransactionHandoff,
 } from "@haggle/engine-session";
 import {
+  buildCategoryCriteriaScaffold,
+  buyerChoiceOptionsForCheck,
+  type CategoryCriterion,
+  criterionAnswered,
   type EngineParameters,
   getNegotiationAgentPreset,
   presetToEngineParameters,
+  requiredCriteria,
+  unresolvedSellerRequirements,
 } from "@haggle/shared";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -24,6 +30,11 @@ import { getExecutor } from "../lib/executor-factory.js";
 import { executeGroupOrchestration, executeGroupTerminal } from "../lib/group-executor.js";
 import type { AuthUser } from "../middleware/auth.js";
 import { requireAuth } from "../middleware/require-auth.js";
+import {
+  applyBuyerPauseAnswer,
+  readSellerCriteriaFromSnapshot,
+  SELLER_CRITERIA_PAUSE_MARKER,
+} from "../negotiation/phase/seller-criteria-pause.js";
 import { getNotificationUserInfo } from "../notification/get-user-info.js";
 import type { NotificationBus } from "../notification/index.js";
 import {
@@ -46,7 +57,11 @@ import {
   validateNegotiationAutoPlayToken,
 } from "../services/negotiation-auto-play.service.js";
 import { evaluateNegotiationStartReadiness } from "../services/negotiation-readiness.service.js";
-import { createRound, getRoundsBySessionId } from "../services/negotiation-round.service.js";
+import {
+  createRound,
+  getRoundsBySessionId,
+  recordPauseAnswersOnRound,
+} from "../services/negotiation-round.service.js";
 import {
   createSession,
   getSessionById,
@@ -101,6 +116,16 @@ const startSessionSchema = z.object({
 
 const runNextAutoPlayRoundSchema = z.object({
   run_token: z.string().min(32).optional(),
+});
+
+// Phase G Flow 3 resume: the buyer's answer to a mid-negotiation seller-criteria pause.
+// Either per-check `stances` or a single `answer` applied to every unresolved check.
+const pauseAnswerSchema = z.object({
+  run_token: z.string().min(32).optional(),
+  answer: z.string().max(2000).optional(),
+  stances: z
+    .array(z.object({ checkId: z.string().min(1), stance: z.string().max(2000) }))
+    .optional(),
 });
 
 const hnpEnvelopeSchema = z.object({
@@ -434,6 +459,9 @@ export function registerNegotiationRoutes(
         tactic_used: r.tacticUsed,
         concession_rate: r.concessionRate,
         created_at: r.createdAt,
+        // The buyer's reply to a mid-negotiation pause, so the transcript can show it
+        // under the question that asked for it.
+        pause_answers: (r.metadata as Record<string, unknown> | null)?.buyer_pause_answers ?? null,
       })),
     });
   });
@@ -1073,10 +1101,68 @@ export function registerNegotiationRoutes(
         : {}),
       buyer_requested_strategy: buyerRequestedStrategy,
     };
+    // Phase G Flow 3: the seller's REQUIRED criteria travel on the buyer snapshot so
+    // the executor can pause and ask the buyer about any the buyer never addressed.
+    // Only criteria the seller DELIBERATELY engaged — required AND with a stated
+    // stance (criterionAnswered) — drive the pause. Otherwise the scaffold's default
+    // (every HARD taxonomy check → required, no stance) would pause almost every
+    // negotiation for checks the seller never actually specified. Project to a
+    // buyer-safe shape — the seller's private `stance` is DROPPED. Empty for
+    // pre-Phase-G sellers → the pause never fires (backward-compatible).
+    const sellerRequiredCriteria = requiredCriteria(
+      (sellerNegotiationAgentBuilderMemory?.categoryCriteria as CategoryCriterion[] | undefined) ??
+        [],
+    )
+      .filter(criterionAnswered)
+      .map((c) => {
+        const projected: CategoryCriterion = {
+          checkId: c.checkId,
+          questionKo: c.questionKo,
+          enforcement: c.enforcement,
+          requirement: "required",
+        };
+        if (c.buyerAskKo !== undefined) projected.buyerAskKo = c.buyerAskKo;
+        return projected; // note: `stance` intentionally omitted
+      });
+    // MED-2 trust boundary: the buyer's builder memory is client-supplied. Sanitize its
+    // categoryCriteria server-side (like the seller side is DB-authoritative): keep only
+    // real taxonomy check ids, re-author checkId/questionKo/enforcement from the listing
+    // scaffold (blocks arbitrary questionKo/enforcement injection into the buyer's own
+    // DECIDE prompt), pin hard→required, and cap length (blocks unbounded snapshot bloat
+    // re-attached every round). Unknown ids / junk are dropped.
+    let buyerAdvisor = advisor;
+    const rawBuyerCriteria = (advisor as { categoryCriteria?: unknown } | undefined)
+      ?.categoryCriteria;
+    if (advisor && Array.isArray(rawBuyerCriteria)) {
+      const buyerTags = [
+        (listingContextSnapshot as { category?: string } | undefined)?.category,
+        ...((listingContextSnapshot as { tags?: string[] } | undefined)?.tags ?? []),
+      ].filter((t): t is string => typeof t === "string" && t.length > 0);
+      const scaffoldById = new Map(
+        buildCategoryCriteriaScaffold(buyerTags).map((c) => [c.checkId, c]),
+      );
+      const cleaned = (rawBuyerCriteria as Array<{ checkId?: unknown; stance?: unknown }>)
+        .filter((c) => typeof c?.checkId === "string" && scaffoldById.has(c.checkId as string))
+        .slice(0, 40)
+        .map((c) => {
+          const base = scaffoldById.get(c.checkId as string) as CategoryCriterion;
+          const merged: CategoryCriterion = {
+            ...base,
+            requirement: base.enforcement === "hard" ? "required" : base.requirement,
+          };
+          if (typeof c.stance === "string" && c.stance.trim().length > 0)
+            merged.stance = c.stance.trim();
+          return merged;
+        });
+      buyerAdvisor = { ...advisor, categoryCriteria: cleaned };
+    }
     const buyerSnapshot: Record<string, unknown> = {
       ...buyerCompiled,
       max_rounds: AUTO_PLAY_MAX_ROUNDS,
-      ...(advisor ? { buyer_negotiation_agent_builder_memory: advisor } : {}),
+      ...(buyerAdvisor ? { buyer_negotiation_agent_builder_memory: buyerAdvisor } : {}),
+      ...(sellerRequiredCriteria.length > 0
+        ? { pause_seller_required_criteria: sellerRequiredCriteria }
+        : {}),
       ...(listingContextSnapshot ? { listing_context: listingContextSnapshot } : {}),
       negotiation_agent_preset_id: body.negotiation_agent_preset_id,
       ...(body.agent_weights ? { agent_weights: body.agent_weights } : {}),
@@ -1169,6 +1255,48 @@ export function registerNegotiationRoutes(
       }
 
       const rounds = await getRoundsBySessionId(db, session.id);
+
+      // Phase G Flow 3 resume gate: if the last round is a seller-criteria PAUSE and the
+      // buyer still has not addressed the seller's required criteria, BLOCK the auto-play
+      // loop here and surface the question(s). The negotiation resumes only once the
+      // buyer answers via POST /pause/answer (which fills the stances so the unresolved
+      // set empties). Empty for pre-Phase-G sessions → never blocks.
+      const latestRound = rounds.at(-1);
+      const latestReasoning = (latestRound?.metadata as Record<string, unknown> | null)?.reasoning;
+      if (
+        typeof latestReasoning === "string" &&
+        latestReasoning.includes(SELLER_CRITERIA_PAUSE_MARKER)
+      ) {
+        const { sellerRequired, buyerCriteria } = readSellerCriteriaFromSnapshot(
+          context.buyerSnapshot,
+        );
+        // Keep only requirements that yield a real buyer-facing question, so the
+        // surfaced questions and check ids stay aligned and never include `undefined`.
+        const unresolved = unresolvedSellerRequirements(sellerRequired, buyerCriteria)
+          .map((c) => ({ checkId: c.checkId, ask: (c.buyerAskKo ?? c.questionKo)?.trim() }))
+          .filter((c): c is { checkId: string; ask: string } => Boolean(c.ask));
+        if (unresolved.length > 0) {
+          return reply.send({
+            paused_for_buyer: true,
+            // Each blocked check with the canonical answers Quick Setup would have
+            // offered. Without them the buyer types free text at a yes/no question and
+            // the stance recorded never lines up with the one a tap would have produced.
+            pause_checks: unresolved.map((c) => ({
+              checkId: c.checkId,
+              ask: c.ask,
+              options: buyerChoiceOptionsForCheck(c.checkId).map((o) => ({
+                label: o.label,
+                stance: o.stance,
+              })),
+            })),
+            pause_questions: unresolved.map((c) => c.ask),
+            pause_check_ids: unresolved.map((c) => c.checkId),
+            session_status: session.status,
+            current_round: session.currentRound,
+          });
+        }
+      }
+
       const plan = planNegotiationAutoPlayRound(session, rounds, context);
       if (!plan) {
         return reply.code(409).send({ error: "AUTO_PLAY_ROUND_UNAVAILABLE" });
@@ -1246,6 +1374,128 @@ export function registerNegotiationRoutes(
         request.log.error({ err, sessionId: session.id }, "auto-play round failed");
         return reply.code(502).send({ error: "AUTO_PLAY_ROUND_FAILED" });
       }
+    },
+  );
+
+  // POST /negotiations/sessions/:id/pause/answer — Phase G Flow 3 resume
+  //
+  // When the round loop paused to ask the buyer about a seller-required criterion the
+  // buyer never addressed, this records the buyer's answer (a stance) into the buyer's
+  // criteria on the auto-play snapshot. The next auto-play/next then no longer blocks
+  // (the unresolved set is empty) and the negotiation resumes with the answer as a factor.
+  app.post<{ Params: { id: string } }>(
+    "/negotiations/sessions/:id/pause/answer",
+    async (request, reply) => {
+      const parsed = pauseAnswerSchema.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "INVALID_PAUSE_ANSWER", issues: parsed.error.issues });
+      }
+
+      const session = await getSessionById(db, request.params.id);
+      if (!session) {
+        return reply.code(404).send({ error: "SESSION_NOT_FOUND" });
+      }
+      const context = getNegotiationAutoPlayContext(session.negotiationAgentSnapshot);
+      if (!context) {
+        return reply.code(409).send({ error: "AUTO_PLAY_CONTEXT_MISSING" });
+      }
+
+      if (request.user) {
+        const access = validateSessionParticipant(request.user, session);
+        if (!access.ok) {
+          return reply.code(access.status).send({ error: access.error });
+        }
+        // Only the BUYER may answer their own agent's criteria. This endpoint writes
+        // buyer-side data, so — unlike auto-play/next, which only advances rounds — the
+        // seller (or anyone else) must not mutate the buyer's stance (buyer AI ≠ seller
+        // AI fairness). The run-token path below only ever reaches the buyer/guest.
+        if (request.user.id !== session.buyerId) {
+          return reply.code(403).send({ error: "PAUSE_ANSWER_BUYER_ONLY" });
+        }
+      } else if (!validateNegotiationAutoPlayToken(context, parsed.data.run_token)) {
+        return reply.code(401).send({ error: "AUTO_PLAY_TOKEN_INVALID" });
+      }
+
+      const { sellerRequired, buyerCriteria } = readSellerCriteriaFromSnapshot(
+        context.buyerSnapshot,
+      );
+      const unresolved = unresolvedSellerRequirements(sellerRequired, buyerCriteria);
+      if (unresolved.length === 0) {
+        return reply.send({ ok: true, resolved: true, remaining_check_ids: [] });
+      }
+
+      // Explicit per-check stances win; otherwise a single `answer` applies to all.
+      const stanceByCheckId = new Map<string, string>();
+      for (const s of parsed.data.stances ?? []) {
+        const trimmed = s.stance.trim();
+        if (trimmed) stanceByCheckId.set(s.checkId, trimmed);
+      }
+      const { buyerSnapshot: newBuyerSnapshot, applied } = applyBuyerPauseAnswer(
+        context.buyerSnapshot,
+        unresolved,
+        stanceByCheckId,
+        parsed.data.answer,
+      );
+      if (applied === 0) {
+        return reply
+          .code(400)
+          .send({ error: "PAUSE_ANSWER_EMPTY", pause_check_ids: unresolved.map((c) => c.checkId) });
+      }
+      const criteria = (
+        newBuyerSnapshot.buyer_negotiation_agent_builder_memory as {
+          categoryCriteria: CategoryCriterion[];
+        }
+      ).categoryCriteria;
+      const newContext = { ...context, buyerSnapshot: newBuyerSnapshot };
+      const persisted = await setSessionPerspective(
+        db,
+        session.id,
+        session.role,
+        attachNegotiationAutoPlayContext(newBuyerSnapshot, newContext),
+        session.version,
+      );
+      if (!persisted) {
+        return reply.code(409).send({ error: "CONCURRENT_MODIFICATION" });
+      }
+
+      // Leave the answer on the round that asked for it, so the transcript shows the
+      // reply under the question — both now and after a reload. Best-effort: the stance
+      // is already saved, and failing to decorate the transcript must not fail the
+      // resume the buyer is waiting on.
+      try {
+        const answeredRounds = await getRoundsBySessionId(db, session.id);
+        const askingRound = [...answeredRounds]
+          .reverse()
+          .find((r) =>
+            String((r.metadata as Record<string, unknown> | null)?.reasoning ?? "").includes(
+              SELLER_CRITERIA_PAUSE_MARKER,
+            ),
+          );
+        if (askingRound) {
+          await recordPauseAnswersOnRound(
+            db,
+            askingRound.id,
+            unresolved.flatMap((c) => {
+              const stance = stanceByCheckId.get(c.checkId) ?? parsed.data.answer?.trim();
+              if (!stance) return [];
+              const ask = (c.buyerAskKo ?? c.questionKo)?.trim() ?? c.checkId;
+              const label = buyerChoiceOptionsForCheck(c.checkId).find(
+                (o) => o.stance === stance,
+              )?.label;
+              return [{ checkId: c.checkId, ask, stance, ...(label ? { label } : {}) }];
+            }),
+          );
+        }
+      } catch (err) {
+        request.log.warn({ err }, "could not attach pause answers to the round");
+      }
+
+      const remaining = unresolvedSellerRequirements(sellerRequired, criteria);
+      return reply.send({
+        ok: true,
+        resolved: remaining.length === 0,
+        remaining_check_ids: remaining.map((c) => c.checkId),
+      });
     },
   );
 

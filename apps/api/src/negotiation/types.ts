@@ -17,6 +17,20 @@ export type PhaseTransitionEvent =
   | "TIMEOUT"
   | "ABORT";
 
+/**
+ * Actions that close the deal at the offer currently on the table.
+ *
+ * ACCEPT and CONFIRM are the same event downstream — both map to a DB `ACCEPT`
+ * decision and an `ACCEPTED` session — but the CLOSING-phase skills emit CONFIRM,
+ * so any `action === "ACCEPT"` check silently misses every real closing round.
+ * That gap let the chat text state one price while the session settled at another.
+ * Use this predicate wherever closing behaviour is being decided so the checks
+ * cannot drift apart again.
+ */
+export function isDealClosingAction(action: EngineDecision["action"]): boolean {
+  return action === "ACCEPT" || action === "CONFIRM";
+}
+
 /** Engine Decision — LLM/Skill이 반환하는 내부 순수 결정 (wire message 아님, message 없음) */
 export interface EngineDecision {
   action: "COUNTER" | "ACCEPT" | "REJECT" | "HOLD" | "DISCOVER" | "CONFIRM";
@@ -172,6 +186,13 @@ export interface CoreMemory {
     current_offer: number;
     opponent_offer: number;
     gap: number;
+    /**
+     * The most recent price THIS side put on the table, or undefined before they have
+     * offered anything. Kept separate from `current_offer`, which carries a fallback and
+     * so cannot distinguish "my offer happens to equal my target" from "I have not
+     * offered yet" — a distinction the no-moving-backwards rule depends on.
+     */
+    my_last_offer?: number;
   };
   terms: {
     active: ActiveTerm[];

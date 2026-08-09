@@ -42,24 +42,21 @@ const HAGGLE_NET = 1 - HAGGLE_FEE; // 0.985
  *   Haggle:     1.5% platform fee
  */
 const SOURCE_FEE_RATES: Record<string, number> = {
-  ebay_sold: 0.1325,       // 13.25% FVF (cell phones, computers, gaming consoles)
-  ebay_browse: 0.1325,     // same as sold listings
+  ebay_sold: 0.1325, // 13.25% FVF (cell phones, computers, gaming consoles)
+  ebay_browse: 0.1325, // same as sold listings
   terapeak_manual: 0.1325, // eBay data source
   marketplace_insights: 0.1325,
-  backmarket: 0.10,        // 10% flat commission
-  swappa: 0.065,           // 3% Swappa + 3.49% PayPal + $0.49
-  gazelle: 0.20,           // buyback discount ~20%
-  haggle_internal: 0.015,  // our fee — no adjustment needed
+  backmarket: 0.1, // 10% flat commission
+  swappa: 0.065, // 3% Swappa + 3.49% PayPal + $0.49
+  gazelle: 0.2, // buyback discount ~20%
+  haggle_internal: 0.015, // our fee — no adjustment needed
 };
 
 /**
  * Compute the fee-adjusted price for a given source.
  * Returns what the seller would net on Haggle for the same transaction value.
  */
-export function adjustPriceForSource(
-  observedPriceUsd: number,
-  source: string,
-): number {
+export function adjustPriceForSource(observedPriceUsd: number, source: string): number {
   const sourceFee = SOURCE_FEE_RATES[source];
 
   // Unknown source or haggle_internal → no adjustment

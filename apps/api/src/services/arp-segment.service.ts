@@ -1,12 +1,4 @@
-import {
-  eq,
-  and,
-  sql,
-  asc,
-  isNull,
-  arpSegments,
-  type Database,
-} from "@haggle/db";
+import { and, arpSegments, asc, type Database, eq, isNull } from "@haggle/db";
 
 export async function getSegment(
   db: Database,

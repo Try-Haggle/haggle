@@ -9,6 +9,10 @@ export { buddies } from "./buddies.js";
 export { buddyTrades } from "./buddy-trades.js";
 export { buyerInterestVectors } from "./buyer-interest-vectors.js";
 export { buyerListings } from "./buyer-listings.js";
+export {
+  learnedCategoryCheckEvidence,
+  learnedCategoryChecks,
+} from "./category-check-learning.js";
 export { categoryRelatedness } from "./category-relatedness.js";
 export { chainSyncCursors } from "./chain-sync.js";
 export { commerceOrders, settlementApprovals } from "./commerce-orders.js";

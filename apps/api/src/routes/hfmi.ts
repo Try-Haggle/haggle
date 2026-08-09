@@ -9,13 +9,13 @@
  *   POST /hfmi/fit          — trigger model fitting for a SKU
  */
 
+import type { Database } from "@haggle/db";
+import { hfmiPriceObservations } from "@haggle/db";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { Database } from "@haggle/db";
 import { requireAdmin } from "../middleware/require-auth.js";
 import { getMedianPrice } from "../services/hfmi.service.js";
 import { fitModel } from "../services/hfmi-fitter.js";
-import { hfmiPriceObservations } from "@haggle/db";
 
 // ─── Validation schemas ────────────────────────────────────────────────
 
@@ -62,9 +62,7 @@ export function registerHfmiRoutes(app: FastifyInstance, db: Database) {
   }>("/hfmi/:model/median", async (request, reply) => {
     const parsed = medianQuerySchema.safeParse(request.query);
     if (!parsed.success) {
-      return reply
-        .code(400)
-        .send({ error: "INVALID_QUERY", issues: parsed.error.issues });
+      return reply.code(400).send({ error: "INVALID_QUERY", issues: parsed.error.issues });
     }
 
     const { model } = request.params;
@@ -79,58 +77,41 @@ export function registerHfmiRoutes(app: FastifyInstance, db: Database) {
   });
 
   // ── POST /hfmi/observations (ADMIN) ───────────────────────────────
-  app.post(
-    "/hfmi/observations",
-    { preHandler: [requireAdmin] },
-    async (request, reply) => {
-      const parsed = bulkInsertSchema.safeParse(request.body);
-      if (!parsed.success) {
-        return reply
-          .code(400)
-          .send({ error: "INVALID_BODY", issues: parsed.error.issues });
-      }
+  app.post("/hfmi/observations", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const parsed = bulkInsertSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "INVALID_BODY", issues: parsed.error.issues });
+    }
 
-      const rows = parsed.data.observations.map((obs) => ({
-        source: obs.source,
-        model: obs.model,
-        storageGb: obs.storage_gb,
-        batteryHealthPct: obs.battery_health_pct,
-        cosmeticGrade: obs.cosmetic_grade,
-        carrierLocked: obs.carrier_locked,
-        observedPriceUsd: obs.observed_price_usd.toFixed(2),
-        observedAt: new Date(obs.observed_at),
-        externalId: obs.external_id,
-      }));
+    const rows = parsed.data.observations.map((obs) => ({
+      source: obs.source,
+      model: obs.model,
+      storageGb: obs.storage_gb,
+      batteryHealthPct: obs.battery_health_pct,
+      cosmeticGrade: obs.cosmetic_grade,
+      carrierLocked: obs.carrier_locked,
+      observedPriceUsd: obs.observed_price_usd.toFixed(2),
+      observedAt: new Date(obs.observed_at),
+      externalId: obs.external_id,
+    }));
 
-      await db.insert(hfmiPriceObservations).values(rows).onConflictDoNothing();
+    await db.insert(hfmiPriceObservations).values(rows).onConflictDoNothing();
 
-      return reply.send({ inserted: rows.length });
-    },
-  );
+    return reply.send({ inserted: rows.length });
+  });
 
   // ── POST /hfmi/fit (ADMIN) ─────────────────────────────────────────
-  app.post(
-    "/hfmi/fit",
-    { preHandler: [requireAdmin] },
-    async (request, reply) => {
-      const parsed = fitBodySchema.safeParse(request.body);
-      if (!parsed.success) {
-        return reply
-          .code(400)
-          .send({ error: "INVALID_BODY", issues: parsed.error.issues });
-      }
+  app.post("/hfmi/fit", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const parsed = fitBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "INVALID_BODY", issues: parsed.error.issues });
+    }
 
-      const outcome = await fitModel(
-        db,
-        parsed.data.model as Parameters<typeof fitModel>[1],
-      );
-      if (!outcome.ok) {
-        return reply
-          .code(422)
-          .send({ error: "FIT_REJECTED", ...outcome });
-      }
+    const outcome = await fitModel(db, parsed.data.model as Parameters<typeof fitModel>[1]);
+    if (!outcome.ok) {
+      return reply.code(422).send({ error: "FIT_REJECTED", ...outcome });
+    }
 
-      return reply.send(outcome);
-    },
-  );
+    return reply.send(outcome);
+  });
 }

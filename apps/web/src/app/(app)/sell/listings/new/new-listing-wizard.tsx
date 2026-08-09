@@ -9,11 +9,12 @@ import {
   LISTING_CATEGORIES,
   LISTING_CATEGORY_LABELS,
   type NegotiationAgentPresetId,
+  resolveChecks,
   resolveEffectivePreset,
 } from "@haggle/shared";
 import { ChevronLeft, ChevronRight, Link2, Sparkles, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   NegotiationAgentBuilderChat,
   type NegotiationAgentBuilderMemory,
@@ -170,9 +171,22 @@ export function NewListingWizard({
   // Step 3: Category, Condition, Tags, Phone details
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
+  /** False when the vision tagger was unavailable — tags then come from text inference only. */
+  const [visionOk, setVisionOk] = useState(true);
   const [tagEditing, setTagEditing] = useState(false);
   const tagFieldRef = useRef<HTMLInputElement>(null);
   const [category, setCategory] = useState("electronics");
+
+  /**
+   * Whether the category+tags resolve any deterministic SAFETY gate. The negotiation
+   * taxonomy is keyed by tags: without an item-type tag ("mattress", "iphone", "car-seat")
+   * a listing only gets its category's generic checks, so the agent never asks the
+   * deal-breaker questions. Surfacing this lets the seller fix it with one tag.
+   */
+  const hasSafetyChecks = useMemo(() => {
+    const tagSet = [category, ...tags].filter(Boolean);
+    return resolveChecks(tagSet).some((c) => c.enforcement === "hard");
+  }, [category, tags]);
   const [condition, setCondition] = useState("good");
   const [subtype, setSubtype] = useState<"phone" | null>(null);
   const [phoneBatteryHealth, setPhoneBatteryHealth] = useState<string | null>(null);
@@ -314,6 +328,14 @@ export function NewListingWizard({
           if (RECOGNIZED_PRESET_IDS.includes(candidate)) {
             setAgentValue(createBuilderState({ side: "seller", presetId: candidate }));
           }
+        }
+        // Restore the captured builder-chat memory (criteria, deal-breakers, style)
+        // so resuming a draft and publishing WITHOUT re-running the chat does not wipe
+        // it — patchDraft overwrites the whole snapshot, so an unrestored (null) memory
+        // would erase everything the earlier session captured.
+        const savedMemory = d.negotiationAgentSnapshot?.negotiationAgentBuilderMemory;
+        if (savedMemory && typeof savedMemory === "object" && !Array.isArray(savedMemory)) {
+          setNegotiationAgentBuilderMemory(savedMemory as NegotiationAgentBuilderMemory);
         }
       } catch {
         /* start fresh */
@@ -593,15 +615,25 @@ export function NewListingWizard({
         try {
           const detected = await api.post<{
             ok: boolean;
-            subtype: "phone" | null;
+            /** Absent when the vision pass failed — do NOT clobber a prior subtype. */
+            subtype?: "phone" | null;
             tags: string[];
+            /** False when the vision pass failed; tags are still enriched deterministically. */
+            visionOk?: boolean;
           }>(`/api/drafts/${id}/auto-detect`, {});
           if (detected.ok) {
-            if (detected.subtype !== undefined) setSubtype(detected.subtype);
+            // Only vision decides the subtype. On failure the server omits the key, and
+            // overwriting with null here would drop the subtype-specific step-3 questions.
+            if (detected.visionOk !== false && detected.subtype !== undefined) {
+              setSubtype(detected.subtype);
+            }
             if (Array.isArray(detected.tags)) setTags(detected.tags);
+            setVisionOk(detected.visionOk !== false);
           }
         } catch {
-          // auto-detect 실패해도 step 3으로는 진행
+          // Auto-detect must never block the flow — the seller can still tag manually,
+          // and step 3 surfaces a hint when no safety checks matched.
+          setVisionOk(false);
         }
         setStep(3);
         return;
@@ -1290,6 +1322,22 @@ export function NewListingWizard({
                       </button>
                     ))}
                   </div>
+
+                  {/* The taxonomy is keyed by tags: with no item-type tag the agent never
+                      asks this item's deal-breaker questions. Tell the seller instead of
+                      silently shipping a listing with no safety checks. */}
+                  {!hasSafetyChecks && (
+                    <p className="mt-3 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-ink-secondary">
+                      No item-specific checks matched yet.{" "}
+                      {visionOk
+                        ? "If this is a common item, add a tag naming what it is"
+                        : "Auto-tagging was unavailable — add a tag naming what it is"}{" "}
+                      (e.g. <span className="font-medium text-ink">mattress</span>,{" "}
+                      <span className="font-medium text-ink">car-seat</span>,{" "}
+                      <span className="font-medium text-ink">iphone</span>) so your agent asks the
+                      right questions.
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -1370,7 +1418,10 @@ export function NewListingWizard({
                     // biome-ignore lint/a11y/useValidAriaRole: "role" is a NegotiationAgentBuilderChat prop (buyer/seller), not an ARIA role
                     <NegotiationAgentBuilderChat
                       agent={resolveEffectivePreset(agentValue)}
-                      listingPublicId={`listing-draft-${agentValue.agent.presetId}`}
+                      // Key the builder session by DRAFT (not preset) so quick-setup
+                      // picks / criteria never leak between two of the seller's listings
+                      // that happen to use the same preset. `agent.id` adds preset isolation.
+                      listingPublicId={`listing-draft-${draftId ?? "new"}`}
                       listingTitle={title || "this listing"}
                       listingCategory={category || null}
                       listingPrice={targetPrice || null}

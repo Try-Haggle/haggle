@@ -1,15 +1,19 @@
+import { type Database, sql } from "@haggle/db";
 import type { FastifyInstance } from "fastify";
-import { type Database, listingEmbeddings, sql } from "@haggle/db";
-import {
-  getSnapshotByPublishedId,
-  buildEmbeddingInput,
-  generateTextEmbedding,
-  computeTextHash,
-} from "../services/embedding.service.js";
-import type { NotificationBus } from "../notification/index.js";
 import { getNotificationUserInfo } from "../notification/get-user-info.js";
+import type { NotificationBus } from "../notification/index.js";
+import {
+  buildEmbeddingInput,
+  computeTextHash,
+  generateTextEmbedding,
+  getSnapshotByPublishedId,
+} from "../services/embedding.service.js";
 
-export function registerInternalRoutes(app: FastifyInstance, db: Database, notificationBus: NotificationBus) {
+export function registerInternalRoutes(
+  app: FastifyInstance,
+  db: Database,
+  notificationBus: NotificationBus,
+) {
   // POST /api/internal/retry-embeddings
   // Called by pg_cron via pg_net — protected by API key
   app.post("/api/internal/retry-embeddings", async (request, reply) => {

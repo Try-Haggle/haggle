@@ -1,24 +1,24 @@
-import type { FastifyInstance } from "fastify";
-import { z } from "zod";
 import type { Database } from "@haggle/db";
-import { requireAuth } from "../middleware/require-auth.js";
 import { disputeEvidence } from "@haggle/db";
 import {
+  type AuthenticationRecord,
   AuthenticationService,
+  type HaggleCategory,
   LegitAuthAdapter,
   MockAuthAdapter,
   verifyLegitWebhook,
-  type AuthenticationRecord,
-  type HaggleCategory,
 } from "@haggle/skill-legit";
+import type { FastifyInstance } from "fastify";
+import { z } from "zod";
+import { requireAuth } from "../middleware/require-auth.js";
 import {
   createAuthenticationRecord,
+  getAuthenticationByCaseId,
   getAuthenticationById,
   getAuthenticationsByListingId,
   getAuthenticationsByOrderId,
-  getAuthenticationByCaseId,
-  updateAuthenticationRecord,
   insertAuthenticationEvent,
+  updateAuthenticationRecord,
 } from "../services/authentication-record.service.js";
 
 const createAuthSchema = z.object({
@@ -42,9 +42,10 @@ export function registerAuthenticationRoutes(app: FastifyInstance, db: Database)
   const legitWebhookSecret = process.env.LEGITAPP_WEBHOOK_SECRET;
 
   // Build provider map
-  const providers: Record<string, ConstructorParameters<typeof AuthenticationService>[0][string]> = {
-    mock_auth: new MockAuthAdapter(),
-  };
+  const providers: Record<string, ConstructorParameters<typeof AuthenticationService>[0][string]> =
+    {
+      mock_auth: new MockAuthAdapter(),
+    };
 
   if (legitApiKey) {
     providers.legitapp = new LegitAuthAdapter({
@@ -62,7 +63,17 @@ export function registerAuthenticationRoutes(app: FastifyInstance, db: Database)
       return reply.code(400).send({ error: "INVALID_AUTH_REQUEST", issues: parsed.error.issues });
     }
 
-    const { listing_id, order_id, dispute_id, category, turnaround, requester, cost_minor, publish_policy, auto_apply_result } = parsed.data;
+    const {
+      listing_id,
+      order_id,
+      dispute_id,
+      category,
+      turnaround,
+      requester,
+      cost_minor,
+      publish_policy,
+      auto_apply_result,
+    } = parsed.data;
 
     try {
       if (isProductionRuntime() && !legitApiKey) {
@@ -122,29 +133,38 @@ export function registerAuthenticationRoutes(app: FastifyInstance, db: Database)
   });
 
   // GET /authentications/by-listing/:listingId
-  app.get("/authentications/by-listing/:listingId", { preHandler: [requireAuth] }, async (request, reply) => {
-    const rows = await getAuthenticationsByListingId(
-      db,
-      (request.params as { listingId: string }).listingId,
-    );
-    return reply.send({ authentications: rows });
-  });
+  app.get(
+    "/authentications/by-listing/:listingId",
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const rows = await getAuthenticationsByListingId(
+        db,
+        (request.params as { listingId: string }).listingId,
+      );
+      return reply.send({ authentications: rows });
+    },
+  );
 
   // GET /authentications/by-order/:orderId
-  app.get("/authentications/by-order/:orderId", { preHandler: [requireAuth] }, async (request, reply) => {
-    const rows = await getAuthenticationsByOrderId(
-      db,
-      (request.params as { orderId: string }).orderId,
-    );
-    return reply.send({ authentications: rows });
-  });
+  app.get(
+    "/authentications/by-order/:orderId",
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const rows = await getAuthenticationsByOrderId(
+        db,
+        (request.params as { orderId: string }).orderId,
+      );
+      return reply.send({ authentications: rows });
+    },
+  );
 
   // POST /authentications/:id/apply — manually apply authentication result
   app.post("/authentications/:id/apply", { preHandler: [requireAuth] }, async (request, reply) => {
     if (isProductionRuntime() && request.user?.role !== "admin") {
       return reply.code(403).send({
         error: "MANUAL_AUTH_APPLY_DISABLED",
-        message: "Authentication results must be applied by provider webhook or admin in production",
+        message:
+          "Authentication results must be applied by provider webhook or admin in production",
       });
     }
 
@@ -154,11 +174,15 @@ export function registerAuthenticationRoutes(app: FastifyInstance, db: Database)
     }
 
     if (row.status !== "COMPLETED") {
-      return reply.code(400).send({ error: "AUTH_NOT_COMPLETED", message: "Authentication is not yet completed" });
+      return reply
+        .code(400)
+        .send({ error: "AUTH_NOT_COMPLETED", message: "Authentication is not yet completed" });
     }
 
     if (row.result_applied) {
-      return reply.code(400).send({ error: "ALREADY_APPLIED", message: "Result has already been applied" });
+      return reply
+        .code(400)
+        .send({ error: "ALREADY_APPLIED", message: "Result has already been applied" });
     }
 
     // Mark result as applied
@@ -172,116 +196,127 @@ export function registerAuthenticationRoutes(app: FastifyInstance, db: Database)
   });
 
   // POST /authentications/webhooks/legitapp — receive LegitApp webhook
-  app.post("/authentications/webhooks/legitapp", {
-    config: { rawBody: true },
-  }, async (request, reply) => {
-    // Verify webhook signature — reject in production if secret is not configured
-    const isProduction = process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
-    if (!legitWebhookSecret && isProduction) {
-      return reply.code(401).send({ error: "WEBHOOK_SECRET_NOT_CONFIGURED" });
-    }
-    if (legitWebhookSecret) {
-      const rawBody = (request as unknown as { rawBody?: string | Buffer }).rawBody ?? JSON.stringify(request.body);
-      const isValid = verifyLegitWebhook(
-        rawBody,
-        request.headers as Record<string, string>,
-        legitWebhookSecret,
-      );
-      if (!isValid) {
-        return reply.code(401).send({ error: "INVALID_WEBHOOK_SIGNATURE" });
+  app.post(
+    "/authentications/webhooks/legitapp",
+    {
+      config: { rawBody: true },
+    },
+    async (request, reply) => {
+      // Verify webhook signature — reject in production if secret is not configured
+      const isProduction =
+        process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
+      if (!legitWebhookSecret && isProduction) {
+        return reply.code(401).send({ error: "WEBHOOK_SECRET_NOT_CONFIGURED" });
       }
-    }
+      if (legitWebhookSecret) {
+        const rawBody =
+          (request as unknown as { rawBody?: string | Buffer }).rawBody ??
+          JSON.stringify(request.body);
+        const isValid = verifyLegitWebhook(
+          rawBody,
+          request.headers as Record<string, string>,
+          legitWebhookSecret,
+        );
+        if (!isValid) {
+          return reply.code(401).send({ error: "INVALID_WEBHOOK_SIGNATURE" });
+        }
+      }
 
-    const body = request.body as Record<string, unknown>;
-    const caseId = body.case_id as string | undefined;
+      const body = request.body as Record<string, unknown>;
+      const caseId = body.case_id as string | undefined;
 
-    if (!caseId) {
-      return reply.send({ accepted: true, skipped: true, reason: "no case_id in payload" });
-    }
+      if (!caseId) {
+        return reply.send({ accepted: true, skipped: true, reason: "no case_id in payload" });
+      }
 
-    // Look up auth record by case_id
-    const authRow = await getAuthenticationByCaseId(db, caseId);
-    if (!authRow) {
-      return reply.send({ accepted: true, skipped: true, reason: "authentication not found for case_id" });
-    }
-
-    // Build an AuthenticationRecord for skill-legit processWebhook
-    const record: AuthenticationRecord = {
-      id: authRow.id,
-      order_id: authRow.order_id ?? authRow.listing_id,
-      listing_id: authRow.listing_id,
-      case_id: authRow.case_id ?? "",
-      intent_id: authRow.intent_id ?? "",
-      submission_url: authRow.submission_url ?? "",
-      provider: authRow.provider,
-      category: authRow.category as AuthenticationRecord["category"],
-      turnaround: authRow.turnaround as AuthenticationRecord["turnaround"],
-      status: authRow.status as AuthenticationRecord["status"],
-      verdict: authRow.verdict as AuthenticationRecord["verdict"],
-      certificate_url: authRow.certificate_url ?? undefined,
-      requested_by: authRow.requested_by as "buyer" | "seller",
-      cost_minor: Number(authRow.cost_minor),
-      created_at: authRow.created_at,
-      updated_at: authRow.updated_at,
-      events: [],
-    };
-
-    const result = authService.processWebhook(record, body);
-    if (!result) {
-      return reply.send({ accepted: true, no_change: true, reason: "webhook not recognized" });
-    }
-
-    const updated = result.record;
-
-    // Update DB record
-    await updateAuthenticationRecord(db, authRow.id, {
-      status: updated.status,
-      verdict: updated.verdict,
-      certificateUrl: updated.certificate_url,
-    });
-
-    // Insert event
-    const latestEvent = updated.events[updated.events.length - 1];
-    if (latestEvent) {
-      await insertAuthenticationEvent(db, {
-        authenticationId: authRow.id,
-        eventType: latestEvent.event_type,
-        status: latestEvent.status,
-        verdict: latestEvent.verdict,
-        certificateUrl: latestEvent.certificate_url,
-        occurredAt: latestEvent.occurred_at,
-        raw: latestEvent.raw,
-      });
-    }
-
-    // If dispute_id present, auto-attach dispute evidence
-    if (authRow.dispute_id && updated.status === "COMPLETED" && updated.verdict) {
-      const evidenceItems = authService.toDisputeEvidence(updated, authRow.dispute_id);
-      for (const evi of evidenceItems) {
-        await db.insert(disputeEvidence).values({
-          id: evi.id,
-          disputeId: evi.dispute_id,
-          submittedBy: evi.submitted_by as "buyer" | "seller" | "system",
-          type: evi.type as "text" | "image" | "tracking_snapshot" | "payment_proof" | "other",
-          uri: evi.uri,
-          text: evi.text,
-          createdAt: new Date(evi.created_at),
+      // Look up auth record by case_id
+      const authRow = await getAuthenticationByCaseId(db, caseId);
+      if (!authRow) {
+        return reply.send({
+          accepted: true,
+          skipped: true,
+          reason: "authentication not found for case_id",
         });
       }
-    }
 
-    // Auto-apply result if configured
-    let autoApplied = false;
-    if (authRow.auto_apply_result && updated.status === "COMPLETED") {
-      await updateAuthenticationRecord(db, authRow.id, { resultApplied: true });
-      autoApplied = true;
-    }
+      // Build an AuthenticationRecord for skill-legit processWebhook
+      const record: AuthenticationRecord = {
+        id: authRow.id,
+        order_id: authRow.order_id ?? authRow.listing_id,
+        listing_id: authRow.listing_id,
+        case_id: authRow.case_id ?? "",
+        intent_id: authRow.intent_id ?? "",
+        submission_url: authRow.submission_url ?? "",
+        provider: authRow.provider,
+        category: authRow.category as AuthenticationRecord["category"],
+        turnaround: authRow.turnaround as AuthenticationRecord["turnaround"],
+        status: authRow.status as AuthenticationRecord["status"],
+        verdict: authRow.verdict as AuthenticationRecord["verdict"],
+        certificate_url: authRow.certificate_url ?? undefined,
+        requested_by: authRow.requested_by as "buyer" | "seller",
+        cost_minor: Number(authRow.cost_minor),
+        created_at: authRow.created_at,
+        updated_at: authRow.updated_at,
+        events: [],
+      };
 
-    return reply.send({
-      accepted: true,
-      new_status: updated.status,
-      verdict: updated.verdict,
-      auto_applied: autoApplied,
-    });
-  });
+      const result = authService.processWebhook(record, body);
+      if (!result) {
+        return reply.send({ accepted: true, no_change: true, reason: "webhook not recognized" });
+      }
+
+      const updated = result.record;
+
+      // Update DB record
+      await updateAuthenticationRecord(db, authRow.id, {
+        status: updated.status,
+        verdict: updated.verdict,
+        certificateUrl: updated.certificate_url,
+      });
+
+      // Insert event
+      const latestEvent = updated.events[updated.events.length - 1];
+      if (latestEvent) {
+        await insertAuthenticationEvent(db, {
+          authenticationId: authRow.id,
+          eventType: latestEvent.event_type,
+          status: latestEvent.status,
+          verdict: latestEvent.verdict,
+          certificateUrl: latestEvent.certificate_url,
+          occurredAt: latestEvent.occurred_at,
+          raw: latestEvent.raw,
+        });
+      }
+
+      // If dispute_id present, auto-attach dispute evidence
+      if (authRow.dispute_id && updated.status === "COMPLETED" && updated.verdict) {
+        const evidenceItems = authService.toDisputeEvidence(updated, authRow.dispute_id);
+        for (const evi of evidenceItems) {
+          await db.insert(disputeEvidence).values({
+            id: evi.id,
+            disputeId: evi.dispute_id,
+            submittedBy: evi.submitted_by as "buyer" | "seller" | "system",
+            type: evi.type as "text" | "image" | "tracking_snapshot" | "payment_proof" | "other",
+            uri: evi.uri,
+            text: evi.text,
+            createdAt: new Date(evi.created_at),
+          });
+        }
+      }
+
+      // Auto-apply result if configured
+      let autoApplied = false;
+      if (authRow.auto_apply_result && updated.status === "COMPLETED") {
+        await updateAuthenticationRecord(db, authRow.id, { resultApplied: true });
+        autoApplied = true;
+      }
+
+      return reply.send({
+        accepted: true,
+        new_status: updated.status,
+        verdict: updated.verdict,
+        auto_applied: autoApplied,
+      });
+    },
+  );
 }

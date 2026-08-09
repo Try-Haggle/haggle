@@ -8,14 +8,14 @@
  */
 
 import type {
-  SkillRuntime,
-  SkillManifest,
-  PipelineStage,
+  DecideHookResult,
   HookContext,
   HookResult,
-  DecideHookResult,
+  PipelineStage,
+  SkillManifest,
+  SkillRuntime,
   ValidateHookResult,
-} from './skill-types.js';
+} from "./skill-types.js";
 
 // ─── Skill Registry (global, all registered skills) ─────────────
 
@@ -24,7 +24,7 @@ const globalRegistry: SkillRuntime[] = [];
 /** Register a skill globally. Called at startup. */
 export function registerSkill(skill: SkillRuntime): void {
   // Avoid duplicate registration
-  if (globalRegistry.some(s => s.manifest.id === skill.manifest.id)) return;
+  if (globalRegistry.some((s) => s.manifest.id === skill.manifest.id)) return;
   globalRegistry.push(skill);
 }
 
@@ -38,6 +38,26 @@ export function clearRegistry(): void {
   globalRegistry.length = 0;
 }
 
+/**
+ * Resolve the item tag paths used for skill matching from a listing's
+ * category + tags.
+ *
+ * Returns `[]` (→ only '*' skills match) when no category info is present,
+ * rather than defaulting to "electronics" — the previous default misclassified
+ * every item as an electronics/phone listing and leaked IMEI rules onto
+ * non-electronics negotiations.
+ */
+export function resolveItemTags(
+  listingContext?: { category?: string; tags?: string[] } | null,
+): string[] {
+  if (!listingContext) return [];
+  // Normalize to trimmed lowercase so canonical skill categoryTags (all
+  // lowercase, e.g. 'electronics') match regardless of casing/whitespace.
+  return [listingContext.category, ...(listingContext.tags ?? [])]
+    .filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+    .map((t) => t.trim().toLowerCase());
+}
+
 // ─── SkillStack (session-level) ─────────────────────────────────
 
 export class SkillStack {
@@ -49,10 +69,10 @@ export class SkillStack {
 
   /** Resolve skills for a session based on item tag paths */
   static fromTags(tagPaths: string[]): SkillStack {
-    const matched = globalRegistry.filter(skill =>
-      skill.manifest.categoryTags.some(ct =>
-        ct === '*' || tagPaths.some(tp => tp === ct || tp.startsWith(ct + '/'))
-      )
+    const matched = globalRegistry.filter((skill) =>
+      skill.manifest.categoryTags.some(
+        (ct) => ct === "*" || tagPaths.some((tp) => tp === ct || tp.startsWith(ct + "/")),
+      ),
     );
     return new SkillStack(matched);
   }
@@ -69,7 +89,7 @@ export class SkillStack {
 
   /** Get skills that hook into a specific stage */
   getSkillsForStage(stage: PipelineStage): SkillRuntime[] {
-    return this.skills.filter(s => s.manifest.hooks.includes(stage));
+    return this.skills.filter((s) => s.manifest.hooks.includes(stage));
   }
 
   /** Dispatch a hook to all skills that registered for this stage, merge results */
@@ -87,12 +107,12 @@ export class SkillStack {
 
   /** Find an on-demand skill by id */
   findOnDemandSkill(skillId: string): SkillRuntime | undefined {
-    return this.skills.find(s => s.manifest.id === skillId && s.manifest.onDemand);
+    return this.skills.find((s) => s.manifest.id === skillId && s.manifest.onDemand);
   }
 
   /** Get manifest summary for all skills in stack */
   getManifests(): SkillManifest[] {
-    return this.skills.map(s => s.manifest);
+    return this.skills.map((s) => s.manifest);
   }
 }
 
@@ -140,18 +160,20 @@ function mergeHookResults(
 
   const merged: MergedHookResult = { bySkill };
 
-  if (stage === 'decide') {
+  if (stage === "decide") {
     const briefs: string[] = [];
     const rules: string[] = [];
     const tactics = new Set<string>();
-    const advisories: MergedHookResult['decide'] extends undefined ? never : NonNullable<MergedHookResult['decide']>['advisories'] = [];
+    const advisories: MergedHookResult["decide"] extends undefined
+      ? never
+      : NonNullable<MergedHookResult["decide"]>["advisories"] = [];
     const marketData: Array<{ skillId: string; price: number; source: string }> = [];
 
     for (const { skillId, result } of results) {
-      const c = result.content as DecideHookResult['content'];
+      const c = result.content as DecideHookResult["content"];
       if (c.categoryBrief) briefs.push(c.categoryBrief);
       if (c.valuationRules) rules.push(...c.valuationRules);
-      if (c.tactics) c.tactics.forEach(t => tactics.add(t));
+      if (c.tactics) for (const t of c.tactics) tactics.add(t);
       if (c.recommendedPrice !== undefined || c.suggestedTactic || c.observations) {
         advisories.push({
           skillId,
@@ -167,7 +189,7 @@ function mergeHookResults(
     }
 
     merged.decide = {
-      categoryBrief: briefs.join('\n'),
+      categoryBrief: briefs.join("\n"),
       valuationRules: rules,
       tactics: Array.from(tactics),
       advisories,
@@ -175,14 +197,16 @@ function mergeHookResults(
     };
   }
 
-  if (stage === 'validate') {
-    const hardRules: MergedHookResult['validate'] extends undefined ? never : NonNullable<MergedHookResult['validate']>['hardRules'] = [];
+  if (stage === "validate") {
+    const hardRules: MergedHookResult["validate"] extends undefined
+      ? never
+      : NonNullable<MergedHookResult["validate"]>["hardRules"] = [];
     const softRules: typeof hardRules = [];
 
     for (const { skillId, result } of results) {
-      const c = result.content as ValidateHookResult['content'];
-      if (c.hardRules) hardRules.push(...c.hardRules.map(r => ({ ...r, skillId })));
-      if (c.softRules) softRules.push(...c.softRules.map(r => ({ ...r, skillId })));
+      const c = result.content as ValidateHookResult["content"];
+      if (c.hardRules) hardRules.push(...c.hardRules.map((r) => ({ ...r, skillId })));
+      if (c.softRules) softRules.push(...c.softRules.map((r) => ({ ...r, skillId })));
     }
 
     merged.validate = { hardRules, softRules };

@@ -1,8 +1,7 @@
+import type { Database } from "@haggle/db";
+import { agentLevels, desc, eq, sql } from "@haggle/db";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { Database } from "@haggle/db";
-import { agentLevels, buddyTrades } from "@haggle/db";
-import { eq, desc, sql } from "@haggle/db";
 import { requireAuth } from "../middleware/require-auth.js";
 
 // ────────────────────────────────────────────────────────────────
@@ -39,10 +38,14 @@ type SortField = (typeof VALID_SORT_FIELDS)[number];
 
 function getSortColumn(sort: SortField) {
   switch (sort) {
-    case "level": return agentLevels.level;
-    case "volume": return agentLevels.totalVolume;
-    case "savings": return agentLevels.totalSaved;
-    case "deals": return agentLevels.totalDeals;
+    case "level":
+      return agentLevels.level;
+    case "volume":
+      return agentLevels.totalVolume;
+    case "savings":
+      return agentLevels.totalSaved;
+    case "deals":
+      return agentLevels.totalDeals;
   }
 }
 
@@ -53,88 +56,73 @@ const leaderboardQuerySchema = z.object({
 
 export function registerGamificationRoutes(app: FastifyInstance, db: Database) {
   // GET /me/level — user's agent level + XP + stats
-  app.get(
-    "/me/level",
-    { preHandler: [requireAuth] },
-    async (request, reply) => {
-      const userId = request.user!.id;
+  app.get("/me/level", { preHandler: [requireAuth] }, async (request, reply) => {
+    const userId = request.user!.id;
 
-      const [row] = await db
-        .select()
-        .from(agentLevels)
-        .where(eq(agentLevels.userId, userId))
-        .limit(1);
+    const [row] = await db
+      .select()
+      .from(agentLevels)
+      .where(eq(agentLevels.userId, userId))
+      .limit(1);
 
-      if (!row) {
-        // User has no level record yet — return defaults
-        return reply.send({
-          level_info: {
-            userId,
-            level: 1,
-            xp: 0,
-            totalTrades: 0,
-            totalDeals: 0,
-            totalVolume: "0",
-            totalSaved: "0",
-            avgSavingPct: "0",
-            bestSavingPct: "0",
-            consecutiveDeals: 0,
-            nextLevelXp: AGENT_LEVEL_TABLE[1].xp, // 2000
-          },
-        });
-      }
-
+    if (!row) {
+      // User has no level record yet — return defaults
       return reply.send({
         level_info: {
-          ...row,
-          nextLevelXp: getNextLevelXp(row.level),
+          userId,
+          level: 1,
+          xp: 0,
+          totalTrades: 0,
+          totalDeals: 0,
+          totalVolume: "0",
+          totalSaved: "0",
+          avgSavingPct: "0",
+          bestSavingPct: "0",
+          consecutiveDeals: 0,
+          nextLevelXp: AGENT_LEVEL_TABLE[1].xp, // 2000
         },
       });
-    },
-  );
+    }
+
+    return reply.send({
+      level_info: {
+        ...row,
+        nextLevelXp: getNextLevelXp(row.level),
+      },
+    });
+  });
 
   // GET /leaderboard — global leaderboard
-  app.get(
-    "/leaderboard",
-    async (request, reply) => {
-      const parsed = leaderboardQuerySchema.safeParse(request.query);
-      if (!parsed.success) {
-        return reply.code(400).send({ error: "INVALID_QUERY", issues: parsed.error.issues });
-      }
+  app.get("/leaderboard", async (request, reply) => {
+    const parsed = leaderboardQuerySchema.safeParse(request.query);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "INVALID_QUERY", issues: parsed.error.issues });
+    }
 
-      const { sort, limit } = parsed.data;
-      const sortColumn = getSortColumn(sort);
+    const { sort, limit } = parsed.data;
+    const sortColumn = getSortColumn(sort);
 
-      const [rows, totalResult] = await Promise.all([
-        db
-          .select()
-          .from(agentLevels)
-          .orderBy(desc(sortColumn))
-          .limit(limit),
-        db
-          .select({ total: sql<number>`count(*)::int` })
-          .from(agentLevels),
-      ]);
+    const [rows, totalResult] = await Promise.all([
+      db.select().from(agentLevels).orderBy(desc(sortColumn)).limit(limit),
+      db.select({ total: sql<number>`count(*)::int` }).from(agentLevels),
+    ]);
 
-      return reply.send({
-        leaderboard: rows,
-        total: totalResult[0]?.total ?? 0,
-      });
-    },
-  );
+    return reply.send({
+      leaderboard: rows,
+      total: totalResult[0]?.total ?? 0,
+    });
+  });
 
   // GET /leaderboard/:category — category-specific leaderboard (Olympics)
-  app.get<{ Params: { category: string } }>(
-    "/leaderboard/:category",
-    async (request, reply) => {
-      const { category } = request.params;
+  app.get<{ Params: { category: string } }>("/leaderboard/:category", async (request, reply) => {
+    const { category } = request.params;
 
-      const limitParam = (request.query as Record<string, string>)?.limit;
-      const limit = Math.min(Math.max(Number(limitParam) || 50, 1), 100);
+    const limitParam = (request.query as Record<string, string>)?.limit;
+    const limit = Math.min(Math.max(Number(limitParam) || 50, 1), 100);
 
-      // Aggregate buddyTrades by category, group by userId (via buddy ownership join)
-      // Since buddyTrades doesn't have userId directly, we join through buddies
-      const rows = await db.execute(sql`
+    // Aggregate buddyTrades by category, group by userId (via buddy ownership join)
+    // Since buddyTrades doesn't have userId directly, we join through buddies
+    const rows = await db.execute(sql`
         SELECT
           b.user_id AS "userId",
           COUNT(*)::int AS "tradeCount",
@@ -149,10 +137,9 @@ export function registerGamificationRoutes(app: FastifyInstance, db: Database) {
         LIMIT ${limit}
       `);
 
-      return reply.send({
-        category,
-        leaderboard: rows,
-      });
-    },
-  );
+    return reply.send({
+      category,
+      leaderboard: rows,
+    });
+  });
 }

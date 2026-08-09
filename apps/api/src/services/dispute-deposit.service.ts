@@ -1,11 +1,4 @@
-import {
-  eq,
-  and,
-  lt,
-  sql,
-  disputeDeposits,
-  type Database,
-} from "@haggle/db";
+import { and, type Database, disputeDeposits, eq, lt, sql } from "@haggle/db";
 
 type DepositStatus = "PENDING" | "DEPOSITED" | "FORFEITED" | "REFUNDED";
 
@@ -108,12 +101,7 @@ export async function getPendingExpiredDeposits(db: Database) {
   const rows = await db
     .select()
     .from(disputeDeposits)
-    .where(
-      and(
-        eq(disputeDeposits.status, "PENDING"),
-        lt(disputeDeposits.deadlineAt, sql`now()`),
-      ),
-    )
+    .where(and(eq(disputeDeposits.status, "PENDING"), lt(disputeDeposits.deadlineAt, sql`now()`)))
     .limit(100);
 
   return rows;

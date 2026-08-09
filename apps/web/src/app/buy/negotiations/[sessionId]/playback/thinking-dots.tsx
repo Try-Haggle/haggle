@@ -9,7 +9,11 @@ interface ThinkingDotsProps {
 
 export function ThinkingDots({ color = "var(--text-secondary)", label }: ThinkingDotsProps) {
   return (
+    // Announced, not just animated: without a label this is three moving dots and
+    // nothing else — a screen reader gets silence, and the state is unassertable.
     <div
+      role="status"
+      aria-label={label ?? "Waiting for the next round"}
       className="inline-flex items-center gap-2 rounded-full px-3 py-1.5"
       style={{ background: "var(--bg-sunken)", border: "1px solid var(--border-default)" }}
     >

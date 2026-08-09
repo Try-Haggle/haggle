@@ -9,9 +9,9 @@
  * This is reference data for HFMI + future Intelligence API.
  */
 
-import { hfmiPriceObservations, type Database } from "@haggle/db";
-import { extractTagAttributes } from "./hfmi-tag-resolver.js";
+import { type Database, hfmiPriceObservations } from "@haggle/db";
 import { adjustPriceForSource } from "./hfmi-fee-adjustment.js";
+import { extractTagAttributes } from "./hfmi-tag-resolver.js";
 
 export interface AgreedPriceEvent {
   sessionId: string;
@@ -29,20 +29,14 @@ export interface AgreedPriceEvent {
  * Record an agreed negotiation price as an HFMI observation.
  * Non-fatal: errors are logged but never block the transaction.
  */
-export async function recordAgreedPrice(
-  db: Database,
-  event: AgreedPriceEvent,
-): Promise<void> {
+export async function recordAgreedPrice(db: Database, event: AgreedPriceEvent): Promise<void> {
   try {
     // Extract model/storage/condition from tag garden
-    const tagAttrs = event.tagGarden
-      ? extractTagAttributes(event.tagGarden)
-      : {};
+    const tagAttrs = event.tagGarden ? extractTagAttributes(event.tagGarden) : {};
 
     // Derive model name — try tag garden first, then category fallback
-    const model = tagAttrs.model
-      ?? event.category?.toLowerCase().replace(/[\s-]+/g, "_")
-      ?? "unknown";
+    const model =
+      tagAttrs.model ?? event.category?.toLowerCase().replace(/[\s-]+/g, "_") ?? "unknown";
 
     if (model === "unknown") {
       // No model info — still record with category for aggregate stats

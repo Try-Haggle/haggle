@@ -1,8 +1,4 @@
-import {
-  settlementReleases,
-  eq,
-  type Database,
-} from "@haggle/db";
+import { type Database, eq, settlementReleases } from "@haggle/db";
 import type { SettlementRelease } from "@haggle/payment-core";
 
 // ---------------------------------------------------------------------------
@@ -43,9 +39,8 @@ function mapRelease(row: typeof settlementReleases.$inferSelect): SettlementRele
     buffer_release_status: row.bufferReleaseStatus as SettlementRelease["buffer_release_status"],
     buffer_release_deadline: toIso(row.bufferReleaseDeadline),
     apv_adjustment_minor: parseMinor(row.apvAdjustmentMinor),
-    buffer_final_amount_minor: row.bufferFinalAmountMinor != null
-      ? parseMinor(row.bufferFinalAmountMinor)
-      : undefined,
+    buffer_final_amount_minor:
+      row.bufferFinalAmountMinor != null ? parseMinor(row.bufferFinalAmountMinor) : undefined,
     buffer_released_at: toIso(row.bufferReleasedAt),
 
     created_at: row.createdAt.toISOString(),
@@ -77,9 +72,7 @@ export async function createSettlementReleaseRecord(
       buyerReviewDeadline: release.buyer_review_deadline
         ? new Date(release.buyer_review_deadline)
         : null,
-      productReleasedAt: release.product_released_at
-        ? new Date(release.product_released_at)
-        : null,
+      productReleasedAt: release.product_released_at ? new Date(release.product_released_at) : null,
 
       bufferAmountMinor: String(release.buffer_amount.amount_minor),
       bufferCurrency: release.buffer_amount.currency,
@@ -88,12 +81,11 @@ export async function createSettlementReleaseRecord(
         ? new Date(release.buffer_release_deadline)
         : null,
       apvAdjustmentMinor: String(release.apv_adjustment_minor),
-      bufferFinalAmountMinor: release.buffer_final_amount_minor != null
-        ? String(release.buffer_final_amount_minor)
-        : null,
-      bufferReleasedAt: release.buffer_released_at
-        ? new Date(release.buffer_released_at)
-        : null,
+      bufferFinalAmountMinor:
+        release.buffer_final_amount_minor != null
+          ? String(release.buffer_final_amount_minor)
+          : null,
+      bufferReleasedAt: release.buffer_released_at ? new Date(release.buffer_released_at) : null,
 
       createdAt: new Date(release.created_at),
       updatedAt: new Date(release.updated_at),
@@ -104,7 +96,9 @@ export async function createSettlementReleaseRecord(
   if (!row) {
     const existing = await getSettlementReleaseByOrderId(db, release.order_id);
     if (!existing) {
-      throw new Error(`settlement release insert conflicted but no row found for order ${release.order_id}`);
+      throw new Error(
+        `settlement release insert conflicted but no row found for order ${release.order_id}`,
+      );
     }
     return existing;
   }
@@ -158,9 +152,7 @@ export async function updateSettlementReleaseRecord(
       buyerReviewDeadline: release.buyer_review_deadline
         ? new Date(release.buyer_review_deadline)
         : null,
-      productReleasedAt: release.product_released_at
-        ? new Date(release.product_released_at)
-        : null,
+      productReleasedAt: release.product_released_at ? new Date(release.product_released_at) : null,
 
       bufferAmountMinor: String(release.buffer_amount.amount_minor),
       bufferCurrency: release.buffer_amount.currency,
@@ -169,12 +161,11 @@ export async function updateSettlementReleaseRecord(
         ? new Date(release.buffer_release_deadline)
         : null,
       apvAdjustmentMinor: String(release.apv_adjustment_minor),
-      bufferFinalAmountMinor: release.buffer_final_amount_minor != null
-        ? String(release.buffer_final_amount_minor)
-        : null,
-      bufferReleasedAt: release.buffer_released_at
-        ? new Date(release.buffer_released_at)
-        : null,
+      bufferFinalAmountMinor:
+        release.buffer_final_amount_minor != null
+          ? String(release.buffer_final_amount_minor)
+          : null,
+      bufferReleasedAt: release.buffer_released_at ? new Date(release.buffer_released_at) : null,
 
       updatedAt: new Date(release.updated_at),
     })

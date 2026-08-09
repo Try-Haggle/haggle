@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetRateLimitsForTests } from "../middleware/rate-limit.js";
 import { createNegotiationAutoPlaySetup } from "../services/negotiation-auto-play.service.js";
 import { closeTestApp, getTestApp } from "./helpers.js";
 
@@ -373,6 +374,7 @@ describe("Negotiation API", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetRateLimitsForTests(); // avoid the shared global limiter accumulating across tests
     delete process.env.HNP_TRUSTED_JWKS;
     delete process.env.HNP_REQUIRE_SIGNATURE;
     // Reset to sensible defaults
@@ -726,6 +728,136 @@ describe("Negotiation API", () => {
         offerPriceMinor: 9_000,
         idempotencyKey: "auto-sess-001-r1",
       });
+    });
+  });
+
+  describe("Phase G Flow 3 — seller-criteria pause resume", () => {
+    // A buyer snapshot carrying a seller REQUIRED criterion the buyer never answered.
+    function pausedFixture() {
+      const setup = createNegotiationAutoPlaySetup({
+        buyerSnapshot: {
+          side: "buyer",
+          pause_seller_required_criteria: [
+            {
+              checkId: "title_status",
+              questionKo: "명의/소유권(등록증)이 명확한가요?",
+              buyerAskKo: "Should the agent only consider clean-title vehicles?",
+              enforcement: "hard",
+              requirement: "required",
+            },
+          ],
+          buyer_negotiation_agent_builder_memory: { categoryCriteria: [] },
+        },
+        sellerSnapshot: { side: "seller" },
+        buyerTargetMinor: 9_000,
+        maxRounds: 8,
+      });
+      const session = {
+        ...mockSession,
+        role: "BUYER" as const,
+        status: "WAITING",
+        currentRound: 2,
+        version: 4,
+        negotiationAgentSnapshot: setup.buyerSnapshot, // buyer perspective + context + pause fields
+      };
+      // The last round is the seller-criteria HOLD (marker in its reasoning).
+      const pauseRound = {
+        roundNo: 2,
+        senderRole: "SELLER",
+        priceminor: "9000",
+        counterPriceMinor: "8000",
+        message: "Should the agent only consider clean-title vehicles?",
+        metadata: { reasoning: "SELLER_CRITERIA_PAUSE: seller requires title_status" },
+      };
+      return { setup, session, pauseRound };
+    }
+
+    it("BLOCKS auto-play and surfaces the question while the buyer has not answered", async () => {
+      const { setup, session, pauseRound } = pausedFixture();
+      mockGetSessionById.mockResolvedValue(session);
+      mockGetRoundsBySessionId.mockResolvedValue([pauseRound]);
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/sess-001/auto-play/next",
+        payload: { run_token: setup.runToken },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        paused_for_buyer: true,
+        pause_questions: ["Should the agent only consider clean-title vehicles?"],
+        pause_check_ids: ["title_status"],
+      });
+      // No round is executed while parked.
+      expect(mockExecuteNegotiationRound).not.toHaveBeenCalled();
+    });
+
+    it("records the buyer's answer into the snapshot and reports resolved", async () => {
+      const { setup, session } = pausedFixture();
+      mockGetSessionById.mockResolvedValue(session);
+      mockSetSessionPerspective.mockResolvedValue(true);
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/sess-001/pause/answer",
+        payload: { run_token: setup.runToken, answer: "yes, clean title only" },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ ok: true, resolved: true, remaining_check_ids: [] });
+      // The updated buyer snapshot (with the stance) is persisted.
+      expect(mockSetSessionPerspective).toHaveBeenCalledOnce();
+      const persistedSnapshot = mockSetSessionPerspective.mock.calls[0]?.[3] as Record<
+        string,
+        unknown
+      >;
+      const ctx = persistedSnapshot.auto_play_context as {
+        buyerSnapshot: {
+          buyer_negotiation_agent_builder_memory: {
+            categoryCriteria: Array<{ checkId: string; stance?: string }>;
+          };
+        };
+      };
+      const title = ctx.buyerSnapshot.buyer_negotiation_agent_builder_memory.categoryCriteria.find(
+        (c) => c.checkId === "title_status",
+      );
+      expect(title?.stance).toBe("yes, clean title only");
+    });
+
+    it("rejects a pause answer without a valid run token", async () => {
+      const { session } = pausedFixture();
+      mockGetSessionById.mockResolvedValue(session);
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/sess-001/pause/answer",
+        payload: { run_token: "x".repeat(32), answer: "clean" },
+      });
+
+      expect(res.statusCode).toBe(401);
+      expect(mockSetSessionPerspective).not.toHaveBeenCalled();
+    });
+
+    it("forbids the SELLER from answering the buyer's criteria (fairness)", async () => {
+      const { session } = pausedFixture();
+      // The seller is a participant, but must not mutate the buyer's agent.
+      mockGetSessionById.mockResolvedValue({
+        ...session,
+        buyerId: "00000000-0000-4000-a000-000000000010",
+        sellerId: "seller-001",
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/sess-001/pause/answer",
+        headers: SELLER_AUTH_HEADERS,
+        payload: { answer: "whatever the seller wants" },
+      });
+
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error).toBe("PAUSE_ANSWER_BUYER_ONLY");
+      expect(mockSetSessionPerspective).not.toHaveBeenCalled();
     });
   });
 
@@ -2292,6 +2424,7 @@ describe("Group API", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetRateLimitsForTests(); // avoid the shared global limiter accumulating across tests
     mockGetGroupById.mockResolvedValue(null);
     mockGetSessionsByGroupId.mockResolvedValue([]);
     mockUpdateGroupStatus.mockResolvedValue(null);

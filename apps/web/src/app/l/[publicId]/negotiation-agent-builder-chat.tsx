@@ -1,8 +1,14 @@
 "use client";
 
-import type { ChatStrategy, NegotiationAgentPreset } from "@haggle/shared";
+import type {
+  CategoryChoiceQuestion,
+  ChatStrategy,
+  CheckAnswerOption,
+  NegotiationAgentPreset,
+} from "@haggle/shared";
+import { buildBuyerChoiceQuestions, buildSellerChoiceQuestions } from "@haggle/shared";
 import { MessageSquare, RotateCcw, Send } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Badge,
   Button,
@@ -22,6 +28,12 @@ interface ChatMessage {
   text: string;
   timestamp: number;
   widget?: "budget-slider";
+  /**
+   * Set on a failed turn: the message to send again. The builder turn is stateless —
+   * the whole conversation is re-sent each time — so a retry recovers completely.
+   * Without it a failure forced the user to retype what they had just said.
+   */
+  retryText?: string;
 }
 
 export interface NegotiationAgentBuilderMemory {
@@ -34,6 +46,15 @@ export interface NegotiationAgentBuilderMemory {
   dealBreakers?: string[];
   mustEmphasize?: string[];
   notes?: string[];
+  /** Phase G taxonomy-keyed criteria (deterministic layer). Optional for back-compat. */
+  categoryCriteria?: Array<{
+    checkId: string;
+    questionKo: string;
+    buyerAskKo?: string;
+    enforcement: "hard" | "soft";
+    requirement: "required" | "optional";
+    stance?: string;
+  }>;
   urgency?: string;
   riskStyle: "safe_first" | "balanced" | "lowest_price";
   negotiationStyle: "defensive" | "balanced" | "aggressive";
@@ -68,6 +89,12 @@ interface NegotiationAgentBuilderChatProps {
   listingTags?: string[];
   /** Listing description — passed to the advisor as a seller note for grounding. */
   listingDescription?: string | null;
+  /**
+   * Phase G Flow 2: the seller's REQUIRED category criteria (buyer-safe: check id +
+   * ask). Passed to the buyer builder so it surfaces "the seller requires X" and the
+   * buyer mirrors it. Undefined on seller/agent-design pages.
+   */
+  sellerRequiredCriteria?: Array<{ checkId: string; ask: string }>;
   /** Market median reference (decimal string), when known. */
   listingMarketMedian?: string | null;
   /** Which side the user is on. Drives copy + LLM prompt direction. Default "buyer". */
@@ -162,6 +189,10 @@ function clearSession(listingId: string, agentId: string): void {
 
 /* ─── Constants ───────────────────────────────────────────── */
 
+/** Synthetic opener sent once on agent-select so the builder LLM leads with its first
+ * question instead of a static greeting. Not shown as a user message. */
+const AUTO_OPEN_MESSAGE = "Let's set up this agent for my listing — what should I decide first?";
+
 function buildInitialMemory(
   agent: NegotiationAgentPreset | null,
   category: string | null,
@@ -232,6 +263,43 @@ function extractChips(memory: NegotiationAgentBuilderMemory): StrategyChip[] {
     });
   }
 
+  return chips;
+}
+
+/**
+ * ④ Quick-setup taps land only in `memory.categoryCriteria`, which `extractChips`
+ * above does not read — so tapping six pills changed nothing on screen, while TYPING
+ * the same fact produced a chip. That left the picker looking inert and gave no
+ * evidence the answer had been recorded. Surface each tapped answer in the same
+ * STRATEGY row, labelled with the option the user actually tapped (matched by check
+ * id + stance).
+ *
+ * Tone follows the OPTION's `requirement`, never the check's `enforcement`: 4 hard
+ * checks (title_status, mount_compatibility, stone_natural_lab, isbn_edition_match)
+ * carry an explicit waiver such as "Doesn't matter", and painting that as a red
+ * deal-breaker would state the opposite of what the user chose.
+ */
+export function extractCriteriaChips(
+  memory: NegotiationAgentBuilderMemory,
+  questions: readonly CategoryChoiceQuestion[],
+): StrategyChip[] {
+  if (questions.length === 0) return [];
+  const chips: StrategyChip[] = [];
+  for (const criterion of memory.categoryCriteria ?? []) {
+    if (!criterion.stance) continue;
+    const option = questions
+      .find((q) => q.checkId === criterion.checkId)
+      ?.options.find((o) => o.stance === criterion.stance);
+    // Criteria the LLM set from free text have no matching tappable option; those
+    // already surface through mustHave/dealBreakers, so don't invent a chip here.
+    if (!option) continue;
+    const required = option.requirement === "required";
+    chips.push({
+      label: `${required ? "⛔" : "✅"} ${option.label}`,
+      value: criterion.checkId,
+      category: required ? "constraint" : "preference",
+    });
+  }
   return chips;
 }
 
@@ -349,12 +417,32 @@ export function NegotiationAgentBuilderChat({
   listingCondition,
   listingTags,
   listingDescription,
+  sellerRequiredCriteria,
   listingMarketMedian,
   role = "buyer",
   onNegotiationAgentBuilderMemoryUpdate,
   onStrategyUpdate,
 }: NegotiationAgentBuilderChatProps) {
   const side = role;
+
+  // ④+① Multiple-choice + determinism: the item's taxonomy checks that have a
+  // canonical answer set, resolved ENTIRELY on the client from the listing's
+  // category+tags (no API). Buyer & seller are framed differently (buyer states a
+  // requirement, seller states the fact), so each side gets its own question set.
+  const choiceQuestions = useMemo<CategoryChoiceQuestion[]>(() => {
+    const tags = [listingCategory, ...(listingTags ?? [])].filter(
+      (t): t is string => typeof t === "string" && t.length > 0,
+    );
+    if (tags.length === 0) return [];
+    return side === "seller" ? buildSellerChoiceQuestions(tags) : buildBuyerChoiceQuestions(tags);
+  }, [side, listingCategory, listingTags]);
+
+  // ① Instant first question: the seller builder used to fire a ~15s LLM turn on
+  // arrival just to produce its opener. When the taxonomy already has deterministic
+  // questions for this category, we skip that entirely — a static greeting + the
+  // quick-setup picker render instantly. The LLM opener only fires for the long tail
+  // (a category with no taxonomy checks). Buyer keeps its instant static greeting.
+  const autoOpenFirst = side === "seller" && choiceQuestions.length === 0;
 
   // Current radar numbers, sent so the LLM adjusts from them (not invents).
   const buildCurrentStrategy = useCallback((): ChatStrategy | undefined => {
@@ -374,9 +462,48 @@ export function NegotiationAgentBuilderChat({
     buildInitialMemory(agent, listingCategory),
   );
   const [isExpanded, setIsExpanded] = useState(false);
-  const [_hasRestoredSession, setHasRestoredSession] = useState(false);
+  const [hasRestoredSession, setHasRestoredSession] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const chatTopRef = useRef<HTMLDivElement>(null);
+
+  // Apply a tapped option straight to the buyer's criteria — no LLM turn. Upserts the
+  // criterion by check id with the option's canonical stance + requirement (the
+  // hard⇒required gate is already baked into the option), then persists like a turn.
+  const applyChoice = useCallback(
+    (question: CategoryChoiceQuestion, option: CheckAnswerOption) => {
+      // Compute next from the current memory in the event handler (NOT inside the
+      // setState updater) so the parent callback + persist are side effects of the
+      // click, never of a render — otherwise React warns about a cross-component
+      // setState during render.
+      const criteria = [...(memory.categoryCriteria ?? [])];
+      const idx = criteria.findIndex((c) => c.checkId === question.checkId);
+      const upserted = {
+        checkId: question.checkId,
+        questionKo: question.questionKo,
+        // The criterion keeps the check's real buyer ask (carried on the question),
+        // NOT the side-specific display label — `question.question` is sellerAsk on
+        // the seller side.
+        ...(question.buyerAskKo ? { buyerAskKo: question.buyerAskKo } : {}),
+        enforcement: question.enforcement,
+        requirement: option.requirement,
+        stance: option.stance,
+      };
+      if (idx >= 0) criteria[idx] = { ...criteria[idx], ...upserted };
+      else criteria.push(upserted);
+      const next = { ...memory, categoryCriteria: criteria };
+      setMemory(next);
+      onNegotiationAgentBuilderMemoryUpdate?.(next);
+      if (agent) {
+        saveSession(listingPublicId, agent.id, {
+          memory: next,
+          messages,
+          agentId: agent.id,
+          updatedAt: Date.now(),
+        });
+      }
+    },
+    [agent, listingPublicId, memory, messages, onNegotiationAgentBuilderMemoryUpdate],
+  );
 
   // Side-aware opening message. Acknowledges prices already provided (e.g. from
   // the listing wizard) so the agent never re-asks what it already knows.
@@ -388,35 +515,63 @@ export function NegotiationAgentBuilderChat({
     const floorNum = listingFloorPrice ? parseFloat(listingFloorPrice) : null;
     const money = (n: number) => `$${n.toLocaleString()}`;
 
+    // ④ The quick-setup panel renders directly below this bubble, but nothing in the
+    // greeting used to point at it — so it read as decoration and people answered in
+    // prose what they could have tapped. Name it, and say explicitly that whatever it
+    // does NOT cover still belongs in the chat, so the panel never reads as the whole
+    // menu of what the agent can be told. Only appended when the panel is really there.
+    const hasQuickSetup = choiceQuestions.length > 0;
+    const sellerQuickSetup = hasQuickSetup
+      ? `\n\nTap through **Quick Setup** below to cover the usual questions for this kind of item. Anything else you want me to know, just type it here.`
+      : "";
+    const buyerQuickSetup = hasQuickSetup
+      ? `\n\nThen tap through **Quick Setup** below for what usually matters on this kind of item. Anything else you want me to know, just type it here.`
+      : "";
+
     if (side === "seller") {
       // No listing context (standalone reusable agent) — price is set per-listing,
       // so never ask for an asking/floor price here. Gather posture instead.
       if (!askNum) {
         return {
-          text: `I'll set up **${agentName}** for your selling negotiations. Tell me what you'd emphasize (condition, accessories, rarity), any deal-breakers, and how firmly you like to hold your price.`,
+          text:
+            `I'll set up **${agentName}** for your selling negotiations.` +
+            (hasQuickSetup
+              ? sellerQuickSetup
+              : ` Tell me what you'd emphasize (condition, accessories, rarity), any deal-breakers, and how firmly you like to hold your price.`),
         };
       }
       if (floorNum) {
         return {
-          text: `I'll set up **${agentName}** to sell **${title}**. You're asking ${money(askNum)} and won't go below ${money(floorNum)}. Tell me anything to emphasize (condition, accessories) or any deal-breakers.`,
+          text:
+            `I'll set up **${agentName}** to sell **${title}**. You're asking ${money(askNum)} and won't go below ${money(floorNum)}.` +
+            (hasQuickSetup
+              ? sellerQuickSetup
+              : ` Tell me anything to emphasize (condition, accessories) or any deal-breakers.`),
         };
       }
-      // Listing exists with an asking price but no floor yet — only the floor is missing.
+      // Listing exists with an asking price but no floor yet — only the floor is
+      // missing, so that question stays in the lead sentence either way.
       return {
-        text: `I'll set up **${agentName}** to sell **${title}**. You're asking ${money(askNum)}. What's the lowest you'd accept, and anything to emphasize?`,
+        text:
+          `I'll set up **${agentName}** to sell **${title}**. You're asking ${money(askNum)}. What's the lowest you'd accept?` +
+          (hasQuickSetup ? sellerQuickSetup : ` Also tell me anything to emphasize.`),
       };
     }
     // buyer — only offer the budget slider when there's a concrete listing.
     if (askNum) {
       return {
-        text: `I'll help **${agentName}** negotiate **${title}** (listed at ${money(askNum)}). What's your ideal price and the most you'd pay?`,
+        text: `I'll help **${agentName}** negotiate **${title}** (listed at ${money(askNum)}). What's your ideal price and the most you'd pay?${buyerQuickSetup}`,
         widget: "budget-slider",
       };
     }
     // No listing context (standalone reusable agent) — budget is per-listing, so
     // skip the budget slider and gather general style/preferences instead.
     return {
-      text: `I'll set up **${agentName}** for your buying negotiations. Tell me your must-haves, deal-breakers, and how aggressively you like to negotiate.`,
+      text:
+        `I'll set up **${agentName}** for your buying negotiations.` +
+        (hasQuickSetup
+          ? buyerQuickSetup
+          : ` Tell me your must-haves, deal-breakers, and how aggressively you like to negotiate.`),
     };
   }
 
@@ -436,7 +591,11 @@ export function NegotiationAgentBuilderChat({
   useEffect(() => {
     if (!agent) {
       setMessages([]);
-      setMemory(buildInitialMemory(null, listingCategory));
+      const reset = buildInitialMemory(null, listingCategory);
+      setMemory(reset);
+      // Keep the parent in sync — otherwise it keeps the previous agent's memory
+      // (budget/picks) and would send/publish it under the new selection.
+      onNegotiationAgentBuilderMemoryUpdate?.(reset);
       setIsExpanded(false);
       setHasRestoredSession(false);
       return;
@@ -452,19 +611,26 @@ export function NegotiationAgentBuilderChat({
       setHasRestoredSession(true);
       onNegotiationAgentBuilderMemoryUpdate?.(saved.memory);
     } else {
-      // Fresh start: side-aware greeting that respects already-known prices
+      // Fresh start.
       const newMemory = buildInitialMemory(agent, listingCategory);
       setMemory(newMemory);
 
-      const greeting = makeGreeting();
-      const greetingMsg: ChatMessage = {
-        id: "greeting",
-        role: "agent",
-        text: greeting.text,
-        timestamp: Date.now(),
-        ...(greeting.widget ? { widget: greeting.widget } : {}),
-      };
-      setMessages([greetingMsg]);
+      if (autoOpenFirst) {
+        // Seller: no static greeting — the auto-open effect fires the first LLM turn,
+        // whose reply becomes the first bubble (a typing indicator shows meanwhile).
+        setMessages([]);
+      } else {
+        const greeting = makeGreeting();
+        setMessages([
+          {
+            id: "greeting",
+            role: "agent",
+            text: greeting.text,
+            timestamp: Date.now(),
+            ...(greeting.widget ? { widget: greeting.widget } : {}),
+          },
+        ]);
+      }
       setIsExpanded(true);
       setHasRestoredSession(false);
     }
@@ -510,6 +676,105 @@ export function NegotiationAgentBuilderChat({
     listingDescription,
   ]);
 
+  // Auto-open: fire ONE builder turn as soon as an agent is picked so the LLM opens
+  // with the first category question, instead of a static greeting the user has to
+  // guess how to answer. Tracked per (listing, agent) so it fires once per selection.
+  const autoOpenedRef = useRef<string | null>(null);
+
+  /**
+   * Run one builder turn for `trimmed`. Split out from `handleSend` so a failed turn can
+   * be re-run without re-appending the user's bubble — the message is already in the
+   * transcript, and the turn re-sends the full conversation anyway.
+   */
+  const runTurn = useCallback(
+    async (trimmed: string) => {
+      setIsLoading(true);
+      setIsExpanded(true);
+
+      try {
+        const data = await apiClient<{
+          memory?: NegotiationAgentBuilderMemory;
+          reply?: string;
+          strategy?: ChatStrategy;
+        }>("/negotiations/agents/builder/chat-turn", {
+          method: "POST",
+          body: JSON.stringify({
+            message: trimmed,
+            previous_memory: memory,
+            side,
+            agent_id: agent?.id ?? "balancer",
+            listings: buildAdvisorListings(),
+            seller_required_criteria: sellerRequiredCriteria ?? [],
+            current_strategy: buildCurrentStrategy(),
+          }),
+          skipAuth: true,
+        });
+        const updatedMemory: NegotiationAgentBuilderMemory = data.memory ?? memory;
+        setMemory(updatedMemory);
+        onNegotiationAgentBuilderMemoryUpdate?.(updatedMemory);
+        if (data.strategy) onStrategyUpdate?.(data.strategy);
+
+        const agentMsg: ChatMessage = {
+          id: `agent-${Date.now()}`,
+          role: "agent",
+          text: data.reply ?? "Sorry, could you say that again?",
+          timestamp: Date.now(),
+        };
+        setMessages((prev) => {
+          const next = [...prev, agentMsg];
+          // Persist to localStorage
+          if (agent) {
+            saveSession(listingPublicId, agent.id, {
+              memory: updatedMemory,
+              messages: next,
+              agentId: agent.id,
+              updatedAt: Date.now(),
+            });
+          }
+          return next;
+        });
+      } catch (err: unknown) {
+        console.error("[negotiation-agent-builder-chat] API error:", err);
+        const apiError = err instanceof ApiError ? err : null;
+        const errorMsg: ChatMessage = {
+          id: `error-${Date.now()}`,
+          role: "agent",
+          text:
+            apiError?.message ??
+            apiError?.code ??
+            "Couldn't reach Haggle. Check your connection and try again.",
+          timestamp: Date.now(),
+          retryText: trimmed,
+        };
+        setMessages((prev) => {
+          // Save user messages even on API error (exclude the error msg itself)
+          if (agent && prev.length > 1) {
+            saveSession(listingPublicId, agent.id, {
+              memory,
+              messages: prev, // save without the error message
+              agentId: agent.id,
+              updatedAt: Date.now(),
+            });
+          }
+          return [...prev, errorMsg];
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [
+      memory,
+      agent,
+      side,
+      listingPublicId,
+      onNegotiationAgentBuilderMemoryUpdate,
+      onStrategyUpdate,
+      buildAdvisorListings,
+      buildCurrentStrategy,
+      sellerRequiredCriteria,
+    ],
+  );
+
   const handleSend = useCallback(async () => {
     const trimmed = input.trim();
     if (!trimmed || isLoading) return;
@@ -535,9 +800,28 @@ export function NegotiationAgentBuilderChat({
     });
 
     setInput("");
+    await runTurn(trimmed);
+  }, [input, isLoading, memory, agent, listingPublicId, runTurn]);
+
+  /**
+   * Re-run a failed turn. Drops the error bubble first so a second failure does not
+   * stack, and never re-appends the user's message — it is still in the transcript.
+   */
+  const handleRetry = useCallback(
+    async (errorId: string, text: string) => {
+      if (isLoading) return;
+      setMessages((prev) => prev.filter((m) => m.id !== errorId));
+      await runTurn(text);
+    },
+    [isLoading, runTurn],
+  );
+
+  // Fire the opening turn automatically (no user bubble) so the agent leads with its
+  // first question. Silent on error — the greeting stays and the user can still type.
+  const autoOpen = useCallback(async () => {
+    if (!agent) return;
     setIsLoading(true);
     setIsExpanded(true);
-
     try {
       const data = await apiClient<{
         memory?: NegotiationAgentBuilderMemory;
@@ -546,11 +830,12 @@ export function NegotiationAgentBuilderChat({
       }>("/negotiations/agents/builder/chat-turn", {
         method: "POST",
         body: JSON.stringify({
-          message: trimmed,
+          message: AUTO_OPEN_MESSAGE,
           previous_memory: memory,
           side,
-          agent_id: agent?.id ?? "balancer",
+          agent_id: agent.id,
           listings: buildAdvisorListings(),
+          seller_required_criteria: sellerRequiredCriteria ?? [],
           current_strategy: buildCurrentStrategy(),
         }),
         skipAuth: true,
@@ -559,65 +844,68 @@ export function NegotiationAgentBuilderChat({
       setMemory(updatedMemory);
       onNegotiationAgentBuilderMemoryUpdate?.(updatedMemory);
       if (data.strategy) onStrategyUpdate?.(data.strategy);
-
+      const replyText =
+        data.reply?.trim() || "What would you like to emphasize, and any deal-breakers?";
       const agentMsg: ChatMessage = {
         id: `agent-${Date.now()}`,
         role: "agent",
-        text: data.reply ?? "Sorry, could you say that again?",
+        text: replyText,
         timestamp: Date.now(),
       };
       setMessages((prev) => {
         const next = [...prev, agentMsg];
-        // Persist to localStorage
-        if (agent) {
-          saveSession(listingPublicId, agent.id, {
-            memory: updatedMemory,
-            messages: next,
-            agentId: agent.id,
-            updatedAt: Date.now(),
-          });
-        }
+        saveSession(listingPublicId, agent.id, {
+          memory: updatedMemory,
+          messages: next,
+          agentId: agent.id,
+          updatedAt: Date.now(),
+        });
         return next;
       });
-    } catch (err: unknown) {
-      console.error("[negotiation-agent-builder-chat] API error:", err);
+    } catch (err) {
+      // Surface the failure instead of leaving a dead typing indicator.
+      console.error("[negotiation-agent-builder-chat] auto-open error:", err);
       const apiError = err instanceof ApiError ? err : null;
       const errorMsg: ChatMessage = {
-        id: `error-${Date.now()}`,
+        id: `autoopen-error-${Date.now()}`,
         role: "agent",
         text:
           apiError?.message ??
           apiError?.code ??
-          "Couldn't reach Haggle. Check your connection and try again.",
+          "I couldn't start automatically. Tell me what to emphasize or anything you won't budge on, and we'll go from there.",
         timestamp: Date.now(),
       };
-      setMessages((prev) => {
-        // Save user messages even on API error (exclude the error msg itself)
-        if (agent && prev.length > 1) {
-          saveSession(listingPublicId, agent.id, {
-            memory,
-            messages: prev, // save without the error message
-            agentId: agent.id,
-            updatedAt: Date.now(),
-          });
-        }
-        return [...prev, errorMsg];
-      });
+      setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setIsLoading(false);
     }
   }, [
-    input,
-    isLoading,
-    memory,
     agent,
+    memory,
     side,
     listingPublicId,
-    onNegotiationAgentBuilderMemoryUpdate,
-    onStrategyUpdate,
     buildAdvisorListings,
     buildCurrentStrategy,
+    sellerRequiredCriteria,
+    onNegotiationAgentBuilderMemoryUpdate,
+    onStrategyUpdate,
   ]);
+
+  // Seller only: trigger the opening LLM turn once per selection, on a fresh (empty)
+  // chat. Its reply becomes the first bubble.
+  useEffect(() => {
+    if (!autoOpenFirst || !agent) return;
+    const key = `${listingPublicId}::${agent.id}`;
+    if (autoOpenedRef.current === key) return;
+    if (hasRestoredSession) {
+      autoOpenedRef.current = key; // a restored session already has its turns
+      return;
+    }
+    if (isLoading) return;
+    if (messages.length !== 0) return;
+    autoOpenedRef.current = key;
+    void autoOpen();
+  }, [autoOpenFirst, agent, listingPublicId, hasRestoredSession, isLoading, messages, autoOpen]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset deps intentionally fixed; greeting is rebuilt inline and excluded on purpose
   const handleReset = useCallback(() => {
@@ -626,16 +914,22 @@ export function NegotiationAgentBuilderChat({
     const newMemory = buildInitialMemory(agent, listingCategory);
     setMemory(newMemory);
 
-    const greeting = makeGreeting();
-    const greetingMsg: ChatMessage = {
-      id: "greeting",
-      role: "agent",
-      text: greeting.text,
-      timestamp: Date.now(),
-      ...(greeting.widget ? { widget: greeting.widget } : {}),
-    };
-
-    setMessages([greetingMsg]);
+    if (autoOpenFirst) {
+      // Re-fire the opening LLM turn on the now-empty chat.
+      autoOpenedRef.current = null;
+      setMessages([]);
+    } else {
+      const greeting = makeGreeting();
+      setMessages([
+        {
+          id: "greeting",
+          role: "agent",
+          text: greeting.text,
+          timestamp: Date.now(),
+          ...(greeting.widget ? { widget: greeting.widget } : {}),
+        },
+      ]);
+    }
     setIsExpanded(true);
     setHasRestoredSession(false);
     scrollToTop();
@@ -689,6 +983,7 @@ export function NegotiationAgentBuilderChat({
             side,
             agent_id: agent?.id ?? "balancer",
             listings: buildAdvisorListings(),
+            seller_required_criteria: sellerRequiredCriteria ?? [],
             current_strategy: buildCurrentStrategy(),
           }),
           skipAuth: true,
@@ -754,6 +1049,7 @@ export function NegotiationAgentBuilderChat({
       onStrategyUpdate,
       buildAdvisorListings,
       buildCurrentStrategy,
+      sellerRequiredCriteria,
     ],
   );
 
@@ -764,7 +1060,7 @@ export function NegotiationAgentBuilderChat({
     }
   };
 
-  const chips = extractChips(memory);
+  const chips = [...extractChips(memory), ...extractCriteriaChips(memory, choiceQuestions)];
   const hasAgentSelected = agent !== null;
   const accent = agent?.accentColor ?? "var(--color-action-primary)";
 
@@ -832,6 +1128,20 @@ export function NegotiationAgentBuilderChat({
             {msg.widget === "budget-slider" && (
               <BudgetWidget listingPrice={listingPrice} onSubmit={handleBudgetSubmit} />
             )}
+
+            {/* A failed turn is recoverable: the builder is stateless and the whole
+                conversation is re-sent, so retrying picks up exactly where it stopped.
+                Without this the user had to retype what they had just said. */}
+            {msg.retryText && (
+              <button
+                type="button"
+                disabled={isLoading}
+                onClick={() => handleRetry(msg.id, msg.retryText as string)}
+                className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1 font-medium text-[11px] text-ink-secondary transition-colors hover:bg-surface-sunken disabled:opacity-50"
+              >
+                Try again
+              </button>
+            )}
           </ChatBubble>
         ))}
 
@@ -845,6 +1155,58 @@ export function NegotiationAgentBuilderChat({
           </ChatBubble>
         )}
       </MessageList>
+
+      {/* ④+① Quick-setup: tappable multiple-choice for the item's taxonomy checks.
+          Fully client-side/deterministic — a pick sets the criterion with no LLM turn.
+          Renders for BOTH sides (buyer requirement-framed, seller fact-framed); only
+          checks that carry canonical options appear (hard/deal-breaker first). */}
+      {choiceQuestions.length > 0 && hasAgentSelected && (
+        <div className="shrink-0 border-line border-t bg-surface-overlay px-4 py-3">
+          <div className="mb-2 flex items-center gap-1.5">
+            <span className="font-semibold text-[10px] text-ink-muted tracking-wider">
+              QUICK SETUP
+            </span>
+            <span className="text-[10px] text-ink-muted">tap to set, no typing</span>
+          </div>
+          <div className="flex flex-col gap-2.5">
+            {choiceQuestions.map((q) => {
+              const chosen = memory.categoryCriteria?.find((c) => c.checkId === q.checkId)?.stance;
+              return (
+                <div key={q.checkId} className="flex flex-col gap-1">
+                  <span className="text-[12px] text-ink-secondary">
+                    {q.question}
+                    {q.enforcement === "hard" && (
+                      <span className="ml-1.5 font-semibold text-[10px] text-warning">
+                        deal-breaker
+                      </span>
+                    )}
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {q.options.map((opt) => {
+                      const selected = chosen === opt.stance;
+                      return (
+                        <button
+                          key={opt.label}
+                          type="button"
+                          onClick={() => applyChoice(q, opt)}
+                          className={`rounded-full border px-3 py-1 text-[12px] transition-colors ${
+                            selected
+                              ? "border-transparent text-white"
+                              : "border-line bg-surface-raised text-ink-secondary hover:bg-surface-sunken"
+                          }`}
+                          style={selected ? { background: accent } : undefined}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Strategy chips — only show when we have them */}
       {chips.length > 0 && (

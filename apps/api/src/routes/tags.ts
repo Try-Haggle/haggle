@@ -1,32 +1,32 @@
-import type { FastifyInstance } from "fastify";
-import { z } from "zod";
 import type { Database } from "@haggle/db";
-import { requireAdmin } from "../middleware/require-auth.js";
-import {
-  normalizeTagName,
-  validateTag,
-  autoPromote,
-  deprecate,
-  suggestMerges,
-  isExpertQualified,
-} from "@haggle/tag-core";
 import type { Tag } from "@haggle/tag-core";
 import {
+  autoPromote,
+  deprecate,
+  isExpertQualified,
+  normalizeTagName,
+  suggestMerges,
+  validateTag,
+} from "@haggle/tag-core";
+import type { FastifyInstance } from "fastify";
+import { z } from "zod";
+import { requireAdmin } from "../middleware/require-auth.js";
+import {
+  createMergeLog,
+  createTag,
+  getExpertTags,
   getTagById,
   getTagByNormalizedName,
   listTags,
-  createTag,
   updateTag,
-  getExpertTags,
   upsertExpertTag,
-  createMergeLog,
 } from "../services/tag.service.js";
 import {
-  listSuggestions,
-  getSuggestionById,
   approveSuggestion,
-  rejectSuggestion,
+  getSuggestionById,
+  listSuggestions,
   mergeSuggestion,
+  rejectSuggestion,
   type SuggestionStatus,
 } from "../services/tag-suggestion.service.js";
 
@@ -64,29 +64,26 @@ const mergeSuggestionSchema = z.object({
 
 export function registerTagRoutes(app: FastifyInstance, db: Database) {
   // GET /tags/clusters — MUST be before /tags/:id
-  app.get<{ Querystring: { category?: string } }>(
-    "/tags/clusters",
-    async (request, reply) => {
-      const query = request.query as { category?: string };
-      const rows = await listTags(db, { status: "OFFICIAL", category: query.category });
+  app.get<{ Querystring: { category?: string } }>("/tags/clusters", async (request, reply) => {
+    const query = request.query as { category?: string };
+    const rows = await listTags(db, { status: "OFFICIAL", category: query.category });
 
-      // Convert DB rows to Tag objects for tag-core
-      const tagObjects: Tag[] = rows.map((r) => ({
-        id: r.id,
-        name: r.name,
-        normalizedName: r.normalizedName,
-        status: r.status as Tag["status"],
-        category: r.category,
-        useCount: r.useCount,
-        createdAt: r.createdAt.toISOString(),
-        lastUsedAt: r.lastUsedAt.toISOString(),
-        parentId: r.parentId ?? undefined,
-      }));
+    // Convert DB rows to Tag objects for tag-core
+    const tagObjects: Tag[] = rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      normalizedName: r.normalizedName,
+      status: r.status as Tag["status"],
+      category: r.category,
+      useCount: r.useCount,
+      createdAt: r.createdAt.toISOString(),
+      lastUsedAt: r.lastUsedAt.toISOString(),
+      parentId: r.parentId ?? undefined,
+    }));
 
-      const clusters = suggestMerges(tagObjects);
-      return reply.send({ clusters });
-    },
-  );
+    const clusters = suggestMerges(tagObjects);
+    return reply.send({ clusters });
+  });
 
   // POST /tags/merge
   app.post("/tags/merge", { preHandler: [requireAdmin] }, async (request, reply) => {
@@ -166,40 +163,34 @@ export function registerTagRoutes(app: FastifyInstance, db: Database) {
   });
 
   // GET /tags/:id
-  app.get<{ Params: { id: string } }>(
-    "/tags/:id",
-    async (request, reply) => {
-      const { id } = request.params;
-      const row = await getTagById(db, id);
-      if (!row) {
-        return reply.code(404).send({ error: "TAG_NOT_FOUND" });
-      }
-      return reply.send({ tag: row });
-    },
-  );
+  app.get<{ Params: { id: string } }>("/tags/:id", async (request, reply) => {
+    const { id } = request.params;
+    const row = await getTagById(db, id);
+    if (!row) {
+      return reply.code(404).send({ error: "TAG_NOT_FOUND" });
+    }
+    return reply.send({ tag: row });
+  });
 
   // PATCH /tags/:id
-  app.patch<{ Params: { id: string } }>(
-    "/tags/:id",
-    async (request, reply) => {
-      const { id } = request.params;
-      const parsed = updateTagSchema.safeParse(request.body);
-      if (!parsed.success) {
-        return reply.code(400).send({ error: "INVALID_UPDATE_REQUEST", issues: parsed.error.issues });
-      }
+  app.patch<{ Params: { id: string } }>("/tags/:id", async (request, reply) => {
+    const { id } = request.params;
+    const parsed = updateTagSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "INVALID_UPDATE_REQUEST", issues: parsed.error.issues });
+    }
 
-      const updateData: Record<string, unknown> = {};
-      if (parsed.data.use_count !== undefined) {
-        updateData.useCount = parsed.data.use_count;
-      }
-      if (parsed.data.status !== undefined) {
-        updateData.status = parsed.data.status;
-      }
+    const updateData: Record<string, unknown> = {};
+    if (parsed.data.use_count !== undefined) {
+      updateData.useCount = parsed.data.use_count;
+    }
+    if (parsed.data.status !== undefined) {
+      updateData.status = parsed.data.status;
+    }
 
-      const updated = await updateTag(db, id, updateData as Parameters<typeof updateTag>[2]);
-      return reply.send({ tag: updated });
-    },
-  );
+    const updated = await updateTag(db, id, updateData as Parameters<typeof updateTag>[2]);
+    return reply.send({ tag: updated });
+  });
 
   // POST /tags/:id/promote
   app.post<{ Params: { id: string } }>(
@@ -269,14 +260,11 @@ export function registerTagRoutes(app: FastifyInstance, db: Database) {
   );
 
   // GET /tags/:tagId/experts
-  app.get<{ Params: { tagId: string } }>(
-    "/tags/:tagId/experts",
-    async (request, reply) => {
-      const { tagId } = request.params;
-      const rows = await getExpertTags(db, tagId);
-      return reply.send({ experts: rows });
-    },
-  );
+  app.get<{ Params: { tagId: string } }>("/tags/:tagId/experts", async (request, reply) => {
+    const { tagId } = request.params;
+    const rows = await getExpertTags(db, tagId);
+    return reply.send({ experts: rows });
+  });
 
   // POST /tags/:tagId/experts/qualify
   app.post<{ Params: { tagId: string } }>(
@@ -285,7 +273,9 @@ export function registerTagRoutes(app: FastifyInstance, db: Database) {
       const { tagId } = request.params;
       const parsed = qualifyExpertSchema.safeParse(request.body);
       if (!parsed.success) {
-        return reply.code(400).send({ error: "INVALID_QUALIFY_REQUEST", issues: parsed.error.issues });
+        return reply
+          .code(400)
+          .send({ error: "INVALID_QUALIFY_REQUEST", issues: parsed.error.issues });
       }
 
       const { user_id, case_count, accuracy } = parsed.data;
@@ -322,20 +312,16 @@ export function registerTagRoutes(app: FastifyInstance, db: Database) {
   // GET /tag-suggestions
   app.get<{
     Querystring: { status?: string; limit?: string; offset?: string };
-  }>(
-    "/tag-suggestions",
-    { preHandler: [requireAdmin] },
-    async (request, reply) => {
-      const { status, limit, offset } = request.query;
-      const rows = await listSuggestions(db, {
-        status: status as SuggestionStatus | undefined,
-        limit: limit ? parseInt(limit, 10) : 50,
-        offset: offset ? parseInt(offset, 10) : 0,
-        orderBy: "occurrence_desc",
-      });
-      return reply.send({ suggestions: rows });
-    },
-  );
+  }>("/tag-suggestions", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const { status, limit, offset } = request.query;
+    const rows = await listSuggestions(db, {
+      status: status as SuggestionStatus | undefined,
+      limit: limit ? parseInt(limit, 10) : 50,
+      offset: offset ? parseInt(offset, 10) : 0,
+      orderBy: "occurrence_desc",
+    });
+    return reply.send({ suggestions: rows });
+  });
 
   // GET /tag-suggestions/:id
   app.get<{ Params: { id: string } }>(
@@ -359,8 +345,7 @@ export function registerTagRoutes(app: FastifyInstance, db: Database) {
           .code(400)
           .send({ error: "INVALID_APPROVE_REQUEST", issues: parsed.error.issues });
       }
-      const userId =
-        ((request as { user?: { id?: string } }).user?.id) ?? "admin";
+      const userId = (request as { user?: { id?: string } }).user?.id ?? "admin";
       const result = await approveSuggestion(db, request.params.id, {
         reviewedBy: userId,
         category: parsed.data.category,
@@ -376,8 +361,7 @@ export function registerTagRoutes(app: FastifyInstance, db: Database) {
     "/tag-suggestions/:id/reject",
     { preHandler: [requireAdmin] },
     async (request, reply) => {
-      const userId =
-        ((request as { user?: { id?: string } }).user?.id) ?? "admin";
+      const userId = (request as { user?: { id?: string } }).user?.id ?? "admin";
       const result = await rejectSuggestion(db, request.params.id, userId);
       if (!result.ok) return reply.code(400).send(result);
       return reply.send(result);
@@ -395,8 +379,7 @@ export function registerTagRoutes(app: FastifyInstance, db: Database) {
           .code(400)
           .send({ error: "INVALID_MERGE_REQUEST", issues: parsed.error.issues });
       }
-      const userId =
-        ((request as { user?: { id?: string } }).user?.id) ?? "admin";
+      const userId = (request as { user?: { id?: string } }).user?.id ?? "admin";
       const result = await mergeSuggestion(
         db,
         request.params.id,

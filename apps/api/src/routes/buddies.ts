@@ -1,15 +1,8 @@
+import type { Database } from "@haggle/db";
+import { buddies, buddyTrades, desc, eq, sql } from "@haggle/db";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { Database } from "@haggle/db";
-import { buddies, buddyTrades } from "@haggle/db";
-import { eq, desc, sql } from "@haggle/db";
 import { requireAuth } from "../middleware/require-auth.js";
-
-import {
-  getAbilityForBuddy,
-  type Species,
-  type Rarity,
-} from "../services/gamification.service.js";
 
 const renameSchema = z.object({
   name: z.string().min(1).max(20),
@@ -17,21 +10,17 @@ const renameSchema = z.object({
 
 export function registerBuddyRoutes(app: FastifyInstance, db: Database) {
   // GET /buddies — list user's buddies
-  app.get(
-    "/buddies",
-    { preHandler: [requireAuth] },
-    async (request, reply) => {
-      const userId = request.user!.id;
+  app.get("/buddies", { preHandler: [requireAuth] }, async (request, reply) => {
+    const userId = request.user!.id;
 
-      const rows = await db
-        .select()
-        .from(buddies)
-        .where(eq(buddies.userId, userId))
-        .orderBy(desc(buddies.createdAt));
+    const rows = await db
+      .select()
+      .from(buddies)
+      .where(eq(buddies.userId, userId))
+      .orderBy(desc(buddies.createdAt));
 
-      return reply.send({ buddies: rows });
-    },
-  );
+    return reply.send({ buddies: rows });
+  });
 
   // GET /buddies/:id — buddy detail with DNA + trade stats
   app.get<{ Params: { id: string } }>(
@@ -41,11 +30,7 @@ export function registerBuddyRoutes(app: FastifyInstance, db: Database) {
       const { id } = request.params;
       const userId = request.user!.id;
 
-      const [buddy] = await db
-        .select()
-        .from(buddies)
-        .where(eq(buddies.id, id))
-        .limit(1);
+      const [buddy] = await db.select().from(buddies).where(eq(buddies.id, id)).limit(1);
 
       if (!buddy) {
         return reply.code(404).send({ error: "BUDDY_NOT_FOUND" });
@@ -92,11 +77,7 @@ export function registerBuddyRoutes(app: FastifyInstance, db: Database) {
       const { id } = request.params;
       const userId = request.user!.id;
 
-      const [buddy] = await db
-        .select()
-        .from(buddies)
-        .where(eq(buddies.id, id))
-        .limit(1);
+      const [buddy] = await db.select().from(buddies).where(eq(buddies.id, id)).limit(1);
 
       if (!buddy) {
         return reply.code(404).send({ error: "BUDDY_NOT_FOUND" });
@@ -130,11 +111,7 @@ export function registerBuddyRoutes(app: FastifyInstance, db: Database) {
         return reply.code(400).send({ error: "INVALID_NAME", issues: parsed.error.issues });
       }
 
-      const [buddy] = await db
-        .select()
-        .from(buddies)
-        .where(eq(buddies.id, id))
-        .limit(1);
+      const [buddy] = await db.select().from(buddies).where(eq(buddies.id, id)).limit(1);
 
       if (!buddy) {
         return reply.code(404).send({ error: "BUDDY_NOT_FOUND" });

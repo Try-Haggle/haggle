@@ -1,9 +1,4 @@
-import {
-  authentications,
-  authenticationEvents,
-  eq,
-  type Database,
-} from "@haggle/db";
+import { authenticationEvents, authentications, type Database, eq } from "@haggle/db";
 
 export interface AuthenticationRow {
   id: string;
@@ -87,7 +82,9 @@ export async function createAuthenticationRecord(
       caseId: data.caseId ?? null,
       intentId: data.intentId ?? null,
       submissionUrl: data.submissionUrl ?? null,
-      publishPolicy: (data.publishPolicy ?? "publish_immediately") as "wait_for_auth" | "publish_immediately",
+      publishPolicy: (data.publishPolicy ?? "publish_immediately") as
+        | "wait_for_auth"
+        | "publish_immediately",
       autoApplyResult: data.autoApplyResult ?? true,
     })
     .returning();
@@ -169,10 +166,7 @@ export async function updateAuthenticationRecord(
   if (data.submissionUrl !== undefined) set.submissionUrl = data.submissionUrl;
   if (data.resultApplied !== undefined) set.resultApplied = data.resultApplied;
 
-  await db
-    .update(authentications)
-    .set(set)
-    .where(eq(authentications.id, id));
+  await db.update(authentications).set(set).where(eq(authentications.id, id));
 }
 
 export async function insertAuthenticationEvent(

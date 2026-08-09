@@ -1,14 +1,14 @@
+import type { Database } from "@haggle/db";
+import type { DSTier } from "@haggle/dispute-core";
+import { checkPromotion, computeDSScore } from "@haggle/dispute-core";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { Database } from "@haggle/db";
 import { requireAdmin } from "../middleware/require-auth.js";
-import { computeDSScore, checkPromotion } from "@haggle/dispute-core";
-import type { DSTier } from "@haggle/dispute-core";
 import {
-  getDSRating,
-  upsertDSRating,
-  getSpecializations,
   getDSPool,
+  getDSRating,
+  getSpecializations,
+  upsertDSRating,
 } from "../services/ds-rating.service.js";
 
 const VALID_TIERS: DSTier[] = ["BRONZE", "SILVER", "GOLD", "PLATINUM", "DIAMOND"];
@@ -28,30 +28,27 @@ const computeDSSchema = z.object({
 
 export function registerDSRatingRoutes(app: FastifyInstance, db: Database) {
   // GET /ds-ratings/pool — MUST be before /:reviewerId
-  app.get<{ Querystring: { min_tier?: string } }>(
-    "/ds-ratings/pool",
-    async (request, reply) => {
-      const minTier = (request.query as { min_tier?: string }).min_tier ?? "BRONZE";
-      if (!VALID_TIERS.includes(minTier as DSTier)) {
-        return reply.code(400).send({ error: "INVALID_TIER", message: `min_tier must be one of: ${VALID_TIERS.join(", ")}` });
-      }
-      const rows = await getDSPool(db, minTier as DSTier);
-      return reply.send({ reviewers: rows });
-    },
-  );
+  app.get<{ Querystring: { min_tier?: string } }>("/ds-ratings/pool", async (request, reply) => {
+    const minTier = (request.query as { min_tier?: string }).min_tier ?? "BRONZE";
+    if (!VALID_TIERS.includes(minTier as DSTier)) {
+      return reply.code(400).send({
+        error: "INVALID_TIER",
+        message: `min_tier must be one of: ${VALID_TIERS.join(", ")}`,
+      });
+    }
+    const rows = await getDSPool(db, minTier as DSTier);
+    return reply.send({ reviewers: rows });
+  });
 
   // GET /ds-ratings/:reviewerId
-  app.get<{ Params: { reviewerId: string } }>(
-    "/ds-ratings/:reviewerId",
-    async (request, reply) => {
-      const { reviewerId } = request.params;
-      const row = await getDSRating(db, reviewerId);
-      if (!row) {
-        return reply.code(404).send({ error: "DS_RATING_NOT_FOUND" });
-      }
-      return reply.send({ ds_rating: row });
-    },
-  );
+  app.get<{ Params: { reviewerId: string } }>("/ds-ratings/:reviewerId", async (request, reply) => {
+    const { reviewerId } = request.params;
+    const row = await getDSRating(db, reviewerId);
+    if (!row) {
+      return reply.code(404).send({ error: "DS_RATING_NOT_FOUND" });
+    }
+    return reply.send({ ds_rating: row });
+  });
 
   // POST /ds-ratings/:reviewerId/compute
   app.post<{ Params: { reviewerId: string } }>(
@@ -61,7 +58,9 @@ export function registerDSRatingRoutes(app: FastifyInstance, db: Database) {
       const { reviewerId } = request.params;
       const parsed = computeDSSchema.safeParse(request.body);
       if (!parsed.success) {
-        return reply.code(400).send({ error: "INVALID_DS_COMPUTE_REQUEST", issues: parsed.error.issues });
+        return reply
+          .code(400)
+          .send({ error: "INVALID_DS_COMPUTE_REQUEST", issues: parsed.error.issues });
       }
 
       const {

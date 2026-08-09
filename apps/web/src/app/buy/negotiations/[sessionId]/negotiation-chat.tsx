@@ -64,12 +64,18 @@ export interface SessionDetailData {
   rounds: Round[];
 }
 
+/**
+ * Show cents only when the offer actually has them. Rounding to whole dollars made
+ * the badge read "$218" above a message that said "$217.75" — one offer shown as two
+ * numbers. Cents are kept rather than stripped everywhere because a cheap item is
+ * genuinely negotiated in them.
+ */
 function formatPrice(priceMajor: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
     minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(priceMajor);
 }
 

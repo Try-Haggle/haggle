@@ -1,19 +1,19 @@
 import type { Database } from "@haggle/db";
 import {
-  validateHnpEnvelopeConformance,
   type HnpConformanceIssue,
   type HnpEnvelope,
+  validateHnpEnvelopeConformance,
 } from "@haggle/engine-session";
-import { getRoundsBySessionId } from "./negotiation-round.service.js";
 import {
-  validateHnpProtocolOrder,
   type HnpProtocolIdentity,
+  validateHnpProtocolOrder,
 } from "./hnp-protocol-guard.service.js";
 import {
+  type HnpSignedEnvelope,
   isHnpSignatureRequired,
   validateHnpDetachedSignature,
-  type HnpSignedEnvelope,
 } from "./hnp-signature.service.js";
+import { getRoundsBySessionId } from "./negotiation-round.service.js";
 
 export type HnpIngressResult =
   | { ok: true }
@@ -21,11 +21,7 @@ export type HnpIngressResult =
       ok: false;
       status: 400 | 401 | 409;
       body: {
-        error:
-          | "INVALID_SIGNATURE"
-          | "DUPLICATE_OR_STALE"
-          | "OUT_OF_ORDER"
-          | "INVALID_HNP_ENVELOPE";
+        error: "INVALID_SIGNATURE" | "DUPLICATE_OR_STALE" | "OUT_OF_ORDER" | "INVALID_HNP_ENVELOPE";
         retryable: false;
         related_message_id?: string;
         issues?: HnpConformanceIssue[];
@@ -74,9 +70,8 @@ export async function validateHnpIngress(
         body: {
           error: "INVALID_HNP_ENVELOPE",
           retryable: false,
-          related_message_id: typeof input.envelope.message_id === "string"
-            ? input.envelope.message_id
-            : undefined,
+          related_message_id:
+            typeof input.envelope.message_id === "string" ? input.envelope.message_id : undefined,
           issues: conformance.issues,
         },
       };
@@ -85,11 +80,14 @@ export async function validateHnpIngress(
 
   if (input.protocol) {
     const rounds = await getRoundsBySessionId(db, sessionId);
-    const protocolGuard = validateHnpProtocolOrder(rounds.map((round) => ({
-      id: round.id,
-      idempotencyKey: round.idempotencyKey,
-      metadata: round.metadata as Record<string, unknown> | null,
-    })), input.protocol);
+    const protocolGuard = validateHnpProtocolOrder(
+      rounds.map((round) => ({
+        id: round.id,
+        idempotencyKey: round.idempotencyKey,
+        metadata: round.metadata as Record<string, unknown> | null,
+      })),
+      input.protocol,
+    );
 
     if (!protocolGuard.ok) {
       return {

@@ -17,13 +17,21 @@ export type AdvisorPlanSlot =
   | "buyer_priority";
 
 export type AdvisorCandidateFacet = {
-  slot: Exclude<AdvisorPlanSlot, "search_intent" | "budget" | "buyer_priority"> | "category" | "brand";
+  slot:
+    | Exclude<AdvisorPlanSlot, "search_intent" | "budget" | "buyer_priority">
+    | "category"
+    | "brand";
   values: Array<{ label: string; count: number; share: number }>;
   entropy: number;
 };
 
 export type AdvisorNextAction = {
-  action: "ask_search_refinement" | "ask_disambiguation" | "ask_budget" | "ask_preference" | "recommend";
+  action:
+    | "ask_search_refinement"
+    | "ask_disambiguation"
+    | "ask_budget"
+    | "ask_preference"
+    | "recommend";
   slot: AdvisorPlanSlot;
   reasonCode:
     | "no_candidates"
@@ -191,7 +199,9 @@ export function buildAdvisorCandidatePlan(input: {
 }
 
 function toFacetRow(listing: AdvisorPlannerListing): ListingFacetRow {
-  const text = normalize([listing.title, listing.category, listing.condition, ...listing.tags].join(" "));
+  const text = normalize(
+    [listing.title, listing.category, listing.condition, ...listing.tags].join(" "),
+  );
 
   return {
     listing,
@@ -204,7 +214,10 @@ function toFacetRow(listing: AdvisorPlannerListing): ListingFacetRow {
   };
 }
 
-function applyResolvedMemoryFilters(rows: ListingFacetRow[], memory: AdvisorPlannerMemory | undefined): ListingFacetRow[] {
+function applyResolvedMemoryFilters(
+  rows: ListingFacetRow[],
+  memory: AdvisorPlannerMemory | undefined,
+): ListingFacetRow[] {
   const selectedModelFamily = resolveSelectedModelFamily(rows, memory);
   if (!selectedModelFamily) return rows;
 
@@ -212,18 +225,27 @@ function applyResolvedMemoryFilters(rows: ListingFacetRow[], memory: AdvisorPlan
   return filtered.length > 0 ? filtered : rows;
 }
 
-function resolveSelectedModelFamily(rows: ListingFacetRow[], memory: AdvisorPlannerMemory | undefined): string | null {
+function resolveSelectedModelFamily(
+  rows: ListingFacetRow[],
+  memory: AdvisorPlannerMemory | undefined,
+): string | null {
   if (!memory) return null;
 
-  const modelFamilies = Array.from(new Set(rows.map((row) => row.modelFamily).filter((value) => value !== "unknown")));
+  const modelFamilies = Array.from(
+    new Set(rows.map((row) => row.modelFamily).filter((value) => value !== "unknown")),
+  );
   if (modelFamilies.length < 2) return null;
 
-  const memoryText = normalize([
-    memory.categoryInterest,
-    ...(memory.mustHave ?? []),
-    ...(memory.avoid ?? []),
-    ...(memory.source ?? []),
-  ].filter(Boolean).join(" "));
+  const memoryText = normalize(
+    [
+      memory.categoryInterest,
+      ...(memory.mustHave ?? []),
+      ...(memory.avoid ?? []),
+      ...(memory.source ?? []),
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
   const matched = modelFamilies.filter((family) => modelFamilyMatchesMemory(family, memoryText));
 
   return matched.length === 1 ? matched[0] : null;
@@ -250,12 +272,30 @@ function modelFamilyMatchesMemory(modelFamily: string, memoryText: string): bool
 
 function buildFacets(rows: ListingFacetRow[]): AdvisorCandidateFacet[] {
   return [
-    buildFacet("category", rows.map((row) => row.category)),
-    buildFacet("brand", rows.map((row) => row.brand)),
-    buildFacet("product_type", rows.map((row) => row.productType)),
-    buildFacet("model_family", rows.map((row) => row.modelFamily)),
-    buildFacet("price_band", rows.map((row) => row.priceBand)),
-    buildFacet("condition", rows.map((row) => row.condition)),
+    buildFacet(
+      "category",
+      rows.map((row) => row.category),
+    ),
+    buildFacet(
+      "brand",
+      rows.map((row) => row.brand),
+    ),
+    buildFacet(
+      "product_type",
+      rows.map((row) => row.productType),
+    ),
+    buildFacet(
+      "model_family",
+      rows.map((row) => row.modelFamily),
+    ),
+    buildFacet(
+      "price_band",
+      rows.map((row) => row.priceBand),
+    ),
+    buildFacet(
+      "condition",
+      rows.map((row) => row.condition),
+    ),
   ];
 }
 
@@ -283,8 +323,13 @@ function getDominantCluster(rows: ListingFacetRow[]): AdvisorCandidatePlan["domi
 
   const counts = new Map<string, number>();
   for (const row of rows) {
-    const label = [row.brand, row.modelFamily].filter((value) => value && value !== "unknown").join(" ");
-    counts.set(label || row.productType || "unknown", (counts.get(label || row.productType || "unknown") ?? 0) + 1);
+    const label = [row.brand, row.modelFamily]
+      .filter((value) => value && value !== "unknown")
+      .join(" ");
+    counts.set(
+      label || row.productType || "unknown",
+      (counts.get(label || row.productType || "unknown") ?? 0) + 1,
+    );
   }
 
   const [label, count] = Array.from(counts.entries()).sort((a, b) => b[1] - a[1])[0];
@@ -320,7 +365,14 @@ function buildFacetChoiceQuestion(label: string, facet: AdvisorCandidateFacet | 
 
 function inferBrand(text: string): string {
   if (text.includes("tesla") || text.includes("테슬라")) return "tesla";
-  if (text.includes("apple") || text.includes("iphone") || text.includes("macbook") || text.includes("아이폰") || text.includes("맥북")) return "apple";
+  if (
+    text.includes("apple") ||
+    text.includes("iphone") ||
+    text.includes("macbook") ||
+    text.includes("아이폰") ||
+    text.includes("맥북")
+  )
+    return "apple";
   if (text.includes("dell") || text.includes("xps")) return "dell";
   if (text.includes("ford")) return "ford";
   if (text.includes("honda")) return "honda";
@@ -329,8 +381,14 @@ function inferBrand(text: string): string {
 }
 
 function inferProductType(text: string): string {
-  if (/(case|sleeve|charger|adapter|stand|dock|케이스|충전기|스탠드)/.test(text)) return "accessory";
-  if (/(tesla|ford|honda|bmw|harley|vehicle|car|sedan|truck|motorcycle|테슬라|차량|자동차|전기차)/.test(text)) return "vehicle";
+  if (/(case|sleeve|charger|adapter|stand|dock|케이스|충전기|스탠드)/.test(text))
+    return "accessory";
+  if (
+    /(tesla|ford|honda|bmw|harley|vehicle|car|sedan|truck|motorcycle|테슬라|차량|자동차|전기차)/.test(
+      text,
+    )
+  )
+    return "vehicle";
   if (/(iphone|phone|아이폰)/.test(text)) return "phone";
   if (/(macbook|laptop|xps|노트북|맥북)/.test(text)) return "laptop";
   return "other";
@@ -377,7 +435,7 @@ function computeEntropy(counts: number[]): number {
   return counts.reduce((entropy, count) => {
     if (count <= 0) return entropy;
     const p = count / total;
-    return entropy - (p * Math.log2(p));
+    return entropy - p * Math.log2(p);
   }, 0);
 }
 

@@ -1,4 +1,4 @@
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 
 type BuddyRarity = "COMMON" | "UNCOMMON" | "RARE" | "EPIC" | "LEGENDARY" | "MYTHIC";
 type MemoryEligibilityReason =
@@ -68,8 +68,8 @@ export function evaluateEvermemoEligibility(
   }
 
   if (
-    (input.reviewerParticipationCount ?? 0) >= thresholds.reviewerParticipationCount
-    && input.monthlyTradeCount >= thresholds.monthlyTradeCount
+    (input.reviewerParticipationCount ?? 0) >= thresholds.reviewerParticipationCount &&
+    input.monthlyTradeCount >= thresholds.monthlyTradeCount
   ) {
     return { eligible: true, reason: "reviewer_trade_threshold" };
   }

@@ -1,7 +1,4 @@
-import {
-  constants,
-  createVerify,
-} from "node:crypto";
+import { constants, createVerify } from "node:crypto";
 import { isProductionRuntime } from "../config/runtime.js";
 import {
   createTrustedHnpPublicKey,
@@ -31,10 +28,14 @@ const SUPPORTED_ALGORITHMS: Record<string, string> = {
   PS256: "RSA-SHA256",
 };
 
-export function validateHnpDetachedSignature(envelope: HnpSignedEnvelope): HnpSignatureValidationResult {
-  const signature = typeof envelope.detached_signature === "string" ? envelope.detached_signature : undefined;
+export function validateHnpDetachedSignature(
+  envelope: HnpSignedEnvelope,
+): HnpSignatureValidationResult {
+  const signature =
+    typeof envelope.detached_signature === "string" ? envelope.detached_signature : undefined;
   const requireSignature = isHnpSignatureRequired();
-  const relatedMessageId = typeof envelope.message_id === "string" ? envelope.message_id : undefined;
+  const relatedMessageId =
+    typeof envelope.message_id === "string" ? envelope.message_id : undefined;
 
   if (!signature) {
     return requireSignature
@@ -54,22 +55,25 @@ export function validateHnpDetachedSignature(envelope: HnpSignedEnvelope): HnpSi
     }
 
     const payload = canonicalJson(withoutDetachedSignature(envelope));
-    const encodedPayload = parsed.header.b64 === false
-      ? payload
-      : base64url(Buffer.from(payload, "utf8"));
+    const encodedPayload =
+      parsed.header.b64 === false ? payload : base64url(Buffer.from(payload, "utf8"));
     const signingInput = `${parsed.encodedHeader}.${encodedPayload}`;
 
     const verifier = createVerify(SUPPORTED_ALGORITHMS[parsed.header.alg!]);
     verifier.update(signingInput);
     verifier.end();
 
-    const valid = parsed.header.alg === "PS256"
-      ? verifier.verify({
-          key,
-          padding: constants.RSA_PKCS1_PSS_PADDING,
-          saltLength: constants.RSA_PSS_SALTLEN_DIGEST,
-        }, parsed.signature)
-      : verifier.verify(key, parsed.signature);
+    const valid =
+      parsed.header.alg === "PS256"
+        ? verifier.verify(
+            {
+              key,
+              padding: constants.RSA_PKCS1_PSS_PADDING,
+              saltLength: constants.RSA_PSS_SALTLEN_DIGEST,
+            },
+            parsed.signature,
+          )
+        : verifier.verify(key, parsed.signature);
 
     return valid
       ? { ok: true, verified: true }

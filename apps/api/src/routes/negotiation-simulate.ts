@@ -5,14 +5,16 @@
  * Use this when both parties are AI agents on our infrastructure and
  * the full transcript can be persisted at the end.
  */
+
+import type {
+  HnpMessage,
+  MasterStrategy,
+  NegotiationSession,
+  RoundData,
+} from "@haggle/engine-session";
+import { executeRound } from "@haggle/engine-session";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { executeRound } from "@haggle/engine-session";
-import type { MasterStrategy, RoundData } from "@haggle/engine-session";
-import type {
-  NegotiationSession,
-  HnpMessage,
-} from "@haggle/engine-session";
 
 const strategySchema = z.record(z.unknown());
 
@@ -117,7 +119,7 @@ export function registerSimulateRoute(app: FastifyInstance) {
         t_elapsed: nowMs - startedAt,
       };
 
-      let result;
+      let result: ReturnType<typeof executeRound>;
       try {
         result = executeRound(session, strategy, incoming, roundData);
       } catch (err) {

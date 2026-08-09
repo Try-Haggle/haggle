@@ -5,6 +5,7 @@
  * Each stage has a well-defined interface for external agent interop.
  */
 
+import type { ExtractedFeature } from "@haggle/engine-core";
 import type { EvermemoBrief } from "../../services/evermemo-bridge.service.js";
 import type { UserMemoryBrief } from "../../services/user-memory-card.service.js";
 import type { MemoEncodingConfig } from "../config.js";
@@ -97,6 +98,8 @@ export interface UnderstandOutput {
   conversation_type?: ConversationType;
   information_links?: InformationLink[];
   missing_information?: MissingInformationNeed[];
+  /** L3/H5-a: schema-defined features mapped from conversation signals (sensor output). */
+  extracted_features?: ExtractedFeature[];
 }
 
 // =========================================

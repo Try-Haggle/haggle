@@ -195,6 +195,61 @@ describe("DeepSeekAdapter", () => {
     expect(prompt).not.toContain("NEGOTIATION_HINT:");
   });
 
+  it("surfaces the acting side's REQUIRED category criteria (Phase G) with stance", () => {
+    const memory = makeMemory();
+    memory.strategy_context = {
+      negotiation_agent_builder_memory: {
+        categoryCriteria: [
+          {
+            checkId: "title_status",
+            questionKo: "명의/소유권(등록증)이 명확한가요?",
+            enforcement: "hard",
+            requirement: "required",
+            stance: "clean only",
+          },
+          {
+            checkId: "mileage",
+            questionKo: "주행거리는 얼마인가요?",
+            enforcement: "soft",
+            requirement: "optional",
+            stance: "under 50k",
+          },
+        ],
+      },
+    };
+    const prompt = adapter.buildUserPrompt(memory, []);
+    expect(prompt).toContain("requiredCriteria:");
+    expect(prompt).toContain("명의/소유권(등록증)이 명확한가요? = clean only");
+    // A REQUIRED criterion is a hard line; an OPTIONAL one with a stated stance (a
+    // tapped mileage range) is a SOFT preference — surfaced under `preferences:`, not
+    // promoted into the requiredCriteria hard line.
+    expect(prompt).toContain("preferences:");
+    expect(prompt).toContain("주행거리는 얼마인가요? = under 50k");
+    expect(prompt).not.toMatch(/requiredCriteria:[^\n]*주행거리/);
+  });
+
+  it("omits an optional criterion with no stance from preferences (waiver / unanswered)", () => {
+    const memory = makeMemory();
+    memory.strategy_context = {
+      negotiation_agent_builder_memory: {
+        categoryCriteria: [
+          { checkId: "mileage", questionKo: "주행거리는 얼마인가요?", requirement: "optional" },
+        ],
+      },
+    };
+    const prompt = adapter.buildUserPrompt(memory, []);
+    expect(prompt).not.toContain("preferences:");
+  });
+
+  it("omits requiredCriteria when the acting side declared none (backward-compatible)", () => {
+    const memory = makeMemory();
+    memory.strategy_context = {
+      negotiation_agent_builder_memory: { dealBreakers: ["no lowballs"] },
+    };
+    const prompt = adapter.buildUserPrompt(memory, []);
+    expect(prompt).not.toContain("requiredCriteria:");
+  });
+
   it("should warn buyer not to undercut their own prior offer", () => {
     const prompt = adapter.buildSystemPrompt("skill context", "buyer");
     expect(prompt).toContain("BUYER");

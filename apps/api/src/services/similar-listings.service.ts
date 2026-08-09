@@ -1,9 +1,4 @@
-import {
-  type Database,
-  tagIdfCache,
-  recommendationLogs,
-  sql,
-} from "@haggle/db";
+import { type Database, recommendationLogs, sql, tagIdfCache } from "@haggle/db";
 
 // ─── In-Memory Caches ──────────────────────────────────
 
@@ -96,26 +91,14 @@ function semanticSimilarity(cosineSim: number): number {
 }
 
 /** Signal 2: Price proximity using log ratio */
-function priceProximity(
-  sourcePrice: number | null,
-  candidatePrice: number | null,
-): number {
-  if (
-    !sourcePrice ||
-    !candidatePrice ||
-    sourcePrice <= 0 ||
-    candidatePrice <= 0
-  )
-    return 0.5;
+function priceProximity(sourcePrice: number | null, candidatePrice: number | null): number {
+  if (!sourcePrice || !candidatePrice || sourcePrice <= 0 || candidatePrice <= 0) return 0.5;
   const logRatio = Math.abs(Math.log10(sourcePrice / candidatePrice));
   return Math.max(0, 1 - logRatio);
 }
 
 /** Signal 5: Tag overlap with IDF weighting */
-function weightedJaccard(
-  sourceTags: string[] | null,
-  candidateTags: string[] | null,
-): number {
+function weightedJaccard(sourceTags: string[] | null, candidateTags: string[] | null): number {
   if (!sourceTags?.length || !candidateTags?.length) return 0;
 
   const set1 = new Set(sourceTags.map((t) => t.toLowerCase()));
@@ -154,10 +137,7 @@ function computeSignalScores(
   return {
     semantic: semanticSimilarity(candidate.cosine_similarity),
     image: imageSimilarity(sourceImageEmbedding, candidate.image_embedding),
-    tags: weightedJaccard(
-      source.tags as string[] | null,
-      snap.tags as string[] | null,
-    ),
+    tags: weightedJaccard(source.tags as string[] | null, snap.tags as string[] | null),
     price: priceProximity(
       source.targetPrice ? Number(source.targetPrice) : null,
       snap.targetPrice ? Number(snap.targetPrice) : null,
@@ -238,15 +218,11 @@ export async function findSimilarListings(
   const embeddingStr = `[${sourceEmbedding.join(",")}]`;
 
   // Build exclusion clauses
-  const userFilter = userId
-    ? sql`AND ld.user_id IS DISTINCT FROM ${userId}`
-    : sql``;
+  const userFilter = userId ? sql`AND ld.user_id IS DISTINCT FROM ${userId}` : sql``;
 
   // Dashboard mode: no source listing to exclude
   const listingFilter =
-    publishedListingId === "__none__"
-      ? sql``
-      : sql`AND lp.id != ${publishedListingId}`;
+    publishedListingId === "__none__" ? sql`` : sql`AND lp.id != ${publishedListingId}`;
 
   // Exclude already-viewed listings (only for dashboard recommendations)
   const viewedFilter =
@@ -309,11 +285,7 @@ export async function findSimilarListings(
 
   // Stage 2: Multi-signal scoring
   let scored: ScoredCandidate[] = rows.map((candidate) => {
-    const scores = computeSignalScores(
-      sourceSnapshot,
-      candidate,
-      sourceImageEmbedding,
-    );
+    const scores = computeSignalScores(sourceSnapshot, candidate, sourceImageEmbedding);
     const compositeScore = computeCompositeScore(scores, weights);
     return { candidate, scores, compositeScore };
   });
@@ -431,9 +403,7 @@ export async function getSimilarListingsForPublicId(
       condition: (snap.condition as string) || null,
       photoUrl: (snap.photoUrl as string) || null,
       targetPrice: snap.targetPrice ? String(snap.targetPrice) : null,
-      sellingDeadline: snap.sellingDeadline
-        ? String(snap.sellingDeadline)
-        : null,
+      sellingDeadline: snap.sellingDeadline ? String(snap.sellingDeadline) : null,
       similarityScore: Math.round(compositeScore * 100) / 100,
       matchReasons: generateMatchReasons(scores),
       logId: logRow.id,
@@ -638,29 +608,20 @@ export async function getDashboardRecommendations(
   // Most common category
   const categoryCounts: Record<string, number> = {};
   for (const r of viewedRows) {
-    if (r.category)
-      categoryCounts[r.category] = (categoryCounts[r.category] ?? 0) + 1;
+    if (r.category) categoryCounts[r.category] = (categoryCounts[r.category] ?? 0) + 1;
   }
-  const topCategory =
-    Object.entries(categoryCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  const topCategory = Object.entries(categoryCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 
   // Most common condition
   const conditionCounts: Record<string, number> = {};
   for (const r of viewedRows) {
-    if (r.condition)
-      conditionCounts[r.condition] = (conditionCounts[r.condition] ?? 0) + 1;
+    if (r.condition) conditionCounts[r.condition] = (conditionCounts[r.condition] ?? 0) + 1;
   }
-  const topCondition =
-    Object.entries(conditionCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  const topCondition = Object.entries(conditionCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 
   // Average price
-  const prices = viewedRows
-    .map((r) => Number(r.target_price))
-    .filter((p) => p > 0);
-  const avgPrice =
-    prices.length > 0
-      ? prices.reduce((a, b) => a + b, 0) / prices.length
-      : null;
+  const prices = viewedRows.map((r) => Number(r.target_price)).filter((p) => p > 0);
+  const avgPrice = prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : null;
 
   // Merged tags
   const allTags = viewedRows.flatMap((r) => r.tags ?? []);
@@ -674,7 +635,7 @@ export async function getDashboardRecommendations(
   };
 
   // Cross-category, exclude already viewed
-  let results = await findSimilarListings(
+  const results = await findSimilarListings(
     db,
     "__none__",
     syntheticSnapshot,
@@ -702,8 +663,9 @@ export async function getDashboardRecommendations(
       LIMIT 4
     `);
     const recentIds = new Set(
-      (recentlyViewedIds as unknown as Array<{ published_listing_id: string }>)
-        .map((r) => r.published_listing_id),
+      (recentlyViewedIds as unknown as Array<{ published_listing_id: string }>).map(
+        (r) => r.published_listing_id,
+      ),
     );
     const existingIds = new Set(results.map((r) => r.candidate.id));
 
@@ -757,9 +719,7 @@ export async function getDashboardRecommendations(
       condition: (snap.condition as string) || null,
       photoUrl: (snap.photoUrl as string) || null,
       targetPrice: snap.targetPrice ? String(snap.targetPrice) : null,
-      sellingDeadline: snap.sellingDeadline
-        ? String(snap.sellingDeadline)
-        : null,
+      sellingDeadline: snap.sellingDeadline ? String(snap.sellingDeadline) : null,
       similarityScore: Math.round(compositeScore * 100) / 100,
       matchReasons: generateMatchReasons(scores),
       logId: logRow.id,

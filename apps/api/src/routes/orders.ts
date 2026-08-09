@@ -1,17 +1,17 @@
+import { and, commerceOrders, type Database, desc, eq, or, sql } from "@haggle/db";
+import { buyerConfirmReceipt, computeReleasePhase } from "@haggle/payment-core";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { type Database, commerceOrders, eq, or, and, desc, sql } from "@haggle/db";
-import { buyerConfirmReceipt, computeReleasePhase } from "@haggle/payment-core";
-import { requireAuth } from "../middleware/require-auth.js";
 import { createOwnershipMiddleware } from "../middleware/ownership.js";
-import {
-  getSettlementReleaseByOrderId,
-  updateSettlementReleaseRecord,
-} from "../services/settlement-release.service.js";
+import { requireAuth } from "../middleware/require-auth.js";
 import {
   getCommerceOrderByOrderId,
   updateCommerceOrderStatus,
 } from "../services/payment-record.service.js";
+import {
+  getSettlementReleaseByOrderId,
+  updateSettlementReleaseRecord,
+} from "../services/settlement-release.service.js";
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -50,21 +50,21 @@ export function registerOrderRoutes(app: FastifyInstance, db: Database) {
     const { role, status, limit, offset } = parsed.data;
 
     // Build WHERE condition based on role filter
-    let roleCondition;
+    let roleCondition: ReturnType<typeof or>;
     if (role === "buyer") {
       roleCondition = eq(commerceOrders.buyerId, userId);
     } else if (role === "seller") {
       roleCondition = eq(commerceOrders.sellerId, userId);
     } else {
-      roleCondition = or(
-        eq(commerceOrders.buyerId, userId),
-        eq(commerceOrders.sellerId, userId),
-      );
+      roleCondition = or(eq(commerceOrders.buyerId, userId), eq(commerceOrders.sellerId, userId));
     }
 
     // Add optional status filter
     const whereCondition = status
-      ? and(roleCondition, eq(commerceOrders.status, status as typeof commerceOrders.status.enumValues[number]))
+      ? and(
+          roleCondition,
+          eq(commerceOrders.status, status as (typeof commerceOrders.status.enumValues)[number]),
+        )
       : roleCondition;
 
     // Count total
@@ -160,7 +160,8 @@ export function registerOrderRoutes(app: FastifyInstance, db: Database) {
 
       // --- Load order (already verified by ownership middleware) ---
       const order = (request as unknown as Record<string, unknown>).orderResource as
-        { id: string; buyerId: string; sellerId: string; status: string } | undefined;
+        | { id: string; buyerId: string; sellerId: string; status: string }
+        | undefined;
       if (!order) {
         // Fallback — should not happen if middleware ran
         return reply.code(404).send({ error: "ORDER_NOT_FOUND" });

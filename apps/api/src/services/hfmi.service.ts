@@ -9,12 +9,7 @@
  * See docs/mvp/2026-04-08_hfmi-spec.md §3.2, §8.1.
  */
 
-import {
-  type Database,
-  hfmiModelCoefficients,
-  hfmiPriceObservations,
-  sql,
-} from "@haggle/db";
+import { type Database, hfmiModelCoefficients, hfmiPriceObservations, sql } from "@haggle/db";
 
 // ─── Public types ─────────────────────────────────────────────────────
 
@@ -60,10 +55,7 @@ const DEFAULT_BATTERY_HEALTH = 90;
 
 // ─── Main query ───────────────────────────────────────────────────────
 
-export async function getHfmiMedian(
-  db: Database,
-  input: HfmiQueryInput,
-): Promise<HfmiQueryResult> {
+export async function getHfmiMedian(db: Database, input: HfmiQueryInput): Promise<HfmiQueryResult> {
   const row = await loadLatestCoefficients(db, input.model);
   if (!row) {
     throw new HfmiUnavailableError("no_fresh_fit");
@@ -182,8 +174,7 @@ export async function getMedianPrice(
   const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
   // Build optional filter fragments
-  const storageClause =
-    storage !== undefined ? sql` AND storage_gb = ${storage}` : sql``;
+  const storageClause = storage !== undefined ? sql` AND storage_gb = ${storage}` : sql``;
   const conditionClause =
     condition === "A" || condition === "B" || condition === "C"
       ? sql` AND cosmetic_grade = ${condition}`

@@ -1,14 +1,8 @@
 import { createHash } from "node:crypto";
+import { type Database, eq, listingEmbeddings, sql } from "@haggle/db";
 import OpenAI from "openai";
 import Replicate from "replicate";
-import {
-  type Database,
-  listingsPublished,
-  listingEmbeddings,
-  eq,
-  sql,
-} from "@haggle/db";
-import { withLLMTelemetry, usageExtractors } from "../lib/llm-telemetry.js";
+import { usageExtractors, withLLMTelemetry } from "../lib/llm-telemetry.js";
 import {
   getPriceBand as _getPriceBand,
   resolveEmbeddingBuilder,
@@ -71,9 +65,7 @@ export async function generateTextEmbedding(text: string): Promise<number[]> {
 // ─── Image Embedding Generation (Replicate CLIP) ───────
 
 /** Call Replicate CLIP API to convert an image URL into a 512-dim vector. */
-export async function generateImageEmbedding(
-  imageUrl: string,
-): Promise<number[]> {
+export async function generateImageEmbedding(imageUrl: string): Promise<number[]> {
   const output = await withLLMTelemetry(
     {
       service: "replicate.clip",
@@ -177,8 +169,7 @@ export async function generateAndStoreEmbedding(
     .where(eq(listingEmbeddings.publishedListingId, publishedListingId))
     .limit(1);
 
-  if (existing[0]?.textHash === hash && existing[0]?.status === "completed")
-    return;
+  if (existing[0]?.textHash === hash && existing[0]?.status === "completed") return;
 
   try {
     const textEmbedding = await generateTextEmbedding(input);

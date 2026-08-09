@@ -23,16 +23,13 @@
  */
 
 import { createHash } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
-import {
-  gatherTagCandidates,
-  type TagCandidate,
-} from "./tag-candidate.service.js";
+import { type Database, sql } from "@haggle/db";
+import { gatherTagCandidates, type TagCandidate } from "./tag-candidate.service.js";
 import { pruneAncestorsFromSet } from "./tag-graph.service.js";
 import {
+  type ProposedTag,
   placeTagsWithLlm,
   TAG_PLACEMENT_MODEL_DEFAULT,
-  type ProposedTag,
 } from "./tag-placement-llm.service.js";
 
 // ─── Public types ────────────────────────────────────────────────────
@@ -139,7 +136,8 @@ export async function queueProposedTags(
 
   // Dedup by normalized label, drop empties.
   const seen = new Set<string>();
-  const deduped: Array<{ label: string; normalized: string; category: string; reason: string }> = [];
+  const deduped: Array<{ label: string; normalized: string; category: string; reason: string }> =
+    [];
   for (const tag of proposed) {
     if (typeof tag?.label !== "string") continue;
     const normalized = tag.label.trim().toLowerCase().replace(/\s+/g, "-");
@@ -201,8 +199,7 @@ export async function placeListingTags(
   input: PlacementInput,
   options: PlaceListingTagsOptions = {},
 ): Promise<PlacementResult> {
-  const { bypassCache = false, maxCandidates = DEFAULT_MAX_CANDIDATES } =
-    options;
+  const { bypassCache = false, maxCandidates = DEFAULT_MAX_CANDIDATES } = options;
   const startedAt = Date.now();
   const trace: PlacementTrace = {
     cacheHit: false,
@@ -222,8 +219,7 @@ export async function placeListingTags(
     },
   };
 
-  const modelVersion =
-    process.env.TAG_PLACEMENT_MODEL || TAG_PLACEMENT_MODEL_DEFAULT;
+  const modelVersion = process.env.TAG_PLACEMENT_MODEL || TAG_PLACEMENT_MODEL_DEFAULT;
 
   const finish = (result: Omit<PlacementResult, "trace">): PlacementResult => {
     trace.latencyMs.total = Math.max(1, Date.now() - startedAt);
@@ -313,7 +309,7 @@ export async function placeListingTags(
   // ── L4+L5+L6: LLM call ──────────────────────────────────────────
   trace.usedLlm = true;
   const t2 = Date.now();
-  let llmResult;
+  let llmResult: Awaited<ReturnType<typeof placeTagsWithLlm>> | undefined;
   try {
     llmResult = await placeTagsWithLlm({
       title: input.title,
@@ -345,9 +341,7 @@ export async function placeListingTags(
     trace.llmOk = false;
     trace.llmError = llmResult.error.code;
     trace.fallbackUsed = true;
-    selectedIds = filtered
-      .slice(0, Math.min(FALLBACK_TAKE, filtered.length))
-      .map((c) => c.id);
+    selectedIds = filtered.slice(0, Math.min(FALLBACK_TAKE, filtered.length)).map((c) => c.id);
     reasoning = `fallback: ${llmResult.error.code}`;
   }
 
@@ -381,11 +375,7 @@ export async function placeListingTags(
   }
 
   if (proposedTags.length > 0) {
-    trace.suggestionsQueued = await queueProposedTags(
-      db,
-      proposedTags,
-      input.listingId ?? null,
-    );
+    trace.suggestionsQueued = await queueProposedTags(db, proposedTags, input.listingId ?? null);
   }
   trace.latencyMs.persist = Date.now() - t4;
 

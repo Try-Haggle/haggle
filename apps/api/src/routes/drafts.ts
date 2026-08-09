@@ -1,4 +1,5 @@
 import { type Database, eq, listingDrafts } from "@haggle/db";
+import { enrichTagsWithTaxonomy } from "@haggle/shared";
 import type { FastifyInstance } from "fastify";
 import { requireAuth } from "../middleware/require-auth.js";
 import { getNotificationUserInfo } from "../notification/get-user-info.js";
@@ -96,28 +97,53 @@ export function registerDraftRoutes(
     }
 
     const { autoDetectListing } = await import("../services/listing-auto-detect.service.js");
+    // Belt-and-braces: autoDetectListing is contractually non-throwing, but tag enrichment
+    // below is the part that actually matters, so an unexpected throw must not 500 either.
     const result = await autoDetectListing({
       photoUrl: draft.photoUrl,
       title: draft.title,
       description: draft.description ?? null,
+    }).catch((err) => {
+      request.log.warn({ err }, "auto-detect vision failed; continuing with tag enrichment");
+      return { ok: false as const, error: { code: "OPENAI_ERROR" as const, message: String(err) } };
     });
 
-    if (!result.ok) {
-      return reply.status(500).send({ ok: false, error: result.error.message });
-    }
-
-    // Merge tags into draft and persist subtype
+    // Vision output is ADVISORY. The taxonomy enrichment below is what the criteria /
+    // PAUSE system actually needs (an item-type tag), and it is derived deterministically
+    // from the listing's own text — so a vision outage (unreachable image, missing key,
+    // provider error) must NOT block tagging. Degrade instead of failing.
     const existingTags: string[] = Array.isArray(draft.tags) ? (draft.tags as string[]) : [];
     const mergedTags = [...existingTags];
-    for (const t of result.tags) if (!mergedTags.includes(t)) mergedTags.push(t);
+    if (result.ok) {
+      for (const t of result.tags) if (!mergedTags.includes(t)) mergedTags.push(t);
+    }
+
+    // Deterministic item-type inference from the TITLE ONLY. Vision emits descriptive
+    // attributes ("256gb", "space-black"); the taxonomy is keyed by what the item IS.
+    // Descriptions are deliberately excluded: prose like "I saw no dead pixel, kept on my
+    // desk, pet-free home" contains taxonomy vocabulary that would attach unrelated HARD
+    // safety gates (a monitor demanding an IMEI). The title names the item; the body doesn't.
+    const { tags: enrichedTags, inferred } = enrichTagsWithTaxonomy(mergedTags, draft.title);
 
     const existingConfig = (draft.negotiationAgentSnapshot ?? {}) as Record<string, unknown>;
     await patchDraft(db, id, {
-      tags: mergedTags,
-      negotiationAgentSnapshot: { ...existingConfig, subtype: result.subtype },
+      tags: enrichedTags,
+      ...(result.ok
+        ? { negotiationAgentSnapshot: { ...existingConfig, subtype: result.subtype } }
+        : {}),
     });
 
-    return reply.send({ ok: true, subtype: result.subtype, tags: mergedTags });
+    return reply.send({
+      ok: true,
+      // Omitted (not null) on vision failure so the client cannot clobber a previously
+      // detected subtype — `null` would overwrite it and drop the subtype-specific step.
+      ...(result.ok ? { subtype: result.subtype } : {}),
+      tags: enrichedTags,
+      /** Tags the taxonomy inference added — lets the wizard show what was auto-derived. */
+      inferred,
+      /** False when the vision pass failed; tags are still enriched deterministically. */
+      visionOk: result.ok,
+    });
   });
 
   // POST /api/drafts/:id/validate — pre-publish validation
