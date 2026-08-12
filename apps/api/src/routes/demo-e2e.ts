@@ -17,6 +17,7 @@ import {
   getPaymentIntentByOrderId,
 } from "../services/payment-record.service.js";
 import { getShipmentByOrderId } from "../services/shipment-record.service.js";
+import { shipmentForViewer } from "../services/shipment-response.service.js";
 
 const createDemoOrderSchema = z.object({
   amount_minor: z.number().int().positive().default(45000),
@@ -168,7 +169,7 @@ export function registerDemoE2ERoutes(app: FastifyInstance, db: Database) {
         item_title: (order.orderSnapshot as Record<string, unknown>)?.item_title ?? null,
       },
       payment,
-      shipment,
+      shipment: shipment ? shipmentForViewer(shipment, request.user) : null,
       dispute,
     });
   });

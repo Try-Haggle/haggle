@@ -112,6 +112,7 @@ import {
   syncSubmittedShipmentLabelRefund,
   updateShipmentRecord,
 } from "../services/shipment-record.service.js";
+import { shipmentForViewer } from "../services/shipment-response.service.js";
 import { consumeShippingRateMissBudget } from "../services/shipping-rate-limit.service.js";
 import { applyTrustTriggers } from "../services/trust-ledger.service.js";
 import {
@@ -1196,7 +1197,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
       if (!shipment) {
         return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
       }
-      return reply.send({ shipment });
+      return reply.send({ shipment: shipmentForViewer(shipment, request.user) });
     },
   );
 
@@ -1217,7 +1218,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
           .send({ error: "FORBIDDEN", message: "You do not have access to this resource" });
       }
     }
-    return reply.send({ shipment });
+    return reply.send({ shipment: shipmentForViewer(shipment, request.user) });
   });
 
   app.get(

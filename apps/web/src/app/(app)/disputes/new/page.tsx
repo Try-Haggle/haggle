@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { Alert, BackLink, Button, Field, Input, Select, Textarea } from "@/components/ui";
 import { api } from "@/lib/api-client";
+import { clearSessionDraft, readSessionDraft, writeSessionDraft } from "@/lib/session-draft";
 
 interface EligibilityReason {
   code: string;
@@ -22,6 +23,17 @@ interface DisputeEligibility {
   reasons: EligibilityReason[];
 }
 
+interface NewDisputeDraft {
+  reasonCode: string;
+  description: string;
+}
+
+function isNewDisputeDraft(value: unknown): value is NewDisputeDraft {
+  if (!value || typeof value !== "object") return false;
+  const draft = value as Partial<NewDisputeDraft>;
+  return typeof draft.reasonCode === "string" && typeof draft.description === "string";
+}
+
 function NewDisputeForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -33,6 +45,27 @@ function NewDisputeForm() {
   const [checking, setChecking] = useState(false);
   const [eligibility, setEligibility] = useState<DisputeEligibility | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
+  const sourceOrderId = searchParams.get("orderId")?.trim() ?? "";
+  const draftKey = `haggle:new-dispute-draft:${sourceOrderId || "new"}`;
+
+  useEffect(() => {
+    const draft = readSessionDraft(draftKey, isNewDisputeDraft);
+    if (draft) {
+      setReasonCode(draft.reasonCode);
+      setDescription(draft.description);
+    }
+    setDraftReady(true);
+  }, [draftKey]);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    if (!reasonCode && !description) {
+      clearSessionDraft(draftKey);
+      return;
+    }
+    writeSessionDraft(draftKey, { reasonCode, description } satisfies NewDisputeDraft);
+  }, [description, draftKey, draftReady, reasonCode]);
 
   useEffect(() => {
     const oid = searchParams.get("orderId");
@@ -110,6 +143,7 @@ function NewDisputeForm() {
           client_request_id: crypto.randomUUID(),
         },
       );
+      clearSessionDraft(draftKey);
       router.push(`/disputes/${result.dispute.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to open dispute");
@@ -119,8 +153,11 @@ function NewDisputeForm() {
 
   return (
     <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-xl mx-auto">
-      <BackLink href="/buy/dashboard" className="mb-6">
-        Dashboard
+      <BackLink
+        href={orderId.trim() ? `/orders/${encodeURIComponent(orderId.trim())}` : "/orders"}
+        className="mb-6"
+      >
+        {orderId.trim() ? "Back to order" : "All orders"}
       </BackLink>
 
       <div className="mb-6">

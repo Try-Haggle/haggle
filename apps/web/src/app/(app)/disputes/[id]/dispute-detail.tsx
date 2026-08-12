@@ -16,6 +16,7 @@ import {
   Textarea,
 } from "@/components/ui";
 import { api } from "@/lib/api-client";
+import { clearSessionDraft, readSessionDraft, writeSessionDraft } from "@/lib/session-draft";
 import { AdvisorChat } from "./_components/advisor-chat";
 import type { Dispute, DisputeEvidence } from "./page";
 
@@ -26,6 +27,24 @@ const EVIDENCE_TYPES = [
   { value: "payment_proof", label: "Payment Proof" },
   { value: "other", label: "Other" },
 ] as const;
+
+type EvidenceType = (typeof EVIDENCE_TYPES)[number]["value"];
+
+interface EvidenceDraft {
+  evidenceType: EvidenceType;
+  evidenceText: string;
+  evidenceUri: string;
+}
+
+function isEvidenceDraft(value: unknown): value is EvidenceDraft {
+  if (!value || typeof value !== "object") return false;
+  const draft = value as Partial<EvidenceDraft>;
+  return (
+    EVIDENCE_TYPES.some((type) => type.value === draft.evidenceType) &&
+    typeof draft.evidenceText === "string" &&
+    typeof draft.evidenceUri === "string"
+  );
+}
 
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
@@ -370,9 +389,7 @@ export function DisputeDetail({
   amountMinor?: number | null;
 }) {
   const [dispute, setDispute] = useState<Dispute>(initialDispute);
-  const [evidenceType, setEvidenceType] = useState<
-    "text" | "image" | "tracking_snapshot" | "payment_proof" | "other"
-  >("text");
+  const [evidenceType, setEvidenceType] = useState<EvidenceType>("text");
   const [evidenceText, setEvidenceText] = useState("");
   const [evidenceUri, setEvidenceUri] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -382,6 +399,31 @@ export function DisputeDetail({
   const [depositRail, setDepositRail] = useState<"usdc" | "stripe">("usdc");
   const [depositWallet, setDepositWallet] = useState("");
   const [depositCollection, setDepositCollection] = useState<DepositCollection | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
+  const draftKey = `haggle:dispute-evidence-draft:${dispute.id}:${userRole}`;
+
+  useEffect(() => {
+    const draft = readSessionDraft(draftKey, isEvidenceDraft);
+    if (draft) {
+      setEvidenceType(draft.evidenceType);
+      setEvidenceText(draft.evidenceText);
+      setEvidenceUri(draft.evidenceUri);
+    }
+    setDraftReady(true);
+  }, [draftKey]);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    if (evidenceType === "text" && !evidenceText && !evidenceUri) {
+      clearSessionDraft(draftKey);
+      return;
+    }
+    writeSessionDraft(draftKey, {
+      evidenceType,
+      evidenceText,
+      evidenceUri,
+    } satisfies EvidenceDraft);
+  }, [draftKey, draftReady, evidenceText, evidenceType, evidenceUri]);
 
   const isResolved =
     dispute.status === "RESOLVED_BUYER_FAVOR" ||
@@ -441,6 +483,7 @@ export function DisputeDetail({
       setDispute(result.dispute);
       setEvidenceText("");
       setEvidenceUri("");
+      clearSessionDraft(draftKey);
       setSuccess("Evidence submitted successfully");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to submit evidence");
@@ -519,8 +562,8 @@ export function DisputeDetail({
 
   return (
     <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-3xl mx-auto">
-      <BackLink href="/disputes" className="mb-6">
-        All Disputes
+      <BackLink href={`/orders/${dispute.order_id}`} className="mb-6">
+        Back to order
       </BackLink>
 
       {/* Header with role-based accent */}

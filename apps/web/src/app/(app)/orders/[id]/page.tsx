@@ -21,6 +21,7 @@ import { cn } from "@/lib/cn";
 import { confirmConditionalSettlementFunding } from "@/lib/conditional-settlement-confirmation";
 import { confirmConditionalSettlementRelease } from "@/lib/conditional-settlement-release-confirmation";
 import { createPaymentDisclosureAck } from "@/lib/payment-disclosure";
+import { clearSessionDraft, readSessionDraft, writeSessionDraft } from "@/lib/session-draft";
 import { createShipmentMutationHeaders } from "@/lib/shipment-idempotency";
 import { canManageSellerShipping, SellerShippingGate } from "@/lib/shipping-role";
 import { createClient } from "@/lib/supabase/client";
@@ -241,6 +242,43 @@ const EMPTY_ADDRESS_FORM: AddressFormState = {
   phone: "",
   email: "",
 };
+
+function hasStringFields(value: unknown, fields: string[]): value is Record<string, string> {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return fields.every((field) => typeof record[field] === "string");
+}
+
+function isShippingFormState(value: unknown): value is ShippingFormState {
+  if (!value || typeof value !== "object") return false;
+  const form = value as Partial<ShippingFormState>;
+  return (
+    hasStringFields(form.fromAddress, [
+      "name",
+      "street1",
+      "street2",
+      "city",
+      "state",
+      "zip",
+      "country",
+      "phone",
+    ]) && hasStringFields(form.parcel, ["length_in", "width_in", "height_in", "weight_oz"])
+  );
+}
+
+function isAddressFormState(value: unknown): value is AddressFormState {
+  return hasStringFields(value, [
+    "name",
+    "street1",
+    "street2",
+    "city",
+    "state",
+    "zip",
+    "country",
+    "phone",
+    "email",
+  ]);
+}
 
 function formatCurrency(minor: number, currency = "USD") {
   return new Intl.NumberFormat("en-US", {
@@ -577,36 +615,38 @@ function ShippingSection({
         )}
 
         {(shipment.label_url || shipment.label_qr_code_url) && (
-          <div className="border-t border-line pt-3 mt-3">
-            <p className="text-xs text-ink-muted uppercase tracking-wider mb-2">Print options</p>
-            <div className="flex flex-wrap gap-2">
-              {shipment.label_url && (
-                <a
-                  href={shipment.label_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={buttonVariants({ variant: "secondary", size: "sm" })}
-                >
-                  Download label
-                </a>
-              )}
+          <SellerShippingGate isSeller={isSeller} fallback={null}>
+            <div className="border-t border-line pt-3 mt-3">
+              <p className="text-xs text-ink-muted uppercase tracking-wider mb-2">Print options</p>
+              <div className="flex flex-wrap gap-2">
+                {shipment.label_url && (
+                  <a
+                    href={shipment.label_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={buttonVariants({ variant: "secondary", size: "sm" })}
+                  >
+                    Download label
+                  </a>
+                )}
+                {shipment.label_qr_code_url && (
+                  <a
+                    href={shipment.label_qr_code_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={buttonVariants({ variant: "primary", size: "sm" })}
+                  >
+                    Show USPS QR
+                  </a>
+                )}
+              </div>
               {shipment.label_qr_code_url && (
-                <a
-                  href={shipment.label_qr_code_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={buttonVariants({ variant: "primary", size: "sm" })}
-                >
-                  Show USPS QR
-                </a>
+                <p className="mt-2 text-xs text-ink-muted">
+                  No printer needed: bring the packed item and QR code to a supported USPS location.
+                </p>
               )}
             </div>
-            {shipment.label_qr_code_url && (
-              <p className="mt-2 text-xs text-ink-muted">
-                No printer needed: bring the packed item and QR code to a supported USPS location.
-              </p>
-            )}
-          </div>
+          </SellerShippingGate>
         )}
 
         {shipment.status === "LABEL_PENDING" && (
@@ -1419,6 +1459,27 @@ function OrderDetailContent() {
   const [addressForm, setAddressForm] = useState<AddressFormState>(EMPTY_ADDRESS_FORM);
   const [orderAddresses, setOrderAddresses] = useState<Record<string, OrderAddress>>({});
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [draftsReady, setDraftsReady] = useState(false);
+  const shippingDraftKey = `haggle:shipping-draft:${orderId}`;
+  const addressDraftKey = `haggle:buyer-address-draft:${orderId}`;
+
+  useEffect(() => {
+    const savedShipping = readSessionDraft(shippingDraftKey, isShippingFormState);
+    const savedAddress = readSessionDraft(addressDraftKey, isAddressFormState);
+    if (savedShipping) setShippingForm(savedShipping);
+    if (savedAddress) setAddressForm(savedAddress);
+    setDraftsReady(true);
+  }, [addressDraftKey, shippingDraftKey]);
+
+  useEffect(() => {
+    if (!draftsReady) return;
+    writeSessionDraft(shippingDraftKey, shippingForm);
+  }, [draftsReady, shippingDraftKey, shippingForm]);
+
+  useEffect(() => {
+    if (!draftsReady) return;
+    writeSessionDraft(addressDraftKey, addressForm);
+  }, [addressDraftKey, addressForm, draftsReady]);
 
   const addLog = useCallback(
     (action: string, detail: string, status: "success" | "error" | "info" = "info") => {
@@ -1893,6 +1954,7 @@ function OrderDetailContent() {
       );
       setState((s) => ({ ...s, shipment: result.shipment }));
       setShippingRates([]);
+      clearSessionDraft(shippingDraftKey);
       addLog(
         "Shipping",
         `Label purchased${result.tracking_number ? `: ${result.tracking_number}` : ""}`,
@@ -1928,6 +1990,7 @@ function OrderDetailContent() {
         email: addressForm.email || undefined,
       });
       await loadOrderAddresses();
+      clearSessionDraft(addressDraftKey);
       addLog("Shipping", "Delivery address saved", "success");
     } catch (err) {
       addLog("Shipping", err instanceof Error ? err.message : "Address save failed", "error");

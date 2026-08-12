@@ -30,6 +30,18 @@ describe("seller shipping controls", () => {
     ).toBeInTheDocument();
   });
 
+  it("does not render label or QR links for a buyer", () => {
+    render(
+      <SellerShippingGate isSeller={false} fallback={null}>
+        <a href="https://labels.test/label.pdf">Download label</a>
+        <a href="https://labels.test/qr.png">Show USPS QR</a>
+      </SellerShippingGate>,
+    );
+
+    expect(screen.queryByRole("link", { name: "Download label" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Show USPS QR" })).not.toBeInTheDocument();
+  });
+
   it("renders seller actions for the assigned seller", () => {
     render(
       <SellerShippingGate isSeller fallback={<p>Waiting for seller.</p>}>

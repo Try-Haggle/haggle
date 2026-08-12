@@ -447,6 +447,49 @@ describe("commerce security boundaries", () => {
     expect(res.json().error).toBe("FORBIDDEN");
   });
 
+  it("does not expose outbound label assets in a buyer's demo order response", async () => {
+    mockGetCommerceOrderByOrderId.mockResolvedValueOnce({
+      id: "order_buyer_view",
+      buyerId: "test-user-001",
+      sellerId: "seller-001",
+      status: "FULFILLMENT_ACTIVE",
+      amountMinor: "1000",
+      currency: "USD",
+      createdAt: new Date(),
+      orderSnapshot: {},
+    } as never);
+    mockGetPaymentIntentByOrderId.mockResolvedValueOnce(null);
+    mockGetShipmentByOrderId.mockResolvedValueOnce({
+      id: "shipment_buyer_view",
+      order_id: "order_buyer_view",
+      buyer_id: "test-user-001",
+      seller_id: "seller-001",
+      shipment_type: "outbound",
+      status: "LABEL_CREATED",
+      carrier: "USPS",
+      tracking_number: "TRACK123",
+      label_url: "https://labels.test/outbound.pdf",
+      label_qr_code_url: "https://labels.test/outbound-qr.png",
+      label_qr_code_available: true,
+      metadata: { label_qr_code_url: "https://labels.test/outbound-qr.png" },
+      events: [],
+    } as never);
+    mockGetDisputeByOrderId.mockResolvedValueOnce(null);
+    app = await buildApp();
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/demo/e2e/order/order_buyer_view",
+      headers: AUTH_HEADERS,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().shipment).toMatchObject({ tracking_number: "TRACK123" });
+    expect(res.json().shipment).not.toHaveProperty("label_url");
+    expect(res.json().shipment).not.toHaveProperty("label_qr_code_url");
+    expect(res.json().shipment.metadata).not.toHaveProperty("label_qr_code_url");
+  });
+
   it("rejects demo order creation for non-admin users in production", async () => {
     process.env.VERCEL_ENV = "production";
     process.env.SUPABASE_JWT_SECRET = "test-secret";

@@ -4,6 +4,7 @@ import { formatMoney } from "@haggle/shared";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import {
   CheckCircle2,
+  ChevronLeft,
   CreditCard,
   ExternalLink,
   FlaskConical,
@@ -12,7 +13,7 @@ import {
   WalletCards,
 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Address, Hex } from "viem";
 import {
   useAccount,
@@ -35,6 +36,7 @@ import { api } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
 import { confirmConditionalSettlementFunding } from "@/lib/conditional-settlement-confirmation";
 import { createPaymentDisclosureAck } from "@/lib/payment-disclosure";
+import { clearSessionDraft, readSessionDraft, writeSessionDraft } from "@/lib/session-draft";
 import {
   assertConditionalSettlementTarget,
   HAGGLE_SETTLEMENT_ASSET,
@@ -89,6 +91,22 @@ const CONDITIONAL_SETTLEMENT_ABI = [
 
 type PaymentMethod = "crypto" | "card";
 type ShippingExecutionMode = "integration_manual" | "physical_live";
+
+interface CheckoutDraft {
+  method: PaymentMethod | null;
+  shippingExecutionMode: ShippingExecutionMode | null;
+}
+
+function isCheckoutDraft(value: unknown): value is CheckoutDraft {
+  if (!value || typeof value !== "object") return false;
+  const draft = value as Partial<CheckoutDraft>;
+  return (
+    (draft.method === null || draft.method === "crypto" || draft.method === "card") &&
+    (draft.shippingExecutionMode === null ||
+      draft.shippingExecutionMode === "integration_manual" ||
+      draft.shippingExecutionMode === "physical_live")
+  );
+}
 
 type PaymentStepStatus =
   | "select_method"
@@ -244,6 +262,46 @@ export function PaymentStep({
   const [conditionalSettlement, setConditionalSettlement] =
     useState<ConditionalSettlementRequest | null>(null);
   const [quoteConfirmation, setQuoteConfirmation] = useState<QuoteConfirmation | null>(null);
+  const [isUsdcApproved, setIsUsdcApproved] = useState(false);
+  const [draftReady, setDraftReady] = useState(false);
+  const draftKey = `haggle:checkout-draft:${settlementApprovalId}`;
+
+  useEffect(() => {
+    const draft = readSessionDraft(draftKey, isCheckoutDraft);
+    if (draft) {
+      setMethod(draft.method);
+      setShippingExecutionMode(
+        requiresShipping ? draft.shippingExecutionMode : "integration_manual",
+      );
+    }
+    setDraftReady(true);
+  }, [draftKey, requiresShipping]);
+
+  useEffect(() => {
+    if (!draftReady || step === "complete") return;
+    writeSessionDraft(draftKey, { method, shippingExecutionMode } satisfies CheckoutDraft);
+  }, [draftKey, draftReady, method, shippingExecutionMode, step]);
+
+  function handleBack() {
+    setError(null);
+    if (step === "connect_wallet") {
+      setStep("select_method");
+      return;
+    }
+    if (step === "check_balance") {
+      setStep("connect_wallet");
+      return;
+    }
+    if (step === "approve_usdc") {
+      setStep("check_balance");
+      return;
+    }
+    if (step === "sign_x402") {
+      setStep("approve_usdc");
+      return;
+    }
+    setStep("select_method");
+  }
 
   const fallbackAmount: Money = { currency, amount_minor: amountMinor };
   const buyerPayable = quoteConfirmation?.buyer_total ?? fallbackAmount;
@@ -273,6 +331,16 @@ export function PaymentStep({
       ? "Buyer pays the Stripe onramp fee. Haggle fee is deducted from seller proceeds."
       : "No buyer fee. Haggle fee is deducted from seller proceeds.");
   const isWrongNetwork = isConnected && chainId !== HAGGLE_WALLET_CHAIN_ID;
+  const hasPreparedPayment = paymentIntentId !== null;
+
+  async function handleResumePreparedPayment() {
+    if (!paymentIntentId || !method) return;
+    if (method === "card") {
+      await handleStripeOnramp(paymentIntentId);
+      return;
+    }
+    setStep("check_balance");
+  }
 
   function assertExpectedWalletNetwork() {
     if (chainId !== HAGGLE_WALLET_CHAIN_ID) {
@@ -402,6 +470,7 @@ export function PaymentStep({
       if (approvalReceipt.status !== "success") {
         throw new Error("USDC approval transaction failed.");
       }
+      setIsUsdcApproved(true);
       setStep("sign_x402");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -471,6 +540,7 @@ export function PaymentStep({
           session.mount("#stripe-onramp-element");
           session.addEventListener("onramp_session_updated", (event) => {
             if (event.payload.session.status === "fulfillment_complete") {
+              clearSessionDraft(draftKey);
               setStep("complete");
             }
           });
@@ -527,6 +597,7 @@ export function PaymentStep({
         },
       );
       await confirmConditionalSettlementFunding(paymentIntentId);
+      clearSessionDraft(draftKey);
       setStep("complete");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -536,7 +607,7 @@ export function PaymentStep({
     }
   }
 
-  const progressSteps = ["Method", "Wallet", "Quote", "Authorize", "Complete"];
+  const progressSteps = ["Method", "Wallet", "Quote", "Approve", "Deposit", "Complete"];
   const currentStepIndex: number =
     step === "select_method"
       ? 0
@@ -544,14 +615,28 @@ export function PaymentStep({
         ? 1
         : step === "check_balance"
           ? 2
-          : step === "complete"
-            ? 4
-            : 3;
+          : step === "approve_usdc"
+            ? 3
+            : step === "sign_x402"
+              ? 4
+              : step === "complete"
+                ? 5
+                : 3;
+  const backLabel =
+    step === "connect_wallet"
+      ? "Back to payment options"
+      : step === "check_balance"
+        ? "Back to wallet"
+        : step === "approve_usdc"
+          ? "Back to quote"
+          : step === "sign_x402"
+            ? "Back to approval"
+            : "Back to payment options";
 
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <h2 className="font-semibold text-ink text-lg">Complete payment</h2>
+        <h2 className="font-semibold text-ink text-lg">Secure payment</h2>
         <p className="text-ink-secondary text-sm">
           {quoteConfirmation && <span className="font-medium text-ink">{railLabel}: </span>}
           {formatMinor(buyerPaysDisplay)}
@@ -564,6 +649,18 @@ export function PaymentStep({
       </div>
 
       <Stepper steps={progressSteps} current={currentStepIndex} showLabels={false} />
+
+      {step !== "select_method" && step !== "complete" && (
+        <button
+          type="button"
+          onClick={handleBack}
+          disabled={isLoading || isWriting}
+          className="inline-flex items-center gap-1.5 rounded text-ink-secondary text-sm transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <ChevronLeft className="size-4" />
+          {backLabel}
+        </button>
+      )}
 
       {HAGGLE_WALLET_NETWORK === "base-sepolia" && (
         <Alert tone="info" title="Base Sepolia testnet">
@@ -590,6 +687,7 @@ export function PaymentStep({
                 title="Integration test"
                 description="Use EasyPost test rates and labels. The team can advance carrier states without moving a parcel."
                 onClick={() => setShippingExecutionMode("integration_manual")}
+                disabled={hasPreparedPayment}
               />
               <SelectableOptionCard
                 selected={shippingExecutionMode === "physical_live"}
@@ -597,8 +695,9 @@ export function PaymentStep({
                 title="Physical shipping rehearsal"
                 description={`Use real addresses, a paid EasyPost label, and actual carrier scans. Haggle pays up to $${((physicalShippingReadiness?.live_label_max_minor ?? 5000) / 100).toFixed(2)} in staging postage.`}
                 disabled={
-                  HAGGLE_WALLET_NETWORK === "base-sepolia" &&
-                  physicalShippingReadiness?.ready !== true
+                  hasPreparedPayment ||
+                  (HAGGLE_WALLET_NETWORK === "base-sepolia" &&
+                    physicalShippingReadiness?.ready !== true)
                 }
                 onClick={() => setShippingExecutionMode("physical_live")}
                 className="disabled:cursor-not-allowed disabled:opacity-50"
@@ -640,7 +739,7 @@ export function PaymentStep({
                 setMethod("card");
                 setStep("connect_wallet");
               }}
-              disabled={requiresShipping && !shippingExecutionMode}
+              disabled={hasPreparedPayment || (requiresShipping && !shippingExecutionMode)}
             />
             <SelectableOptionCard
               selected={method === "crypto"}
@@ -651,8 +750,21 @@ export function PaymentStep({
                 setMethod("crypto");
                 setStep("connect_wallet");
               }}
-              disabled={requiresShipping && !shippingExecutionMode}
+              disabled={hasPreparedPayment || (requiresShipping && !shippingExecutionMode)}
             />
+            {hasPreparedPayment && method && (
+              <Alert tone="info" title="Payment choices saved">
+                <div className="space-y-3">
+                  <p>
+                    Shipping mode and payment method are locked after payment preparation. You can
+                    review them here, then continue without reconnecting your wallet.
+                  </p>
+                  <Button onClick={handleResumePreparedPayment} loading={isLoading} fullWidth>
+                    Continue payment
+                  </Button>
+                </div>
+              </Alert>
+            )}
           </section>
         </div>
       )}
@@ -677,22 +789,31 @@ export function PaymentStep({
       <div className="space-y-4">
         {step === "connect_wallet" && (
           <div className="space-y-3">
-            {method === "card" && !isConnected ? (
+            {!isConnected ? (
               <>
                 <p className="text-ink-secondary text-sm">
-                  Connect the wallet that should receive USDC after your card payment.
+                  {method === "card"
+                    ? "Connect the wallet that should receive USDC after your card payment."
+                    : "Connect your wallet to pay with USDC."}
                 </p>
                 <ConnectButton />
                 <p className="text-ink-muted text-xs">You can use any wallet you control.</p>
               </>
             ) : (
               <>
-                <p className="text-ink-secondary text-sm">
-                  {method === "crypto"
-                    ? "Connect your wallet to pay with USDC."
-                    : "Connect your wallet to proceed with payment."}
-                </p>
-                <ConnectButton />
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-line bg-surface-sunken p-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-success">Wallet connected</p>
+                    <p className="truncate font-mono text-ink-secondary text-xs">{address}</p>
+                  </div>
+                  <ConnectButton.Custom>
+                    {({ openAccountModal }) => (
+                      <Button variant="secondary" size="sm" onClick={openAccountModal}>
+                        Change
+                      </Button>
+                    )}
+                  </ConnectButton.Custom>
+                </div>
                 {isWrongNetwork && (
                   <Alert tone="warning" title={`Switch to ${HAGGLE_WALLET_CHAIN.name}`}>
                     <div className="space-y-3">
@@ -709,8 +830,16 @@ export function PaymentStep({
                   </Alert>
                 )}
                 {isConnected && !isWrongNetwork && (
-                  <Button onClick={handlePrepare} loading={isLoading} fullWidth>
-                    {isLoading ? "Preparing..." : "Continue"}
+                  <Button
+                    onClick={hasPreparedPayment ? handleResumePreparedPayment : handlePrepare}
+                    loading={isLoading}
+                    fullWidth
+                  >
+                    {isLoading
+                      ? "Preparing..."
+                      : hasPreparedPayment
+                        ? "Continue prepared payment"
+                        : "Continue"}
                   </Button>
                 )}
               </>
@@ -765,7 +894,7 @@ export function PaymentStep({
         {step === "approve_usdc" && (
           <div className="space-y-3">
             <p className="text-ink-secondary text-sm">
-              Approve {HAGGLE_SETTLEMENT_ASSET.symbol} to spend{" "}
+              First, allow the settlement contract to use{" "}
               <strong>
                 {settlementAmountDisplay
                   ? formatMinor(settlementAmountDisplay)
@@ -810,7 +939,13 @@ export function PaymentStep({
               </p>
             )}
             <Button
-              onClick={handleApproveUsdc}
+              onClick={() => {
+                if (isUsdcApproved) {
+                  setStep("sign_x402");
+                  return;
+                }
+                void handleApproveUsdc();
+              }}
               disabled={
                 isLoading ||
                 isWriting ||
@@ -821,8 +956,18 @@ export function PaymentStep({
               loading={isLoading || isWriting}
               fullWidth
             >
-              {isLoading || isWriting ? "Approving..." : "Approve USDC"}
+              {isLoading || isWriting
+                ? "Approving..."
+                : isUsdcApproved
+                  ? "Continue to secure deposit"
+                  : `Approve ${HAGGLE_SETTLEMENT_ASSET.symbol}`}
             </Button>
+            {isUsdcApproved && (
+              <Alert tone="success" title={`${HAGGLE_SETTLEMENT_ASSET.symbol} approved`}>
+                Approval is complete. Continue to deposit the agreed amount into the protected
+                settlement contract.
+              </Alert>
+            )}
           </div>
         )}
 
@@ -830,7 +975,7 @@ export function PaymentStep({
           <div className="space-y-3">
             <p className="text-ink-secondary text-sm">
               {conditionalSettlement
-                ? `Fund the rules-limited ${HAGGLE_SETTLEMENT_ASSET.symbol} settlement contract from your wallet.`
+                ? `Second, deposit ${formatMinor(settlementAmountDisplay ?? buyerPaysDisplay)} into the protected settlement contract. This completes payment; the seller is paid only after the release conditions are met.`
                 : `Sign the ${HAGGLE_SETTLEMENT_ASSET.symbol} payment authorization to complete the transaction.`}
             </p>
             <Button
@@ -842,7 +987,7 @@ export function PaymentStep({
               {isLoading
                 ? "Submitting..."
                 : conditionalSettlement
-                  ? "Fund Conditional Settlement"
+                  ? `Deposit ${formatMinor(settlementAmountDisplay ?? buyerPaysDisplay)} securely`
                   : "Sign & Submit Payment"}
             </Button>
           </div>

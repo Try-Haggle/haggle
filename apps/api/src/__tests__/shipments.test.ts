@@ -1927,6 +1927,64 @@ describe("Shipment routes", () => {
     expect(res.json().error).toBe("SHIPMENT_NOT_FOUND");
   });
 
+  it("GET /shipments/by-order/:orderId hides outbound label assets from the buyer", async () => {
+    mockGetShipmentByOrderId.mockResolvedValueOnce({
+      id: "shp_buyer_view",
+      order_id: "ord_buyer_view",
+      seller_id: "seller-001",
+      buyer_id: "test-user-001",
+      shipment_type: "outbound",
+      status: "LABEL_CREATED",
+      carrier: "USPS",
+      tracking_number: "TRACK123",
+      label_url: "https://labels.test/outbound.pdf",
+      label_qr_code_url: "https://labels.test/outbound-qr.png",
+      label_qr_code_available: true,
+      metadata: { label_qr_code_url: "https://labels.test/outbound-qr.png" },
+      events: [],
+    } as unknown as ShipmentRow);
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/shipments/by-order/ord_buyer_view",
+      headers: AUTH_HEADERS,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().shipment).toMatchObject({ tracking_number: "TRACK123" });
+    expect(res.json().shipment).not.toHaveProperty("label_url");
+    expect(res.json().shipment).not.toHaveProperty("label_qr_code_url");
+    expect(res.json().shipment.metadata).not.toHaveProperty("label_qr_code_url");
+  });
+
+  it("GET /shipments/by-order/:orderId keeps outbound label assets for the seller", async () => {
+    mockGetShipmentByOrderId.mockResolvedValueOnce({
+      id: "shp_seller_view",
+      order_id: "ord_seller_view",
+      seller_id: "test-user-001",
+      buyer_id: "buyer-001",
+      shipment_type: "outbound",
+      status: "LABEL_CREATED",
+      carrier: "USPS",
+      label_url: "https://labels.test/outbound.pdf",
+      label_qr_code_url: "https://labels.test/outbound-qr.png",
+      label_qr_code_available: true,
+      events: [],
+    } as unknown as ShipmentRow);
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/shipments/by-order/ord_seller_view",
+      headers: AUTH_HEADERS,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().shipment).toMatchObject({
+      label_url: "https://labels.test/outbound.pdf",
+      label_qr_code_url: "https://labels.test/outbound-qr.png",
+    });
+  });
+
   // POST /shipments/:id/event - validation
   it("blocks manual carrier events for physical shipping rehearsals", async () => {
     const shipment = {
