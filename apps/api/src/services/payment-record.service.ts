@@ -12,6 +12,7 @@ import {
   commerceOrders,
   type Database,
   eq,
+  inArray,
   paymentAuthorizations,
   paymentDisclosures,
   paymentIntents,
@@ -19,6 +20,7 @@ import {
   paymentSettlements,
   refunds,
   type settlementApprovals,
+  sql,
 } from "@haggle/db";
 import type {
   BuyerAuthorizationMode,
@@ -416,6 +418,29 @@ export async function setPaymentIntentProviderContext(
     .update(paymentIntents)
     .set({ providerContext, updatedAt: new Date() })
     .where(eq(paymentIntents.id, id));
+}
+
+export async function lockPaymentIntentShippingModeIfUnset(
+  db: Database,
+  id: string,
+  providerContextPatch: Record<string, unknown>,
+): Promise<boolean> {
+  const [row] = await db
+    .update(paymentIntents)
+    .set({
+      providerContext: sql`coalesce(${paymentIntents.providerContext}, '{}'::jsonb) || ${JSON.stringify(providerContextPatch)}::jsonb`,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(paymentIntents.id, id),
+        inArray(paymentIntents.status, ["CREATED", "QUOTED"]),
+        sql`${paymentIntents.providerContext} ->> 'shipping_execution_mode' is null`,
+      ),
+    )
+    .returning({ id: paymentIntents.id });
+
+  return Boolean(row);
 }
 
 export async function updateStoredPaymentIntent(

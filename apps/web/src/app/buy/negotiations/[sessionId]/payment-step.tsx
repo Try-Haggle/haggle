@@ -233,15 +233,6 @@ function isConfirmedSettlementAmount(money: Money | undefined): money is Money {
   );
 }
 
-function isShippingExecutionModeConflict(error: unknown): boolean {
-  return Boolean(
-    error &&
-      typeof error === "object" &&
-      "code" in error &&
-      error.code === "PAYMENT_SHIPPING_EXECUTION_MODE_CONFLICT",
-  );
-}
-
 export function PaymentStep({
   settlementApprovalId,
   amountMinor,
@@ -366,22 +357,13 @@ export function PaymentStep({
       const paymentDisclosureAck = createPaymentDisclosureAck({
         stripeFallback: method === "card",
       });
-      const preparePayment = (includeSelectedShippingMode: boolean) =>
-        api.post<PreparedPaymentResponse>("/payments/prepare", {
-          settlement_approval_id: settlementApprovalId,
-          ...(includeSelectedShippingMode && requiresShipping && shippingExecutionMode
-            ? { shipping_execution_mode: shippingExecutionMode }
-            : {}),
-          payment_disclosure_ack: paymentDisclosureAck,
-        });
-
-      let data: PreparedPaymentResponse;
-      try {
-        data = await preparePayment(true);
-      } catch (prepareError) {
-        if (!isShippingExecutionModeConflict(prepareError)) throw prepareError;
-        data = await preparePayment(false);
-      }
+      const data = await api.post<PreparedPaymentResponse>("/payments/prepare", {
+        settlement_approval_id: settlementApprovalId,
+        ...(requiresShipping && shippingExecutionMode
+          ? { shipping_execution_mode: shippingExecutionMode }
+          : {}),
+        payment_disclosure_ack: paymentDisclosureAck,
+      });
       const intentId = data.intent?.id;
       const preparedOrderId = data.order?.id;
       if (!intentId || !preparedOrderId) {

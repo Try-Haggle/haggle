@@ -115,46 +115,29 @@ describe("PaymentStep navigation and wallet reuse", () => {
     expect(screen.getByRole("button", { name: "Continue" })).toBeInTheDocument();
   });
 
-  it("resumes with the server-locked shipping mode when the browser draft is stale", async () => {
+  it("does not silently replace the buyer's physical shipping choice after a mode conflict", async () => {
     walletState.address = "0x0000000000000000000000000000000000000001";
     walletState.isConnected = true;
-    apiPost
-      .mockRejectedValueOnce({
+    apiPost.mockRejectedValueOnce(
+      Object.assign(new Error("Shipping execution mode cannot change after payment preparation"), {
         code: "PAYMENT_SHIPPING_EXECUTION_MODE_CONFLICT",
-        message: "Shipping execution mode cannot change after payment preparation",
-      })
-      .mockResolvedValueOnce({
-        intent: { id: "payment-existing" },
-        order: { id: "order-existing" },
-        shipping_execution_mode: "physical_live",
-        idempotent: true,
-      });
+      }),
+    );
 
     const user = userEvent.setup();
     render(<PaymentStep {...props} />);
 
-    await user.click(screen.getByText("Integration test").closest("button")!);
+    await user.click(screen.getByText("Physical shipping rehearsal").closest("button")!);
     await user.click(screen.getByText(/Direct/).closest("button")!);
     await user.click(screen.getByRole("button", { name: "Continue" }));
 
-    expect(await screen.findByRole("button", { name: "Get hUSDC Quote" })).toBeInTheDocument();
-    expect(apiPost).toHaveBeenCalledTimes(2);
-    expect(apiPost).toHaveBeenNthCalledWith(
-      1,
+    expect(
+      await screen.findByText("Shipping execution mode cannot change after payment preparation"),
+    ).toBeInTheDocument();
+    expect(apiPost).toHaveBeenCalledOnce();
+    expect(apiPost).toHaveBeenCalledWith(
       "/payments/prepare",
-      expect.objectContaining({ shipping_execution_mode: "integration_manual" }),
-    );
-    expect(apiPost).toHaveBeenNthCalledWith(
-      2,
-      "/payments/prepare",
-      expect.not.objectContaining({ shipping_execution_mode: expect.anything() }),
-    );
-
-    await user.click(screen.getByRole("button", { name: "Back to wallet" }));
-    await user.click(screen.getByRole("button", { name: "Back to payment options" }));
-    expect(screen.getByText("Physical shipping rehearsal").closest("button")).toHaveAttribute(
-      "aria-pressed",
-      "true",
+      expect.objectContaining({ shipping_execution_mode: "physical_live" }),
     );
   });
 

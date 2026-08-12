@@ -21,11 +21,12 @@ import {
   getPaymentSettlementByPaymentIntentId,
   getRefundRecordsByPaymentIntentId,
   getSettlementApprovalById,
+  lockPaymentIntentShippingModeIfUnset,
   updateCommerceOrderStatus,
   updateStoredPaymentIntent,
 } from "../services/payment-record.service.js";
 import { createSettlementReleaseRecord } from "../services/settlement-release.service.js";
-import { createShipmentRecord } from "../services/shipment-record.service.js";
+import { createShipmentRecord, getShipmentByOrderId } from "../services/shipment-record.service.js";
 import {
   claimWebhookEvent,
   completeWebhookEvent,
@@ -53,6 +54,7 @@ vi.mock("../services/payment-record.service.js", () => ({
   getPaymentIntentRowById: vi.fn().mockResolvedValue(null),
   getRefundRecordsByPaymentIntentId: vi.fn().mockResolvedValue([]),
   getSettlementApprovalById: vi.fn().mockResolvedValue(null),
+  lockPaymentIntentShippingModeIfUnset: vi.fn().mockResolvedValue(false),
   updateCommerceOrderStatus: vi.fn().mockResolvedValue(null),
   updateStoredPaymentIntent: vi.fn().mockResolvedValue(null),
   getCommerceOrderByOrderId: vi.fn().mockResolvedValue(null),
@@ -177,6 +179,7 @@ const mockGetPaymentOperationIdempotencyRecord = vi.mocked(getPaymentOperationId
 const mockGetPaymentIntentRowById = vi.mocked(getPaymentIntentRowById);
 const mockGetRefundRecordsByPaymentIntentId = vi.mocked(getRefundRecordsByPaymentIntentId);
 const mockGetSettlementApprovalById = vi.mocked(getSettlementApprovalById);
+const mockLockPaymentIntentShippingModeIfUnset = vi.mocked(lockPaymentIntentShippingModeIfUnset);
 const mockUpdateCommerceOrderStatus = vi.mocked(updateCommerceOrderStatus);
 const mockUpdateStoredPaymentIntent = vi.mocked(updateStoredPaymentIntent);
 const mockCreateRefundRecord = vi.mocked(createRefundRecord);
@@ -188,6 +191,7 @@ const mockCreatePaymentOperationIdempotencyRecord = vi.mocked(
 );
 const mockCreateSettlementReleaseRecord = vi.mocked(createSettlementReleaseRecord);
 const mockCreateShipmentRecord = vi.mocked(createShipmentRecord);
+const mockGetShipmentByOrderId = vi.mocked(getShipmentByOrderId);
 const mockCreatePublicClient = vi.mocked(createPublicClient);
 const mockDecodeEventLog = vi.mocked(decodeEventLog);
 const mockClaimWebhookEvent = vi.mocked(claimWebhookEvent);
@@ -2826,7 +2830,7 @@ describe("Payment routes", () => {
       headers: AUTH_HEADERS,
       payload: {
         settlement_approval_id: sessionId,
-        shipping_execution_mode: "integration_manual",
+        shipping_execution_mode: "physical_live",
         payment_disclosure_ack: {
           version: PAYMENT_DISCLOSURE_VERSION,
           text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
@@ -3202,11 +3206,14 @@ describe("Payment routes", () => {
     }
   });
 
-  it("POST /payments/prepare returns the existing active intent idempotently for the same accepted negotiation", async () => {
+  it("POST /payments/prepare locks a missing shipping mode on a safe existing intent", async () => {
     mockGetActivePaymentIntentByOrderId.mockClear();
     mockCreateAgentPaymentGrantRecord.mockClear();
     mockCreateStoredPaymentIntent.mockClear();
     mockCreatePaymentDisclosureRecord.mockClear();
+    mockGetPaymentIntentRowById.mockClear();
+    mockGetShipmentByOrderId.mockClear();
+    mockLockPaymentIntentShippingModeIfUnset.mockClear();
 
     const sessionId = "00000000-0000-4000-a000-000000000099";
     const orderId = "00000000-0000-4000-a000-000000000088";
@@ -3265,6 +3272,12 @@ describe("Payment routes", () => {
       updatedAt: new Date(now),
     } as never);
     mockGetActivePaymentIntentByOrderId.mockResolvedValueOnce(existingIntent as never);
+    mockGetPaymentIntentRowById.mockResolvedValueOnce({
+      id: existingIntent.id,
+      providerContext: { settlement_approval_id: sessionId },
+    } as never);
+    mockGetShipmentByOrderId.mockResolvedValueOnce(null);
+    mockLockPaymentIntentShippingModeIfUnset.mockResolvedValueOnce(true);
 
     const res = await app.inject({
       method: "POST",
@@ -3272,6 +3285,7 @@ describe("Payment routes", () => {
       headers: AUTH_HEADERS,
       payload: {
         settlement_approval_id: sessionId,
+        shipping_execution_mode: "physical_live",
         payment_disclosure_ack: {
           version: PAYMENT_DISCLOSURE_VERSION,
           text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
@@ -3289,6 +3303,14 @@ describe("Payment routes", () => {
     expect(mockCreateAgentPaymentGrantRecord).not.toHaveBeenCalled();
     expect(mockCreateStoredPaymentIntent).not.toHaveBeenCalled();
     expect(mockCreatePaymentDisclosureRecord).not.toHaveBeenCalled();
+    expect(mockLockPaymentIntentShippingModeIfUnset).toHaveBeenCalledWith(
+      expect.anything(),
+      existingIntent.id,
+      expect.objectContaining({
+        shipping_execution_mode: "physical_live",
+        shipping_provider_environment: "live",
+      }),
+    );
     expect(res.json()).toMatchObject({
       idempotent: true,
       intent: {
@@ -3300,6 +3322,7 @@ describe("Payment routes", () => {
         settlement_approval_id: sessionId,
         amount_minor: 50_000,
       },
+      shipping_execution_mode: "physical_live",
     });
   });
 

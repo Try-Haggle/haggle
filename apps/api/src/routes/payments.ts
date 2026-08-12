@@ -110,6 +110,7 @@ import {
   getPaymentSettlementByPaymentIntentId,
   getRefundRecordsByPaymentIntentId,
   getSettlementApprovalById,
+  lockPaymentIntentShippingModeIfUnset,
   setPaymentIntentProviderContext,
   updateCommerceOrderStatus,
   updateStoredPaymentIntent,
@@ -2133,7 +2134,55 @@ async function inspectExistingIntentShippingMode(
   requestedMode: ShippingExecutionMode | undefined,
 ) {
   const row = await getPaymentIntentRowById(db, intent.id);
-  const currentMode = readShippingExecutionMode(paymentIntentProviderContext(row));
+  const providerContext = paymentIntentProviderContext(row);
+  const persistedMode = providerContext.shipping_execution_mode;
+  const hasPersistedMode =
+    persistedMode === "integration_manual" || persistedMode === "physical_live";
+
+  if (!hasPersistedMode && requestedMode) {
+    const shipment = await getShipmentByOrderId(db, intent.order_id);
+    if ((intent.status === "CREATED" || intent.status === "QUOTED") && !shipment) {
+      const locked = await lockPaymentIntentShippingModeIfUnset(
+        db,
+        intent.id,
+        metadataForShippingExecutionMode(requestedMode),
+      );
+      if (locked) {
+        return { currentMode: requestedMode, conflict: null };
+      }
+
+      const refreshedRow = await getPaymentIntentRowById(db, intent.id);
+      const refreshedContext = paymentIntentProviderContext(refreshedRow);
+      const refreshedMode = refreshedContext.shipping_execution_mode;
+      if (refreshedMode === requestedMode) {
+        return { currentMode: requestedMode, conflict: null };
+      }
+      if (refreshedMode === "integration_manual" || refreshedMode === "physical_live") {
+        return {
+          currentMode: refreshedMode,
+          conflict: {
+            error: "PAYMENT_SHIPPING_EXECUTION_MODE_CONFLICT",
+            message: "Shipping execution mode was already selected for this payment",
+            current_mode: refreshedMode,
+            requested_mode: requestedMode,
+          },
+        };
+      }
+    }
+
+    return {
+      currentMode: readShippingExecutionMode(providerContext),
+      conflict: {
+        error: "PAYMENT_SHIPPING_EXECUTION_MODE_CONFLICT",
+        message:
+          "This payment progressed before its shipping mode was recorded. Start a new order to use the selected shipping mode.",
+        current_mode: null,
+        requested_mode: requestedMode,
+      },
+    };
+  }
+
+  const currentMode = readShippingExecutionMode(providerContext);
   return {
     currentMode,
     conflict:
