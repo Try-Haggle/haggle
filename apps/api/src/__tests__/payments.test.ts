@@ -2195,6 +2195,7 @@ describe("Payment routes", () => {
     process.env.HAGGLE_X402_FEE_BPS = "150";
     process.env.HAGGLE_X402_SELLER_WALLET = "0x1111111111111111111111111111111111111111";
     mockGetPaymentIntentById.mockClear();
+    mockGetPaymentIntentRowById.mockClear();
     mockUpdateStoredPaymentIntent.mockClear();
     const intent = {
       id: "pi_quote_x402",
@@ -2211,6 +2212,13 @@ describe("Payment routes", () => {
     mockGetPaymentIntentById
       .mockResolvedValueOnce(intent as never)
       .mockResolvedValueOnce(intent as never);
+    mockGetPaymentIntentRowById.mockResolvedValueOnce({
+      providerContext: {
+        shipping_execution_mode: "physical_live",
+        shipping_provider_environment: "live",
+        shipping_execution_mode_locked_at: "2026-08-12T17:55:00.000Z",
+      },
+    } as never);
 
     try {
       const res = await app.inject({
@@ -2232,6 +2240,8 @@ describe("Payment routes", () => {
         },
         metadata: {
           seller_wallet: "0x1111111111111111111111111111111111111111",
+          shipping_execution_mode: "physical_live",
+          shipping_provider_environment: "live",
           quote_confirmation: expect.objectContaining({
             buyer_total: { currency: "USD", amount_minor: 50_000 },
             seller_receives: { currency: "USD", amount_minor: 49_250 },
@@ -2275,6 +2285,8 @@ describe("Payment routes", () => {
         expect.objectContaining({ id: "pi_quote_x402", status: "QUOTED" }),
         expect.objectContaining({
           seller_wallet: "0x1111111111111111111111111111111111111111",
+          shipping_execution_mode: "physical_live",
+          shipping_provider_environment: "live",
           quote_confirmation: expect.objectContaining({
             seller_receives: { currency: "USD", amount_minor: 49_250 },
           }),

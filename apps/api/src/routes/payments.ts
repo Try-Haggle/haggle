@@ -2714,9 +2714,12 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       }
 
       try {
+        const row = await getPaymentIntentRowById(db, intent.id);
+        const existingMetadata = isRecord(row?.providerContext) ? row.providerContext : {};
         const result = await service.quoteIntent(intent);
         // Merge seller_wallet into metadata so x402 requirements can resolve it
         const metadataWithoutConfirmation = {
+          ...existingMetadata,
           ...(result.metadata ?? {}),
           ...(sellerWalletAddress ? { seller_wallet: sellerWalletAddress } : {}),
           ...(intent.agent_payment_grant_id

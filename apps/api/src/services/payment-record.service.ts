@@ -450,6 +450,12 @@ export async function updateStoredPaymentIntent(
 ) {
   const canonicalStatus =
     intent.production_status ?? mapLegacyStatusToProductionState(intent.status);
+  const providerContextUpdate =
+    providerContext === undefined
+      ? {}
+      : {
+          providerContext: sql`coalesce(${paymentIntents.providerContext}, '{}'::jsonb) || ${JSON.stringify(providerContext)}::jsonb`,
+        };
   const [row] = await db
     .update(paymentIntents)
     .set({
@@ -464,7 +470,7 @@ export async function updateStoredPaymentIntent(
       approvalPolicyHash: intent.approval_policy_hash ?? null,
       agreementHash: intent.agreement_hash ?? null,
       listingHash: intent.listing_hash ?? null,
-      providerContext: providerContext,
+      ...providerContextUpdate,
       updatedAt: new Date(intent.updated_at),
     })
     .where(eq(paymentIntents.id, intent.id))

@@ -7,6 +7,7 @@ import {
   getInProgressPaymentOperationForIntent,
   getPaymentSettlementByPaymentIntentId,
   getSettlementApprovalById,
+  updateStoredPaymentIntent,
 } from "../services/payment-record.service.js";
 
 function buildDb(row: unknown) {
@@ -58,7 +59,52 @@ function buildUpdateDb() {
   return { update, _mocks: { set, where } };
 }
 
+function buildPaymentIntentUpdateDb() {
+  const returning = vi.fn().mockResolvedValue([]);
+  const where = vi.fn().mockReturnValue({ returning });
+  const set = vi.fn().mockReturnValue({ where });
+  const update = vi.fn().mockReturnValue({ set });
+  return { update, _mocks: { set, where, returning } };
+}
+
+function paymentIntentForUpdate() {
+  return {
+    id: "pi_update",
+    order_id: "order_update",
+    seller_id: "seller_update",
+    buyer_id: "buyer_update",
+    selected_rail: "x402" as const,
+    allowed_rails: ["x402" as const],
+    buyer_authorization_mode: "human_wallet" as const,
+    amount: { currency: "USD", amount_minor: 50_000 },
+    status: "QUOTED" as const,
+    created_at: "2026-08-12T17:55:00.000Z",
+    updated_at: "2026-08-12T18:00:00.000Z",
+  };
+}
+
 describe("payment-record.service", () => {
+  it("preserves provider context when a payment state update has no context patch", async () => {
+    const db = buildPaymentIntentUpdateDb();
+
+    await updateStoredPaymentIntent(db as never, paymentIntentForUpdate());
+
+    expect(db._mocks.set).toHaveBeenCalledWith(
+      expect.not.objectContaining({ providerContext: expect.anything() }),
+    );
+  });
+
+  it("merges provider context patches instead of replacing existing shipping metadata", async () => {
+    const db = buildPaymentIntentUpdateDb();
+    const patch = { provider_reference: "x402_quote_123" };
+
+    await updateStoredPaymentIntent(db as never, paymentIntentForUpdate(), patch);
+
+    const update = db._mocks.set.mock.calls[0]?.[0];
+    expect(update).toEqual(expect.objectContaining({ providerContext: expect.anything() }));
+    expect(update?.providerContext).not.toEqual(patch);
+  });
+
   it("maps an accepted negotiation approval row into a payment-ready settlement approval", async () => {
     const sessionId = "00000000-0000-4000-a000-000000000099";
     const listingId = "00000000-0000-4000-a000-000000000011";
