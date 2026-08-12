@@ -235,6 +235,18 @@ function isConfirmedSettlementAmount(money: Money | undefined): money is Money {
   );
 }
 
+function settlementApprovalKey(request: ConditionalSettlementRequest): string {
+  const { contract, contract_call: contractCall } = request;
+  return [
+    contract.address,
+    contract.asset_address,
+    contractCall.params.buyer,
+    contractCall.params.grossAmount,
+  ]
+    .map((value) => value.toLowerCase())
+    .join(":");
+}
+
 export function PaymentStep({
   settlementApprovalId,
   amountMinor,
@@ -262,7 +274,7 @@ export function PaymentStep({
   const [conditionalSettlement, setConditionalSettlement] =
     useState<ConditionalSettlementRequest | null>(null);
   const [quoteConfirmation, setQuoteConfirmation] = useState<QuoteConfirmation | null>(null);
-  const [isUsdcApproved, setIsUsdcApproved] = useState(false);
+  const [approvedSettlementKey, setApprovedSettlementKey] = useState<string | null>(null);
   const [draftReady, setDraftReady] = useState(false);
   const draftKey = `haggle:checkout-draft:${settlementApprovalId}`;
 
@@ -332,6 +344,9 @@ export function PaymentStep({
       : "No buyer fee. Haggle fee is deducted from seller proceeds.");
   const isWrongNetwork = isConnected && chainId !== HAGGLE_WALLET_CHAIN_ID;
   const hasPreparedPayment = paymentIntentId !== null;
+  const isUsdcApproved = Boolean(
+    conditionalSettlement && approvedSettlementKey === settlementApprovalKey(conditionalSettlement),
+  );
 
   async function handleResumePreparedPayment() {
     if (!paymentIntentId || !method) return;
@@ -470,7 +485,7 @@ export function PaymentStep({
       if (approvalReceipt.status !== "success") {
         throw new Error("USDC approval transaction failed.");
       }
-      setIsUsdcApproved(true);
+      setApprovedSettlementKey(settlementApprovalKey(conditionalSettlement));
       setStep("sign_x402");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
