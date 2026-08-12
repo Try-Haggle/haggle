@@ -15,14 +15,7 @@ import {
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { Address, Hex } from "viem";
-import {
-  useAccount,
-  useBalance,
-  useChainId,
-  usePublicClient,
-  useSwitchChain,
-  useWriteContract,
-} from "wagmi";
+import { useAccount, useBalance, useChainId, useSendCallsSync, useSwitchChain } from "wagmi";
 import {
   Alert,
   Button,
@@ -112,8 +105,7 @@ type PaymentStepStatus =
   | "select_method"
   | "connect_wallet"
   | "check_balance"
-  | "approve_usdc"
-  | "sign_x402"
+  | "confirm_payment"
   | "submit"
   | "onramp_loading"
   | "onramp_active"
@@ -235,18 +227,6 @@ function isConfirmedSettlementAmount(money: Money | undefined): money is Money {
   );
 }
 
-function settlementApprovalKey(request: ConditionalSettlementRequest): string {
-  const { contract, contract_call: contractCall } = request;
-  return [
-    contract.address,
-    contract.asset_address,
-    contractCall.params.buyer,
-    contractCall.params.grossAmount,
-  ]
-    .map((value) => value.toLowerCase())
-    .join(":");
-}
-
 export function PaymentStep({
   settlementApprovalId,
   amountMinor,
@@ -258,8 +238,7 @@ export function PaymentStep({
   const chainId = useChainId();
   const { data: balance } = useBalance({ address, chainId: HAGGLE_WALLET_CHAIN_ID });
   const { switchChain, isPending: isSwitchingChain } = useSwitchChain();
-  const publicClient = usePublicClient({ chainId: HAGGLE_WALLET_CHAIN_ID });
-  const { writeContractAsync, isPending: isWriting } = useWriteContract();
+  const { sendCallsSyncAsync, isPending: isSendingCalls } = useSendCallsSync();
 
   const [method, setMethod] = useState<PaymentMethod | null>(null);
   const [shippingExecutionMode, setShippingExecutionMode] = useState<ShippingExecutionMode | null>(
@@ -274,7 +253,6 @@ export function PaymentStep({
   const [conditionalSettlement, setConditionalSettlement] =
     useState<ConditionalSettlementRequest | null>(null);
   const [quoteConfirmation, setQuoteConfirmation] = useState<QuoteConfirmation | null>(null);
-  const [approvedSettlementKey, setApprovedSettlementKey] = useState<string | null>(null);
   const [draftReady, setDraftReady] = useState(false);
   const draftKey = `haggle:checkout-draft:${settlementApprovalId}`;
 
@@ -304,12 +282,8 @@ export function PaymentStep({
       setStep("connect_wallet");
       return;
     }
-    if (step === "approve_usdc") {
+    if (step === "confirm_payment") {
       setStep("check_balance");
-      return;
-    }
-    if (step === "sign_x402") {
-      setStep("approve_usdc");
       return;
     }
     setStep("select_method");
@@ -344,9 +318,6 @@ export function PaymentStep({
       : "No buyer fee. Haggle fee is deducted from seller proceeds.");
   const isWrongNetwork = isConnected && chainId !== HAGGLE_WALLET_CHAIN_ID;
   const hasPreparedPayment = paymentIntentId !== null;
-  const isUsdcApproved = Boolean(
-    conditionalSettlement && approvedSettlementKey === settlementApprovalKey(conditionalSettlement),
-  );
 
   async function handleResumePreparedPayment() {
     if (!paymentIntentId || !method) return;
@@ -439,54 +410,7 @@ export function PaymentStep({
         connectedBuyerAddress: address,
       });
       setConditionalSettlement(request);
-      setStep("approve_usdc");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setStep("error");
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  async function handleApproveUsdc() {
-    setIsLoading(true);
-    setError(null);
-    try {
-      assertExpectedWalletNetwork();
-      if (!conditionalSettlement || !address) {
-        throw new Error("A verified conditional settlement request is required before approval.");
-      }
-      if (!isConfirmedSettlementAmount(settlementAmountDisplay)) {
-        throw new Error("Approve requires a confirmed USDC settlement amount.");
-      }
-      const target = assertConditionalSettlementTarget({
-        contractAddress: conditionalSettlement.contract.address,
-        network: conditionalSettlement.contract.network,
-        assetAddress: conditionalSettlement.contract.asset_address,
-        requestAssetAddress: conditionalSettlement.contract_call.params.asset,
-        requestGrossAmount: conditionalSettlement.contract_call.params.grossAmount,
-        expectedGrossAmountMinor: settlementAmountDisplay.amount_minor,
-        requestBuyerAddress: conditionalSettlement.contract_call.params.buyer,
-        connectedBuyerAddress: address,
-      });
-      const amount = BigInt(settlementAmountDisplay.amount_minor);
-      if (!publicClient) throw new Error("Base Sepolia RPC client is not available.");
-      const approvalTxHash = await writeContractAsync({
-        address: target.assetAddress,
-        abi: USDC_ABI,
-        functionName: "approve",
-        args: [target.contractAddress, amount],
-        chainId: HAGGLE_WALLET_CHAIN_ID,
-      });
-      const approvalReceipt = await publicClient.waitForTransactionReceipt({
-        hash: approvalTxHash,
-        confirmations: 1,
-      });
-      if (approvalReceipt.status !== "success") {
-        throw new Error("USDC approval transaction failed.");
-      }
-      setApprovedSettlementKey(settlementApprovalKey(conditionalSettlement));
-      setStep("sign_x402");
+      setStep("confirm_payment");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setStep("error");
@@ -569,7 +493,7 @@ export function PaymentStep({
     }
   }
 
-  async function handleSubmitX402() {
+  async function handleConfirmPayment() {
     if (!paymentIntentId || !address) return;
     setIsLoading(true);
     setError(null);
@@ -588,16 +512,37 @@ export function PaymentStep({
         requestBuyerAddress: conditionalSettlement.contract_call.params.buyer,
         connectedBuyerAddress: address,
       });
-      const txHash = await writeContractAsync({
-        address: target.contractAddress,
-        abi: CONDITIONAL_SETTLEMENT_ABI,
-        functionName: "createAndFund",
-        args: [
-          toConditionalSettlementTuple(conditionalSettlement),
-          conditionalSettlement.contract_call.signature,
-        ],
+      const callsStatus = await sendCallsSyncAsync({
+        account: address,
         chainId: HAGGLE_WALLET_CHAIN_ID,
+        forceAtomic: true,
+        throwOnFailure: true,
+        timeout: 60_000,
+        calls: [
+          {
+            to: target.assetAddress,
+            abi: USDC_ABI,
+            functionName: "approve",
+            args: [target.contractAddress, BigInt(settlementAmountDisplay?.amount_minor ?? 0)],
+          },
+          {
+            to: target.contractAddress,
+            abi: CONDITIONAL_SETTLEMENT_ABI,
+            functionName: "createAndFund",
+            args: [
+              toConditionalSettlementTuple(conditionalSettlement),
+              conditionalSettlement.contract_call.signature,
+            ],
+          },
+        ],
       });
+      if (callsStatus.status !== "success" || callsStatus.atomic !== true) {
+        throw new Error("The wallet did not complete the payment as one atomic transaction.");
+      }
+      const txHash = callsStatus.receipts?.at(-1)?.transactionHash;
+      if (!txHash) {
+        throw new Error("The wallet did not return the confirmed payment transaction hash.");
+      }
       await api.post(
         `/payments/${paymentIntentId}/x402/conditional-settlement-funding`,
         {
@@ -615,14 +560,19 @@ export function PaymentStep({
       clearSessionDraft(draftKey);
       setStep("complete");
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      setError(
+        /atomic|wallet_sendCalls|method.*(not found|not supported)/i.test(message)
+          ? "This wallet cannot combine approval and payment into one confirmation. Use a wallet with atomic batch support."
+          : message,
+      );
       setStep("error");
     } finally {
       setIsLoading(false);
     }
   }
 
-  const progressSteps = ["Method", "Wallet", "Quote", "Approve", "Deposit", "Complete"];
+  const progressSteps = ["Method", "Wallet", "Quote", "Pay", "Complete"];
   const currentStepIndex: number =
     step === "select_method"
       ? 0
@@ -630,23 +580,19 @@ export function PaymentStep({
         ? 1
         : step === "check_balance"
           ? 2
-          : step === "approve_usdc"
+          : step === "confirm_payment"
             ? 3
-            : step === "sign_x402"
+            : step === "complete"
               ? 4
-              : step === "complete"
-                ? 5
-                : 3;
+              : 3;
   const backLabel =
     step === "connect_wallet"
       ? "Back to payment options"
       : step === "check_balance"
         ? "Back to wallet"
-        : step === "approve_usdc"
+        : step === "confirm_payment"
           ? "Back to quote"
-          : step === "sign_x402"
-            ? "Back to approval"
-            : "Back to payment options";
+          : "Back to payment options";
 
   return (
     <div className="space-y-6">
@@ -669,7 +615,7 @@ export function PaymentStep({
         <button
           type="button"
           onClick={handleBack}
-          disabled={isLoading || isWriting}
+          disabled={isLoading || isSendingCalls}
           className="inline-flex items-center gap-1.5 rounded text-ink-secondary text-sm transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
         >
           <ChevronLeft className="size-4" />
@@ -906,16 +852,12 @@ export function PaymentStep({
           </div>
         )}
 
-        {step === "approve_usdc" && (
+        {step === "confirm_payment" && (
           <div className="space-y-3">
             <p className="text-ink-secondary text-sm">
-              First, allow the settlement contract to use{" "}
-              <strong>
-                {settlementAmountDisplay
-                  ? formatMinor(settlementAmountDisplay)
-                  : `the confirmed ${HAGGLE_SETTLEMENT_ASSET.symbol} amount`}
-              </strong>{" "}
-              on your behalf.
+              Confirm once in your wallet to approve and securely deposit{" "}
+              <strong>{formatMinor(settlementAmountDisplay ?? buyerPaysDisplay)}</strong>. The
+              seller is paid only after the release conditions are met.
             </p>
             {(buyerFeeDisplay.amount_minor > 0 || sellerFeeDisplay.amount_minor > 0) && (
               <div className="space-y-1 rounded-lg bg-surface-sunken p-3 text-ink-secondary text-xs">
@@ -950,60 +892,24 @@ export function PaymentStep({
             )}
             {conditionalSettlement && (
               <p className="text-ink-muted text-xs">
-                This approval is limited to the rules-bound conditional settlement contract.
+                Approval and deposit run together. If either action fails, neither is applied.
               </p>
             )}
             <Button
-              onClick={() => {
-                if (isUsdcApproved) {
-                  setStep("sign_x402");
-                  return;
-                }
-                void handleApproveUsdc();
-              }}
+              onClick={handleConfirmPayment}
               disabled={
                 isLoading ||
-                isWriting ||
+                isSendingCalls ||
                 isWrongNetwork ||
                 !settlementAmountDisplay ||
                 !conditionalSettlement
               }
-              loading={isLoading || isWriting}
+              loading={isLoading || isSendingCalls}
               fullWidth
             >
-              {isLoading || isWriting
-                ? "Approving..."
-                : isUsdcApproved
-                  ? "Continue to secure deposit"
-                  : `Approve ${HAGGLE_SETTLEMENT_ASSET.symbol}`}
-            </Button>
-            {isUsdcApproved && (
-              <Alert tone="success" title={`${HAGGLE_SETTLEMENT_ASSET.symbol} approved`}>
-                Approval is complete. Continue to deposit the agreed amount into the protected
-                settlement contract.
-              </Alert>
-            )}
-          </div>
-        )}
-
-        {step === "sign_x402" && (
-          <div className="space-y-3">
-            <p className="text-ink-secondary text-sm">
-              {conditionalSettlement
-                ? `Second, deposit ${formatMinor(settlementAmountDisplay ?? buyerPaysDisplay)} into the protected settlement contract. This completes payment; the seller is paid only after the release conditions are met.`
-                : `Sign the ${HAGGLE_SETTLEMENT_ASSET.symbol} payment authorization to complete the transaction.`}
-            </p>
-            <Button
-              onClick={handleSubmitX402}
-              loading={isLoading}
-              disabled={isWrongNetwork || !conditionalSettlement}
-              fullWidth
-            >
-              {isLoading
-                ? "Submitting..."
-                : conditionalSettlement
-                  ? `Deposit ${formatMinor(settlementAmountDisplay ?? buyerPaysDisplay)} securely`
-                  : "Sign & Submit Payment"}
+              {isLoading || isSendingCalls
+                ? "Confirming payment..."
+                : `Pay ${formatMinor(settlementAmountDisplay ?? buyerPaysDisplay)} securely`}
             </Button>
           </div>
         )}

@@ -7,8 +7,7 @@ const walletState = vi.hoisted(() => ({
   address: undefined as `0x${string}` | undefined,
   isConnected: false,
 }));
-const writeContractAsync = vi.hoisted(() => vi.fn());
-const waitForTransactionReceipt = vi.hoisted(() => vi.fn());
+const sendCallsSyncAsync = vi.hoisted(() => vi.fn());
 const apiPost = vi.hoisted(() => vi.fn());
 
 vi.mock("@rainbow-me/rainbowkit", () => {
@@ -27,13 +26,18 @@ vi.mock("wagmi", () => ({
   useAccount: () => walletState,
   useBalance: () => ({ data: null }),
   useChainId: () => 84532,
-  usePublicClient: () => ({ waitForTransactionReceipt }),
+  useSendCallsSync: () => ({ sendCallsSyncAsync, isPending: false }),
   useSwitchChain: () => ({ switchChain: vi.fn(), isPending: false }),
-  useWriteContract: () => ({ writeContractAsync, isPending: false }),
 }));
 
 vi.mock("@/lib/api-client", () => ({
   api: { post: apiPost },
+}));
+
+vi.mock("@/lib/conditional-settlement-confirmation", () => ({
+  confirmConditionalSettlementFunding: vi.fn().mockResolvedValue({
+    conditional_settlement: { status: "FUNDING_CONFIRMED" },
+  }),
 }));
 
 const props = {
@@ -53,8 +57,7 @@ describe("PaymentStep navigation and wallet reuse", () => {
     window.sessionStorage.clear();
     walletState.address = undefined;
     walletState.isConnected = false;
-    writeContractAsync.mockReset();
-    waitForTransactionReceipt.mockReset();
+    sendCallsSyncAsync.mockReset();
     apiPost.mockReset();
   });
 
@@ -112,11 +115,14 @@ describe("PaymentStep navigation and wallet reuse", () => {
     expect(screen.getByRole("button", { name: "Continue" })).toBeInTheDocument();
   });
 
-  it("lets the buyer return from deposit to approval without approving twice", async () => {
+  it("approves and deposits with one atomic wallet confirmation", async () => {
     walletState.address = "0x0000000000000000000000000000000000000001";
     walletState.isConnected = true;
-    writeContractAsync.mockResolvedValue("0xabc");
-    waitForTransactionReceipt.mockResolvedValue({ status: "success" });
+    sendCallsSyncAsync.mockResolvedValue({
+      status: "success",
+      atomic: true,
+      receipts: [{ transactionHash: "0xabc" }],
+    });
     apiPost.mockImplementation(async (path: string) => {
       if (path === "/payments/prepare") {
         return { intent: { id: "payment-1" }, order: { id: "order-1" } };
@@ -174,6 +180,9 @@ describe("PaymentStep navigation and wallet reuse", () => {
           },
         };
       }
+      if (path === "/payments/payment-1/x402/conditional-settlement-funding") {
+        return { conditional_settlement: { status: "FUNDING_SUBMITTED" } };
+      }
       throw new Error(`Unexpected API request: ${path}`);
     });
 
@@ -184,19 +193,28 @@ describe("PaymentStep navigation and wallet reuse", () => {
     await user.click(screen.getByText(/Direct/).closest("button")!);
     await user.click(screen.getByRole("button", { name: "Continue" }));
     await user.click(await screen.findByRole("button", { name: "Get hUSDC Quote" }));
-    await user.click(await screen.findByRole("button", { name: "Approve hUSDC" }));
-
     expect(
-      await screen.findByRole("button", { name: "Deposit 10.00 USDC securely" }),
+      await screen.findByRole("button", {
+        name: "Pay 10.00 USDC securely",
+      }),
     ).toBeInTheDocument();
-    expect(writeContractAsync).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/Confirm once in your wallet/)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Back to approval" }));
-    expect(screen.getByRole("button", { name: "Continue to secure deposit" })).toBeInTheDocument();
-    expect(screen.getByText("hUSDC approved")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Back to quote" }));
+    expect(screen.getByRole("button", { name: "Get hUSDC Quote" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Get hUSDC Quote" }));
+    await user.click(await screen.findByRole("button", { name: "Pay 10.00 USDC securely" }));
 
-    await user.click(screen.getByRole("button", { name: "Continue to secure deposit" }));
-    expect(screen.getByRole("button", { name: "Deposit 10.00 USDC securely" })).toBeInTheDocument();
-    expect(writeContractAsync).toHaveBeenCalledTimes(1);
+    expect(sendCallsSyncAsync).toHaveBeenCalledTimes(1);
+    expect(sendCallsSyncAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        forceAtomic: true,
+        calls: [
+          expect.objectContaining({ functionName: "approve" }),
+          expect.objectContaining({ functionName: "createAndFund" }),
+        ],
+      }),
+    );
+    expect(await screen.findByText("Funding confirmed")).toBeInTheDocument();
   });
 });
