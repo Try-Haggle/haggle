@@ -38,6 +38,7 @@ packages/contracts/cache/
 .gstack/
 .playwright-mcp/
 .serena/
+.codex/automations/**/memory.md
 apps/api/.local/
 apps/web/.vercel/
 
