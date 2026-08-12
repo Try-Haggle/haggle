@@ -25,6 +25,8 @@ const {
   mockExecuteGroupTerminal,
   mockLoadUserMemoryBrief,
   mockEventDispatch,
+  mockGetPublishedListingByPublicId,
+  mockLoadListingStrategyContext,
 } = vi.hoisted(() => ({
   mockCreateSession: vi.fn(),
   mockGetSessionById: vi.fn(),
@@ -44,6 +46,8 @@ const {
   mockExecuteGroupTerminal: vi.fn(),
   mockLoadUserMemoryBrief: vi.fn(),
   mockEventDispatch: vi.fn(),
+  mockGetPublishedListingByPublicId: vi.fn(),
+  mockLoadListingStrategyContext: vi.fn(),
 }));
 
 // ─── Mock data ──────────────────────────────────────────────────────
@@ -155,7 +159,7 @@ vi.mock("../lib/executor-factory.js", () => ({
 }));
 
 vi.mock("../services/listing-strategy.service.js", () => ({
-  loadListingStrategyContext: vi.fn().mockResolvedValue(null),
+  loadListingStrategyContext: (...args: unknown[]) => mockLoadListingStrategyContext(...args),
 }));
 
 vi.mock("../notification/get-user-info.js", () => ({
@@ -295,6 +299,7 @@ vi.mock("../services/draft.service.js", () => ({
   deleteDraft: vi.fn().mockResolvedValue(null),
   publishDraft: vi.fn().mockResolvedValue(null),
   getListingPlaybackSummaryByInternalId: vi.fn().mockResolvedValue(null),
+  getPublishedListingByPublicId: (...args: unknown[]) => mockGetPublishedListingByPublicId(...args),
 }));
 
 vi.mock("../lib/action-handlers.js", () => ({
@@ -395,6 +400,8 @@ describe("Negotiation API", () => {
     mockExecuteGroupTerminal.mockResolvedValue([]);
     mockLoadUserMemoryBrief.mockResolvedValue(null);
     mockEventDispatch.mockResolvedValue({ action: "no_action" });
+    mockGetPublishedListingByPublicId.mockResolvedValue(null);
+    mockLoadListingStrategyContext.mockResolvedValue(null);
   });
 
   // ═══════════════════════════════════════════════════════════════════
@@ -692,6 +699,64 @@ describe("Negotiation API", () => {
       expect(mockExecuteNegotiationRound).not.toHaveBeenCalled();
     });
 
+    it("persists an expired session and stops before claiming a round", async () => {
+      const { setup, session } = autoPlayFixture();
+      const stale = { ...session, expiresAt: new Date(Date.now() - 1_000) };
+      const expired = { ...stale, status: "EXPIRED", version: stale.version + 1 };
+      mockGetSessionById.mockResolvedValue(stale);
+      mockUpdateSessionState.mockResolvedValue(expired);
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/sess-001/auto-play/next",
+        payload: { run_token: setup.runToken },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        complete: true,
+        session_status: "EXPIRED",
+        current_round: 0,
+      });
+      expect(mockUpdateSessionState).toHaveBeenCalledWith(
+        expect.anything(),
+        "sess-001",
+        stale.version,
+        { status: "EXPIRED" },
+      );
+      expect(mockSetSessionPerspective).not.toHaveBeenCalled();
+      expect(mockExecuteNegotiationRound).not.toHaveBeenCalled();
+    });
+
+    it("persists expiry when the deadline passes during a round", async () => {
+      const { setup, session } = autoPlayFixture();
+      const expired = { ...session, status: "EXPIRED", version: session.version + 1 };
+      mockGetSessionById.mockResolvedValue(session);
+      mockExecuteNegotiationRound.mockRejectedValue(new Error("SESSION_EXPIRED"));
+      mockUpdateSessionState.mockResolvedValue(expired);
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/sess-001/auto-play/next",
+        payload: { run_token: setup.runToken },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        complete: true,
+        session_status: "EXPIRED",
+        current_round: 0,
+      });
+      expect(mockSetSessionPerspective).toHaveBeenCalledOnce();
+      expect(mockExecuteNegotiationRound).toHaveBeenCalledOnce();
+      expect(mockUpdateSessionState).toHaveBeenCalledWith(
+        expect.anything(),
+        "sess-001",
+        session.version,
+        { status: "EXPIRED" },
+      );
+    });
+
     it("claims and executes exactly one round for a valid run token", async () => {
       const { setup, session } = autoPlayFixture();
       mockGetSessionById
@@ -728,6 +793,40 @@ describe("Negotiation API", () => {
         offerPriceMinor: 9_000,
         idempotencyKey: "auto-sess-001-r1",
       });
+    });
+  });
+
+  describe("POST /negotiations/start", () => {
+    it("rejects a listing whose negotiation deadline has passed", async () => {
+      mockGetPublishedListingByPublicId.mockResolvedValue({
+        id: "00000000-0000-4000-a000-000000000001",
+        publicId: "expired-listing",
+        sellerId: "00000000-0000-4000-a000-000000000020",
+      });
+      mockLoadListingStrategyContext.mockResolvedValue({
+        listingId: "00000000-0000-4000-a000-000000000001",
+        sellerId: "00000000-0000-4000-a000-000000000020",
+        listedAtMs: Date.now() - 86_400_000,
+        deadlineAtMs: Date.now() - 1_000,
+        askPriceMinor: 100_00,
+        floorPriceMinor: 80_00,
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/start",
+        payload: {
+          listing_public_id: "expired-listing",
+          negotiation_agent_preset_id: "balancer",
+        },
+      });
+
+      expect(res.statusCode).toBe(409);
+      expect(res.json()).toMatchObject({
+        error: "LISTING_NEGOTIATION_EXPIRED",
+        message: "This listing's negotiation window has ended.",
+      });
+      expect(mockCreateSession).not.toHaveBeenCalled();
     });
   });
 

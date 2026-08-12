@@ -997,9 +997,15 @@ export function registerNegotiationRoutes(
     const floorMinor = listingContext.floorPriceMinor;
     const listedAtMs = listingContext.listedAtMs;
     const nowMs = Date.now();
+    if (listingContext.deadlineAtMs && listingContext.deadlineAtMs <= nowMs) {
+      return reply.code(409).send({
+        error: "LISTING_NEGOTIATION_EXPIRED",
+        message: "This listing's negotiation window has ended.",
+      });
+    }
     const buyerDeadlineMs = nowMs + (body.deadline_hours ?? 24) * 60 * 60 * 1000;
     const effectiveDeadlineMs = listingContext.deadlineAtMs
-      ? Math.max(nowMs + 1, Math.min(buyerDeadlineMs, listingContext.deadlineAtMs))
+      ? Math.min(buyerDeadlineMs, listingContext.deadlineAtMs)
       : buyerDeadlineMs;
     const timeTotalMs = Math.max(1, effectiveDeadlineMs - listedAtMs);
 
@@ -1240,6 +1246,23 @@ export function registerNegotiationRoutes(
         });
       }
 
+      // Expiry must be committed outside the round executor transaction. Throwing
+      // SESSION_EXPIRED inside that transaction rolls its status update back, leaving
+      // a CREATED session that clients can retry forever without producing a round.
+      if (session.expiresAt && session.expiresAt.getTime() <= Date.now()) {
+        const expired = await updateSessionState(db, session.id, session.version, {
+          status: "EXPIRED",
+        });
+        if (!expired) {
+          return reply.code(409).send({ error: "CONCURRENT_MODIFICATION" });
+        }
+        return reply.send({
+          complete: true,
+          session_status: expired.status,
+          current_round: expired.currentRound,
+        });
+      }
+
       if (session.currentRound >= context.maxRounds) {
         const stalled = await updateSessionState(db, session.id, session.version, {
           status: "STALLED",
@@ -1355,9 +1378,28 @@ export function registerNegotiationRoutes(
         if (message.startsWith("SESSION_NOT_FOUND")) {
           return reply.code(404).send({ error: "SESSION_NOT_FOUND" });
         }
+        // The deadline can pass while an LLM round is running. The executor reports
+        // that race after rolling back its transaction, so persist the terminal state
+        // here and answer successfully instead of feeding the browser another retry.
+        if (message.startsWith("SESSION_EXPIRED")) {
+          const latest = await getSessionById(db, session.id);
+          if (!latest) {
+            return reply.code(404).send({ error: "SESSION_NOT_FOUND" });
+          }
+          const expired = isNegotiationAutoPlayTerminal(latest.status)
+            ? latest
+            : await updateSessionState(db, latest.id, latest.version, { status: "EXPIRED" });
+          if (!expired) {
+            return reply.code(409).send({ error: "CONCURRENT_MODIFICATION" });
+          }
+          return reply.send({
+            complete: true,
+            session_status: expired.status,
+            current_round: expired.currentRound,
+          });
+        }
         if (
           message.startsWith("SESSION_TERMINAL") ||
-          message.startsWith("SESSION_EXPIRED") ||
           message.startsWith("SESSION_MAX_ROUNDS_EXCEEDED") ||
           message.startsWith("ROUND_LIMIT_EXCEEDED")
         ) {

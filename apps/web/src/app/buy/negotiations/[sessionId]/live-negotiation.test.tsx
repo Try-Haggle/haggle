@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api-client";
 import type { SessionResponse } from "./negotiation-session-data";
@@ -192,6 +192,20 @@ describe("LiveNegotiation — failures must be visible", () => {
       () => expect(screen.queryByLabelText("Waiting for the next round")).not.toBeInTheDocument(),
       { timeout: 3_000 },
     );
+  });
+
+  it("does not retry a terminal session response forever", async () => {
+    mocks.get.mockReset().mockResolvedValue(payload("CREATED", 0));
+    mocks.post.mockRejectedValue(new ApiError(409, "SESSION_TERMINAL"));
+    render(<LiveNegotiation initialPayload={payload("CREATED", 0)} />);
+
+    expect(
+      await screen.findByText("This negotiation has ended. Refresh to see its final status."),
+    ).toBeInTheDocument();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    });
+    expect(mocks.post).toHaveBeenCalledTimes(1);
   });
 
   it("stops driving when the server pauses for the buyer", async () => {
