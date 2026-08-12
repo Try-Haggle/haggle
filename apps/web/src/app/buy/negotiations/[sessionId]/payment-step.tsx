@@ -90,6 +90,12 @@ interface CheckoutDraft {
   shippingExecutionMode: ShippingExecutionMode | null;
 }
 
+interface PreparedPaymentResponse {
+  intent?: { id?: string };
+  order?: { id?: string };
+  shipping_execution_mode?: ShippingExecutionMode;
+}
+
 function isCheckoutDraft(value: unknown): value is CheckoutDraft {
   if (!value || typeof value !== "object") return false;
   const draft = value as Partial<CheckoutDraft>;
@@ -227,6 +233,15 @@ function isConfirmedSettlementAmount(money: Money | undefined): money is Money {
   );
 }
 
+function isShippingExecutionModeConflict(error: unknown): boolean {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "PAYMENT_SHIPPING_EXECUTION_MODE_CONFLICT",
+  );
+}
+
 export function PaymentStep({
   settlementApprovalId,
   amountMinor,
@@ -348,20 +363,32 @@ export function PaymentStep({
     setError(null);
     try {
       assertExpectedWalletNetwork();
-      const data = await api.post<{ intent?: { id?: string }; order?: { id?: string } }>(
-        "/payments/prepare",
-        {
+      const paymentDisclosureAck = createPaymentDisclosureAck({
+        stripeFallback: method === "card",
+      });
+      const preparePayment = (includeSelectedShippingMode: boolean) =>
+        api.post<PreparedPaymentResponse>("/payments/prepare", {
           settlement_approval_id: settlementApprovalId,
-          ...(requiresShipping && shippingExecutionMode
+          ...(includeSelectedShippingMode && requiresShipping && shippingExecutionMode
             ? { shipping_execution_mode: shippingExecutionMode }
             : {}),
-          payment_disclosure_ack: createPaymentDisclosureAck({ stripeFallback: method === "card" }),
-        },
-      );
+          payment_disclosure_ack: paymentDisclosureAck,
+        });
+
+      let data: PreparedPaymentResponse;
+      try {
+        data = await preparePayment(true);
+      } catch (prepareError) {
+        if (!isShippingExecutionModeConflict(prepareError)) throw prepareError;
+        data = await preparePayment(false);
+      }
       const intentId = data.intent?.id;
       const preparedOrderId = data.order?.id;
       if (!intentId || !preparedOrderId) {
         throw new Error("The payment intent or order was not returned.");
+      }
+      if (requiresShipping && data.shipping_execution_mode) {
+        setShippingExecutionMode(data.shipping_execution_mode);
       }
       setPaymentIntentId(intentId);
       setOrderId(preparedOrderId);
