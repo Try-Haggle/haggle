@@ -160,10 +160,7 @@ export function LiveNegotiation({
             }
             if (!cancelled) setPause(null);
           } catch (err) {
-            if (
-              err instanceof ApiError &&
-              ["CONCURRENT_MODIFICATION", "SESSION_TERMINAL"].includes(err.code)
-            ) {
+            if (err instanceof ApiError && err.code === "CONCURRENT_MODIFICATION") {
               await new Promise((resolve) => window.setTimeout(resolve, 500));
               current = await loadSession();
               continue;
@@ -183,7 +180,9 @@ export function LiveNegotiation({
         setRoundError(
           apiError?.code === "AUTO_PLAY_TOKEN_INVALID"
             ? "This live negotiation link is no longer authorized in this tab."
-            : "The next round could not be generated. Your completed rounds are saved.",
+            : apiError?.code === "SESSION_TERMINAL"
+              ? "This negotiation has ended. Refresh to see its final status."
+              : "The next round could not be generated. Your completed rounds are saved.",
         );
       }
     }
