@@ -166,7 +166,7 @@ Slice 0 검증(A5)에서 발견되는 함정을 그때그때 기록 → 다음 �
 ### 6.1 브랜치 전략 (Git Flow)
 ```
 feature/* ──PR──► staging ──Deploy PR──► main
-(staging에서 분기)   (자동배포→테스트)      (자동배포→프로덕션)
+(staging에서 분기)   (자동배포→테스트)      (8월 22일 직전 한 번 승격)
 ```
 
 | 브랜치 | 분기 기준 | → 환경 | 머지 방법 |
@@ -178,8 +178,9 @@ feature/* ──PR──► staging ──Deploy PR──► main
 **규칙:**
 1. 모든 작업은 `staging`에서 feature 브랜치를 따서 시작
 2. feature → `staging` PR 머지 → staging 환경에서 통합 테스트
-3. 테스트 통과 후 `staging` → `main` **"Deploy PR"** 머지 → 프로덕션 런치
-4. `main`에는 staging을 거치지 않은 코드가 직접 들어가지 않음 (hotfix 예외는 별도 규정)
+3. 개발 기간에는 `main`을 변경하지 않고 staging에서 릴리스 후보 SHA를 고정
+4. 8월 22일 직전 최종 Go 결정 후에만 `staging` → `main` **"Deploy PR"** 머지
+5. `main`에는 staging을 거치지 않은 코드가 직접 들어가지 않음 (hotfix 예외는 별도 규정)
 
 > ⚠️ **CLAUDE.md 기존 브랜치 전략과 정합화 필요** — 현재 CLAUDE.md는 "`main`=MVP 전용"만
 > 규정. 이 3환경 워크플로우(staging 장수 브랜치 도입)를 CLAUDE.md에 반영해야 함 (Phase G2).
@@ -187,8 +188,8 @@ feature/* ──PR──► staging ──Deploy PR──► main
 ### 6.2 CI/CD 자동 배포 (PR 머지 → 자동 배포)
 | 트리거 | web (Vercel) | api (Railway) | DB 마이그레이션 |
 |--------|-------------|---------------|----------------|
-| `staging` 머지 | 자동 배포 | 자동 배포 | **자동** (CI에서 `db:migrate`) |
-| `main` 머지 | 자동 배포 | 자동 배포 | **자동** (배포 전 검증 게이트 통과 시) |
+| `staging` 머지 | 자동 배포 | 자동 배포 | **최종 CI 성공 후 자동** |
+| `main` 머지 | 자동 배포 | 자동 배포 | **최종 CI + production 승인 후 자동** |
 
 **연동 방식:**
 - **Vercel**: GitHub 연동 → `staging` 브랜치=Preview/staging 도메인, `main`=Production 도메인 (네이티브 지원)
@@ -197,9 +198,9 @@ feature/* ──PR──► staging ──Deploy PR──► main
 
 ### 6.3 마이그레이션 자동화 + 안전장치 (D6 결정: 둘 다 자동)
 staging·prod **둘 다 자동** 적용하되, prod 자동의 비가역성 리스크를 아래로 완화:
-1. **배포 전 검증** — CI가 `verify:migrations`(journal 정합)로 마이그레이션 무결성 선검사
+1. **배포 전 검증** — 품질·Playwright·의존성 보안을 묶은 최종 CI와 `verify:migrations`가 선행
 2. **순서 강제** — `main` 배포는 **항상 staging에서 같은 마이그레이션이 먼저 성공**한 뒤에만 (staging이 prod의 리허설)
-3. **실패 시 배포 중단** — `db:migrate` 실패하면 앱 배포도 중단 (깨진 스키마로 배포 안 됨)
+3. **실패 시 migration 중단** — 최종 CI가 실패하면 공유 DB를 건드리지 않으며, `db:migrate` 실패 시 앱 승격을 중단
 4. **백업 선행** — prod 마이그레이션 전 Supabase 자동 백업(Pro) 존재 확인
 
 > 💡 완전 자동이되 "맹목적 자동"은 아님: staging 리허설을 통과 못한 마이그레이션은 prod에 못 감.
