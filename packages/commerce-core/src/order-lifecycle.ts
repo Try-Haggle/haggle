@@ -92,10 +92,17 @@ export function determineNextAction(state: OrderState): OrderAction {
       return { type: "no_action" };
 
     case "IN_DISPUTE":
-      if (state.dispute_status === "RESOLVED_REFUND") {
+      if (
+        state.dispute_status === "RESOLVED_REFUND" ||
+        state.dispute_status === "RESOLVED_BUYER_FAVOR" ||
+        state.dispute_status === "PARTIAL_REFUND"
+      ) {
         return { type: "process_refund" };
       }
-      if (state.dispute_status === "RESOLVED_NO_REFUND") {
+      if (
+        state.dispute_status === "RESOLVED_NO_REFUND" ||
+        state.dispute_status === "RESOLVED_SELLER_FAVOR"
+      ) {
         return { type: "complete_order" };
       }
       return { type: "no_action" };
@@ -136,10 +143,17 @@ export function computeOrderPhase(state: Omit<OrderState, "phase">): OrderPhase 
 
   // Active dispute overrides fulfillment/delivery
   if (state.dispute_status && state.dispute_status !== "NONE") {
-    if (state.dispute_status === "RESOLVED_REFUND") {
+    if (
+      state.dispute_status === "RESOLVED_REFUND" ||
+      state.dispute_status === "RESOLVED_BUYER_FAVOR" ||
+      state.dispute_status === "PARTIAL_REFUND"
+    ) {
       return "REFUNDED";
     }
-    if (state.dispute_status === "RESOLVED_NO_REFUND") {
+    if (
+      state.dispute_status === "RESOLVED_NO_REFUND" ||
+      state.dispute_status === "RESOLVED_SELLER_FAVOR"
+    ) {
       return "COMPLETED";
     }
     return "IN_DISPUTE";
@@ -148,10 +162,7 @@ export function computeOrderPhase(state: Omit<OrderState, "phase">): OrderPhase 
   // Delivery phase
   if (state.shipment_status === "DELIVERED") {
     // If product_release_status is present and not yet RELEASED, stay in DELIVERY
-    if (
-      state.product_release_status !== undefined &&
-      state.product_release_status !== "RELEASED"
-    ) {
+    if (state.product_release_status !== undefined && state.product_release_status !== "RELEASED") {
       return "DELIVERY";
     }
     return "COMPLETED";
