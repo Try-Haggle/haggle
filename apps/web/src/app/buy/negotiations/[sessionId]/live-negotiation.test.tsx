@@ -103,6 +103,7 @@ describe("LiveNegotiation", () => {
       expect(mocks.post).toHaveBeenCalledWith(
         "/negotiations/sessions/11111111-1111-4111-8111-111111111111/auto-play/next",
         { run_token: "test-run-token" },
+        { signal: expect.any(AbortSignal) },
       );
     });
 

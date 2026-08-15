@@ -69,13 +69,20 @@ describe("LiveNegotiation — stall watchdog", () => {
     try {
       mocks.get.mockReset().mockResolvedValue(payload("CREATED", 0));
       // The request never settles — the exact silent case, with no error to report.
-      mocks.post.mockReturnValue(new Promise(() => undefined));
+      let roundSignal: AbortSignal | undefined;
+      mocks.post.mockImplementation((_path: string, _body: unknown, options?: RequestInit) => {
+        roundSignal = options?.signal ?? undefined;
+        return new Promise(() => undefined);
+      });
       render(<LiveNegotiation initialPayload={payload("CREATED", 0)} />);
 
       // Wrapped in act so the watchdog's setState is flushed before asserting.
       await act(async () => {
         await vi.advanceTimersByTimeAsync(121_000);
       });
+      // The fetch is actively cancelled at 75s; the 120s watchdog remains a second
+      // line of defence for transports/mocks that ignore AbortSignal.
+      expect(roundSignal?.aborted).toBe(true);
       expect(
         screen.getByText("This round is taking longer than expected. Nothing has been lost."),
       ).toBeInTheDocument();
