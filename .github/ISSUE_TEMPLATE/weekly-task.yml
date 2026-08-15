@@ -1,0 +1,116 @@
+name: Weekly development task
+description: 주간 회의에서 담당자, 리뷰어, 검증 경로를 함께 확정합니다.
+title: "[Weekly] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        이 카드는 토요일 주간 회의의 합의를 개발 그래프에 고정합니다. 작업마다 담당자 1명과 리뷰어 1명만 둡니다. 담당자가 불명확하면 이 카드를 만들지 않고 그래프의 미배정 상태로 남겼다가, 담당 확정 후 카드를 만듭니다.
+
+  - type: input
+    id: meeting
+    attributes:
+      label: 주간 회의 날짜
+      placeholder: "2026-08-08 (토요일 20:00 또는 20:30)"
+    validations:
+      required: true
+
+  - type: input
+    id: release
+    attributes:
+      label: 목표 릴리스
+      placeholder: "2026-08-22 또는 release 이후"
+    validations:
+      required: true
+
+  - type: input
+    id: graph_task_id
+    attributes:
+      label: 주간 그래프 작업 ID
+      description: current-week-work-graph.json의 작업 ID를 적습니다.
+      placeholder: "W2026-08-08-01"
+    validations:
+      required: true
+
+  - type: input
+    id: owner
+    attributes:
+      label: 구현 담당자
+      description: GitHub 사용자명을 적습니다.
+      placeholder: "@owner"
+    validations:
+      required: true
+
+  - type: input
+    id: reviewer
+    attributes:
+      label: 단일 리뷰어
+      description: 작성자와 다른 한 사람만 지정합니다. 보호 영역이면 그 위험을 판단할 수 있는 사람을 선택합니다.
+      placeholder: "@reviewer"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: reviewer_status
+    attributes:
+      label: 리뷰어 확인 상태
+      description: 새 작업은 시작 전 확인을 권장하며, 늦어도 PR 리뷰 요청 전에는 confirmed여야 합니다.
+      options:
+        - proposed — 아직 다음 회의 또는 비동기 확인이 필요함
+        - confirmed — 리뷰어가 역할과 판단 범위를 확인함
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: 완료 후 사용자가 얻는 결과
+      description: 구현 방법이 아니라 사용자나 운영자가 무엇을 할 수 있게 되는지 적습니다.
+    validations:
+      required: true
+
+  - type: textarea
+    id: flow
+    attributes:
+      label: 변경되는 사용자 흐름
+      description: 변경 전 → 변경 후와 실패 시 보이는 동작을 평문으로 설명합니다.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: domains
+    attributes:
+      label: 영향 영역
+      options:
+        - label: Web/UI
+        - label: API/협상
+        - label: DB/마이그레이션
+        - label: 인증/권한
+        - label: 결제/정산
+        - label: 배송/분쟁
+        - label: 스마트 계약
+        - label: CI/배포/보안
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: 선행·후속 작업과 충돌 가능 파일
+      description: 다른 사람의 작업을 기다리거나 같은 영역을 수정할 가능성을 적습니다. 없으면 없음.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 완료 조건과 검증 증거
+      description: 자동 테스트, Playwright 흐름, staging 확인, 로그나 화면 증거를 포함합니다.
+    validations:
+      required: true
+
+  - type: textarea
+    id: risk
+    attributes:
+      label: 가장 위험한 실패와 복구 방법
+      description: 무엇이 잘못될 수 있고 어떻게 감지·차단·복구할지 적습니다.
+    validations:
+      required: true
