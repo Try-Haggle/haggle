@@ -1,88 +1,99 @@
 # Haggle Main Branch Release Policy
 
-**Version:** 1.0  
-**Date:** 2026-03-09  
+**Version:** 2.0
+
+**Date:** 2026-08-12
+
 **Status:** Active
 
-## 1. Purpose
+**Target release:** 2026-08-22
 
-이 문서는 Haggle 저장소의 `main` 브랜치를 어떤 기준으로 운영할지 고정한다.
+## 1. 목적
 
-핵심 원칙은 단순하다.
+이 문서는 8월 22일 릴리스까지 `staging`에서 공동 개발하고, 릴리스 직전에만 검증된 한 커밋을 `main`으로 승격하는 기준을 고정한다.
 
-- `main` 은 항상 배포 가능한 상태를 유지한다.
-- 2026년 3월 출시 윈도우 동안 `main` 은 실제 공개 서비스 기준 브랜치다.
-- 실험, 표준화 확장, post-MVP 기능은 별도 브랜치에서 진행하고 준비가 끝난 뒤 선택적으로 병합한다.
+`main`은 일상 개발 브랜치가 아니다. 개발 중에는 `main`에 직접 push하거나 중간 결과를 병합하지 않는다.
 
-## 2. Main Branch Scope
+## 2. 8월 22일 제품 범위
 
-출시 전 `main` 브랜치의 제품 목표는 **판매자가 리스팅을 만들고, 공유 링크를 받아, 외부 SNS/커뮤니티에 배포할 수 있게 하는 것**이다.
+릴리스 범위는 단순 협상 데모가 아니라 다음 거래 루프 전체다.
 
-`main` 에서 반드시 제공해야 하는 사용자 흐름은 아래와 같다.
+1. 판매자 리스팅과 공개 링크
+2. 구매자 유입과 AI 협상
+3. 합의 가격 승인과 주문 생성
+4. 구매자 결제 준비·승인·funding 확인
+5. 배송 라벨과 배송 상태 반영
+6. 수령 확인과 정산 release
+7. 분쟁 생성, release 동결, 판정과 환불 또는 정산
+8. 온체인 receipt와 서버 장부의 일치 확인
 
-1. 판매자가 상품 정보를 입력해 리스팅을 생성한다.
-2. 시스템이 공개 링크를 발급한다.
-3. 판매자가 해당 링크를 SNS, 메신저, 커뮤니티, 기타 외부 플랫폼에 공유한다.
-4. 구매자가 링크로 진입해 상품을 보고 협상을 시작한다.
-5. 판매자와 구매자가 제안과 카운터오퍼를 주고받는다.
+즉, 결제·배송·분쟁·escrow 성격의 조건부 정산·USDC/x402·스마트 계약은 MVP 안에 포함된다.
 
-즉, `main` 의 중심은 **listing + shareable link + negotiation** 이다.
+## 3. 기능 릴리스와 실제 자금 활성화의 구분
 
-## 3. Explicitly Out of Main MVP Scope
+8월 22일에는 결제까지 끝나는 제품과 코드 경로를 릴리스한다. 다만 실제 가치가 있는 자산과 live 결제·지급을 켜는 것은 별도 운영 단계다.
 
-아래 항목은 중요하지만, 출시 전 `main` 브랜치의 필수 범위에는 포함하지 않는다.
+- staging과 초기 릴리스 검증: Base Sepolia, hUSDC 또는 가치 없는 테스트 자산, Stripe test, EasyPost test를 기본으로 한다.
+- 실제 자금 활성화: 지갑 소유권 검증, mainnet 계약·USDC 리허설, 운영 키와 한도, 경보와 당직, 외부 감사 등 `payment-shipping-dispute-security-controls.md`의 실제 자금 P0를 모두 닫은 뒤 별도 Go/No-Go로 시행한다.
+- 테스트 자산에서 성공했다는 이유만으로 live 자산을 자동 활성화하지 않는다.
 
-- 결제
-- dispute / 분쟁 처리
-- escrow
-- order management
-- USDC / x402 결제 핸들러
-- 온체인 정산
+이 구분은 결제 기능을 릴리스 범위에서 제외한다는 뜻이 아니다. 기능 범위는 전체 거래 루프이고, 실제 돈을 이동시키는 운영 스위치만 후속 승인 대상으로 둔다.
 
-이 기능들은 별도 브랜치에서 병행 개발할 수 있고, 준비가 되면 이후 릴리즈에서 `main` 에 병합한다.
+## 4. 브랜치와 승격 정책
 
-## 4. Relationship To Standards Work
+```text
+weekly task → feature/* → PR → staging → 통합·릴리스 리허설
+                                        → release candidate SHA 고정
+                                        → 최종 staging → main Deploy PR
+```
 
-HNP, UCP, agent tooling, capability discovery, 버저닝, 적합성 테스트 같은 표준화 작업은 `main` MVP 범위에 종속되지 않는다.
+- 모든 feature 브랜치는 `staging`에서 분기한다.
+- 모든 feature는 지정 리뷰어의 승인을 받고 `staging`에 병합한다.
+- 개발 기간에는 `main`을 변경하지 않는다.
+- 기능 동결 후 staging의 릴리스 후보 SHA를 기록하며, 검증 중 SHA가 바뀌면 영향을 받은 검증을 다시 실행한다.
+- 8월 22일 직전 최종 Go 결정 후에만 `staging → main` Deploy PR을 병합한다.
+- `main` 직접 push와 staging을 건너뛴 병합은 금지한다.
 
-즉, 아래가 동시에 성립한다.
+## 5. main 승격 필수 증거
 
-- `main` 은 출시 가능한 제품 범위를 우선한다.
-- 표준화 트랙은 결제, dispute, agent-to-agent commerce까지 포함한 더 넓은 장기 목표를 계속 다룬다.
+최종 Deploy PR에는 다음을 코드 줄이 아니라 사용자 흐름과 결과로 설명한다.
 
-표준화 문서는 MVP 문서보다 더 넓은 범위를 가져도 된다. 다만 그 구현이 `main` 에 들어오려면, 당시 공개 서비스 범위와 안정성 기준을 통과해야 한다.
+- 릴리스 후보 SHA와 staging 배포 SHA가 같다는 증거
+- 전체 자동 `CI` 성공
+- production dependency audit 결과와 high/critical 처리 결과
+- Playwright smoke 및 staging 전체 거래 흐름 결과
+- 결제·배송·분쟁의 happy path와 양쪽 분쟁 결과
+- DB migration 사전검사, 백업 확인, 적용·복구 계획
+- 스마트 계약 테스트와 배포 주소·체인·자산 프로필 확인
+- 알려진 제한과 live 자금이 비활성화되어 있다는 확인
+- 배포 후 확인 담당자와 문제 발생 시 중단 기준
 
-## 5. Branching Policy
+## 6. 자동화 순서
 
-- `main`: 항상 배포 가능해야 하는 운영 브랜치
-- `feature/*`: 개별 기능 개발 브랜치
-- `codex/*`: 에이전트 작업 브랜치
+자동화는 다음 순서를 강제한다.
 
-병합 기준은 다음과 같다.
+1. 품질·빌드·단위/통합 테스트
+2. Playwright 브라우저 smoke
+3. production dependency security audit
+4. 최종 `CI` 관문
+5. 같은 SHA의 staging 또는 production DB migration
+6. 앱 배포와 배포 후 사용자 흐름 확인
 
-- `main` 으로 병합되는 변경은 즉시 또는 매우 짧은 시간 안에 배포 가능해야 한다.
-- 실험적 기능은 기능 브랜치에 유지한다.
-- 결제, dispute, 고위험 프로토콜 변경은 별도 브랜치에서 먼저 검증한다.
-- 표준화 문서만 앞서가는 것은 허용되지만, 제품 동작을 바꾸는 코드는 `main` 의 운영 범위와 충돌하면 안 된다.
+CI와 DB migration을 독립적으로 동시에 실행하지 않는다. PR 검증은 공유 DB를 변경하지 않는다.
 
-## 6. Decision Rule
+## 7. 리뷰 정책
 
-어떤 변경을 `main` 에 넣을지 애매할 때는 아래 질문으로 판단한다.
+토요일 주간 회의에서 구현 담당자 1명과 단일 리뷰어 1명을 함께 정한다. 보호 영역도 리뷰어를 추가하지 않고, 해당 위험을 판단할 수 있는 한 사람을 선택한다. PR은 `DEVELOPMENT_GRAPH_AND_REVIEW.md`의 설명 중심 브리핑을 사용한다.
 
-> 이 변경이 오늘 `main` 에 병합되어 배포되어도, Haggle의 공개 MVP 사용자 경험을 더 명확하고 더 안정적으로 만드는가?
+결제, 정산, 인증, DB, 스마트 계약, CI/배포는 보호 영역이다. 지정된 한 명의 리뷰어가 해당 영역 관점까지 확인할 수 있어야 한다.
 
-답이 `예` 면 `main` 후보이다.  
-답이 `아니오` 이거나 `아직 이르다` 면 기능 브랜치에서 계속 발전시킨다.
+## 8. 예외
 
-## 7. Current MVP Definition
+릴리스 차단 문제를 고치는 긴급 변경도 feature 브랜치, 자동 검사, 리뷰를 거친다. 절차를 생략하는 hotfix는 허용하지 않는다. 실제 사고 대응으로 예외가 불가피하면 변경 이유, 승인자, 영향, 복구 결과를 사후 기록한다.
 
-2026-03-09 기준 `main` 의 MVP 정의는 아래와 같다.
+## 9. 관련 기준
 
-- 판매자 리스팅 생성
-- 공개 링크 발급
-- 링크 공유
-- 링크 기반 구매자 유입
-- 링크 기반 협상 시작 및 진행
-- 판매자 측 리스팅/협상 관리의 최소 기능
-
-이 정의는 출시 전 운영 기준이며, 이후 릴리즈에서 확장될 수 있다.
+- [개발 그래프와 리뷰 운영](./DEVELOPMENT_GRAPH_AND_REVIEW.md)
+- [Production Checklist](./PRODUCTION_CHECKLIST.md)
+- [결제·배송·분쟁 보안 통제](./payment-shipping-dispute-security-controls.md)
+- [환경 분리 플레이북](../wip/Environment_Separation_Playbook.md)

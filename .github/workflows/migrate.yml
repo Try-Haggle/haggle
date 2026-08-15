@@ -1,29 +1,33 @@
 name: DB Migrate
 
-# Runs db:migrate automatically after push to staging or main.
-# Safety: migrations only run AFTER CI passes (verify:migrations gate).
-# Staging runs first — prod only gets migrations that already passed staging.
-#
-# Required GitHub Secrets:
-#   STAGING_DATABASE_URL  — staging Supabase pooler URL
-#   PROD_DATABASE_URL     — prod Supabase pooler URL
+# A branch push may touch a shared database only after the complete CI graph
+# (quality, dependency security, and Playwright) succeeds for the same SHA.
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [staging, main]
 
 concurrency:
-  group: migrate-${{ github.ref_name }}
-  cancel-in-progress: false  # never cancel a running migration
+  group: migrate-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
 
 jobs:
   migrate:
-    name: Migrate (${{ github.ref_name }})
+    name: Migrate (${{ github.event.workflow_run.head_branch }})
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      (github.event.workflow_run.head_branch == 'staging' || github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    environment: ${{ github.event.workflow_run.head_branch == 'main' && 'production' || 'staging' }}
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - uses: pnpm/action-setup@v4
 
@@ -34,30 +38,29 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # Safety gate: verify journal integrity before touching DB
       - name: Verify migration journal
         run: pnpm verify:migrations
 
       - name: Enable pgvector extension (staging)
-        if: github.ref_name == 'staging'
+        if: github.event.workflow_run.head_branch == 'staging'
         env:
           DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         run: psql "$DATABASE_URL" -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
       - name: Run migrations (staging)
-        if: github.ref_name == 'staging'
+        if: github.event.workflow_run.head_branch == 'staging'
         env:
           DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         run: pnpm --filter @haggle/db db:migrate
 
       - name: Enable pgvector extension (production)
-        if: github.ref_name == 'main'
+        if: github.event.workflow_run.head_branch == 'main'
         env:
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
         run: psql "$DATABASE_URL" -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
       - name: Run migrations (production)
-        if: github.ref_name == 'main'
+        if: github.event.workflow_run.head_branch == 'main'
         env:
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
         run: pnpm --filter @haggle/db db:migrate

@@ -26,6 +26,10 @@ import { PlaybackArena } from "./playback/playback-arena";
  */
 const STALL_AFTER_MS = 120_000;
 const STALL_CHECK_INTERVAL_MS = 5_000;
+// The server bounds an individual DeepSeek decision at 45s. Leave room for DB
+// preparation/persistence, but do not let a wedged API request keep the live screen
+// on round zero forever.
+const ROUND_REQUEST_TIMEOUT_MS = 75_000;
 
 interface AutoPlayNextResponse {
   complete: boolean;
@@ -125,6 +129,7 @@ export function LiveNegotiation({
     if (isTerminalNegotiationStatus(initialPayload.session.status)) return;
     if (runnerAttempt > 0) setUpdateError(false);
     let cancelled = false;
+    let activeRoundController: AbortController | null = null;
     const sessionId = initialPayload.session.id;
 
     async function loadSession(): Promise<SessionResponse> {
@@ -143,10 +148,22 @@ export function LiveNegotiation({
         while (!cancelled && !isTerminalNegotiationStatus(current.session.status)) {
           const runToken = getNegotiationRunToken(sessionId);
           try {
-            const next = await api.post<AutoPlayNextResponse>(
-              `/negotiations/sessions/${sessionId}/auto-play/next`,
-              runToken ? { run_token: runToken } : {},
+            activeRoundController = new AbortController();
+            const requestTimeout = window.setTimeout(
+              () => activeRoundController?.abort(),
+              ROUND_REQUEST_TIMEOUT_MS,
             );
+            let next: AutoPlayNextResponse;
+            try {
+              next = await api.post<AutoPlayNextResponse>(
+                `/negotiations/sessions/${sessionId}/auto-play/next`,
+                runToken ? { run_token: runToken } : {},
+                { signal: activeRoundController.signal },
+              );
+            } finally {
+              window.clearTimeout(requestTimeout);
+              activeRoundController = null;
+            }
             // A seller-criteria PAUSE answers 200 with no new round, and WAITING is not a
             // terminal status — so ignoring the body span the loop forever: POST → 200 →
             // reload → still WAITING → POST … with nothing to show for it. Hand the
@@ -190,6 +207,7 @@ export function LiveNegotiation({
     void driveRounds();
     return () => {
       cancelled = true;
+      activeRoundController?.abort();
     };
   }, [initialPayload.session.id, initialPayload.session.status, runnerAttempt]);
 

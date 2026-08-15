@@ -191,8 +191,9 @@ pnpm --filter @haggle/engine-session test
 **규칙:**
 1. 모든 작업은 `staging`에서 feature 브랜치를 따서 시작
 2. feature → `staging` PR 머지 → staging 환경에서 통합 테스트
-3. 테스트 통과 후 `staging` → `main` **"Deploy PR"** 머지 → 프로덕션 배포
-4. `main`에는 staging을 거치지 않은 코드가 직접 들어가지 않음
+3. 개발 기간에는 `main`을 변경하지 않고 staging에서 릴리스 후보 SHA를 고정
+4. 8월 22일 직전 최종 승인 후에만 `staging` → `main` **"Deploy PR"** 머지 → 프로덕션 배포
+5. `main`에는 staging을 거치지 않은 코드가 직접 들어가지 않음
 
 ### 작은 브랜치 원칙
 
@@ -206,6 +207,27 @@ pnpm --filter @haggle/engine-session test
 - 원자적으로 함께 배포해야 해서 분리할 수 없는 경우에는 PR에 이유, 위험, 검증 범위를
   기록한다.
 - 현재 작업과 무관한 포맷 정리·리팩터링·문서 이동을 같은 브랜치에 섞지 않는다.
+
+### 주간 작업·리뷰 그래프
+
+- 사람과 개발 에이전트를 포함한 모든 기여자는 변경 전에 [CONTRIBUTING.md](./CONTRIBUTING.md)를 읽고
+  자신의 이름 또는 별칭으로 `pnpm work:me -- "<이름>"`을 실행한다.
+- 주간 회의는 보통 토요일 20:00 또는 20:30에 진행한다. 회의 공지에서 정확한 시각과 시간대를 확정한다.
+- 작업을 나눌 때 구현 담당자 1명과 그 사람이 아닌 리뷰어 1명만 정한다.
+- 리뷰어가 없는 작업은 구현을 시작하지 않는다. 리뷰어 변경은 작업 카드에 기록한다.
+- 담당자가 불명확한 작업은 추측으로 배정하지 않고 주간 그래프의 `unassigned` 상태로 남긴다.
+- PR 설명은 코드 줄 나열보다 사용자 결과, 변경 전후 흐름, 실패 위험, 보호장치, 검증 증거,
+  리뷰어가 판단할 질문을 먼저 제공한다.
+- DB, 인증, 결제, 정산, 스마트 계약, CI/배포는 보호 영역이다. 리뷰어 수를 늘리지 않고,
+  해당 위험을 판단할 수 있는 한 사람을 단일 리뷰어로 선택한다.
+- 모든 CI는 품질·빌드·테스트, Playwright smoke, production dependency audit를 통과해야 한다.
+- 공유 DB migration은 같은 SHA의 최종 `CI` 성공 뒤에만 시작한다.
+- 상세 기준과 양식은
+  [docs/mvp/DEVELOPMENT_GRAPH_AND_REVIEW.md](./docs/mvp/DEVELOPMENT_GRAPH_AND_REVIEW.md)를 따른다.
+- 현재 주간 작업은 `docs/meetings/current-week-work-graph.json`이 단일 소스다. 사용자가 자기 이름이나
+  별칭을 밝히면 이 그래프에서 담당 작업, 리뷰할 작업, 의존성과 미배정 항목을 찾아 설명한다.
+- 그래프에 없는 요청은 임의로 사람에게 배정하지 않는다. 새 작업으로 기록한 뒤 담당자와 단일 리뷰어를
+  확인하며, 상태·의존성·담당·리뷰 변경은 구현과 함께 그래프에도 반영한다.
 
 상세: [docs/wip/Environment_Separation_Playbook.md](./docs/wip/Environment_Separation_Playbook.md)
 
@@ -226,6 +248,8 @@ pnpm --filter @haggle/engine-session test
 - 배포 승인 게이트: `git push`, PR merge, staging/production 배포처럼 원격 배포를
   유발할 수 있는 작업은 실행 직전에 사용자에게 대상 환경과 변경 범위를 알리고
   명시적 승인을 받은 뒤 실행한다. 로컬 구현과 검증이 끝나도 승인 전에는 멈춘다.
+- 2026-08-22 릴리스는 결제·배송·정산·분쟁까지 포함한다. 초기 검증과 릴리스는
+  test 자산을 사용하며 실제 가치 자산/live provider 활성화는 별도 자금 Go/No-Go 뒤에 한다.
 
 ---
 
@@ -283,5 +307,5 @@ MVP 결제, 배송/fulfillment, 분쟁 작업은 아래 문서를 먼저 읽고 
 
 ---
 
-*Last Updated: 2026-07-14*
-*Version: 2.3*
+*Last Updated: 2026-08-12*
+*Version: 2.4*

@@ -30,7 +30,6 @@ import { getSessionById, updateSessionState } from "../../services/negotiation-s
 import { loadUserMemoryBrief } from "../../services/user-memory-card.service.js";
 import { DeepSeekAdapter } from "../adapters/deepseek-adapter.js";
 import { DEFAULT_BUDDY_DNA } from "../config.js";
-import { CheckpointStore } from "../memory/checkpoint-store.js";
 import {
   type DbRoundForMemory,
   inferPhaseFromStatus,
@@ -40,7 +39,6 @@ import {
   reconstructOpponentPattern,
   reconstructRoundFacts,
 } from "../memory/memory-reconstructor.js";
-import { PgCheckpointPersistence } from "../memory/pg-checkpoint-persistence.js";
 import { PgRoundFactSink } from "../memory/pg-round-fact-sink.js";
 import { checkIntervention } from "../phase/human-intervention.js";
 import { detectPhaseEvent, tryTransition } from "../phase/phase-machine.js";
@@ -82,16 +80,7 @@ registerSkill(new HaggleEngineSkill());
 registerSkill(new ElectronicsKnowledgeSkill());
 registerSkill(new FaratinCoachingSkill());
 
-// Lazy-initialized DB-backed singletons (require db instance at first call)
-let _checkpointStore: CheckpointStore | null = null;
 const roundFactSink = new PgRoundFactSink();
-
-function getCheckpointStore(db: Database): CheckpointStore {
-  if (!_checkpointStore) {
-    _checkpointStore = new CheckpointStore(new PgCheckpointPersistence(db));
-  }
-  return _checkpointStore;
-}
 
 const TERMINAL_STATUSES = new Set(["ACCEPTED", "REJECTED", "EXPIRED", "SUPERSEDED"]);
 
@@ -214,11 +203,11 @@ export async function executeStagedNegotiationRound(
       return { early: buildIdempotentResultFromRound(existingInTx, dbSession) };
     }
 
-    // 4. Load rounds + reconstruct memory
-    // Hydrate checkpoint store from DB for this session
-    const checkpointStore = getCheckpointStore(tx as unknown as Database);
-    await checkpointStore.hydrate(input.sessionId);
-
+    // 4. Load rounds + reconstruct memory.
+    // Do not cache services constructed with `tx` at module scope. A transaction DB
+    // handle is valid only inside this callback; retaining it made later negotiations
+    // wait forever on an already-finished transaction. The old checkpoint hydration
+    // was also dead work here: this live path never consumed the hydrated store.
     const dbRounds = (await getRoundsBySessionId(
       tx as unknown as Database,
       input.sessionId,

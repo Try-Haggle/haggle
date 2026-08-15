@@ -179,6 +179,21 @@ describe("determineNextAction", () => {
     expect(determineNextAction(state)).toEqual({ type: "complete_order" });
   });
 
+  it("IN_DISPUTE maps canonical buyer and partial-refund outcomes to refund processing", () => {
+    expect(
+      determineNextAction({ phase: "IN_DISPUTE", dispute_status: "RESOLVED_BUYER_FAVOR" }),
+    ).toEqual({ type: "process_refund" });
+    expect(determineNextAction({ phase: "IN_DISPUTE", dispute_status: "PARTIAL_REFUND" })).toEqual({
+      type: "process_refund",
+    });
+  });
+
+  it("IN_DISPUTE maps the canonical seller-favor outcome to completion", () => {
+    expect(
+      determineNextAction({ phase: "IN_DISPUTE", dispute_status: "RESOLVED_SELLER_FAVOR" }),
+    ).toEqual({ type: "complete_order" });
+  });
+
   it("IN_DISPUTE with pending dispute returns no_action", () => {
     const state: OrderState = { phase: "IN_DISPUTE", dispute_status: "OPEN" };
     expect(determineNextAction(state)).toEqual({ type: "no_action" });
@@ -347,6 +362,13 @@ describe("computeOrderPhase", () => {
 
   it("returns COMPLETED when dispute resolved without refund", () => {
     expect(computeOrderPhase({ dispute_status: "RESOLVED_NO_REFUND" })).toBe("COMPLETED");
+  });
+
+  it("maps canonical dispute outcomes emitted by dispute-core", () => {
+    expect(computeOrderPhase({ dispute_status: "RESOLVED_BUYER_FAVOR" })).toBe("REFUNDED");
+    expect(computeOrderPhase({ dispute_status: "PARTIAL_REFUND" })).toBe("REFUNDED");
+    expect(computeOrderPhase({ dispute_status: "RESOLVED_SELLER_FAVOR" })).toBe("COMPLETED");
+    expect(computeOrderPhase({ dispute_status: "CLOSED" })).toBe("IN_DISPUTE");
   });
 
   it("returns REFUNDED when payment is REFUNDED", () => {

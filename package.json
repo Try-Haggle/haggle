@@ -5,6 +5,13 @@
   "engines": {
     "node": ">=22"
   },
+  "pnpm": {
+    "overrides": {
+      "fast-uri@>=3.0.0 <3.1.3": "3.1.3",
+      "nanoid@<3.3.18": "3.3.18",
+      "postcss@<=8.5.17": "8.5.18"
+    }
+  },
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
@@ -18,12 +25,15 @@
     "verify:migrations": "node scripts/verify-drizzle-journal.mjs && pnpm verify:db-schema",
     "verify:db-schema": "node scripts/verify-db-schema-ownership.mjs && node scripts/verify-transaction-relations.mjs && pnpm --filter @haggle/db db:check",
     "verify:db-invariants": "node scripts/verify-db-invariants.mjs",
+    "audit:prod": "node scripts/audit-production-dependencies.mjs",
+    "work:me": "node scripts/query-weekly-work-graph.mjs",
     "db:preflight:compat": "pnpm --filter @haggle/db db:preflight:compat",
     "db:audit:relations": "pnpm --filter @haggle/db db:audit:relations",
     "db:prod:migrate:check": "node scripts/apply-production-db-migrations.mjs",
     "db:prod:migrate:apply": "node scripts/apply-production-db-migrations.mjs --apply",
     "test:e2e": "playwright test",
     "test:e2e:smoke": "playwright test smoke.spec.ts",
+    "test:e2e:transaction": "playwright test two-account-transaction-rehearsal.spec.ts --headed --workers=1",
     "prepare": "husky"
   },
   "devDependencies": {

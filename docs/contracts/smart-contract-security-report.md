@@ -9,6 +9,10 @@
 
 ## 요약
 
+이 보고서의 기존 4라운드 감사와 148개 테스트 수치는 `HaggleSettlementRouter`와
+`HaggleDisputeRegistry`에만 해당한다. 이후 추가된 `HaggleConditionalSettlement`는 아래의
+2026-08-13 검증 부록 범위로 구분하며, 독립적인 외부 보안 감사를 받았다는 뜻으로 해석하지 않는다.
+
 | 항목 | 수치 |
 |------|------|
 | 총 보안 리뷰 라운드 | 4회 |
@@ -17,6 +21,45 @@
 | 수정된 Medium | **14건** |
 | Fuzz 테스트 | 3개 (각 1,000 runs) |
 | Invariant 테스트 | 1개 (256 runs × 16,384 calls) |
+
+---
+
+## 2026-08-13 ConditionalSettlement 검증 부록
+
+### 실행 증거
+
+- 조건부 정산 로컬 테스트 49개 통과: funding, release/refund, dispute, expiry, pause,
+  signer rotation, EIP-1271 contract signer, 잘못된 주소·nonce·서명·금액·수수료·중복 실행 경계.
+- 전체 로컬 계약군 203개 통과: Router fuzz 2개(각 1,000 runs), Registry fuzz 1개(1,000 runs),
+  Router invariant 1개(256 runs × 16,384 calls) 포함.
+- Base Sepolia 실제 배포 코드를 읽은 로컬 포크 테스트 5개 통과: manifest 설정, exact split release,
+  signed refund, dispute 후 refund, permissionless expiry. 원격 체인에는 트랜잭션을 전송하지 않았다.
+- `forge coverage --ir-minimum` 기준 ConditionalSettlement 96.43% lines, 94.12% statements,
+  83.87% branches, 95.83% functions. `viaIR` 우회로 source mapping 경고가 있어 수치는 보조 증거로만 쓴다.
+
+### 실제 Base Sepolia 상태 대조
+
+2026-08-13 약 17:05 UTC 읽기 기준으로 ConditionalSettlement는 4,006.42 hUSDC를 보유했다.
+이 금액은 5개의 `SettlementFunded` 이벤트 합계와 정확히 일치했고 release/refund 이벤트는 없어서,
+직접 송금으로 생긴 미회계 잔액은 확인되지 않았다. 다만 5개가 모두 `FUNDED`였으며 그중 3개,
+합계 3,536.42 hUSDC는 이미 만료됐다. 나머지 2개는 관측 시점 뒤 만료 예정이었다. `expire`는
+permissionless지만 자동 실행되지 않으므로 만료 예치 탐지·환불 실행·receipt reconciliation이 필요하다.
+
+같은 날 후속 실제 네트워크 검증에서 만료된 1건(1,041.42 hUSDC)에 `expire`를 제출했다.
+Base Sepolia 트랜잭션 `0xc6deffa8f786f4635b72db9d62507251a8603ca39db904bb93f28593937a2142`는
+status 1로 확정됐고 settlement 상태가 `FUNDED`에서 `REFUNDED`로 변경됐다. 계약 잔액은
+4,006.42에서 2,965.00 hUSDC로 감소하고 구매자 잔액은 같은 1,041.42 hUSDC만큼 증가해
+실제 배포 계약의 permissionless expiry 환불과 이벤트를 확인했다. 이 실행 뒤 FUNDED는 4건이며,
+관측 시점에 이미 만료된 것은 2건 합계 2,495.00 hUSDC다.
+
+### 릴리스 전 미해결 판단
+
+| 항목 | 현재 동작 | 필요한 결정 |
+|------|-----------|-------------|
+| 장기 pause 시 기존 예치 | `release`, signed `refund`, `expire`가 모두 중단되어 자금이 잠길 수 있음 | 최대 pause 시간과 긴급 unpause runbook을 정하거나, 기존 자금 출구를 pause에서 제외할지 리뷰 |
+| Conditional signer 교체 | owner가 `setSigner`를 즉시 실행하고 nonce가 증가 | Router와 같은 지연 교체·긴급 freeze가 필요한지 실제 자산 전환 전 결정 |
+| 만료 예치 처리 | 누구나 `expire` 가능하지만 자동 실행자 없음 | watcher/keeper, 재시도, receipt 확인과 경보 담당 지정 |
+| 외부 분석 | 정적 분석기와 독립 감사 증거 없음 | 실제 USDC 전환 전 Slither/Aderyn 등 정적 분석과 독립 리뷰 수행 |
 
 ---
 

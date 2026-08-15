@@ -3,6 +3,9 @@
 AI 협상 + 온체인 결제 프로토콜 인프라. 프로젝트 개요·아키텍처는 [CLAUDE.md](./CLAUDE.md),
 환경 분리 전략은 [docs/wip/Environment_Separation_Playbook.md](./docs/wip/Environment_Separation_Playbook.md) 참고.
 
+개발을 시작하기 전에 [CONTRIBUTING.md](./CONTRIBUTING.md)의 주간 작업 그래프, 단일 리뷰어,
+검증·인계 규칙을 확인한다. 자신의 이번 주 담당과 리뷰 작업은 `pnpm work:me -- "<이름>"`으로 조회한다.
+
 ---
 
 ## 로컬 개발 환경 (Local Development)
