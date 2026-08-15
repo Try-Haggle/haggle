@@ -14,6 +14,8 @@ import { defineConfig, devices } from "@playwright/test";
  */
 
 const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
+const SMOKE_SUPABASE_URL = "http://127.0.0.1:54321";
+const SMOKE_SUPABASE_ANON_KEY = "playwright-smoke-anon-key";
 
 export default defineConfig({
   testDir: "./apps/web/e2e",
@@ -41,6 +43,15 @@ export default defineConfig({
         // not hit EMFILE on macOS (default 256).
         command: "bash -lc 'ulimit -n 65535; pnpm --filter @haggle/web dev'",
         url: BASE_URL,
+        env: {
+          ...process.env,
+          // Public smoke only verifies that the auth shell renders. Supplying
+          // inert defaults keeps @supabase/ssr from crashing before the form
+          // mounts while preserving real local credentials when configured.
+          NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL ?? SMOKE_SUPABASE_URL,
+          NEXT_PUBLIC_SUPABASE_ANON_KEY:
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? SMOKE_SUPABASE_ANON_KEY,
+        },
         reuseExistingServer: !process.env.CI,
         timeout: 180_000,
       },

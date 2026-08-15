@@ -65,12 +65,12 @@
         "2026-08-13 Base Sepolia ConditionalSettlement 잔액 4,006.42 hUSDC가 5개 FUNDED 이벤트 합계와 정확히 일치함을 확인; 관측 시점에 3건 3,536.42 hUSDC는 이미 만료",
         "2026-08-13 실제 Base Sepolia expire 성공: tx 0xc6deffa8f786f4635b72db9d62507251a8603ca39db904bb93f28593937a2142, 1,041.42 hUSDC가 계약에서 구매자로 반환되고 FUNDED→REFUNDED 및 receipt status 1 확인",
         "2026-08-15 staging Galaxy S22 실제 협상에서 세션 생성 후 ROUND 0 정지를 재현하고, 별도 게스트 API의 auto-play/next도 65초 무응답 타임아웃임을 확인",
-        "2026-08-15 종료된 transaction DB handle을 모듈 전역 CheckpointStore가 재사용하던 원인을 제거하고 API 151개·web 17개 관련 테스트, API·web typecheck, Biome 검사를 통과; 브라우저 라운드 요청은 75초에 중단 후 Retry 가능"
+    "2026-08-15 종료된 transaction DB handle을 모듈 전역 CheckpointStore가 재사용하던 원인을 제거하고 API 151개·web 17개 관련 테스트, API·web typecheck, Biome 검사를 통과; 브라우저 라운드 요청은 75초에 중단 후 Retry 가능",
+    "2026-08-15 CI remediation 로컬 검증 통과: Playwright public smoke 3개, production dependency audit gate(신규 critical/high 0건), 전체 29개 test task, 32개 typecheck task, 18개 build task, migration·DB invariant·Biome 검사. nanoid 3.3.18, fast-uri 3.1.3, postcss 8.5.18로 취약 의존성을 교체하고 해소된 기존 예외 7건을 baseline에서 제거"
       ],
       "remainingGaps": [
         "staging에서 판매자 개인 계정·별도 Haggle 구매자 계정·테스트 지갑으로 two-account Playwright 리허설 실실행: 기본 뒤로 가기/재견적과 선택적 지갑 변경·잘못된 네트워크·승인 거절 증거 수집",
         "round 0 협상 수정은 현재 codex/w2026-08-08-01-payment-rehearsal 브랜치에만 있고 staging 미배포: 단일 리뷰어 확정과 staging 반영 후 실제 링크에서 협상 종료까지 재검증 필요",
-        "2026-08-15 production dependency audit 신규 high 4건(nanoid 1139427, fast-uri 1139454·1144861, postcss 1139510)으로 보안 gate 실패: 담당자를 임의 배정하지 않고 별도 remediation 결정 필요",
         "판매자 개인 계정의 Base Sepolia 수취 지갑 등록 경로 확인: wallet settings 구현은 존재하지만 현재 Account Settings 화면에 연결되지 않아 staging fallback 주소를 쓸 경우 계정별 수취 검증이 불가함",
         "EasyPost 테스트 라벨과 physical_live 실배송 라벨 증거",
         "실제 API·DB·webhook을 통과한 구매자/판매자 승소 결과와 receipt",

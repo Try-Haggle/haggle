@@ -38,21 +38,6 @@
       "expires": "2026-08-17",
       "owner": "weekly-security-review"
     },
-    "1138395": {
-      "package": "fast-uri",
-      "expires": "2026-08-17",
-      "owner": "weekly-security-review"
-    },
-    "1138948": {
-      "package": "fast-uri",
-      "expires": "2026-08-17",
-      "owner": "weekly-security-review"
-    },
-    "1138950": {
-      "package": "fast-uri",
-      "expires": "2026-08-17",
-      "owner": "weekly-security-review"
-    },
     "1117061": { "package": "fastify", "expires": "2026-08-17", "owner": "weekly-security-review" },
     "1124273": {
       "package": "find-my-way",
@@ -71,8 +56,6 @@
       "expires": "2026-08-17",
       "owner": "weekly-security-review"
     },
-    "1138811": { "package": "nanoid", "expires": "2026-08-17", "owner": "weekly-security-review" },
-    "1138813": { "package": "nanoid", "expires": "2026-08-17", "owner": "weekly-security-review" },
     "1116376": { "package": "next", "expires": "2026-08-17", "owner": "weekly-security-review" },
     "1117931": { "package": "next", "expires": "2026-08-17", "owner": "weekly-security-review" },
     "1118939": { "package": "next", "expires": "2026-08-17", "owner": "weekly-security-review" },
@@ -94,8 +77,6 @@
       "expires": "2026-08-17",
       "owner": "weekly-security-review"
     },
-    "1124252": { "package": "postcss", "expires": "2026-08-17", "owner": "weekly-security-review" },
-    "1124288": { "package": "postcss", "expires": "2026-08-17", "owner": "weekly-security-review" },
     "1124066": { "package": "sharp", "expires": "2026-08-17", "owner": "weekly-security-review" },
     "1130713": {
       "package": "socket.io-parser",
