@@ -219,6 +219,8 @@ pnpm --filter @haggle/engine-session test
   리뷰어가 판단할 질문을 먼저 제공한다.
 - DB, 인증, 결제, 정산, 스마트 계약, CI/배포는 보호 영역이다. 리뷰어 수를 늘리지 않고,
   해당 위험을 판단할 수 있는 한 사람을 단일 리뷰어로 선택한다.
+- 모든 CI는 품질·빌드·테스트, Playwright smoke, production dependency audit를 통과해야 한다.
+- 공유 DB migration은 같은 SHA의 최종 `CI` 성공 뒤에만 시작한다.
 - 상세 기준과 양식은
   [docs/mvp/DEVELOPMENT_GRAPH_AND_REVIEW.md](./docs/mvp/DEVELOPMENT_GRAPH_AND_REVIEW.md)를 따른다.
 - 현재 주간 작업은 `docs/meetings/current-week-work-graph.json`이 단일 소스다. 사용자가 자기 이름이나
