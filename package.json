@@ -24,6 +24,7 @@
     "db:prod:migrate:apply": "node scripts/apply-production-db-migrations.mjs --apply",
     "test:e2e": "playwright test",
     "test:e2e:smoke": "playwright test smoke.spec.ts",
+    "test:e2e:transaction": "playwright test two-account-transaction-rehearsal.spec.ts --headed --workers=1",
     "prepare": "husky"
   },
   "devDependencies": {

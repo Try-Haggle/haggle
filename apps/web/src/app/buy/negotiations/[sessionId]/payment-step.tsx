@@ -259,8 +259,10 @@ export function PaymentStep({
   const [conditionalSettlement, setConditionalSettlement] =
     useState<ConditionalSettlementRequest | null>(null);
   const [quoteConfirmation, setQuoteConfirmation] = useState<QuoteConfirmation | null>(null);
+  const [quotedBuyerAddress, setQuotedBuyerAddress] = useState<Address | null>(null);
   const [draftReady, setDraftReady] = useState(false);
   const draftKey = `haggle:checkout-draft:${settlementApprovalId}`;
+  const isWrongNetwork = isConnected && chainId !== HAGGLE_WALLET_CHAIN_ID;
 
   useEffect(() => {
     const draft = readSessionDraft(draftKey, isCheckoutDraft);
@@ -277,6 +279,31 @@ export function PaymentStep({
     if (!draftReady || step === "complete") return;
     writeSessionDraft(draftKey, { method, shippingExecutionMode } satisfies CheckoutDraft);
   }, [draftKey, draftReady, method, shippingExecutionMode, step]);
+
+  useEffect(() => {
+    if (!paymentIntentId || step === "complete" || step === "select_method" || step === "error") {
+      return;
+    }
+
+    const disconnected = !isConnected || !address;
+    const changedAfterQuote = Boolean(
+      quotedBuyerAddress && address && quotedBuyerAddress.toLowerCase() !== address.toLowerCase(),
+    );
+    const wrongNetworkForPreparedPayment = isWrongNetwork;
+
+    if (changedAfterQuote || (quotedBuyerAddress && wrongNetworkForPreparedPayment)) {
+      // The signed request is bound to one buyer address and network. Never carry it across a
+      // wallet/account/network change; require a fresh server request for the new wallet.
+      setConditionalSettlement(null);
+      setQuoteConfirmation(null);
+      setQuotedBuyerAddress(null);
+    }
+
+    if (disconnected || changedAfterQuote || wrongNetworkForPreparedPayment) {
+      setError(null);
+      setStep("connect_wallet");
+    }
+  }, [address, isConnected, isWrongNetwork, paymentIntentId, quotedBuyerAddress, step]);
 
   function handleBack() {
     setError(null);
@@ -322,7 +349,6 @@ export function PaymentStep({
     (quoteConfirmation?.rail === "stripe"
       ? "Buyer pays the Stripe onramp fee. Haggle fee is deducted from seller proceeds."
       : "No buyer fee. Haggle fee is deducted from seller proceeds.");
-  const isWrongNetwork = isConnected && chainId !== HAGGLE_WALLET_CHAIN_ID;
   const hasPreparedPayment = paymentIntentId !== null;
 
   async function handleResumePreparedPayment() {
@@ -392,6 +418,8 @@ export function PaymentStep({
     if (!paymentIntentId || !address) return;
     setIsLoading(true);
     setError(null);
+    setConditionalSettlement(null);
+    setQuotedBuyerAddress(null);
     try {
       assertExpectedWalletNetwork();
       const quote = await api.post<{ quote_confirmation?: QuoteConfirmation }>(
@@ -419,8 +447,10 @@ export function PaymentStep({
         connectedBuyerAddress: address,
       });
       setConditionalSettlement(request);
+      setQuotedBuyerAddress(address);
       setStep("confirm_payment");
     } catch (err) {
+      setQuoteConfirmation(null);
       setError(err instanceof Error ? err.message : String(err));
       setStep("error");
     } finally {
