@@ -45,7 +45,7 @@ Create an ignored `.env.e2e.local` at the repository root:
 
 ```dotenv
 RUN_TRANSACTION_REHEARSAL=1
-E2E_BASE_URL=https://staging.tryhaggle.ai
+E2E_BASE_URL=https://app.staging.tryhaggle.ai
 # Required: use the actual test item's PNG, JPG, or WebP file (max 5 MB)
 E2E_LISTING_PHOTO_PATH=/absolute/path/to/a-test-product-image.png
 ```
@@ -113,7 +113,7 @@ the dev server yourself with `E2E_BASE_URL=http://localhost:3000`, run
 ## Run against a deployed environment
 
 ```bash
-E2E_BASE_URL=https://staging.tryhaggle.ai pnpm test:e2e
+E2E_BASE_URL=https://app.staging.tryhaggle.ai pnpm test:e2e
 ```
 
 ## Coverage status
