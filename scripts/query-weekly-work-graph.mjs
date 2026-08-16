@@ -97,6 +97,42 @@ function validateGraph() {
     }
   }
 
+  if (graph.releaseDashboard) {
+    const dashboard = graph.releaseDashboard;
+    if (!["go", "conditional_go", "no_go"].includes(dashboard.readiness)) {
+      fail(`releaseDashboard readiness가 올바르지 않음: ${dashboard.readiness}`);
+    }
+    if (!/^[0-9a-f]{40}$/.test(dashboard.latestStaging?.sha ?? "")) {
+      fail("releaseDashboard latestStaging.sha는 전체 Git SHA여야 함");
+    }
+
+    const decisionIds = new Set();
+    for (const decision of dashboard.meetingDecisions ?? []) {
+      if (decisionIds.has(decision.id)) {
+        fail(`회의 결정 ID가 중복됨: ${decision.id}`);
+      }
+      decisionIds.add(decision.id);
+      for (const taskId of decision.relatedTaskIds ?? []) {
+        if (!tasksById.has(taskId)) {
+          fail(`${decision.id}가 없는 작업 ${taskId}를 참조함`);
+        }
+      }
+    }
+
+    const gateIds = new Set();
+    for (const gate of dashboard.releaseGates ?? []) {
+      if (gateIds.has(gate.id)) {
+        fail(`릴리스 게이트 ID가 중복됨: ${gate.id}`);
+      }
+      gateIds.add(gate.id);
+      for (const taskId of gate.taskIds ?? []) {
+        if (!tasksById.has(taskId)) {
+          fail(`${gate.id}가 없는 작업 ${taskId}를 참조함`);
+        }
+      }
+    }
+  }
+
   return { aliases, peopleById, tasksById };
 }
 
@@ -108,6 +144,20 @@ const statusLabels = {
   blocked: "막힘",
   done: "완료",
   unassigned: "미배정",
+};
+
+const releaseReadinessLabels = {
+  go: "GO",
+  conditional_go: "조건부 GO",
+  no_go: "NO-GO",
+};
+
+const releaseGateStatusLabels = {
+  passed: "통과",
+  blocked: "차단",
+  needs_evidence: "증거 필요",
+  decision_required: "결정 필요",
+  unassigned: "담당 미배정",
 };
 
 function personName(personId) {
@@ -190,6 +240,42 @@ function printUnassigned() {
   }
 }
 
+function printReleaseDashboard() {
+  const dashboard = graph.releaseDashboard;
+  if (!dashboard) return;
+
+  console.log(`\n8월 22일 릴리스 대시보드 · ${dashboard.asOf}`);
+  console.log(
+    `현재 판정: ${releaseReadinessLabels[dashboard.readiness] ?? dashboard.readiness} · ${dashboard.readinessReason}`,
+  );
+  console.log(
+    `최신 staging: ${dashboard.latestStaging.shortSha} · 배포 ${dashboard.latestStaging.deployed ? "성공" : "미확인"} · CI ${dashboard.latestStaging.ci === "passed" ? "성공" : dashboard.latestStaging.ci} · DB migration ${dashboard.latestStaging.dbMigration === "passed" ? "성공" : dashboard.latestStaging.dbMigration} · API health ${dashboard.latestStaging.apiHealth === "passed" ? "성공" : dashboard.latestStaging.apiHealth}`,
+  );
+
+  console.log(`\n릴리스 게이트 (${dashboard.releaseGates.length})`);
+  for (const gate of dashboard.releaseGates) {
+    console.log(
+      `\n- [${gate.priority} · ${releaseGateStatusLabels[gate.status] ?? gate.status}] ${gate.title} (${gate.id})`,
+    );
+    console.log(`  연결 작업: ${gate.taskIds.join(", ")}`);
+    console.log(`  통과 조건: ${gate.passCondition}`);
+    console.log(`  현재 막힘: ${gate.blocker}`);
+  }
+
+  const openDecisions = dashboard.meetingDecisions.filter((decision) => decision.status === "open");
+  console.log(`\n오늘 결정할 질문 (${openDecisions.length})`);
+  for (const decision of openDecisions) {
+    console.log(`\n- [${decision.priority}] ${decision.question} (${decision.id})`);
+    console.log(`  연결 작업: ${decision.relatedTaskIds.join(", ")}`);
+    console.log(`  결정 기한: ${dueLabel(decision.decisionNeededBy)}`);
+  }
+
+  console.log("\n범위 경계");
+  console.log(`- 이번 릴리스: ${dashboard.scopeBoundary.releaseNow}`);
+  console.log(`- 후속 별도 게이트: ${dashboard.scopeBoundary.separateLaterGate}`);
+  console.log(`- 기능 동결: ${dashboard.scopeBoundary.featureFreeze}`);
+}
+
 function printPersonal(person) {
   printHeader();
   console.log(`\n조회한 사람: ${person.displayName}`);
@@ -226,6 +312,7 @@ function printPersonal(person) {
 
 function printTeam() {
   printHeader();
+  printReleaseDashboard();
   console.log("\n팀 전체 배정");
   for (const person of graph.people) {
     const owned = graph.tasks.filter((task) => task.ownerId === person.id);

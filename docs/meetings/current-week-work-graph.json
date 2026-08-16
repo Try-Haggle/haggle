@@ -11,6 +11,166 @@
     "source": "참가자별 회의 녹음 5개와 2026-08-12 사용자 확인",
     "confirmedAt": "2026-08-12"
   },
+  "releaseDashboard": {
+    "preparedForMeeting": "2026-08-15",
+    "asOf": "2026-08-15T17:37:37-06:00",
+    "releaseTarget": "2026-08-22",
+    "readiness": "no_go",
+    "readinessReason": "최신 staging 자동검증과 배포는 성공했지만 두 실계정 전체 거래, EasyPost 실배송, 외부 webhook 재시도, 온체인·서버 장부 일치, 운영 담당자와 단일 리뷰 승인이 아직 확인되지 않았다.",
+    "latestStaging": {
+      "sha": "9348d4eb6a6493c9e7672ff9584649dc84cf9f7c",
+      "shortSha": "9348d4e",
+      "deployed": true,
+      "apiHealth": "passed",
+      "ci": "passed",
+      "dbMigration": "passed",
+      "evidence": [
+        "PR #67이 2026-08-15 staging에 병합됨",
+        "같은 SHA에서 quality·build·unit, production dependency audit, Playwright smoke, 최종 CI 성공",
+        "같은 SHA의 staging DB migration 성공",
+        "Vercel web·landing과 Railway API 배포 성공",
+        "https://api.staging.tryhaggle.ai/health 응답 200"
+      ]
+    },
+    "meetingDecisions": [
+      {
+        "id": "D2026-08-15-01",
+        "priority": "P0",
+        "status": "open",
+        "question": "지난주부터 제안 상태인 각 작업의 단일 리뷰어를 그대로 확정할 것인가?",
+        "relatedTaskIds": [
+          "W2026-08-08-01",
+          "W2026-08-08-02",
+          "W2026-08-08-03",
+          "W2026-08-08-05",
+          "W2026-08-08-06",
+          "W2026-08-08-07",
+          "W2026-08-08-08",
+          "W2026-08-08-09"
+        ],
+        "decisionNeededBy": "2026-08-15"
+      },
+      {
+        "id": "D2026-08-15-02",
+        "priority": "P0",
+        "status": "open",
+        "question": "다중 구매자 결제 우선순위를 8월 22일 MVP에 포함할 것인가, 단일 구매자 거래로 범위를 동결하고 후속으로 넘길 것인가?",
+        "relatedTaskIds": [
+          "W2026-08-08-02",
+          "W2026-08-08-03",
+          "W2026-08-08-04"
+        ],
+        "decisionNeededBy": "2026-08-15"
+      },
+      {
+        "id": "D2026-08-15-03",
+        "priority": "P0",
+        "status": "open",
+        "question": "릴리스 책임자, DB migration 담당자, 배포 후 확인 담당자, incident·rollback 담당자를 각각 누구로 할 것인가?",
+        "relatedTaskIds": [
+          "W2026-08-15-01",
+          "W2026-08-15-06"
+        ],
+        "decisionNeededBy": "2026-08-15"
+      },
+      {
+        "id": "D2026-08-15-04",
+        "priority": "P0",
+        "status": "open",
+        "question": "ConditionalSettlement pause의 최대 시간과 긴급 unpause 절차를 정하고, 즉시 signer 교체는 테스트 자산 릴리스에서 허용할 것인가?",
+        "relatedTaskIds": [
+          "W2026-08-15-04"
+        ],
+        "decisionNeededBy": "2026-08-17"
+      },
+      {
+        "id": "D2026-08-15-05",
+        "priority": "P1",
+        "status": "open",
+        "question": "핫딜 운영·캠페인과 카테고리·태그 정리를 8월 22일 거래 MVP에 포함할 것인가, 후속 범위로 분리할 것인가?",
+        "relatedTaskIds": [
+          "W2026-08-08-08",
+          "W2026-08-08-09",
+          "W2026-08-08-10",
+          "W2026-08-08-12"
+        ],
+        "decisionNeededBy": "2026-08-15"
+      }
+    ],
+    "releaseGates": [
+      {
+        "id": "G2026-08-15-01",
+        "priority": "P0",
+        "status": "blocked",
+        "title": "두 실계정 전체 거래",
+        "taskIds": [
+          "W2026-08-08-01",
+          "W2026-08-08-05",
+          "W2026-08-08-06",
+          "W2026-08-08-07",
+          "W2026-08-15-02",
+          "W2026-08-15-03",
+          "W2026-08-15-07"
+        ],
+        "passCondition": "판매자 리스팅·공개 링크부터 구매자 협상·hUSDC funding·배송·정상 release와 양쪽 분쟁 결과까지 실제 API·DB·webhook·온체인 receipt가 같은 거래로 연결된다.",
+        "blocker": "두 로그인 계정의 headed 리허설, EasyPost 라벨, 판매자 수취 지갑, webhook 재전송 증거가 없음"
+      },
+      {
+        "id": "G2026-08-15-02",
+        "priority": "P0",
+        "status": "decision_required",
+        "title": "결제 우선순위 MVP 범위",
+        "taskIds": [
+          "W2026-08-08-02",
+          "W2026-08-08-03",
+          "W2026-08-08-04"
+        ],
+        "passCondition": "포함 시 점수·동점·기한·승계·동시성 규칙과 테스트가 완료되고, 제외 시 사용자에게 노출되지 않으며 후속 작업으로 기록된다.",
+        "blocker": "점수 산정 작업이 미배정이고 결제 우선순위 작업이 차단됨"
+      },
+      {
+        "id": "G2026-08-15-03",
+        "priority": "P0",
+        "status": "needs_evidence",
+        "title": "스마트 계약과 장부 안전성",
+        "taskIds": [
+          "W2026-08-08-01",
+          "W2026-08-15-04"
+        ],
+        "passCondition": "남은 FUNDED 테스트 예치가 처리되고 계약 이벤트·receipt·서버 장부가 일치하며 pause·unpause와 signer 사고 절차가 합의된다.",
+        "blocker": "남은 예치 reconciliation과 운영 runbook 결정이 없음"
+      },
+      {
+        "id": "G2026-08-15-04",
+        "priority": "P0",
+        "status": "unassigned",
+        "title": "인증·네트워크·외부 서비스 운영",
+        "taskIds": [
+          "W2026-08-15-05",
+          "W2026-08-15-07"
+        ],
+        "passCondition": "JWKS·CORS·secret·rate limit·WebSocket과 Stripe·x402·EasyPost·DeepSeek 실패·재시도 및 실제 경보 수신이 staging에서 검증된다.",
+        "blocker": "작업 담당자와 단일 리뷰어가 아직 없음"
+      },
+      {
+        "id": "G2026-08-15-05",
+        "priority": "P0",
+        "status": "unassigned",
+        "title": "릴리스 통제와 Go/No-Go 증거",
+        "taskIds": [
+          "W2026-08-15-01",
+          "W2026-08-15-06"
+        ],
+        "passCondition": "단일 리뷰어 승인이 실제로 강제되고 릴리스 역할·후보 SHA·staging 배포 SHA·백업·rollback·관찰 계획이 확정된다.",
+        "blocker": "staging은 PR·CI·리뷰를 강제하지 않고 main 승인 리뷰 수도 0이며 릴리스 역할이 비어 있음"
+      }
+    ],
+    "scopeBoundary": {
+      "releaseNow": "Base Sepolia hUSDC와 테스트 결제·배송 경로로 전체 거래 루프를 릴리스한다.",
+      "separateLaterGate": "Base mainnet·실제 USDC·실제 seller payout 활성화와 외부 스마트 계약 감사는 별도 Go/No-Go 뒤에만 수행한다.",
+      "featureFreeze": "2026-08-17 이후에는 새 기능 없이 승인된 P0 수정과 릴리스 증거만 반영한다."
+    }
+  },
   "people": [
     {
       "id": "jeonghaeng",
@@ -50,7 +210,7 @@
       "assignmentConfidence": "confirmed",
       "domains": ["협상", "결제", "배송", "분쟁", "E2E"],
       "outcome": "구매부터 결제, 실제 배송, 정산 또는 분쟁까지 한 거래를 테스트 자산으로 끝까지 재현한다.",
-      "nextAction": "round 0에서 멈추는 협상 수정의 단일 리뷰어를 확정하고 staging에 반영해 첫 라운드부터 종료까지 재검증한다. 그 뒤 기존 Base Sepolia 만료 예치 5건의 처리 방법과 receipt reconciliation을 결정하고, 판매자 개인 staging 계정과 별도 Haggle 구매자 계정으로 two-account Playwright 리허설을 headed로 실행한다. 기본 뒤로 가기·재견적 외에 지갑 변경, 잘못된 네트워크, 첫 승인 거절 옵션을 실행하고 링크·협상·Base Sepolia 예치·양쪽 주문 ID 일치 증거를 남긴다.",
+      "nextAction": "PR #67이 배포된 staging에서 첫 라운드부터 협상 종료까지 다시 확인한다. 인호의 단일 리뷰를 확정한 뒤 판매자 개인 staging 계정과 별도 Haggle 구매자 계정으로 two-account Playwright 리허설을 headed로 실행하고, 링크·협상·Base Sepolia funding·양쪽 주문 ID·EasyPost 배송·정상 release 또는 분쟁 결과가 한 거래로 이어지는 증거를 남긴다.",
       "reviewBrief": "협상이 round 0에서 멈추지 않고 종료까지 진행되며, 중복 청구·배송·정산이 없고, 분쟁 중 release가 멈추며, 외부 이벤트와 서버 장부가 일치하는지 확인한다.",
       "evidence": ["staging 실행 기록", "결제·배송 receipt", "양쪽 분쟁 결과", "재시도·중복 요청 결과"],
       "verifiedEvidence": [
@@ -66,16 +226,19 @@
         "2026-08-13 실제 Base Sepolia expire 성공: tx 0xc6deffa8f786f4635b72db9d62507251a8603ca39db904bb93f28593937a2142, 1,041.42 hUSDC가 계약에서 구매자로 반환되고 FUNDED→REFUNDED 및 receipt status 1 확인",
         "2026-08-15 staging Galaxy S22 실제 협상에서 세션 생성 후 ROUND 0 정지를 재현하고, 별도 게스트 API의 auto-play/next도 65초 무응답 타임아웃임을 확인",
     "2026-08-15 종료된 transaction DB handle을 모듈 전역 CheckpointStore가 재사용하던 원인을 제거하고 API 151개·web 17개 관련 테스트, API·web typecheck, Biome 검사를 통과; 브라우저 라운드 요청은 75초에 중단 후 Retry 가능",
-    "2026-08-15 CI remediation 로컬 검증 통과: Playwright public smoke 3개, production dependency audit gate(신규 critical/high 0건), 전체 29개 test task, 32개 typecheck task, 18개 build task, migration·DB invariant·Biome 검사. nanoid 3.3.18, fast-uri 3.1.3, postcss 8.5.18로 취약 의존성을 교체하고 해소된 기존 예외 7건을 baseline에서 제거"
+        "2026-08-15 CI remediation 로컬 검증 통과: Playwright public smoke 3개, production dependency audit gate(신규 critical/high 0건), 전체 29개 test task, 32개 typecheck task, 18개 build task, migration·DB invariant·Biome 검사. nanoid 3.3.18, fast-uri 3.1.3, postcss 8.5.18로 취약 의존성을 교체하고 해소된 기존 예외 7건을 baseline에서 제거",
+        "2026-08-15 PR #67이 staging SHA 9348d4e로 병합·배포되고 quality·build·unit, production dependency audit, Playwright smoke, 최종 CI와 같은 SHA의 staging DB migration이 모두 성공; API health 200 확인",
+        "2026-08-15 16:24 MDT Base Sepolia에서 실제 SettlementFunded 940 hUSDC 확인: settlement 0x1576649d0f5854a87cdd3cf03cca5a3de309309ecb55b5a74158694d5039ea28, tx 0xab190c6fd88a2ddf847a945089d70a1e2609116bc1ea6ee91202499ad71c159e, receipt status 1, buyer 0x0da9...A658, seller 0x7eB0...dCD6; 관측 시점 state FUNDED·판매자 hUSDC 0·계약 잔액 3,905 hUSDC",
+        "2026-08-15 최신 staging 공개 Playwright smoke 3개, API 협상·transaction scope·거래 리허설 110개, Web stall·live negotiation·payment step 28개, commerce-core 147개, 전체 build 18개 task, 스마트 계약 로컬 203개와 공개 Base Sepolia 포크 5개 통과"
       ],
       "remainingGaps": [
         "staging에서 판매자 개인 계정·별도 Haggle 구매자 계정·테스트 지갑으로 two-account Playwright 리허설 실실행: 기본 뒤로 가기/재견적과 선택적 지갑 변경·잘못된 네트워크·승인 거절 증거 수집",
-        "round 0 협상 수정은 현재 codex/w2026-08-08-01-payment-rehearsal 브랜치에만 있고 staging 미배포: 단일 리뷰어 확정과 staging 반영 후 실제 링크에서 협상 종료까지 재검증 필요",
+        "round 0 협상 수정은 staging에 배포됐지만 실제 링크에서 첫 라운드부터 협상 종료까지 재검증하고 단일 리뷰어 판단을 기록해야 함",
         "판매자 개인 계정의 Base Sepolia 수취 지갑 등록 경로 확인: wallet settings 구현은 존재하지만 현재 Account Settings 화면에 연결되지 않아 staging fallback 주소를 쓸 경우 계정별 수취 검증이 불가함",
         "EasyPost 테스트 라벨과 physical_live 실배송 라벨 증거",
         "실제 API·DB·webhook을 통과한 구매자/판매자 승소 결과와 receipt",
         "중복 클릭·webhook 재전송·동시 요청 리허설",
-        "Base Sepolia에서 FUNDED로 남은 4건의 테스트 예치 처리와 receipt reconciliation: 첫 실제 expire 뒤 관측 시점 만료 2건 2,495.00 hUSDC, 이후 만료 예정 2건 470.00 hUSDC",
+        "Base Sepolia 기존 미처리 예치와 2026-08-15 새 940 hUSDC FUNDED를 다시 열거해 계약 잔액 3,905 hUSDC와 receipt·서버 장부를 reconciliation하고, 새 예치는 배송·release 또는 만료 뒤 refund로 종료해야 함",
         "ConditionalSettlement pause가 기존 release·signed refund·buyer-protective expiry까지 막는 위험에 대한 최대 pause 시간·긴급 unpause runbook 또는 설계 변경 결정",
         "ConditionalSettlement의 즉시 signer 교체를 Router처럼 지연 교체·긴급 freeze로 보강할지 결정하고 실제 자산 전환 전 정적 분석·독립 보안 리뷰 수행"
       ],
@@ -283,6 +446,132 @@
       "dependsOn": [],
       "dueDate": null,
       "sourceNote": "회의에서 여러 운영안이 나왔지만 최종안과 담당자가 확정되지 않았다."
+    },
+    {
+      "id": "W2026-08-15-01",
+      "title": "MVP 범위 동결과 릴리스 역할 확정",
+      "status": "unassigned",
+      "ownerId": null,
+      "reviewerId": null,
+      "reviewerAssignmentStatus": "not_assigned",
+      "reviewerReason": null,
+      "assignmentConfidence": "needs_confirmation",
+      "domains": ["릴리스", "범위", "운영"],
+      "outcome": "8월 22일에 포함할 기능과 제외할 기능, 릴리스·migration·배포 확인·incident 담당자가 명확하다.",
+      "nextAction": "오늘 회의에서 결제 우선순위와 핫딜 범위를 결정하고 릴리스 책임자, DB migration 담당자, 배포 후 확인 담당자, incident·rollback 담당자를 각각 한 명씩 기록한다.",
+      "reviewBrief": "릴리스 범위가 전체 거래 루프와 일치하고 제외한 기능이 사용자에게 노출되지 않으며 배포와 사고 대응에 빈 역할이 없는지 판단한다.",
+      "evidence": ["범위 결정 기록", "릴리스 역할표", "기능 동결 시각", "Go/No-Go 승인 방식"],
+      "dependsOn": [],
+      "dueDate": "2026-08-15",
+      "sourceNote": "2026-08-15 릴리스 준비 점검에서 결정이 필요하다고 확인했지만 담당자와 리뷰어는 회의 전이므로 미배정으로 남겼다."
+    },
+    {
+      "id": "W2026-08-15-02",
+      "title": "EasyPost 지갑·테스트 라벨·실배송 라벨 증거",
+      "status": "unassigned",
+      "ownerId": null,
+      "reviewerId": null,
+      "reviewerAssignmentStatus": "not_assigned",
+      "reviewerReason": null,
+      "assignmentConfidence": "needs_confirmation",
+      "domains": ["배송", "EasyPost", "외부 결제", "E2E"],
+      "outcome": "EasyPost 결제 수단이 준비되고 test label과 제한된 physical_live 라벨이 생성되어 서명된 webhook으로 배송 상태가 갱신된다.",
+      "nextAction": "현재 ACH pending의 요청 시각과 상태를 확인하고, 잔액 사용 가능 뒤 test label을 먼저 생성한 다음 승인된 소액 physical_live 라벨과 tracking webhook 증거를 남긴다.",
+      "reviewBrief": "test/live 키와 배송 모드가 섞이지 않고 실제 비용 상한과 재구매 방지가 동작하며 carrier 이벤트만 physical_live 상태를 바꾸는지 판단한다.",
+      "evidence": ["EasyPost billing ready", "test label receipt", "physical_live label receipt", "서명된 tracking webhook", "중복 구매 차단"],
+      "dependsOn": [],
+      "dueDate": "2026-08-19",
+      "sourceNote": "2026-08-15 EasyPost Wallet에 outstanding ACH confirmation이 표시됐고 전체 거래 리허설의 배송 증거가 아직 없어 새 미배정 작업으로 분리했다."
+    },
+    {
+      "id": "W2026-08-15-03",
+      "title": "판매자 수취 지갑 설정 진입 경로 연결",
+      "status": "unassigned",
+      "ownerId": null,
+      "reviewerId": null,
+      "reviewerAssignmentStatus": "not_assigned",
+      "reviewerReason": null,
+      "assignmentConfidence": "needs_confirmation",
+      "domains": ["Web/UI", "지갑", "정산", "계정 설정"],
+      "outcome": "판매자가 Account Settings에서 Base Sepolia 수취 지갑을 설정하고 자신의 주문 정산 주소를 확인할 수 있다.",
+      "nextAction": "기존 wallet settings 구현을 Account Settings에서 찾을 수 있게 연결하고 저장·새로고침·주소 변경·잘못된 네트워크를 검증한다.",
+      "reviewBrief": "판매자 계정별 주소가 올바른 주문에 묶이고 fallback 주소로 조용히 정산되지 않으며 실제 자금 활성화 전 소유권 검증 제한이 명시되는지 판단한다.",
+      "evidence": ["설정 진입 화면", "계정별 저장·복원", "주문 payout 주소", "fallback 차단 또는 명시", "Playwright"],
+      "dependsOn": [],
+      "dueDate": "2026-08-17",
+      "sourceNote": "W2026-08-08-01 검증에서 구현은 있으나 Account Settings에서 진입할 수 없어 담당자와 리뷰어를 새로 정해야 한다."
+    },
+    {
+      "id": "W2026-08-15-04",
+      "title": "Base Sepolia 예치 reconciliation과 계약 비상 절차",
+      "status": "unassigned",
+      "ownerId": null,
+      "reviewerId": null,
+      "reviewerAssignmentStatus": "not_assigned",
+      "reviewerReason": null,
+      "assignmentConfidence": "needs_confirmation",
+      "domains": ["스마트 계약", "결제", "정산", "운영"],
+      "outcome": "남은 FUNDED 테스트 예치가 안전하게 처리되고 계약 잔액·이벤트·receipt·서버 장부가 일치하며 pause와 signer 사고 절차가 실행 가능하다.",
+      "nextAction": "남은 예치별 만료·주문·장부 상태를 대조해 expire/refund 또는 보존 결정을 기록하고 최대 pause 시간, 긴급 unpause, signer 교체와 freeze 절차를 정한다.",
+      "reviewBrief": "기존 자금의 구매자 보호 출구가 운영자 실수로 막히지 않고 signer 변경이 단일 키 탈취로 즉시 악용되지 않으며 reconciliation 결과가 재현 가능한지 판단한다.",
+      "evidence": ["예치별 reconciliation 표", "expire/refund receipt", "계약 잔액 합계", "pause·unpause runbook", "signer 사고 결정"],
+      "dependsOn": [],
+      "dueDate": "2026-08-19",
+      "sourceNote": "스마트 계약 테스트는 통과했지만 W2026-08-08-01에 남은 온체인 예치와 운영 결정을 독립적으로 리뷰할 필요가 있어 미배정 slice로 분리했다."
+    },
+    {
+      "id": "W2026-08-15-05",
+      "title": "staging 인증·네트워크·DB 운영 게이트",
+      "status": "unassigned",
+      "ownerId": null,
+      "reviewerId": null,
+      "reviewerAssignmentStatus": "not_assigned",
+      "reviewerReason": null,
+      "assignmentConfidence": "needs_confirmation",
+      "domains": ["인증", "네트워크", "DB", "보안", "운영"],
+      "outcome": "staging이 production과 같은 인증·CORS·rate limit·WebSocket·DB migration 안전 조건을 만족하고 실패 시 닫힌다.",
+      "nextAction": "JWKS 정상·만료·issuer·audience·rotation·outage, 정확한 CORS, 다중 인스턴스 rate limit, WebSocket ticket replay·expiry·DB outage를 실행하고 production clone migration과 백업·forward-fix 계획을 확인한다.",
+      "reviewBrief": "인증과 네트워크 장애가 결제·배송·분쟁 데이터에 접근하기 전에 차단되고 migration 실패 시 복구 가능한지 판단한다.",
+      "evidence": ["JWKS staging 결과", "CORS 결과", "rate limit 결과", "WebSocket ticket 결과", "DB clone migration", "백업·forward-fix"],
+      "dependsOn": [],
+      "dueDate": "2026-08-20",
+      "sourceNote": "Production Checklist의 운영 게이트가 아직 증거와 담당자 없이 열려 있어 회의에서 나눌 미배정 작업으로 추가했다."
+    },
+    {
+      "id": "W2026-08-15-06",
+      "title": "리뷰 강제·릴리스 후보·Go/No-Go 증거",
+      "status": "unassigned",
+      "ownerId": null,
+      "reviewerId": null,
+      "reviewerAssignmentStatus": "not_assigned",
+      "reviewerReason": null,
+      "assignmentConfidence": "needs_confirmation",
+      "domains": ["GitHub", "CI", "릴리스", "리뷰"],
+      "outcome": "staging과 main이 PR·CI·단일 승인 리뷰를 강제하고 한 릴리스 후보 SHA에 자동·수동 증거와 rollback 계획이 묶인다.",
+      "nextAction": "staging ruleset에 PR·CI·승인 리뷰 1명을 강제하고 main 승인 리뷰 수를 1로 바꿀 변경안을 검토한다. 8월 20일 후보 SHA를 고정해 VERSION·CHANGELOG·체크리스트·배포 SHA·검증 증거를 연결한다.",
+      "reviewBrief": "문서상 리뷰 정책을 GitHub가 실제 강제하고 우회 없이 같은 SHA만 migration·배포·main 승격되는지 판단한다.",
+      "evidence": ["ruleset 화면 또는 API", "승인 리뷰 1명", "릴리스 후보 SHA", "최종 CI", "VERSION·CHANGELOG", "rollback·관찰 계획"],
+      "dependsOn": ["W2026-08-15-01"],
+      "dueDate": "2026-08-21",
+      "sourceNote": "2026-08-15 확인 결과 staging ruleset은 삭제·non-fast-forward만 막고 main은 승인 리뷰 수가 0이어서 담당자와 단일 리뷰어를 정해야 한다."
+    },
+    {
+      "id": "W2026-08-15-07",
+      "title": "외부 provider 실패·재시도·경보 리허설",
+      "status": "unassigned",
+      "ownerId": null,
+      "reviewerId": null,
+      "reviewerAssignmentStatus": "not_assigned",
+      "reviewerReason": null,
+      "assignmentConfidence": "needs_confirmation",
+      "domains": ["Stripe", "x402", "EasyPost", "DeepSeek", "webhook", "관찰성"],
+      "outcome": "외부 서비스 timeout·5xx·webhook 지연·재전송이 중복 결제·배송·정산을 만들지 않고 실제 담당자에게 경보된다.",
+      "nextAction": "Stripe test, x402 Base Sepolia, EasyPost test/live webhook, DeepSeek timeout·비정상 응답을 각각 재현하고 idempotency·backoff·중단 상태·reconciliation·실제 alert receiver 수신을 기록한다.",
+      "reviewBrief": "외부 provider가 느리거나 중복 응답해도 단 한 번만 서버 장부가 확정되고 운영자가 식별자와 재시도 방법을 알 수 있는지 판단한다.",
+      "evidence": ["provider별 실패 재현", "webhook 재전송", "중복 0건", "reconciliation", "실제 경보 수신", "runbook"],
+      "dependsOn": [],
+      "dueDate": "2026-08-20",
+      "sourceNote": "릴리스 전체 거래 흐름에서 provider별 실제 실패 증거와 담당자가 없어 오늘 회의에서 나눌 미배정 작업으로 추가했다."
     }
   ]
 }
