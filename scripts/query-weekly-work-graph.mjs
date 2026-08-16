@@ -177,8 +177,12 @@ function dueLabel(dueDate) {
 function printHeader() {
   const { week } = graph;
   console.log(`\nHaggle 주간 작업 그래프 · ${week.meetingDate} 회의`);
+  const actualTime = week.actualEndTime
+    ? `${week.actualStartTime}–${week.actualEndTime}`
+    : week.actualStartTime;
+  const actualMeeting = actualTime ? `이번 회의 ${actualTime} · ` : "";
   console.log(
-    `회의: ${week.meetingDay} ${week.usualStartTimes.join(" 또는 ")} · ${week.scheduleNote}`,
+    `회의: ${week.meetingDay} ${actualMeeting}평소 ${week.usualStartTimes.join(" 또는 ")} · ${week.scheduleNote}`,
   );
   console.log(`이번 주 끝: ${week.weekEndsAt} · 릴리스 목표: ${week.releaseTarget}`);
 }
@@ -189,16 +193,16 @@ function printTask(task, options = {}) {
   if (includeOwner) console.log(`  담당자: ${personName(task.ownerId)}`);
   if (!reviewMode && task.reviewerId) {
     const assignmentLabel =
-      task.reviewerAssignmentStatus === "confirmed" ? "확정" : "다음 회의 확인 제안";
-    console.log(`  리뷰어: ${personName(task.reviewerId)} · 정확히 1명 · ${assignmentLabel}`);
-    console.log(`  리뷰어 선택 이유: ${task.reviewerReason}`);
+      task.reviewerAssignmentStatus === "confirmed" ? "확정 리뷰" : "선택 리뷰 제안";
+    console.log(`  리뷰 제안: ${personName(task.reviewerId)} · ${assignmentLabel}`);
+    console.log(`  이 사람이 보면 좋은 이유: ${task.reviewerReason}`);
   }
   console.log(`  영역: ${task.domains.join(", ")} · 기한: ${dueLabel(task.dueDate)}`);
   console.log(`  결과: ${task.outcome}`);
 
   if (reviewMode) {
     console.log(
-      `  리뷰 배정: ${task.reviewerAssignmentStatus === "confirmed" ? "확정" : "다음 회의 확인 제안"}`,
+      `  리뷰 상태: ${task.reviewerAssignmentStatus === "confirmed" ? "확정" : "선택 제안"}`,
     );
     console.log(`  내가 리뷰하는 이유: ${task.reviewerReason}`);
     console.log(`  리뷰할 내용: ${task.reviewBrief}`);
@@ -263,7 +267,7 @@ function printReleaseDashboard() {
   }
 
   const openDecisions = dashboard.meetingDecisions.filter((decision) => decision.status === "open");
-  console.log(`\n오늘 결정할 질문 (${openDecisions.length})`);
+  console.log(`\n열린 결정 질문 (${openDecisions.length})`);
   for (const decision of openDecisions) {
     console.log(`\n- [${decision.priority}] ${decision.question} (${decision.id})`);
     console.log(`  연결 작업: ${decision.relatedTaskIds.join(", ")}`);
@@ -273,6 +277,9 @@ function printReleaseDashboard() {
   console.log("\n범위 경계");
   console.log(`- 이번 릴리스: ${dashboard.scopeBoundary.releaseNow}`);
   console.log(`- 후속 별도 게이트: ${dashboard.scopeBoundary.separateLaterGate}`);
+  if (dashboard.scopeBoundary.eventAfterRelease) {
+    console.log(`- 릴리스 후 이벤트: ${dashboard.scopeBoundary.eventAfterRelease}`);
+  }
   console.log(`- 기능 동결: ${dashboard.scopeBoundary.featureFreeze}`);
 }
 
@@ -286,8 +293,8 @@ function printPersonal(person) {
   for (const task of owned) printTask(task);
 
   const reviews = graph.tasks.filter((task) => task.reviewerId === person.id);
-  console.log(`\n내가 리뷰할 일 (${reviews.length})`);
-  if (reviews.length === 0) console.log("- 배정된 리뷰 없음");
+  console.log(`\n내가 리뷰하면 좋은 일 (${reviews.length})`);
+  if (reviews.length === 0) console.log("- 제안된 리뷰 없음");
   for (const task of reviews) {
     printTask(task, { includeOwner: true, reviewMode: true });
   }
@@ -317,10 +324,10 @@ function printTeam() {
   for (const person of graph.people) {
     const owned = graph.tasks.filter((task) => task.ownerId === person.id);
     const reviews = graph.tasks.filter((task) => task.reviewerId === person.id);
-    console.log(`\n${person.displayName} · 담당 ${owned.length}개 · 리뷰 ${reviews.length}개`);
+    console.log(`\n${person.displayName} · 담당 ${owned.length}개 · 리뷰 후보 ${reviews.length}개`);
     for (const task of owned) {
       console.log(
-        `- [${statusLabels[task.status] ?? task.status}] ${task.title} → 리뷰 ${personName(task.reviewerId)} (${task.reviewerAssignmentStatus === "confirmed" ? "확정" : "제안"})`,
+        `- [${statusLabels[task.status] ?? task.status}] ${task.title} → 리뷰 ${personName(task.reviewerId)} (${task.reviewerAssignmentStatus === "confirmed" ? "확정" : "선택 제안"})`,
       );
     }
   }
@@ -339,7 +346,7 @@ const identity =
 
 if (!identity) {
   console.log("사용법: pnpm work:me -- <내 이름 또는 별칭>");
-  console.log("예시: pnpm work:me -- 정행 | Sean | Amy | --all");
+  console.log("예시: pnpm work:me -- 정행 | Inoh | Sean | Amy | --all");
   process.exit(1);
 }
 

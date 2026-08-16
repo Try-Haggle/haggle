@@ -38,6 +38,7 @@
 | 코드 네이밍 컨벤션 (협상 에이전트/빌더 챗) | [CODE_NAMING_CONVENTIONS.md](./CODE_NAMING_CONVENTIONS.md) |
 | 미팅 overview | [meetings/overview.html](./meetings/overview.html) |
 | 이번 주 작업·리뷰 그래프 | [meetings/WORK_GRAPH.md](./meetings/WORK_GRAPH.md) · 데이터 [current-week-work-graph.json](./meetings/current-week-work-graph.json) |
+| 2026-08-15 회의 분석·작업 배정 | [meetings/2026-08-15-work-allocation.md](./meetings/2026-08-15-work-allocation.md) |
 | Git·CI 그래프 자동 동기화 계약 | [meetings/GIT_CI_GRAPH_SYNC.md](./meetings/GIT_CI_GRAPH_SYNC.md) |
 | 개발 참여 규칙 | [../CONTRIBUTING.md](../CONTRIBUTING.md) |
 
