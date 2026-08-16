@@ -283,7 +283,9 @@ function extractStrategyParams(strategy: Record<string, unknown>): StrategyParam
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
-function extractListingContextMemory(
+// Exported for a focused test of the seller_facts pass-through (like
+// extractStrategyContextMemory below).
+export function extractListingContextMemory(
   strategy: Record<string, unknown>,
 ): ListingContextMemory | undefined {
   const raw = strategy.listing_context;
@@ -302,6 +304,25 @@ function extractListingContextMemory(
   }
   if (src.attributes && typeof src.attributes === "object" && !Array.isArray(src.attributes)) {
     out.attributes = src.attributes as Record<string, unknown>;
+  }
+  // Seller-stated item facts (Phase G follow-up): shape-validate each entry so a
+  // malformed snapshot can't push junk into the DECIDE prompt.
+  if (Array.isArray(src.seller_facts)) {
+    const facts = src.seller_facts
+      .filter(
+        (f): f is { checkId: string; question?: unknown; stance: string } =>
+          !!f &&
+          typeof f === "object" &&
+          typeof (f as { checkId?: unknown }).checkId === "string" &&
+          typeof (f as { stance?: unknown }).stance === "string" &&
+          (f as { stance: string }).stance.trim().length > 0,
+      )
+      .map((f) => ({
+        checkId: f.checkId,
+        ...(typeof f.question === "string" ? { question: f.question } : {}),
+        stance: f.stance,
+      }));
+    if (facts.length > 0) out.seller_facts = facts;
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }

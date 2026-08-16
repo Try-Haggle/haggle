@@ -330,7 +330,8 @@ function truncate(s: string, max: number): string {
   return s.slice(0, max - 1).trimEnd() + "…";
 }
 
-function encodeListingContext(memory: CoreMemory): string | null {
+// Exported for a focused test of the seller_facts prompt line (like encodeStrategyContext).
+export function encodeListingContext(memory: CoreMemory): string | null {
   const lc = memory.listing_context;
   if (!lc) return null;
   const lines: string[] = ["LISTING:"];
@@ -348,6 +349,19 @@ function encodeListingContext(memory: CoreMemory): string | null {
     if (attrLine) lines.push(`  attrs: ${attrLine}`);
   }
   if (lc.description) lines.push(`  description: ${truncate(lc.description, 280)}`);
+  // Facts the seller stated about THIS item (battery %, storage, scratches, …).
+  // Shown to BOTH sides: the buyer's agent cites them as concrete price leverage;
+  // the seller's agent must not contradict what the seller already disclosed.
+  if (lc.seller_facts && lc.seller_facts.length > 0) {
+    const facts = lc.seller_facts
+      .map((f) => {
+        const q = typeof f.question === "string" && f.question.length > 0 ? `${f.question} ` : "";
+        return `${q}= ${truncate(f.stance, 160)}`.trim();
+      })
+      .filter((s) => s.length > 1)
+      .slice(0, 24);
+    if (facts.length > 0) lines.push(`  sellerStatedFacts: ${facts.join("; ")}`);
+  }
   return lines.length > 1 ? lines.join("\n") : null;
 }
 

@@ -258,6 +258,14 @@ export interface ListingContextMemory {
   photoUrl?: string;
   subtype?: string;
   attributes?: Record<string, unknown>;
+  /**
+   * Item facts the seller stated when answering this item's category checks
+   * (battery %, storage, scratches, …). Deliberately SHARED with both sides so
+   * the buyer's agent can use them as price leverage — the seller's strategy
+   * fields never travel here, only per-check answers. Absent on pre-Phase-G
+   * sessions.
+   */
+  seller_facts?: Array<{ checkId: string; question?: string; stance: string }>;
 }
 
 /** Per-side negotiator profile. Captures persona + advisor memory + agent

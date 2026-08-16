@@ -30,6 +30,7 @@ import { getExecutor } from "../lib/executor-factory.js";
 import { executeGroupOrchestration, executeGroupTerminal } from "../lib/group-executor.js";
 import type { AuthUser } from "../middleware/auth.js";
 import { requireAuth } from "../middleware/require-auth.js";
+import { projectSellerFacts } from "../negotiation/memory/seller-facts.js";
 import {
   applyBuyerPauseAnswer,
   readSellerCriteriaFromSnapshot,
@@ -1080,6 +1081,17 @@ export function registerNegotiationRoutes(
     });
 
     const listingContextSnapshot = listingContext.listingContext;
+    // The seller's ANSWERED category criteria are item facts (battery %, storage,
+    // scratches) stated in response to buyer-facing questions — not strategy. Surface
+    // them on the SHARED listing context so both agents see them: without this the
+    // buyer's agent never learns soft facts and can't use them as price leverage.
+    const sellerFacts = projectSellerFacts(
+      sellerNegotiationAgentBuilderMemory?.categoryCriteria as CategoryCriterion[] | undefined,
+    );
+    const sharedListingContext =
+      sellerFacts.length > 0
+        ? { ...((listingContextSnapshot as object | undefined) ?? {}), seller_facts: sellerFacts }
+        : listingContextSnapshot;
     const sellerNegotiationAgentPresetId = listingContext.sellerNegotiationAgentPresetId;
     const sellerSnapshot: Record<string, unknown> = {
       ...sellerStrategy,
@@ -1101,7 +1113,7 @@ export function registerNegotiationRoutes(
       ...(sellerNegotiationAgentBuilderMemory
         ? { seller_negotiation_agent_builder_memory: sellerNegotiationAgentBuilderMemory }
         : {}),
-      ...(listingContextSnapshot ? { listing_context: listingContextSnapshot } : {}),
+      ...(sharedListingContext ? { listing_context: sharedListingContext } : {}),
       ...(sellerNegotiationAgentPresetId
         ? { negotiation_agent_preset_id: sellerNegotiationAgentPresetId }
         : {}),
@@ -1112,8 +1124,9 @@ export function registerNegotiationRoutes(
     // Only criteria the seller DELIBERATELY engaged — required AND with a stated
     // stance (criterionAnswered) — drive the pause. Otherwise the scaffold's default
     // (every HARD taxonomy check → required, no stance) would pause almost every
-    // negotiation for checks the seller never actually specified. Project to a
-    // buyer-safe shape — the seller's private `stance` is DROPPED. Empty for
+    // negotiation for checks the seller never actually specified. `stance` is still
+    // omitted here — the pause machinery only needs the question; the stated fact
+    // already travels to both sides via listing_context.seller_facts above. Empty for
     // pre-Phase-G sellers → the pause never fires (backward-compatible).
     const sellerRequiredCriteria = requiredCriteria(
       (sellerNegotiationAgentBuilderMemory?.categoryCriteria as CategoryCriterion[] | undefined) ??
@@ -1169,7 +1182,7 @@ export function registerNegotiationRoutes(
       ...(sellerRequiredCriteria.length > 0
         ? { pause_seller_required_criteria: sellerRequiredCriteria }
         : {}),
-      ...(listingContextSnapshot ? { listing_context: listingContextSnapshot } : {}),
+      ...(sharedListingContext ? { listing_context: sharedListingContext } : {}),
       negotiation_agent_preset_id: body.negotiation_agent_preset_id,
       ...(body.agent_weights ? { agent_weights: body.agent_weights } : {}),
       ...(body.agent_overrides ? { agent_overrides: body.agent_overrides } : {}),
