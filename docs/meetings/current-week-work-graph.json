@@ -32,6 +32,39 @@
         "https://api.staging.tryhaggle.ai/health 응답 200"
       ]
     },
+    "graphAutomation": {
+      "status": "planned",
+      "mode": "manual_until_workflow_implemented",
+      "spec": "docs/meetings/GIT_CI_GRAPH_SYNC.md",
+      "plannedWorkflow": ".github/workflows/work-graph-sync.yml",
+      "plannedScript": "scripts/sync-work-graph.mjs",
+      "humanOwnedFields": [
+        "ownerId",
+        "reviewerId",
+        "reviewerAssignmentStatus",
+        "dependsOn",
+        "status:done",
+        "releaseDashboard.readiness:go"
+      ],
+      "machineOwnedEvidence": [
+        "branch",
+        "pull_request",
+        "review",
+        "ci",
+        "merge",
+        "deployment",
+        "migration"
+      ],
+      "lastSyncedAt": null,
+      "lastEventId": null,
+      "workflowVersion": null,
+      "syncIssues": [
+        {
+          "kind": "automation_not_implemented",
+          "message": "현재 latestStaging과 작업 증거는 수동 기록이다. workflow 구현 전에는 GitHub 원본과 대조한다."
+        }
+      ]
+    },
     "meetingDecisions": [
       {
         "id": "D2026-08-15-01",
@@ -548,9 +581,9 @@
       "assignmentConfidence": "needs_confirmation",
       "domains": ["GitHub", "CI", "릴리스", "리뷰"],
       "outcome": "staging과 main이 PR·CI·단일 승인 리뷰를 강제하고 한 릴리스 후보 SHA에 자동·수동 증거와 rollback 계획이 묶인다.",
-      "nextAction": "staging ruleset에 PR·CI·승인 리뷰 1명을 강제하고 main 승인 리뷰 수를 1로 바꿀 변경안을 검토한다. 8월 20일 후보 SHA를 고정해 VERSION·CHANGELOG·체크리스트·배포 SHA·검증 증거를 연결한다.",
+      "nextAction": "docs/meetings/GIT_CI_GRAPH_SYNC.md의 report-only 단계부터 구현해 PR·리뷰·CI·병합·배포·migration을 같은 SHA로 연결한 뒤 bot PR 단계로 승격한다. staging ruleset에 PR·CI·승인 리뷰 1명을 강제하고, 8월 20일 후보 SHA를 VERSION·CHANGELOG·체크리스트·검증 증거에 연결한다.",
       "reviewBrief": "문서상 리뷰 정책을 GitHub가 실제 강제하고 우회 없이 같은 SHA만 migration·배포·main 승격되는지 판단한다.",
-      "evidence": ["ruleset 화면 또는 API", "승인 리뷰 1명", "릴리스 후보 SHA", "최종 CI", "VERSION·CHANGELOG", "rollback·관찰 계획"],
+      "evidence": ["자동 동기화 replay 테스트", "bot graph PR", "ruleset 화면 또는 API", "승인 리뷰 1명", "릴리스 후보 SHA", "최종 CI", "VERSION·CHANGELOG", "rollback·관찰 계획"],
       "dependsOn": ["W2026-08-15-01"],
       "dueDate": "2026-08-21",
       "sourceNote": "2026-08-15 확인 결과 staging ruleset은 삭제·non-fast-forward만 막고 main은 승인 리뷰 수가 0이어서 담당자와 단일 리뷰어를 정해야 한다."

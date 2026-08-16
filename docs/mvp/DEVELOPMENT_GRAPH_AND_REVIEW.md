@@ -148,6 +148,16 @@ PR 작성자는 `.github/pull_request_template.md`의 리뷰 브리핑을 먼저
 Playwright smoke는 브라우저 껍데기를 빠르게 확인하는 최소 관문이다. 인증·협상·결제·배송·정산·분쟁
 전체 흐름은 staging 릴리스 리허설에서 별도로 실행하고 점차 자동화한다.
 
+### Git·CI 증거 자동 동기화
+
+GitHub의 브랜치·PR·리뷰·check run·병합과 staging 배포·migration 결과는
+[Git·CI 작업 그래프 자동 동기화 계약](../meetings/GIT_CI_GRAPH_SYNC.md)에 따라 작업 ID와 같은 SHA로
+연결한다. 현재는 설계만 완료됐으며 workflow가 구현되기 전까지 수동 기록이다.
+
+자동화가 맡는 것은 발생한 기술적 사실의 수집이다. 담당자·단일 리뷰어·의존성·범위·수동 리허설의
+판정과 작업 `done`, 최종 릴리스 `GO`는 사람이 결정한다. 따라서 PR 병합이나 CI 성공 하나만으로 작업과
+릴리스 게이트가 자동 완료되지 않는다.
+
 ## 9. 릴리스와 main
 
 - 개발 기간에는 `main`에 병합하거나 직접 push하지 않는다.

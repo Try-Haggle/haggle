@@ -38,6 +38,7 @@
 | 코드 네이밍 컨벤션 (협상 에이전트/빌더 챗) | [CODE_NAMING_CONVENTIONS.md](./CODE_NAMING_CONVENTIONS.md) |
 | 미팅 overview | [meetings/overview.html](./meetings/overview.html) |
 | 이번 주 작업·리뷰 그래프 | [meetings/WORK_GRAPH.md](./meetings/WORK_GRAPH.md) · 데이터 [current-week-work-graph.json](./meetings/current-week-work-graph.json) |
+| Git·CI 그래프 자동 동기화 계약 | [meetings/GIT_CI_GRAPH_SYNC.md](./meetings/GIT_CI_GRAPH_SYNC.md) |
 | 개발 참여 규칙 | [../CONTRIBUTING.md](../CONTRIBUTING.md) |
 
 ---
@@ -50,4 +51,4 @@
 4. **INDEX 업데이트**: 문서 추가/이동 시 해당 폴더의 `00_INDEX.md`와 이 README 둘 다 업데이트
 5. **단일 파일 → 폴더 승격**: 같은 주제에 2개 이상 문서 쌓이면 전용 폴더 생성
 
-*Last Updated: 2026-08-12*
+*Last Updated: 2026-08-15*

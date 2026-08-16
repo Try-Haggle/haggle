@@ -81,6 +81,11 @@ weekly task → feature/* → PR → staging → 통합·릴리스 리허설
 
 CI와 DB migration을 독립적으로 동시에 실행하지 않는다. PR 검증은 공유 DB를 변경하지 않는다.
 
+브랜치·PR·리뷰·CI·병합·배포·migration의 같은 SHA 증거는
+[Git·CI 작업 그래프 자동 동기화 계약](../meetings/GIT_CI_GRAPH_SYNC.md)에 따라 수집한다. 자동화가
+구현되기 전에는 수동 기록을 GitHub 원본과 대조한다. 자동 계산은 `ready_for_human_go`까지만 제안하며
+최종 Go/No-Go와 실제 자금 활성화는 사람이 승인한다.
+
 ## 7. 리뷰 정책
 
 토요일 주간 회의에서 구현 담당자 1명과 단일 리뷰어 1명을 함께 정한다. 보호 영역도 리뷰어를 추가하지 않고, 해당 위험을 판단할 수 있는 한 사람을 선택한다. PR은 `DEVELOPMENT_GRAPH_AND_REVIEW.md`의 설명 중심 브리핑을 사용한다.
