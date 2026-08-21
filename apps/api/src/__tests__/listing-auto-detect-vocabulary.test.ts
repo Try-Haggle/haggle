@@ -12,7 +12,7 @@ import {
 } from "../services/listing-auto-detect.service.js";
 
 /** Capture the prompt the service sends, and reply with a canned tagger response. */
-function fakeOpenAI(reply: { subtype: string | null; tags: string[] }) {
+function fakeOpenAI(reply: { tags: string[] }) {
   const seen: { system?: string; user?: string } = {};
   const client: OpenAIClientLike = {
     chat: {
@@ -44,7 +44,7 @@ const INPUT = {
 
 describe("vision prompt — controlled item-type vocabulary", () => {
   it("injects the taxonomy vocabulary and an accessory rule into the system prompt", async () => {
-    const { client, seen } = fakeOpenAI({ subtype: "phone", tags: ["iphone", "256gb"] });
+    const { client, seen } = fakeOpenAI({ tags: ["iphone", "256gb"] });
     await autoDetectListing(INPUT, client);
 
     const sys = seen.system ?? "";
@@ -59,7 +59,7 @@ describe("vision prompt — controlled item-type vocabulary", () => {
   });
 
   it("offers only real taxonomy terms (no invented vocabulary)", async () => {
-    const { client, seen } = fakeOpenAI({ subtype: null, tags: [] });
+    const { client, seen } = fakeOpenAI({ tags: [] });
     await autoDetectListing(INPUT, client);
     const sys = seen.system ?? "";
 
@@ -75,7 +75,7 @@ describe("vision prompt — controlled item-type vocabulary", () => {
   });
 
   it("keeps the prompt affordable (vocabulary is a bounded block)", async () => {
-    const { client, seen } = fakeOpenAI({ subtype: null, tags: [] });
+    const { client, seen } = fakeOpenAI({ tags: [] });
     await autoDetectListing(INPUT, client);
     // ~600 tokens of vocabulary is intentional; guard against unbounded growth.
     expect((seen.system ?? "").length).toBeLessThan(12_000);
@@ -83,7 +83,6 @@ describe("vision prompt — controlled item-type vocabulary", () => {
 
   it("returns the model's item-type tag so the taxonomy can resolve gates", async () => {
     const { client } = fakeOpenAI({
-      subtype: "phone",
       tags: ["iphone", "256gb", "space-black"],
     });
     const result = await autoDetectListing(INPUT, client);

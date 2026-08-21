@@ -17,8 +17,6 @@ interface ListingData {
   tags: string[] | null;
   sellerAgentPreset: string | null;
   sellingDeadline: string | null;
-  subtype: string | null;
-  attributes: Record<string, unknown> | null;
   sellerRequiredCriteria: Array<{ checkId: string; ask: string }> | null;
 }
 

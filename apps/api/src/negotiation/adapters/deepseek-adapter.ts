@@ -336,7 +336,7 @@ export function encodeListingContext(memory: CoreMemory): string | null {
   if (!lc) return null;
   const lines: string[] = ["LISTING:"];
   if (lc.title) lines.push(`  title: ${truncate(lc.title, 120)}`);
-  if (lc.category) lines.push(`  category: ${lc.category}${lc.subtype ? `/${lc.subtype}` : ""}`);
+  if (lc.category) lines.push(`  category: ${lc.category}`);
   if (lc.condition) lines.push(`  condition: ${lc.condition}`);
   if (lc.tags && lc.tags.length > 0) {
     lines.push(`  tags: ${lc.tags.slice(0, 8).join(", ")}`);

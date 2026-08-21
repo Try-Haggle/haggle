@@ -441,7 +441,7 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
   );
 
   // ─── haggle_auto_detect ──────────────────────────────────
-  // Widget-only tool: vision LLM classifies subtype + suggests tags
+  // Widget-only tool: vision LLM suggests tags
   // from photo + title (+ optional description).
   registerAppTool(
     server,
@@ -449,7 +449,7 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
     {
       title: "Auto-Detect Listing",
       description:
-        "Analyze a draft's photo + title with vision LLM. Returns subtype ('phone' | null) and 4–8 lowercase-hyphenated tags. Widget calls this once both photo and title are present. Do NOT call from the model.",
+        "Analyze a draft's photo + title with vision LLM. Returns 4–8 lowercase-hyphenated tags. Widget calls this once both photo and title are present. Do NOT call from the model.",
       inputSchema: { draft_id: z.string().uuid() },
       annotations: {
         readOnlyHint: false,
@@ -503,13 +503,12 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
       return {
         structuredContent: {
           draft_id,
-          subtype: result.subtype,
           tags: result.tags,
         },
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify({ draft_id, subtype: result.subtype, tags: result.tags }),
+            text: JSON.stringify({ draft_id, tags: result.tags }),
           },
         ],
       };

@@ -8,10 +8,7 @@ import {
   type ListPublishedSort,
   listPublishedListings,
 } from "../services/draft.service.js";
-import {
-  extractListingContext,
-  extractSellerRequiredCriteria,
-} from "../services/listing-strategy.service.js";
+import { extractSellerRequiredCriteria } from "../services/listing-strategy.service.js";
 
 const SORT_VALUES = ["newest", "price_asc", "price_desc"] as const;
 
@@ -238,12 +235,6 @@ export function registerPublicListingRoutes(app: FastifyInstance, db: Database) 
 
     // Only expose the seller's agent preset name (not thresholds)
     const sellerAgentPreset = cfg.preset ?? null;
-    // Subtype + category-specific spec answers the seller filled in. These are
-    // product facts the seller chose to publish (battery health, storage,
-    // scratches, carrier lock, etc.) — buyers must see them to negotiate
-    // informedly. Floor price, agent weights, and advisor memory stay hidden.
-    const subtype = typeof cfg.subtype === "string" ? cfg.subtype : null;
-    const attributes = extractListingContext(listing, cfg).attributes ?? null;
     // Phase G Flow 2: the seller's REQUIRED category criteria, buyer-safe (check id
     // + ask only — no stance/leverage/floor). Lets the buyer builder surface "the
     // seller requires X" so the buyer mirrors it, and seeds the pause resolved-set.
@@ -254,8 +245,6 @@ export function registerPublicListingRoutes(app: FastifyInstance, db: Database) 
       listing: {
         ...publicFields,
         sellerAgentPreset,
-        subtype,
-        attributes,
         sellerRequiredCriteria,
       },
       // Included for ownership check — not sensitive (just a UUID)

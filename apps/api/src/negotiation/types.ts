@@ -256,7 +256,6 @@ export interface ListingContextMemory {
   condition?: string;
   tags?: string[];
   photoUrl?: string;
-  subtype?: string;
   attributes?: Record<string, unknown>;
   /**
    * Item facts the seller stated when answering this item's category checks

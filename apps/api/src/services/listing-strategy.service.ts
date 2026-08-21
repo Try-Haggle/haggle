@@ -55,7 +55,6 @@ export interface ListingContext {
   condition?: string;
   tags?: string[];
   photoUrl?: string;
-  subtype?: string;
   attributes?: Record<string, unknown>;
 }
 
@@ -72,19 +71,14 @@ export interface ListingStrategyContext {
   sellerNegotiationAgentPresetId?: string;
 }
 
-const CATEGORY_ATTRIBUTE_KEYS = ["phoneAnswers"] as const;
-
-export function extractListingContext(
-  base: {
-    title?: string | null;
-    description?: string | null;
-    category?: string | null;
-    condition?: string | null;
-    tags?: string[] | null;
-    photoUrl?: string | null;
-  },
-  negotiationAgentSnapshot: Record<string, unknown>,
-): ListingContext {
+export function extractListingContext(base: {
+  title?: string | null;
+  description?: string | null;
+  category?: string | null;
+  condition?: string | null;
+  tags?: string[] | null;
+  photoUrl?: string | null;
+}): ListingContext {
   const ctx: ListingContext = {};
   if (base.title) ctx.title = base.title;
   if (base.description) ctx.description = base.description;
@@ -92,20 +86,6 @@ export function extractListingContext(
   if (base.condition) ctx.condition = base.condition;
   if (base.tags && base.tags.length > 0) ctx.tags = base.tags;
   if (base.photoUrl) ctx.photoUrl = base.photoUrl;
-  if (typeof negotiationAgentSnapshot.subtype === "string")
-    ctx.subtype = negotiationAgentSnapshot.subtype;
-
-  const attributes: Record<string, unknown> = {};
-  for (const key of CATEGORY_ATTRIBUTE_KEYS) {
-    const raw = negotiationAgentSnapshot[key];
-    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-      for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-        if (v === null || v === undefined || v === "") continue;
-        attributes[k] = v;
-      }
-    }
-  }
-  if (Object.keys(attributes).length > 0) ctx.attributes = attributes;
 
   return ctx;
 }
@@ -264,7 +244,7 @@ export async function loadListingStrategyContext(
   const negotiationAgentSnapshot = (row.negotiationAgentSnapshot ?? {}) as Record<string, unknown>;
   const sellerNegotiationAgentBuilderMemory =
     extractNegotiationAgentBuilderMemory(negotiationAgentSnapshot);
-  const listingContext = extractListingContext(row, negotiationAgentSnapshot);
+  const listingContext = extractListingContext(row);
   const sellerNegotiationAgentPresetId =
     typeof negotiationAgentSnapshot.preset === "string"
       ? negotiationAgentSnapshot.preset

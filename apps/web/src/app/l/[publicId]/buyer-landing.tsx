@@ -40,27 +40,11 @@ interface Listing {
   tags: string[] | null;
   sellerAgentPreset: string | null;
   sellingDeadline: string | null;
-  subtype: string | null;
-  attributes: Record<string, unknown> | null;
   /** Phase G Flow 2: the seller's REQUIRED category criteria (buyer-safe: id + ask). */
   sellerRequiredCriteria: Array<{ checkId: string; ask: string }> | null;
 }
 
 /* ─── Helpers ─────────────────────────────────────────────── */
-
-const PHONE_ATTR_LABELS: Record<string, string> = {
-  storage: "Storage",
-  batteryHealth: "Battery",
-  carrierLock: "Carrier",
-  screenCondition: "Screen",
-};
-
-function formatAttrValue(key: string, value: unknown): string {
-  const v = String(value);
-  if (key === "batteryHealth" && /^\d+$/.test(v)) return `${v}%`;
-  if (key === "carrierLock") return v === "unlocked" ? "Unlocked" : v === "locked" ? "Locked" : v;
-  return v;
-}
 
 function getSellerAgentName(presetId: string | null): string {
   const map: Record<string, string> = {
@@ -262,27 +246,6 @@ export function BuyerLanding({
                       </Badge>
                     ))}
                   </div>
-
-                  {/* Phone specs */}
-                  {listing.attributes && Object.keys(listing.attributes).length > 0 && (
-                    <div className="mt-4 grid grid-cols-2 gap-2">
-                      {Object.entries(listing.attributes)
-                        .filter(([k]) => k in PHONE_ATTR_LABELS)
-                        .map(([k, v]) => (
-                          <div
-                            key={k}
-                            className="rounded-lg border border-line bg-surface-sunken px-3 py-2"
-                          >
-                            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
-                              {PHONE_ATTR_LABELS[k]}
-                            </p>
-                            <p className="mt-0.5 text-sm font-medium text-ink">
-                              {formatAttrValue(k, v)}
-                            </p>
-                          </div>
-                        ))}
-                    </div>
-                  )}
 
                   {/* Description */}
                   {listing.description && (
