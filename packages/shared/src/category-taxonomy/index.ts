@@ -2,6 +2,7 @@ export type {
   CategoryChoiceQuestion,
   CategoryCriterion,
   CriterionRequirement,
+  SellerProductFact,
 } from "./criteria.js";
 export {
   buildBuyerChoiceQuestions,
@@ -11,6 +12,7 @@ export {
   criterionAnswered,
   requiredCriteria,
   resolveBuyerChoiceOption,
+  sellerProductFacts,
   unresolvedSellerRequirements,
 } from "./criteria.js";
 export type {

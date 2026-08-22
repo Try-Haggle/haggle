@@ -8,7 +8,10 @@ import {
   type ListPublishedSort,
   listPublishedListings,
 } from "../services/draft.service.js";
-import { extractSellerRequiredCriteria } from "../services/listing-strategy.service.js";
+import {
+  extractSellerProductFacts,
+  extractSellerRequiredCriteria,
+} from "../services/listing-strategy.service.js";
 
 const SORT_VALUES = ["newest", "price_asc", "price_desc"] as const;
 
@@ -239,12 +242,19 @@ export function registerPublicListingRoutes(app: FastifyInstance, db: Database) 
     // + ask only — no stance/leverage/floor). Lets the buyer builder surface "the
     // seller requires X" so the buyer mirrors it, and seeds the pause resolved-set.
     const sellerRequiredCriteria = extractSellerRequiredCriteria(cfg);
+    // Product facts the seller answered during the builder chat, published as
+    // spec cards. Category-agnostic: any taxonomy check the seller answered
+    // publishes, so a laptop or a bike gets specs the same way a phone does.
+    // This is now the only spec path — the phone-only `subtype`/`attributes`
+    // pair it used to sit beside was removed with the phone question flow.
+    const specs = extractSellerProductFacts(cfg);
 
     return reply.send({
       ok: true,
       listing: {
         ...publicFields,
         sellerAgentPreset,
+        specs,
         sellerRequiredCriteria,
       },
       // Included for ownership check — not sensitive (just a UUID)
