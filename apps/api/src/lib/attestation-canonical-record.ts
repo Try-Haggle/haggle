@@ -17,10 +17,10 @@
  * to re-hash historical rows.
  */
 import {
-  canonicalizeAttestation,
-  computeCommitHash,
   ATTESTATION_CANONICAL_VERSION,
   type AttestationInput,
+  canonicalizeAttestation,
+  computeCommitHash,
 } from "./attestation-hash.js";
 
 /** Mirror of the locked `ATTESTATION_CANONICAL_VERSION` — kept in sync. */
@@ -63,9 +63,7 @@ export function normalizeImei(raw: string): string {
  * normalization rules once and guarantees the record, string, and hash
  * are byte-for-byte in agreement.
  */
-export function buildCanonicalAttestationRecord(
-  input: AttestationInput,
-): BuiltCanonical {
+export function buildCanonicalAttestationRecord(input: AttestationInput): BuiltCanonical {
   const normalizedImei = normalizeImei(input.imei);
 
   // Build the AttestationInput that will be canonicalized. Pass the

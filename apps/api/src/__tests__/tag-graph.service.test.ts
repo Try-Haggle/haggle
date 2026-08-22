@@ -31,13 +31,13 @@ vi.mock("@haggle/db", () => {
 
 // Import AFTER the mock is registered.
 import {
-  MAX_DEPTH,
   addEdge,
   expandWithAncestors,
   getAncestors,
   getChildren,
   getDescendants,
   getParents,
+  MAX_DEPTH,
   pruneAncestorsFromSet,
   removeEdge,
 } from "../services/tag-graph.service.js";
@@ -55,9 +55,7 @@ function createFakeDb(initial: Edge[] = []) {
   function descendantsOf(tagId: string, maxDepth = MAX_DEPTH): string[] {
     const out = new Set<string>();
     // BFS with per-path depth tracking
-    const queue: Array<{ id: string; depth: number }> = [
-      { id: tagId, depth: 0 },
-    ];
+    const queue: Array<{ id: string; depth: number }> = [{ id: tagId, depth: 0 }];
     while (queue.length > 0) {
       const { id, depth } = queue.shift()!;
       if (depth >= maxDepth) continue;
@@ -73,9 +71,7 @@ function createFakeDb(initial: Edge[] = []) {
 
   function ancestorsOf(tagId: string, maxDepth = MAX_DEPTH): string[] {
     const out = new Set<string>();
-    const queue: Array<{ id: string; depth: number }> = [
-      { id: tagId, depth: 0 },
-    ];
+    const queue: Array<{ id: string; depth: number }> = [{ id: tagId, depth: 0 }];
     while (queue.length > 0) {
       const { id, depth } = queue.shift()!;
       if (depth >= maxDepth) continue;
@@ -133,9 +129,7 @@ function createFakeDb(initial: Edge[] = []) {
     insert: (_table: unknown) => ({
       values: async (vals: Edge) => {
         const exists = edges.some(
-          (e) =>
-            e.parentTagId === vals.parentTagId &&
-            e.childTagId === vals.childTagId,
+          (e) => e.parentTagId === vals.parentTagId && e.childTagId === vals.childTagId,
         );
         if (exists) {
           const err = new Error(
@@ -196,10 +190,7 @@ describe("tag-graph.service", () => {
 
   // Case 2 — multi-parent: A→C, B→C, ancestors of C = {A,B}
   it("getAncestors handles multiple parents", async () => {
-    db._edges.push(
-      { parentTagId: "A", childTagId: "C" },
-      { parentTagId: "B", childTagId: "C" },
-    );
+    db._edges.push({ parentTagId: "A", childTagId: "C" }, { parentTagId: "B", childTagId: "C" });
     const result = await getAncestors(db as unknown as never, "C");
     expect(result.sort()).toEqual(["A", "B"]);
   });
@@ -238,9 +229,7 @@ describe("tag-graph.service", () => {
   it("addEdge adds an edge successfully", async () => {
     const res = await addEdge(db as unknown as never, "parent", "child");
     expect(res.ok).toBe(true);
-    expect(db._edges).toEqual([
-      { parentTagId: "parent", childTagId: "child" },
-    ]);
+    expect(db._edges).toEqual([{ parentTagId: "parent", childTagId: "child" }]);
   });
 
   // Case 7 — self-loop rejected
@@ -277,42 +266,26 @@ describe("tag-graph.service", () => {
     db._edges.push({ parentTagId: "A", childTagId: "B" });
     await removeEdge(db as unknown as never, "A", "B");
     expect(db._edges).toEqual([]);
-    await expect(
-      removeEdge(db as unknown as never, "A", "B"),
-    ).resolves.toBeUndefined();
+    await expect(removeEdge(db as unknown as never, "A", "B")).resolves.toBeUndefined();
   });
 
   // Case 11 — pruneAncestorsFromSet: A→B→C, input [A,B,C] → [C]
   it("pruneAncestorsFromSet keeps only the most specific tags", async () => {
-    db._edges.push(
-      { parentTagId: "A", childTagId: "B" },
-      { parentTagId: "B", childTagId: "C" },
-    );
-    const result = await pruneAncestorsFromSet(db as unknown as never, [
-      "A",
-      "B",
-      "C",
-    ]);
+    db._edges.push({ parentTagId: "A", childTagId: "B" }, { parentTagId: "B", childTagId: "C" });
+    const result = await pruneAncestorsFromSet(db as unknown as never, ["A", "B", "C"]);
     expect(result).toEqual(["C"]);
   });
 
   // Case 12 — disjoint tags preserved
   it("pruneAncestorsFromSet preserves disjoint tags", async () => {
     // No edges — every tag has no descendants in the set.
-    const result = await pruneAncestorsFromSet(db as unknown as never, [
-      "X",
-      "Y",
-      "Z",
-    ]);
+    const result = await pruneAncestorsFromSet(db as unknown as never, ["X", "Y", "Z"]);
     expect(result.sort()).toEqual(["X", "Y", "Z"]);
   });
 
   // Case 13 — expandWithAncestors: A→B→C, input [C] → [A,B,C]
   it("expandWithAncestors returns the tag plus all its ancestors", async () => {
-    db._edges.push(
-      { parentTagId: "A", childTagId: "B" },
-      { parentTagId: "B", childTagId: "C" },
-    );
+    db._edges.push({ parentTagId: "A", childTagId: "B" }, { parentTagId: "B", childTagId: "C" });
     const result = await expandWithAncestors(db as unknown as never, ["C"]);
     expect(result.sort()).toEqual(["A", "B", "C"]);
   });

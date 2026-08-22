@@ -6,11 +6,11 @@
  */
 
 import {
-  routePipelineEvent,
-  defaultPipelineContext,
   type PipelineAction as CommercePipelineAction,
   type PipelineEvent as CommercePipelineEvent,
+  defaultPipelineContext,
   type PipelineContext,
+  routePipelineEvent,
 } from "@haggle/commerce-core";
 
 // ---------------------------------------------------------------------------
@@ -44,9 +44,7 @@ export interface EventDispatcher {
 // In-process synchronous implementation (MVP)
 // ---------------------------------------------------------------------------
 
-export function createEventDispatcher(
-  context?: PipelineContext,
-): EventDispatcher {
+export function createEventDispatcher(context?: PipelineContext): EventDispatcher {
   const pipelineContext = context ?? defaultPipelineContext();
   const handlers = new Map<string, ActionHandler>();
 

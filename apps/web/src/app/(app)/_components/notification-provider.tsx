@@ -1,8 +1,8 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useNotificationWs } from "@/hooks/use-notification-ws";
-import { notificationApi, type Notification } from "@/lib/api-client";
+import { type Notification, notificationApi } from "@/lib/api-client";
 
 interface NotificationContextValue {
   unreadCount: number;
@@ -25,7 +25,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   // Fetch initial unread count on mount
   useEffect(() => {
-    notificationApi.count()
+    notificationApi
+      .count()
       .then(({ count }) => setUnreadCount(count))
       .catch(() => {}); // silent — not critical
   }, []);

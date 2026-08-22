@@ -105,10 +105,15 @@ function typeToSegment(type: InboxType): string {
  * Reads Supabase role from either app_metadata or user_metadata and
  * returns true only when it strictly equals "admin".
  */
-export function isAdminRole(user: {
-  app_metadata?: Record<string, unknown> | null;
-  user_metadata?: Record<string, unknown> | null;
-} | null | undefined): boolean {
+export function isAdminRole(
+  user:
+    | {
+        app_metadata?: Record<string, unknown> | null;
+        user_metadata?: Record<string, unknown> | null;
+      }
+    | null
+    | undefined,
+): boolean {
   if (!user) return false;
   const appRole = (user.app_metadata as { role?: unknown } | null | undefined)?.role;
   const userRole = (user.user_metadata as { role?: unknown } | null | undefined)?.role;
@@ -154,11 +159,7 @@ export const adminApi = {
     tagMerge: (params: { suggestionId: string; targetTagId: string }) =>
       api.post<{ result: unknown }>("/admin/actions/tag-merge", params),
 
-    disputeEscalate: (params: {
-      disputeId: string;
-      toTier: number;
-      reason?: string;
-    }) =>
+    disputeEscalate: (params: { disputeId: string; toTier: number; reason?: string }) =>
       api.post<{ disputeId: string; previousTier: number; newTier: number }>(
         "/admin/actions/dispute-escalate",
         params,
@@ -169,17 +170,10 @@ export const adminApi = {
       outcome: "buyer_favor" | "seller_favor" | "partial_refund";
       summary?: string;
       refundAmountMinor?: number;
-    }) =>
-      api.post<{ dispute: unknown }>(
-        "/admin/actions/dispute-resolve",
-        params,
-      ),
+    }) => api.post<{ dispute: unknown }>("/admin/actions/dispute-resolve", params),
 
     paymentMarkReview: (params: { paymentIntentId: string; note: string }) =>
-      api.post<{ paymentIntentId: string }>(
-        "/admin/actions/payment-mark-review",
-        params,
-      ),
+      api.post<{ paymentIntentId: string }>("/admin/actions/payment-mark-review", params),
   },
 
   promotionRules: {
@@ -188,13 +182,11 @@ export const adminApi = {
       api.get<{ rule: PromotionRule }>(`/admin/promotion-rules/${category}`),
     put: (category: string, body: Omit<PromotionRule, "category" | "updatedAt">) =>
       api.put<{ rule: PromotionRule }>(`/admin/promotion-rules/${category}`, body),
-    delete: (category: string) =>
-      api.delete(`/admin/promotion-rules/${category}`),
+    delete: (category: string) => api.delete(`/admin/promotion-rules/${category}`),
   },
 
   jobs: {
-    runTagPromote: () =>
-      api.post<{ report: Record<string, unknown> }>("/admin/jobs/tag-promote"),
+    runTagPromote: () => api.post<{ report: Record<string, unknown> }>("/admin/jobs/tag-promote"),
     lastTagPromote: () => api.get<LastRunResponse>("/admin/jobs/tag-promote/last"),
   },
 };

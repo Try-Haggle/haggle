@@ -87,10 +87,7 @@ export function buildAttestationObjectPath(listingId: string, filename: string):
  * fully-qualified `attestation-evidence/{listingId}/{filename}` shape that
  * the presigned-upload response echoes back.
  */
-export function validateAttestationStoragePath(
-  listingId: string,
-  submitted: string,
-): string {
+export function validateAttestationStoragePath(listingId: string, submitted: string): string {
   if (typeof submitted !== "string" || submitted.length === 0) {
     throw new Error("attestation: storage path required");
   }

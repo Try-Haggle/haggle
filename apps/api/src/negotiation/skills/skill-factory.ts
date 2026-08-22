@@ -6,19 +6,19 @@
  * DefaultEngineSkill is NOT modified; factory wraps it with template overrides.
  */
 
+import { ELECTRONICS_TERMS } from "../term/standard-terms.js";
 import type {
-  NegotiationSkill,
-  SkillConstraint,
-  SkillTermDeclaration,
   CategoryTerm,
   CoreMemory,
-  RoundFact,
-  OpponentPattern,
-  NegotiationPhase,
   EngineDecision,
-} from '../types.js';
-import { DefaultEngineSkill } from './default-engine-skill.js';
-import { ELECTRONICS_TERMS } from '../term/standard-terms.js';
+  NegotiationPhase,
+  NegotiationSkill,
+  OpponentPattern,
+  RoundFact,
+  SkillConstraint,
+  SkillTermDeclaration,
+} from "../types.js";
+import { DefaultEngineSkill } from "./default-engine-skill.js";
 
 // ---------------------------------------------------------------------------
 // Template types
@@ -57,7 +57,7 @@ export interface SkillFactory {
 
 class TemplateSkill implements NegotiationSkill {
   readonly id: string;
-  readonly version = '1.0.0';
+  readonly version = "1.0.0";
 
   private readonly _base: DefaultEngineSkill;
   private readonly _template: SkillTemplate;
@@ -84,7 +84,7 @@ class TemplateSkill implements NegotiationSkill {
     return {
       supported_terms: this._template.terms.map((t) => t.id),
       category_terms: this._template.terms,
-      custom_term_handling: 'basic',
+      custom_term_handling: "basic",
     };
   }
 
@@ -136,29 +136,32 @@ export class DefaultSkillFactory implements SkillFactory {
 
   private registerElectronicsTemplate(): void {
     const template: SkillTemplate = {
-      category: 'electronics',
+      category: "electronics",
       terms: ELECTRONICS_TERMS,
       constraints: [
-        { rule: 'IMEI_REQUIRED', description: 'IMEI must be verified before CLOSING phase' },
-        { rule: 'FIND_MY_REQUIRED', description: 'Find My must be disabled before sale' },
-        { rule: 'BATTERY_THRESHOLD', description: 'Battery below 80% triggers mandatory disclosure' },
+        { rule: "IMEI_REQUIRED", description: "IMEI must be verified before CLOSING phase" },
+        { rule: "FIND_MY_REQUIRED", description: "Find My must be disabled before sale" },
+        {
+          rule: "BATTERY_THRESHOLD",
+          description: "Battery below 80% triggers mandatory disclosure",
+        },
       ],
       tactics: [
-        'anchoring',
-        'reciprocal_concession',
-        'condition_trade',
-        'time_pressure_close',
-        'nibble',
-        'bundling',
+        "anchoring",
+        "reciprocal_concession",
+        "condition_trade",
+        "time_pressure_close",
+        "nibble",
+        "bundling",
       ],
       llm_context: [
-        '## Category: Electronics - iPhone Pro',
-        'Market: US used iPhone Pro (13/14/15). Reference: Swappa 30d median.',
-        'Key factors: battery health, carrier lock, screen condition, storage, cosmetic grade.',
-        'IMEI and Find My verification are deal-breakers.',
-      ].join('\n'),
+        "## Category: Electronics - iPhone Pro",
+        "Market: US used iPhone Pro (13/14/15). Reference: Swappa 30d median.",
+        "Key factors: battery health, carrier lock, screen condition, storage, cosmetic grade.",
+        "IMEI and Find My verification are deal-breakers.",
+      ].join("\n"),
       market_reference: {
-        baseline_source: 'swappa_30d_median',
+        baseline_source: "swappa_30d_median",
         avg_discount_rate: 0.12,
       },
     };

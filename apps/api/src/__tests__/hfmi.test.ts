@@ -9,9 +9,9 @@
  *   - API route response shapes
  */
 
-import { describe, it, expect, vi } from "vitest";
 import type { Database } from "@haggle/db";
-import { getMedianPrice, getHedonicEstimate } from "../services/hfmi.service.js";
+import { describe, expect, it, vi } from "vitest";
+import { getHedonicEstimate, getMedianPrice } from "../services/hfmi.service.js";
 import { fitModel } from "../services/hfmi-fitter.js";
 
 // ─── DB mock helpers ──────────────────────────────────────────────────
@@ -26,7 +26,11 @@ function makeDbWithPrices(prices: number[]): Database {
       onConflictDoNothing: vi.fn().mockResolvedValue(undefined),
     }),
   });
-  return { execute, insert, query: { hfmiModelCoefficients: { findFirst: vi.fn().mockResolvedValue(null) } } } as unknown as Database;
+  return {
+    execute,
+    insert,
+    query: { hfmiModelCoefficients: { findFirst: vi.fn().mockResolvedValue(null) } },
+  } as unknown as Database;
 }
 
 function makeDbWithCoefRow(row: Record<string, unknown> | null): Database {
@@ -35,7 +39,11 @@ function makeDbWithCoefRow(row: Record<string, unknown> | null): Database {
   const insert = vi.fn().mockReturnValue({
     values: vi.fn().mockResolvedValue(undefined),
   });
-  return { query: { hfmiModelCoefficients: { findFirst } }, execute, insert } as unknown as Database;
+  return {
+    query: { hfmiModelCoefficients: { findFirst } },
+    execute,
+    insert,
+  } as unknown as Database;
 }
 
 function makeDbWithObservations(rows: Record<string, unknown>[]): Database {
@@ -43,7 +51,11 @@ function makeDbWithObservations(rows: Record<string, unknown>[]): Database {
   const insert = vi.fn().mockReturnValue({
     values: vi.fn().mockResolvedValue(undefined),
   });
-  return { execute, insert, query: { hfmiModelCoefficients: { findFirst: vi.fn().mockResolvedValue(null) } } } as unknown as Database;
+  return {
+    execute,
+    insert,
+    query: { hfmiModelCoefficients: { findFirst: vi.fn().mockResolvedValue(null) } },
+  } as unknown as Database;
 }
 
 // ─── Coefficient fixture ──────────────────────────────────────────────
@@ -125,11 +137,17 @@ describe("getHedonicEstimate", () => {
   it("carrier-locked lowers estimate", async () => {
     const db1 = makeDbWithCoefRow(COEF_ROW);
     const unlocked = await getHedonicEstimate(db1, "iphone_14_pro", {
-      storageGb: 128, batteryHealthPct: 90, cosmeticGrade: "A", carrierLocked: false,
+      storageGb: 128,
+      batteryHealthPct: 90,
+      cosmeticGrade: "A",
+      carrierLocked: false,
     });
     const db2 = makeDbWithCoefRow(COEF_ROW);
     const locked = await getHedonicEstimate(db2, "iphone_14_pro", {
-      storageGb: 128, batteryHealthPct: 90, cosmeticGrade: "A", carrierLocked: true,
+      storageGb: 128,
+      batteryHealthPct: 90,
+      cosmeticGrade: "A",
+      carrierLocked: true,
     });
     expect(locked!.estimate).toBeLessThan(unlocked!.estimate);
   });

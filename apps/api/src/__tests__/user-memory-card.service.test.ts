@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { ConversationSignal } from "../services/conversation-signal-extractor.js";
 import {
   formatUserMemoryBriefSignals,
   listUserMemoryCards,
@@ -7,7 +8,6 @@ import {
   resetUserMemoryCards,
   suppressUserMemoryCard,
 } from "../services/user-memory-card.service.js";
-import type { ConversationSignal } from "../services/conversation-signal-extractor.js";
 
 vi.mock("@haggle/db", () => ({
   sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({
@@ -138,10 +138,12 @@ describe("User Memory Card Service", () => {
   });
 
   it("resets active memory cards via suppression and records reset events", async () => {
-    const execute = vi.fn().mockResolvedValue([
-      { id: "55555555-5555-4555-8555-555555555555" },
-      { id: "66666666-6666-4666-8666-666666666666" },
-    ]);
+    const execute = vi
+      .fn()
+      .mockResolvedValue([
+        { id: "55555555-5555-4555-8555-555555555555" },
+        { id: "66666666-6666-4666-8666-666666666666" },
+      ]);
     const db = { execute } as unknown as import("@haggle/db").Database;
 
     await expect(

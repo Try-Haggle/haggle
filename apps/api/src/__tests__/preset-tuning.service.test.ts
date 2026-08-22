@@ -46,7 +46,9 @@ describe("compilePresetTuningDraft", () => {
     expect(draft.openingOfferMinor).toBeLessThanOrEqual(45000);
     expect(draft.mustVerify.map((term) => term.termId)).toContain("battery_health");
     expect(draft.mustVerify.map((term) => term.termId)).toContain("find_my_status");
-    expect(draft.mustVerify.find((term) => term.termId === "battery_health")?.confirmedValue).toMatchObject({
+    expect(
+      draft.mustVerify.find((term) => term.termId === "battery_health")?.confirmedValue,
+    ).toMatchObject({
       value: 86,
       unit: "%",
       source: "listing",
@@ -68,7 +70,9 @@ describe("compilePresetTuningDraft", () => {
     });
 
     expect(draft.presetId).toBe("lowest_price");
-    expect(draft.leverage.some((item) => item.termId === "battery_health" && item.source === "memory")).toBe(true);
+    expect(
+      draft.leverage.some((item) => item.termId === "battery_health" && item.source === "memory"),
+    ).toBe(true);
     expect(draft.strategyNotes.join(" ")).toContain("max budget");
   });
 
@@ -104,7 +108,9 @@ describe("compilePresetTuningDraft", () => {
     expect(termIds).toContain("activation_lock");
     expect(termIds).not.toContain("imei_verification");
     expect(draft.leverage.some((item) => item.termId === "battery_cycle_count")).toBe(true);
-    expect(draft.mustVerify.find((term) => term.termId === "battery_cycle_count")?.confirmedValue).toMatchObject({
+    expect(
+      draft.mustVerify.find((term) => term.termId === "battery_cycle_count")?.confirmedValue,
+    ).toMatchObject({
       value: 720,
       unit: "cycles",
       source: "listing",
@@ -124,13 +130,17 @@ describe("compilePresetTuningDraft", () => {
     });
 
     expect(draft.engineReview.status).toBe("blocked");
-    expect(draft.engineReview.blockers.map((blocker) => blocker.id)).toContain("product_scope_conflict");
+    expect(draft.engineReview.blockers.map((blocker) => blocker.id)).toContain(
+      "product_scope_conflict",
+    );
     expect(draft.engineReview.nextActions.some((action) => action.control === "select")).toBe(true);
-    expect(draft.engineReview.nextActions.find((action) => action.label === "Confirm product scope")?.controlConfig?.options)
-      .toEqual([
-        { value: "apply_current_listing", label: "현재 상품에 적용" },
-        { value: "keep_saved_only", label: "저장된 기억으로만 유지" },
-      ]);
+    expect(
+      draft.engineReview.nextActions.find((action) => action.label === "Confirm product scope")
+        ?.controlConfig?.options,
+    ).toEqual([
+      { value: "apply_current_listing", label: "현재 상품에 적용" },
+      { value: "keep_saved_only", label: "저장된 기억으로만 유지" },
+    ]);
     expect(draft.negotiationStartPayload.tuning_draft.engine_review.status).toBe("blocked");
   });
 
@@ -158,8 +168,12 @@ describe("compilePresetTuningDraft", () => {
     });
 
     expect(draft.engineReview.status).toBe("needs_user_input");
-    expect(draft.engineReview.blockers.some((blocker) => blocker.id === "missing_battery_health")).toBe(true);
-    const batteryAction = draft.engineReview.nextActions.find((action) => action.termId === "battery_health");
+    expect(
+      draft.engineReview.blockers.some((blocker) => blocker.id === "missing_battery_health"),
+    ).toBe(true);
+    const batteryAction = draft.engineReview.nextActions.find(
+      (action) => action.termId === "battery_health",
+    );
     expect(batteryAction?.control).toBe("slider");
     expect(batteryAction?.controlConfig).toMatchObject({
       unit: "%",

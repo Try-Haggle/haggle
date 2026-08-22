@@ -10,13 +10,13 @@
  */
 
 import {
-  type Database,
-  shipments,
-  disputeCases,
-  commerceOrders,
-  eq,
   and,
+  commerceOrders,
+  type Database,
+  disputeCases,
+  eq,
   lt,
+  shipments,
   sql,
 } from "@haggle/db";
 
@@ -32,12 +32,7 @@ export async function runShipmentSlaCheck(db: Database): Promise<void> {
       orderId: shipments.orderId,
     })
     .from(shipments)
-    .where(
-      and(
-        eq(shipments.status, "LABEL_PENDING"),
-        lt(shipments.shipmentInputDueAt, now),
-      ),
-    )
+    .where(and(eq(shipments.status, "LABEL_PENDING"), lt(shipments.shipmentInputDueAt, now)))
     .limit(BATCH_LIMIT);
 
   if (overdue.length === 0) return;
@@ -79,7 +74,10 @@ export async function runShipmentSlaCheck(db: Database): Promise<void> {
         .where(
           and(
             eq(commerceOrders.id, row.orderId),
-            sql`${commerceOrders.status} NOT IN (${sql.join(terminalStatuses.map(s => sql`${s}`), sql`, `)})`,
+            sql`${commerceOrders.status} NOT IN (${sql.join(
+              terminalStatuses.map((s) => sql`${s}`),
+              sql`, `,
+            )})`,
           ),
         );
 

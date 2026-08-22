@@ -1,15 +1,9 @@
 "use client";
 
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useRef,
-  type ReactNode,
-} from "react";
-import { usePathname } from "next/navigation";
 import * as amplitude from "@amplitude/analytics-browser";
 import { Identify } from "@amplitude/analytics-browser";
+import { usePathname } from "next/navigation";
+import { createContext, type ReactNode, useContext, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 const AmplitudeContext = createContext<{
@@ -61,43 +55,43 @@ export function AmplitudeProvider({ children }: { children: ReactNode }) {
     });
 
     // Auth state 변경 감지
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (event === "SIGNED_IN" && session?.user) {
-          amplitude.setUserId(session.user.id);
-          const identify = new Identify();
-          identify.setOnce("signup_method", session.user.app_metadata?.provider || "email");
-          identify.setOnce("signup_date", session.user.created_at?.split("T")[0] ?? "");
-          amplitude.identify(identify);
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN" && session?.user) {
+        amplitude.setUserId(session.user.id);
+        const identify = new Identify();
+        identify.setOnce("signup_method", session.user.app_metadata?.provider || "email");
+        identify.setOnce("signup_date", session.user.created_at?.split("T")[0] ?? "");
+        amplitude.identify(identify);
 
-          // 신규 가입 감지: localStorage flag + created_at 10분 이내
-          const raw = localStorage.getItem("haggle_auth_intent");
-          const created = new Date(session.user.created_at).getTime();
-          const isNewUser = Date.now() - created < 600_000; // 10분 이내 생성된 계정
+        // 신규 가입 감지: localStorage flag + created_at 10분 이내
+        const raw = localStorage.getItem("haggle_auth_intent");
+        const created = new Date(session.user.created_at).getTime();
+        const isNewUser = Date.now() - created < 600_000; // 10분 이내 생성된 계정
 
-          if (raw && isNewUser) {
-            const intent = JSON.parse(raw) as { entry_point: string; timestamp: number };
-            const alreadyTracked = localStorage.getItem("haggle_account_created") === session.user.id;
-            // flag가 1시간 이내에 설정된 것만 유효 + 이미 발화한 유저가 아닌 경우
-            if (Date.now() - intent.timestamp < 3_600_000 && !alreadyTracked) {
-              amplitude.track("Account Created", {
-                method: session.user.app_metadata?.provider === "google" ? "google" : "email",
-                entry_point: intent.entry_point,
-              });
-              localStorage.setItem("haggle_account_created", session.user.id);
-            }
-            localStorage.removeItem("haggle_auth_intent");
-          } else if (raw) {
-            // 기존 유저 재로그인 — flag만 정리
-            localStorage.removeItem("haggle_auth_intent");
+        if (raw && isNewUser) {
+          const intent = JSON.parse(raw) as { entry_point: string; timestamp: number };
+          const alreadyTracked = localStorage.getItem("haggle_account_created") === session.user.id;
+          // flag가 1시간 이내에 설정된 것만 유효 + 이미 발화한 유저가 아닌 경우
+          if (Date.now() - intent.timestamp < 3_600_000 && !alreadyTracked) {
+            amplitude.track("Account Created", {
+              method: session.user.app_metadata?.provider === "google" ? "google" : "email",
+              entry_point: intent.entry_point,
+            });
+            localStorage.setItem("haggle_account_created", session.user.id);
           }
-        }
-
-        if (event === "SIGNED_OUT") {
-          amplitude.reset();
+          localStorage.removeItem("haggle_auth_intent");
+        } else if (raw) {
+          // 기존 유저 재로그인 — flag만 정리
+          localStorage.removeItem("haggle_auth_intent");
         }
       }
-    );
+
+      if (event === "SIGNED_OUT") {
+        amplitude.reset();
+      }
+    });
 
     return () => subscription.unsubscribe();
   }, []);

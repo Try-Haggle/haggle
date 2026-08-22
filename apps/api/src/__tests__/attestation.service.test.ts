@@ -5,7 +5,7 @@
  * SQL calls and returns canned rows, plus a mocked supabase-storage module
  * so no real Supabase traffic is attempted.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock the storage service BEFORE importing the module under test.
 vi.mock("../services/supabase-storage.service.js", () => ({
@@ -16,17 +16,14 @@ vi.mock("../services/supabase-storage.service.js", () => ({
     .mockImplementation(async (p: string) => `https://signed.example/${p}`),
 }));
 
+import { canonicalizeAttestation, computeCommitHash } from "../lib/attestation-hash.js";
 import {
+  AttestationConflictError,
   createAttestationCommit,
   getAttestationForViewer,
-  verifyAttestationCommit,
   loadCommitByListing,
-  AttestationConflictError,
+  verifyAttestationCommit,
 } from "../services/attestation.service.js";
-import {
-  canonicalizeAttestation,
-  computeCommitHash,
-} from "../lib/attestation-hash.js";
 import * as storageMod from "../services/supabase-storage.service.js";
 
 const LISTING_ID = "11111111-1111-1111-1111-111111111111";
@@ -93,9 +90,7 @@ function fixedCommitRow(overrides: Partial<Row> = {}): Row {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  (storageMod.attestationObjectExists as ReturnType<typeof vi.fn>).mockResolvedValue(
-    true,
-  );
+  (storageMod.attestationObjectExists as ReturnType<typeof vi.fn>).mockResolvedValue(true);
 });
 
 // ─── createAttestationCommit ────────────────────────────────
@@ -120,10 +115,7 @@ describe("createAttestationCommit", () => {
       imei: "123456789012345",
       batteryHealthPct: 92,
       findMyOff: true,
-      photoStoragePaths: [
-        `${LISTING_ID}/front.jpg`,
-        `${LISTING_ID}/back.jpg`,
-      ],
+      photoStoragePaths: [`${LISTING_ID}/front.jpg`, `${LISTING_ID}/back.jpg`],
     });
 
     expect(result.commitId).toBe("commit-new");
@@ -169,11 +161,7 @@ describe("createAttestationCommit", () => {
         const q = query as { params?: unknown[] };
         if (q.params) {
           for (const p of q.params) {
-            if (
-              typeof p === "string" &&
-              p.startsWith("{") &&
-              p.includes("\"version\"")
-            ) {
+            if (typeof p === "string" && p.startsWith("{") && p.includes('"version"')) {
               try {
                 captured.canonical = JSON.parse(p) as Record<string, unknown>;
               } catch {
@@ -216,9 +204,7 @@ describe("createAttestationCommit", () => {
   });
 
   it("rejects when a photo does not exist in the bucket", async () => {
-    (
-      storageMod.attestationObjectExists as ReturnType<typeof vi.fn>
-    ).mockResolvedValueOnce(false);
+    (storageMod.attestationObjectExists as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false);
     const db = makeFakeDb(() => []);
     await expect(
       createAttestationCommit(db, {

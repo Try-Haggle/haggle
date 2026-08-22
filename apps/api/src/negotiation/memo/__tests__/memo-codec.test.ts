@@ -1,18 +1,18 @@
-import { describe, it, expect } from 'vitest';
-import { encodeCompressed, encodeRaw, encodeMemo } from '../memo-codec.js';
-import type { CoreMemory, RoundFact } from '../../types.js';
-import { DEFAULT_BUDDY_DNA } from '../../config.js';
+import { describe, expect, it } from "vitest";
+import { DEFAULT_BUDDY_DNA } from "../../config.js";
+import type { CoreMemory, RoundFact } from "../../types.js";
+import { encodeCompressed, encodeMemo, encodeRaw } from "../memo-codec.js";
 
 function makeMemory(): CoreMemory {
   return {
     session: {
-      session_id: 'test-session',
-      phase: 'BARGAINING',
+      session_id: "test-session",
+      phase: "BARGAINING",
       round: 3,
       rounds_remaining: 7,
-      role: 'buyer',
+      role: "buyer",
       max_rounds: 10,
-      intervention_mode: 'FULL_AUTO',
+      intervention_mode: "FULL_AUTO",
     },
     boundaries: {
       my_target: 83000,
@@ -21,13 +21,13 @@ function makeMemory(): CoreMemory {
       opponent_offer: 90000,
       gap: 5000,
     },
-    terms: { active: [], resolved_summary: '' },
+    terms: { active: [], resolved_summary: "" },
     coaching: {
       recommended_price: 87000,
       acceptable_range: { min: 83000, max: 95000 },
-      suggested_tactic: 'reciprocal_concession',
-      hint: '',
-      opponent_pattern: 'CONCEDER',
+      suggested_tactic: "reciprocal_concession",
+      hint: "",
+      opponent_pattern: "CONCEDER",
       convergence_rate: 0.72,
       time_pressure: 0.3,
       utility_snapshot: { u_price: 0.6, u_time: 0.7, u_risk: 0.5, u_quality: 0.5, u_total: 0.6 },
@@ -35,97 +35,118 @@ function makeMemory(): CoreMemory {
       warnings: [],
     },
     buddy_dna: DEFAULT_BUDDY_DNA,
-    skill_summary: 'electronics-iphone-pro-v1',
+    skill_summary: "electronics-iphone-pro-v1",
   };
 }
 
 const sampleFacts: RoundFact[] = [
   {
-    round: 1, phase: 'BARGAINING', buyer_offer: 85000, seller_offer: 92000, gap: 7000,
-    conditions_changed: {}, coaching_given: { recommended: 87000, tactic: 'anchoring' },
-    coaching_followed: true, human_intervened: false, timestamp: Date.now() - 3000,
+    round: 1,
+    phase: "BARGAINING",
+    buyer_offer: 85000,
+    seller_offer: 92000,
+    gap: 7000,
+    conditions_changed: {},
+    coaching_given: { recommended: 87000, tactic: "anchoring" },
+    coaching_followed: true,
+    human_intervened: false,
+    timestamp: Date.now() - 3000,
   },
   {
-    round: 2, phase: 'BARGAINING', buyer_offer: 86000, seller_offer: 91000, gap: 5000,
-    conditions_changed: {}, coaching_given: { recommended: 87000, tactic: 'reciprocal_concession' },
-    coaching_followed: true, human_intervened: false, timestamp: Date.now() - 2000,
+    round: 2,
+    phase: "BARGAINING",
+    buyer_offer: 86000,
+    seller_offer: 91000,
+    gap: 5000,
+    conditions_changed: {},
+    coaching_given: { recommended: 87000, tactic: "reciprocal_concession" },
+    coaching_followed: true,
+    human_intervened: false,
+    timestamp: Date.now() - 2000,
   },
 ];
 
-describe('memo-codec', () => {
-  describe('encodeCompressed', () => {
-    it('produces NS: line with session state', () => {
+describe("memo-codec", () => {
+  describe("encodeCompressed", () => {
+    it("produces NS: line with session state", () => {
       const result = encodeCompressed(makeMemory());
-      expect(result).toContain('NS:BARGAINING|R3/10|buyer|FULL_AUTO');
+      expect(result).toContain("NS:BARGAINING|R3/10|buyer|FULL_AUTO");
     });
 
-    it('produces PT: line with price trajectory', () => {
+    it("produces PT: line with price trajectory", () => {
       const result = encodeCompressed(makeMemory());
-      expect(result).toContain('PT:$850.00→$900.00|gap:$50.00');
+      expect(result).toContain("PT:$850.00→$900.00|gap:$50.00");
     });
 
-    it('produces CL: line with coaching', () => {
+    it("produces CL: line with coaching", () => {
       const result = encodeCompressed(makeMemory());
-      expect(result).toContain('CL:rec:$870.00|tactic:reciprocal_concession|opp:CONCEDER|conv:0.72');
+      expect(result).toContain(
+        "CL:rec:$870.00|tactic:reciprocal_concession|opp:CONCEDER|conv:0.72",
+      );
     });
 
-    it('includes RM: line when facts are provided', () => {
+    it("includes RM: line when facts are provided", () => {
       const result = encodeCompressed(makeMemory(), sampleFacts);
-      expect(result).toContain('RM:');
-      expect(result).toContain('R1:');
-      expect(result).toContain('R2:');
+      expect(result).toContain("RM:");
+      expect(result).toContain("R1:");
+      expect(result).toContain("R2:");
     });
 
-    it('includes private layer with SS: and OM:', () => {
+    it("includes private layer with SS: and OM:", () => {
       const result = encodeCompressed(makeMemory());
-      expect(result).toContain('---');
-      expect(result).toContain('SS:t:$830.00|f:$950.00');
-      expect(result).toContain('OM:CONCEDER');
+      expect(result).toContain("---");
+      expect(result).toContain("SS:t:$830.00|f:$950.00");
+      expect(result).toContain("OM:CONCEDER");
     });
 
-    it('includes TA: line when terms are active', () => {
+    it("includes TA: line when terms are active", () => {
       const memory = makeMemory();
       memory.terms.active = [
         {
-          term_id: 'warranty', category: 'WARRANTY', display_name: 'Warranty',
-          status: 'proposed', value: '30d', proposed_by: 'buyer', round_introduced: 2,
+          term_id: "warranty",
+          category: "WARRANTY",
+          display_name: "Warranty",
+          status: "proposed",
+          value: "30d",
+          proposed_by: "buyer",
+          round_introduced: 2,
         },
       ];
       const result = encodeCompressed(memory);
-      expect(result).toContain('TA:warranty=proposed:30d');
+      expect(result).toContain("TA:warranty=proposed:30d");
     });
 
-    it('includes TR: line when warnings exist', () => {
+    it("includes TR: line when warnings exist", () => {
       const memory = makeMemory();
-      memory.coaching.warnings = ['Running low on rounds'];
+      memory.coaching.warnings = ["Running low on rounds"];
       const result = encodeCompressed(memory);
-      expect(result).toContain('TR:Running low on rounds');
+      expect(result).toContain("TR:Running low on rounds");
     });
   });
 
-  describe('encodeRaw', () => {
-    it('produces valid JSON', () => {
+  describe("encodeRaw", () => {
+    it("produces valid JSON", () => {
       const result = encodeRaw(makeMemory());
       const parsed = JSON.parse(result);
-      expect(parsed.session.phase).toBe('BARGAINING');
+      expect(parsed.session.phase).toBe("BARGAINING");
       expect(parsed.boundaries.my_target).toBe(83000);
     });
 
-    it('includes coaching data', () => {
+    it("includes coaching data", () => {
       const result = encodeRaw(makeMemory());
       const parsed = JSON.parse(result);
       expect(parsed.coaching.recommended_price).toBe(87000);
     });
   });
 
-  describe('encodeMemo', () => {
-    it('uses compressed for codec encoding', () => {
-      const result = encodeMemo(makeMemory(), 'codec');
-      expect(result).toContain('NS:');
+  describe("encodeMemo", () => {
+    it("uses compressed for codec encoding", () => {
+      const result = encodeMemo(makeMemory(), "codec");
+      expect(result).toContain("NS:");
     });
 
-    it('uses raw JSON for raw encoding', () => {
-      const result = encodeMemo(makeMemory(), 'raw');
+    it("uses raw JSON for raw encoding", () => {
+      const result = encodeMemo(makeMemory(), "raw");
       JSON.parse(result); // should not throw
     });
   });

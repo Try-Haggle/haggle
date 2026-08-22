@@ -39,10 +39,13 @@ describe("Conversation Signal Replay Service", () => {
 
     expect(execute.mock.calls[0]?.[0].raw).toContain("NOT EXISTS");
     expect(execute.mock.calls[0]?.[0].raw).toContain("conversation_market_signals");
-    expect(recordConversationSignalsForRound).toHaveBeenCalledWith(db, expect.objectContaining({
-      sourceMessageId: "round-1:incoming",
-      text: "My max is $700 if shipping is insured.",
-      metadata: { replayed_from_source: true },
-    }));
+    expect(recordConversationSignalsForRound).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({
+        sourceMessageId: "round-1:incoming",
+        text: "My max is $700 if shipping is insured.",
+        metadata: { replayed_from_source: true },
+      }),
+    );
   });
 });

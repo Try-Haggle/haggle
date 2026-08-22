@@ -1,28 +1,31 @@
-import type { NegotiationPhase, PhaseTransitionEvent } from '../types.js';
+import type { NegotiationPhase, PhaseTransitionEvent } from "../types.js";
 
 /** Phase transition rules */
-const TRANSITIONS: Record<NegotiationPhase, Partial<Record<PhaseTransitionEvent, NegotiationPhase>>> = {
+const TRANSITIONS: Record<
+  NegotiationPhase,
+  Partial<Record<PhaseTransitionEvent, NegotiationPhase>>
+> = {
   DISCOVERY: {
-    INITIAL_OFFER_MADE: 'OPENING',
-    TIMEOUT: 'OPENING', // auto-advance after discovery timeout
-    ABORT: 'SETTLEMENT',
+    INITIAL_OFFER_MADE: "OPENING",
+    TIMEOUT: "OPENING", // auto-advance after discovery timeout
+    ABORT: "SETTLEMENT",
   },
   OPENING: {
-    COUNTER_OFFER_MADE: 'BARGAINING',
-    TIMEOUT: 'BARGAINING',
-    ABORT: 'SETTLEMENT',
+    COUNTER_OFFER_MADE: "BARGAINING",
+    TIMEOUT: "BARGAINING",
+    ABORT: "SETTLEMENT",
   },
   BARGAINING: {
-    NEAR_DEAL_DETECTED: 'CLOSING',
-    TIMEOUT: 'CLOSING',
-    ABORT: 'SETTLEMENT',
-    REVERT_REQUESTED: 'OPENING',
+    NEAR_DEAL_DETECTED: "CLOSING",
+    TIMEOUT: "CLOSING",
+    ABORT: "SETTLEMENT",
+    REVERT_REQUESTED: "OPENING",
   },
   CLOSING: {
-    BOTH_CONFIRMED: 'SETTLEMENT',
-    REVERT_REQUESTED: 'BARGAINING',
-    TIMEOUT: 'SETTLEMENT',
-    ABORT: 'SETTLEMENT',
+    BOTH_CONFIRMED: "SETTLEMENT",
+    REVERT_REQUESTED: "BARGAINING",
+    TIMEOUT: "SETTLEMENT",
+    ABORT: "SETTLEMENT",
   },
   SETTLEMENT: {
     // Terminal state — no transitions
@@ -65,7 +68,7 @@ export function tryTransition(
 
 /** Check if a phase is terminal */
 export function isTerminal(phase: NegotiationPhase): boolean {
-  return phase === 'SETTLEMENT';
+  return phase === "SETTLEMENT";
 }
 
 /** Get valid events for a given phase */
@@ -83,11 +86,11 @@ export function detectPhaseEvent(
   isNearDeal: boolean,
   bothConfirmed: boolean,
 ): PhaseTransitionEvent | null {
-  if (bothConfirmed && currentPhase === 'CLOSING') return 'BOTH_CONFIRMED';
-  if (isNearDeal && currentPhase === 'BARGAINING') return 'NEAR_DEAL_DETECTED';
+  if (bothConfirmed && currentPhase === "CLOSING") return "BOTH_CONFIRMED";
+  if (isNearDeal && currentPhase === "BARGAINING") return "NEAR_DEAL_DETECTED";
 
-  if (currentPhase === 'DISCOVERY' && action === 'COUNTER') return 'INITIAL_OFFER_MADE';
-  if (currentPhase === 'OPENING' && action === 'COUNTER') return 'COUNTER_OFFER_MADE';
+  if (currentPhase === "DISCOVERY" && action === "COUNTER") return "INITIAL_OFFER_MADE";
+  if (currentPhase === "OPENING" && action === "COUNTER") return "COUNTER_OFFER_MADE";
 
   return null;
 }

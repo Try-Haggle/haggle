@@ -22,11 +22,7 @@ export function configuredJsonBodyLimit(): number {
   return parsed;
 }
 
-export function boundedJson<T extends z.ZodTypeAny>(
-  schema: T,
-  maxBytes: number,
-  label: string,
-): T {
+export function boundedJson<T extends z.ZodTypeAny>(schema: T, maxBytes: number, label: string): T {
   return schema.superRefine((value, ctx) => {
     const bytes = Buffer.byteLength(JSON.stringify(value), "utf8");
     if (bytes > maxBytes) {

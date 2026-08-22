@@ -5,9 +5,10 @@
  * requireAuth, status codes, and the 404-obfuscation access matrix on
  * GET.
  */
-import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from "vitest";
+
 import type { FastifyInstance } from "fastify";
 import jwt from "jsonwebtoken";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock the service BEFORE importing getTestApp (which creates the server).
 vi.mock("../services/attestation.service.js", () => ({
@@ -28,9 +29,9 @@ vi.mock("../services/supabase-storage.service.js", () => ({
   createAttestationViewUrl: vi.fn(),
 }));
 
-import { getTestApp, closeTestApp } from "./helpers.js";
 import * as svc from "../services/attestation.service.js";
 import * as storage from "../services/supabase-storage.service.js";
+import { closeTestApp, getTestApp } from "./helpers.js";
 
 const SELLER_ID = "22222222-2222-2222-2222-222222222222";
 const OTHER_ID = "99999999-9999-9999-9999-999999999999";

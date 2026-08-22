@@ -1,9 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/admin-api", async () => {
-  const actual =
-    await vi.importActual<typeof import("@/lib/admin-api")>("@/lib/admin-api");
+  const actual = await vi.importActual<typeof import("@/lib/admin-api")>("@/lib/admin-api");
   return {
     ...actual,
     adminApi: {

@@ -18,15 +18,16 @@
  * Requires: STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET env vars.
  */
 
-import type Stripe from "stripe";
 import type {
+  AuthorizePaymentResult,
+  PaymentIntent,
   PaymentProvider,
   PaymentQuote,
-  AuthorizePaymentResult,
-  SettlePaymentResult,
+  Refund,
   RefundPaymentResult,
+  SettlePaymentResult,
 } from "@haggle/payment-core";
-import type { PaymentIntent, Refund } from "@haggle/payment-core";
+import type Stripe from "stripe";
 
 // ---------------------------------------------------------------------------
 // Config

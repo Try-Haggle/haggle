@@ -3,10 +3,12 @@ import { EverOSClient } from "../services/everos-client.service.js";
 
 describe("EverOS Client", () => {
   it("posts personal memories to the v1 EverOS endpoint", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { status: "accumulated" } }), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    }));
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ data: { status: "accumulated" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
     const client = new EverOSClient({
       baseUrl: "http://localhost:1995",
       apiKey: "test-key",
@@ -33,15 +35,19 @@ describe("EverOS Client", () => {
   });
 
   it("searches memories with user filters and hybrid retrieval by default", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { episodes: [] } }), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    }));
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ data: { episodes: [] } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
     const client = new EverOSClient({ baseUrl: "https://api.evermind.ai", fetchImpl });
 
     await client.searchMemories({ userId: "user-1", query: "iphone preference", topK: 5 });
 
-    expect(String(fetchImpl.mock.calls[0]?.[0])).toBe("https://api.evermind.ai/api/v1/memories/search");
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toBe(
+      "https://api.evermind.ai/api/v1/memories/search",
+    );
     expect(JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body))).toMatchObject({
       query: "iphone preference",
       filters: { user_id: "user-1" },

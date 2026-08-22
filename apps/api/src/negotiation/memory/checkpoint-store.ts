@@ -1,10 +1,5 @@
-import { randomUUID } from 'node:crypto';
-import type {
-  Checkpoint,
-  CoreMemory,
-  NegotiationPhase,
-  RevertPolicy,
-} from '../types.js';
+import { randomUUID } from "node:crypto";
+import type { Checkpoint, CoreMemory, NegotiationPhase, RevertPolicy } from "../types.js";
 
 // ---------------------------------------------------------------------------
 // Persistence Interface (DB adapter)
@@ -40,7 +35,7 @@ export class CheckpointStore {
   }
 
   /** Phase 전환 시 자동 저장 */
-  async save(checkpoint: Omit<Checkpoint, 'id' | 'created_at'>): Promise<Checkpoint> {
+  async save(checkpoint: Omit<Checkpoint, "id" | "created_at">): Promise<Checkpoint> {
     const full: Checkpoint = {
       ...checkpoint,
       id: randomUUID(),
@@ -116,9 +111,7 @@ export class CheckpointStore {
       (t) => t.from === currentPhase && t.to === targetPhase,
     );
     if (!isAllowed) {
-      throw new Error(
-        `Revert from ${currentPhase} to ${targetPhase} is not allowed`,
-      );
+      throw new Error(`Revert from ${currentPhase} to ${targetPhase} is not allowed`);
     }
 
     // Find the target phase checkpoint
@@ -129,9 +122,7 @@ export class CheckpointStore {
 
     // Calculate cost
     const revertCount = this.revertCounts.get(sessionId) ?? 0;
-    const cost = revertPolicy.first_free && revertCount === 0
-      ? 0
-      : revertPolicy.revert_cost_hc;
+    const cost = revertPolicy.first_free && revertCount === 0 ? 0 : revertPolicy.revert_cost_hc;
 
     // Increment revert count
     this.revertCounts.set(sessionId, revertCount + 1);

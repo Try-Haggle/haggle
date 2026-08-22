@@ -6,11 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import {
-  FEW_SHOT_POOL,
-  selectFewShots,
-  toChatMessages,
-} from "../prompts/tag-placement/index.js";
+import { FEW_SHOT_POOL, selectFewShots, toChatMessages } from "../prompts/tag-placement/index.js";
 
 describe("FEW_SHOT_POOL", () => {
   it("has exactly 8 entries", () => {
@@ -38,18 +34,14 @@ describe("FEW_SHOT_POOL", () => {
 describe("selectFewShots", () => {
   it("returns ≥ 2 electronics examples for a consumer electronics phone category", () => {
     const selected = selectFewShots("consumer electronics / phones / iphone");
-    const electronicsCount = selected.filter(
-      (e) => e.category === "electronics",
-    ).length;
+    const electronicsCount = selected.filter((e) => e.category === "electronics").length;
     expect(selected.length).toBeGreaterThanOrEqual(2);
     expect(electronicsCount).toBeGreaterThanOrEqual(2);
   });
 
   it("returns ≥ 2 fashion examples for a women's fashion jackets category", () => {
     const selected = selectFewShots("women's fashion / jackets");
-    const fashionCount = selected.filter(
-      (e) => e.category === "fashion",
-    ).length;
+    const fashionCount = selected.filter((e) => e.category === "fashion").length;
     expect(selected.length).toBeGreaterThanOrEqual(2);
     expect(fashionCount).toBeGreaterThanOrEqual(2);
   });
