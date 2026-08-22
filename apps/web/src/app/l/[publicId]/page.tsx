@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { apiServerFireAndForget, serverApi } from "@/lib/api-server";
 import { createClient } from "@/lib/supabase/server";
 import { BuyerLanding } from "./buyer-landing";
+import { BuyerLandingV2 } from "./buyer-landing-v2";
 import { SimilarListings } from "./similar-listings";
 
 interface ListingData {
@@ -18,6 +19,8 @@ interface ListingData {
   sellerAgentPreset: string | null;
   sellingDeadline: string | null;
   sellerRequiredCriteria: Array<{ checkId: string; ask: string }> | null;
+  /** Product facts the seller answered with canonical taxonomy options. */
+  specs?: Array<{ checkId: string; label: string; value: string }> | null;
 }
 
 const VALID_ORIGINS = ["browse", "buy-dashboard", "sell-dashboard"] as const;
@@ -33,11 +36,18 @@ export default async function BuyerListingPage({
   searchParams,
 }: {
   params: Promise<{ publicId: string }>;
-  searchParams: Promise<{ from?: string }>;
+  searchParams: Promise<{ from?: string; v?: string }>;
 }) {
   const { publicId } = await params;
-  const { from: fromRaw } = await searchParams;
+  const { from: fromRaw, v } = await searchParams;
   const from = parseOrigin(fromRaw);
+  /**
+   * v2 is the default listing detail. `?v=1` keeps the previous page reachable
+   * — an escape hatch while v2 is the one real buyers land on, and the way to
+   * compare the two on the same listing. Only an explicit "1" opts out, so a
+   * stray value still gets the current design.
+   */
+  const useLegacy = v === "1";
 
   let data: { ok: boolean; listing: ListingData; sellerId?: string | null };
   try {
@@ -90,8 +100,26 @@ export default async function BuyerListingPage({
 
   return (
     <>
-      <BuyerLanding listing={data.listing} user={userInfo} isOwner={isOwner} from={from} />
-      <SimilarListings publicId={publicId} userId={user?.id ?? null} from={from} />
+      {useLegacy ? (
+        <BuyerLanding listing={data.listing} user={userInfo} isOwner={isOwner} from={from} />
+      ) : (
+        <BuyerLandingV2
+          listing={data.listing}
+          user={userInfo}
+          isOwner={isOwner}
+          from={from ?? undefined}
+        />
+      )}
+      {/* Similar Listings — v1 only, temporarily.
+          The multi-signal scorer's detail-page threshold (0.65) currently sits
+          above what the live corpus can reach: semantic is raw cosine (avg
+          0.61 / max 0.78 across same-category pairs here) at weight 0.8, tags
+          score 0 whenever either side has none, and price scores 0 past a 10x
+          gap — so the section renders its empty state on every listing. Left
+          mounted on v1 so nothing about the legacy page changes; hidden on v2
+          rather than shipping a permanent "No similar listings found yet".
+          Restore once the threshold/weights are tuned against real data. */}
+      {useLegacy && <SimilarListings publicId={publicId} userId={user?.id ?? null} from={from} />}
     </>
   );
 }

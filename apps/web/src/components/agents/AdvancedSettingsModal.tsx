@@ -57,8 +57,10 @@ function readField(state: AdvancedOverrides, field: string): number {
   return (state as unknown as Record<string, number>)[field];
 }
 
-/** Weights must sum to 1.0. When one is moved, normalize the others. */
-function normalizeWeights(
+/** Weights must sum to 1.0. When one is moved, normalize the others.
+ *  Exported: the Agent Studio's inline weight tuner edits the same weights and
+ *  must balance them by the same rule, or the two surfaces would disagree. */
+export function normalizeWeights(
   weights: AdvancedOverrides["weights"],
   changedKey: keyof AdvancedOverrides["weights"],
   newValue: number,

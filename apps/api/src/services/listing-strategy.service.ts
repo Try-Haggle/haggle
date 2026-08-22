@@ -12,6 +12,8 @@ import {
   getNegotiationAgentPreset,
   presetToEngineParameters,
   requiredCriteria,
+  type SellerProductFact,
+  sellerProductFacts,
 } from "@haggle/shared";
 
 /** Resolve the canonical default preset's parameters (balancer). */
@@ -176,6 +178,22 @@ export type BuyerVisibleSellerCriterion = { checkId: string; ask: string };
  * builder surfaces "the seller requires X" so the buyer mirrors it) and Flow 3
  * (the mid-negotiation pause's must-resolve set).
  */
+/**
+ * The seller's answered checks that are product FACTS, for the listing page's
+ * spec cards. Category-agnostic: any taxonomy check the seller answered with a
+ * canonical option publishes, so a laptop or a bike gets specs the same way a
+ * phone does — unlike `phoneAnswers`, which only exists for one subtype.
+ * Negotiation posture never rides along; see `sellerProductFacts`.
+ */
+export function extractSellerProductFacts(
+  negotiationAgentSnapshot: Record<string, unknown>,
+): SellerProductFact[] {
+  const memory = extractNegotiationAgentBuilderMemory(negotiationAgentSnapshot);
+  const criteria = memory?.categoryCriteria;
+  if (!Array.isArray(criteria)) return [];
+  return sellerProductFacts(criteria as CategoryCriterion[]);
+}
+
 export function extractSellerRequiredCriteria(
   negotiationAgentSnapshot: Record<string, unknown>,
 ): BuyerVisibleSellerCriterion[] {
