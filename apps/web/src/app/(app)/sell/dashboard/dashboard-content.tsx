@@ -53,7 +53,7 @@ export function DashboardContent({
   }, []);
 
   return (
-    <main className="mx-auto min-h-[calc(100vh-4rem)] max-w-6xl px-4 py-6 sm:p-6">
+    <main className="mx-auto min-h-[calc(100vh-4rem)] max-w-7xl px-4 py-6 sm:p-6">
       {/* Claim Result Banner */}
       {claimResult && (
         <Alert tone={claimResult.ok ? "success" : "error"} className="mb-6">

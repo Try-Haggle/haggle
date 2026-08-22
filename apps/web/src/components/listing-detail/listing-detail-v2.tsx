@@ -262,7 +262,7 @@ export function ListingDetailV2({
             there, and `pb-16` is shorter than the bar itself, so the last card
             in the rail ended up behind it at full scroll. Owners get no bar,
             so they keep the plain padding instead of dead space. */}
-        <div className={cn("mx-auto max-w-6xl px-4 sm:px-6", isOwner ? "pb-16" : "pb-28 lg:pb-16")}>
+        <div className={cn("mx-auto max-w-7xl px-4 sm:px-6", isOwner ? "pb-16" : "pb-28 lg:pb-16")}>
           {/* Two columns, two jobs: the LEFT column is the item (photo first —
               the marketplace instinct — then title, then the evidence), the
               RIGHT rail is the negotiation (price and its room to move, the
@@ -537,12 +537,12 @@ export function ListingDetailV2({
               {status === "error" && (
                 <p
                   role="alert"
-                  className="mx-auto max-w-6xl px-4 pt-2.5 text-center text-[12px] text-error sm:px-6"
+                  className="mx-auto max-w-7xl px-4 pt-2.5 text-center text-[12px] text-error sm:px-6"
                 >
                   {message}
                 </p>
               )}
-              <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
+              <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 sm:px-6">
                 {/* The price and who you are sending — nothing else. The title
                     used to sit under the price, but it is the one fact a reader
                     on this page already has, and it pushed the agent (which
