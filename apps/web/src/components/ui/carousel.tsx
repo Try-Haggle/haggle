@@ -20,6 +20,8 @@ export interface CarouselProps {
   /** Snap strictness for the track. `proximity` (default) or `mandatory`. */
   snap?: "proximity" | "mandatory";
   className?: string;
+  /** Extra classes for the scroll track (e.g. a tighter `gap-2`). */
+  trackClassName?: string;
 }
 
 /**
@@ -34,6 +36,7 @@ export function Carousel({
   cardsPerScroll = 2,
   snap = "proximity",
   className,
+  trackClassName,
 }: CarouselProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [canLeft, setCanLeft] = useState(false);
@@ -109,6 +112,7 @@ export function Carousel({
         className={cn(
           "flex gap-4 overflow-x-auto scroll-smooth [&::-webkit-scrollbar]:hidden [scrollbar-width:none]",
           snap === "mandatory" ? "snap-x snap-mandatory" : "snap-x",
+          trackClassName,
         )}
       >
         {children}

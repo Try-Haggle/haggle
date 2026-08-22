@@ -356,7 +356,22 @@ export async function getListingsByUserId(db: Database, userId: string) {
   return drafts;
 }
 
-/** Fetch a single listing by draft ID + userId (ownership check). */
+/** Matches a canonical UUID, i.e. a draft id rather than a public id. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Fetch a single listing by draft ID *or* public ID, scoped to its owner.
+ *
+ * Accepts both so the buyer-facing detail page can link an owner straight to
+ * their own listing: that page only ever holds the public id, and handing it
+ * the draft id instead would mean publishing an internal id on a route that
+ * takes no auth. The ownership check is unchanged either way — a non-owner
+ * gets null and the route 404s, so the extra lookup key grants no new access.
+ *
+ * The id shape has to be discriminated before it reaches the query: draft ids
+ * are a uuid column, and comparing one against a public id like "HN3VkK50"
+ * makes Postgres throw on the cast rather than simply not matching.
+ */
 export async function getListingByIdForUser(db: Database, id: string, userId: string) {
   const rows = await db
     .select({
@@ -377,7 +392,12 @@ export async function getListingByIdForUser(db: Database, id: string, userId: st
     })
     .from(listingDrafts)
     .innerJoin(listingsPublished, eq(listingsPublished.draftId, listingDrafts.id))
-    .where(and(eq(listingDrafts.id, id), eq(listingDrafts.userId, userId)));
+    .where(
+      and(
+        UUID_RE.test(id) ? eq(listingDrafts.id, id) : eq(listingsPublished.publicId, id),
+        eq(listingDrafts.userId, userId),
+      ),
+    );
 
   return rows[0] ?? null;
 }

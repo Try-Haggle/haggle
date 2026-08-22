@@ -99,6 +99,23 @@ interface NegotiationAgentBuilderChatProps {
   listingMarketMedian?: string | null;
   /** Which side the user is on. Drives copy + LLM prompt direction. Default "buyer". */
   role?: "buyer" | "seller";
+  /**
+   * How the chat frames itself.
+   *
+   * "card" (default) is the inline form used by the listing page and the seller
+   * wizard: its own border, rounded corners, raised background and a top margin,
+   * sized by `minHeight`. "bare" drops all of that and fills its parent instead —
+   * for when the chat already sits inside a surface that provides the frame, such
+   * as a drawer, where the card would read as a box inside a box and would stop
+   * short of the panel's height.
+   */
+  variant?: "card" | "bare";
+  /**
+   * Type scale + spacing. "compact" shrinks bubbles, the budget widget, and
+   * list padding for narrow hosts (the listing page's negotiator drawer);
+   * "comfortable" (default) keeps the sizes the wide surfaces use.
+   */
+  density?: "comfortable" | "compact";
   onNegotiationAgentBuilderMemoryUpdate?: (memory: NegotiationAgentBuilderMemory) => void;
   /** Called when the chat adjusts the radar numbers (4 weights + 4 curves). */
   onStrategyUpdate?: (strategy: ChatStrategy) => void;
@@ -319,9 +336,11 @@ function renderMarkdownLite(text: string): string {
 function BudgetWidget({
   listingPrice,
   onSubmit,
+  compact = false,
 }: {
   listingPrice: string | null;
   onSubmit: (target: number, max: number) => void;
+  compact?: boolean;
 }) {
   const basePrice = listingPrice ? parseInt(listingPrice, 10) : 1000;
   const minRange = Math.floor(basePrice * 0.5);
@@ -331,24 +350,30 @@ function BudgetWidget({
   const [max, setMax] = useState(basePrice);
 
   return (
-    <div className="mt-4 p-4 rounded-xl bg-surface-raised border border-line">
-      <div className="flex justify-between items-center mb-5">
+    <div
+      className={`rounded-xl bg-surface-raised border border-line ${compact ? "mt-2.5 p-3" : "mt-4 p-4"}`}
+    >
+      <div className={`flex justify-between items-center ${compact ? "mb-3" : "mb-5"}`}>
         <div className="text-center">
           <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wider mb-1">
             Target price
           </p>
-          <p className="text-[16px] font-bold text-action-primary">${target.toLocaleString()}</p>
+          <p className={`font-bold text-action-primary ${compact ? "text-[14px]" : "text-[16px]"}`}>
+            ${target.toLocaleString()}
+          </p>
         </div>
         <div className="h-[30px] w-[1px] bg-surface-sunken" />
         <div className="text-center">
           <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wider mb-1">
             Max budget
           </p>
-          <p className="text-[16px] font-bold text-action-primary">${max.toLocaleString()}</p>
+          <p className={`font-bold text-action-primary ${compact ? "text-[14px]" : "text-[16px]"}`}>
+            ${max.toLocaleString()}
+          </p>
         </div>
       </div>
 
-      <div className="flex flex-col gap-6 mb-6">
+      <div className={`flex flex-col ${compact ? "gap-4 mb-4" : "gap-6 mb-6"}`}>
         <Slider
           aria-label="Target price"
           min={minRange}
@@ -373,7 +398,12 @@ function BudgetWidget({
         />
       </div>
 
-      <Button variant="primary" fullWidth onClick={() => onSubmit(target, max)}>
+      <Button
+        variant="primary"
+        fullWidth
+        size={compact ? "sm" : "md"}
+        onClick={() => onSubmit(target, max)}
+      >
         Set budget
       </Button>
     </div>
@@ -420,6 +450,8 @@ export function NegotiationAgentBuilderChat({
   sellerRequiredCriteria,
   listingMarketMedian,
   role = "buyer",
+  variant = "card",
+  density = "comfortable",
   onNegotiationAgentBuilderMemoryUpdate,
   onStrategyUpdate,
 }: NegotiationAgentBuilderChatProps) {
@@ -1068,8 +1100,14 @@ export function NegotiationAgentBuilderChat({
     <div
       id="negotiation-agent-builder-chat-container"
       ref={chatTopRef}
-      className="mt-4 flex flex-1 flex-col overflow-hidden rounded-xl border border-line bg-surface-raised transition-all duration-300"
-      style={{ minHeight: isExpanded ? "400px" : "200px" }}
+      className={
+        variant === "bare"
+          ? "flex h-full min-h-0 flex-col overflow-hidden"
+          : "mt-4 flex flex-1 flex-col overflow-hidden rounded-xl border border-line bg-surface-raised transition-all duration-300"
+      }
+      // "bare" takes its height from the surface around it, so a minHeight here
+      // would only stop it from filling that surface.
+      style={variant === "bare" ? undefined : { minHeight: isExpanded ? "400px" : "200px" }}
     >
       {/* Header */}
       <div className="flex shrink-0 items-center gap-2 border-line border-b px-4 py-3">
@@ -1097,7 +1135,9 @@ export function NegotiationAgentBuilderChat({
       </div>
 
       {/* Messages area */}
-      <MessageList className="min-h-0 flex-1 gap-3 p-4">
+      <MessageList
+        className={`min-h-0 flex-1 ${density === "compact" ? "gap-2.5 p-3" : "gap-3 p-4"}`}
+      >
         {messages.map((msg) => (
           <ChatBubble
             key={msg.id}
@@ -1115,7 +1155,9 @@ export function NegotiationAgentBuilderChat({
             }
           >
             <p
-              className="text-[13px] leading-[1.6]"
+              className={
+                density === "compact" ? "text-[12.5px] leading-[1.55]" : "text-[13px] leading-[1.6]"
+              }
               style={{
                 color: msg.role === "user" ? "var(--color-ink)" : "var(--color-ink-secondary)",
               }}
@@ -1126,7 +1168,11 @@ export function NegotiationAgentBuilderChat({
             />
 
             {msg.widget === "budget-slider" && (
-              <BudgetWidget listingPrice={listingPrice} onSubmit={handleBudgetSubmit} />
+              <BudgetWidget
+                listingPrice={listingPrice}
+                onSubmit={handleBudgetSubmit}
+                compact={density === "compact"}
+              />
             )}
 
             {/* A failed turn is recoverable: the builder is stateless and the whole
