@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { recordTermCandidates } from "../services/term-intelligence.service.js";
 import type { ConversationSignal } from "../services/conversation-signal-extractor.js";
+import { recordTermCandidates } from "../services/term-intelligence.service.js";
 
 vi.mock("@haggle/db", () => ({
   sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({

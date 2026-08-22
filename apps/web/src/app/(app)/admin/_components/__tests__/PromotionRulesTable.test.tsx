@@ -1,7 +1,7 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { PromotionRulesTable } from "../PromotionRulesTable";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import type { PromotionRule } from "@/lib/admin-api";
+import { PromotionRulesTable } from "../PromotionRulesTable";
 
 function makeRule(overrides: Partial<PromotionRule> = {}): PromotionRule {
   return {
@@ -40,15 +40,11 @@ describe("<PromotionRulesTable />", () => {
       />,
     );
 
-    await waitFor(() =>
-      expect(screen.getByTestId("rule-row-default")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByTestId("rule-row-default")).toBeInTheDocument());
 
     // Start edit
     fireEvent.click(screen.getByTestId("rule-edit-default"));
-    const input = screen.getByTestId(
-      "rule-input-default-candidateMinUse",
-    ) as HTMLInputElement;
+    const input = screen.getByTestId("rule-input-default-candidateMinUse") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "9" } });
     fireEvent.click(screen.getByTestId("rule-save-default"));
 
@@ -67,8 +63,6 @@ describe("<PromotionRulesTable />", () => {
     await waitFor(() => expect(runJob).toHaveBeenCalled());
     // lastRun refetched (called twice: initial mount + after run)
     await waitFor(() => expect(fetchLastRun).toHaveBeenCalledTimes(2));
-    await waitFor(() =>
-      expect(screen.getByTestId("last-run-at")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByTestId("last-run-at")).toBeInTheDocument());
   });
 });

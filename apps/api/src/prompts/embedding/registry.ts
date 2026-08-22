@@ -10,10 +10,7 @@
 import { buildDefaultEmbeddingInput } from "./default.js";
 import { buildElectronicsEmbeddingInput } from "./electronics.js";
 import { buildFashionEmbeddingInput } from "./fashion.js";
-import type {
-  EmbeddingBuilderEntry,
-  EmbeddingInputBuilder,
-} from "./types.js";
+import type { EmbeddingBuilderEntry, EmbeddingInputBuilder } from "./types.js";
 
 /**
  * All registered builders, ordered by specificity. "default" MUST be last.
@@ -67,9 +64,7 @@ export const EMBEDDING_BUILDERS: readonly EmbeddingBuilderEntry[] = [
  *  3. Fall through → default.
  * Deterministic. Zero allocations on the hot path beyond a lowercase.
  */
-export function resolveEmbeddingBuilder(
-  snapshot: Record<string, unknown>,
-): EmbeddingInputBuilder {
+export function resolveEmbeddingBuilder(snapshot: Record<string, unknown>): EmbeddingInputBuilder {
   const rawCategory = snapshot.category;
   if (typeof rawCategory === "string" && rawCategory.length > 0) {
     const normalized = rawCategory.toLowerCase().trim();

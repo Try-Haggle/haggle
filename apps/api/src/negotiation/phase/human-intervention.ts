@@ -1,9 +1,9 @@
 import type {
   EngineDecision,
-  NegotiationPhase,
   HumanInterventionMode,
   HybridModeConfig,
-} from '../types.js';
+  NegotiationPhase,
+} from "../types.js";
 
 export interface InterventionResult {
   /** Whether the decision can proceed automatically */
@@ -17,11 +17,11 @@ export interface InterventionResult {
 }
 
 const DEFAULT_HYBRID_CONFIG: HybridModeConfig = {
-  DISCOVERY: 'auto',
-  OPENING: 'manual',
-  BARGAINING: 'auto',
-  CLOSING: 'manual',
-  SETTLEMENT: 'auto',
+  DISCOVERY: "auto",
+  OPENING: "manual",
+  BARGAINING: "auto",
+  CLOSING: "manual",
+  SETTLEMENT: "auto",
 };
 
 /**
@@ -34,22 +34,22 @@ export function checkIntervention(
   hybridConfig?: HybridModeConfig,
 ): InterventionResult {
   switch (mode) {
-    case 'FULL_AUTO':
+    case "FULL_AUTO":
       return { autoApproved: true };
 
-    case 'MANUAL':
+    case "MANUAL":
       return {
         autoApproved: false,
         pendingReview: {
           decision,
           phase,
-          reason: 'Manual mode — all decisions require approval.',
+          reason: "Manual mode — all decisions require approval.",
         },
       };
 
-    case 'APPROVE_ONLY':
+    case "APPROVE_ONLY":
       // Only ACCEPT and CONFIRM need approval
-      if (decision.action === 'ACCEPT' || decision.action === 'CONFIRM') {
+      if (decision.action === "ACCEPT" || decision.action === "CONFIRM") {
         return {
           autoApproved: false,
           pendingReview: {
@@ -61,10 +61,10 @@ export function checkIntervention(
       }
       return { autoApproved: true };
 
-    case 'HYBRID': {
+    case "HYBRID": {
       const config = hybridConfig ?? DEFAULT_HYBRID_CONFIG;
-      const phaseMode = config[phase] ?? 'auto';
-      if (phaseMode === 'manual') {
+      const phaseMode = config[phase] ?? "auto";
+      if (phaseMode === "manual") {
         return {
           autoApproved: false,
           pendingReview: {

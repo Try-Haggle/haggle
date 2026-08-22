@@ -37,8 +37,7 @@ export const buildElectronicsEmbeddingInput: EmbeddingInputBuilder = (
     parts.push(`[CARRIER] unlocked`);
   }
 
-  if (snapshot.batteryHealth)
-    parts.push(`[BATTERY_HEALTH] ${snapshot.batteryHealth}`);
+  if (snapshot.batteryHealth) parts.push(`[BATTERY_HEALTH] ${snapshot.batteryHealth}`);
   if (snapshot.condition) parts.push(`[CONDITION] ${snapshot.condition}`);
 
   if (tags?.length) parts.push(`[TAGS] ${tags.join(", ")}`);

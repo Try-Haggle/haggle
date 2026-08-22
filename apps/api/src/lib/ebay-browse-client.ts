@@ -70,9 +70,7 @@ export interface EbayBrowseClientOptions {
 
 export class EbayRateLimitExceededError extends Error {
   constructor(callsToday: number, limit: number) {
-    super(
-      `eBay Browse API daily rate limit guard tripped: ${callsToday}/${limit}`,
-    );
+    super(`eBay Browse API daily rate limit guard tripped: ${callsToday}/${limit}`);
     this.name = "EbayRateLimitExceededError";
   }
 }
@@ -121,8 +119,7 @@ export class EbayBrowseClient {
 
   constructor(opts: EbayBrowseClientOptions = {}) {
     const clientId = opts.clientId ?? process.env.EBAY_CLIENT_ID ?? "";
-    const clientSecret =
-      opts.clientSecret ?? process.env.EBAY_CLIENT_SECRET ?? "";
+    const clientSecret = opts.clientSecret ?? process.env.EBAY_CLIENT_SECRET ?? "";
     if (!clientId || !clientSecret) {
       // Don't throw at construction — caller may still introspect .hasCredentials.
       // searchActiveListings() will throw EbayAuthError if invoked without creds.
@@ -176,40 +173,28 @@ export class EbayBrowseClient {
    */
   private async getAccessToken(): Promise<string> {
     if (!this.hasCredentials()) {
-      throw new EbayAuthError(
-        "EBAY_CLIENT_ID / EBAY_CLIENT_SECRET not configured",
-      );
+      throw new EbayAuthError("EBAY_CLIENT_ID / EBAY_CLIENT_SECRET not configured");
     }
     const safetyWindowMs = 60_000;
-    if (
-      this.cachedToken &&
-      this.cachedToken.expiresAtMs - safetyWindowMs > this.now()
-    ) {
+    if (this.cachedToken && this.cachedToken.expiresAtMs - safetyWindowMs > this.now()) {
       return this.cachedToken.accessToken;
     }
-    const basic = Buffer.from(
-      `${this.clientId}:${this.clientSecret}`,
-    ).toString("base64");
+    const basic = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString("base64");
     const body = new URLSearchParams({
       grant_type: "client_credentials",
       scope: OAUTH_SCOPE,
     });
-    const res = await this.fetchImpl(
-      `${this.baseUrl}/identity/v1/oauth2/token`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Basic ${basic}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: body.toString(),
+    const res = await this.fetchImpl(`${this.baseUrl}/identity/v1/oauth2/token`, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${basic}`,
+        "Content-Type": "application/x-www-form-urlencoded",
       },
-    );
+      body: body.toString(),
+    });
     if (!res.ok) {
       const text = await safeText(res);
-      throw new EbayAuthError(
-        `eBay OAuth failed: ${res.status} ${res.statusText} ${text}`,
-      );
+      throw new EbayAuthError(`eBay OAuth failed: ${res.status} ${res.statusText} ${text}`);
     }
     const json = (await res.json()) as {
       access_token: string;
@@ -256,8 +241,8 @@ export class EbayBrowseClient {
           return {
             itemSummaries: json.itemSummaries ?? [],
             total: json.total ?? 0,
-            limit: json.limit ?? (query.limit ?? 100),
-            offset: json.offset ?? (query.offset ?? 0),
+            limit: json.limit ?? query.limit ?? 100,
+            offset: json.offset ?? query.offset ?? 0,
           };
         }
         if (res.status === 429 || res.status >= 500) {
@@ -286,14 +271,12 @@ export class EbayBrowseClient {
         throw err;
       }
     }
-    throw lastErr instanceof Error
-      ? lastErr
-      : new Error("eBay Browse exhausted retries");
+    throw lastErr instanceof Error ? lastErr : new Error("eBay Browse exhausted retries");
   }
 
   private backoffDelay(attempt: number): number {
     // 500ms, 1s, 2s, 4s, ... (capped by maxRetries)
-    return this.baseBackoffMs * Math.pow(2, attempt);
+    return this.baseBackoffMs * 2 ** attempt;
   }
 
   private buildSearchUrl(q: BrowseQuery): string {

@@ -295,9 +295,15 @@
   font-family: monospace;
 }
 
-.walletBuyer { border-left: 3px solid #3498db; }
-.walletSeller { border-left: 3px solid #2ecc71; }
-.walletPlatform { border-left: 3px solid #d87421; }
+.walletBuyer {
+  border-left: 3px solid #3498db;
+}
+.walletSeller {
+  border-left: 3px solid #2ecc71;
+}
+.walletPlatform {
+  border-left: 3px solid #d87421;
+}
 
 /* ─── Action Panel ─── */
 
@@ -444,10 +450,22 @@
   margin-left: 6px;
 }
 
-.actorBuyer { background: rgba(52, 152, 219, 0.12); color: #2980b9; }
-.actorSeller { background: rgba(46, 204, 113, 0.12); color: #27ae60; }
-.actorSystem { background: rgba(149, 165, 166, 0.15); color: #7f8c8d; }
-.actorAi { background: rgba(155, 89, 182, 0.12); color: #8e44ad; }
+.actorBuyer {
+  background: rgba(52, 152, 219, 0.12);
+  color: #2980b9;
+}
+.actorSeller {
+  background: rgba(46, 204, 113, 0.12);
+  color: #27ae60;
+}
+.actorSystem {
+  background: rgba(149, 165, 166, 0.15);
+  color: #7f8c8d;
+}
+.actorAi {
+  background: rgba(155, 89, 182, 0.12);
+  color: #8e44ad;
+}
 
 /* ─── Shipping Form ─── */
 
@@ -475,7 +493,9 @@
   color: #7b4b17;
 }
 
-.formInput, .formSelect, .formTextarea {
+.formInput,
+.formSelect,
+.formTextarea {
   padding: 8px 12px;
   border: 1.5px solid rgba(40, 29, 18, 0.15);
   border-radius: 8px;
@@ -485,7 +505,9 @@
   transition: border-color 0.15s;
 }
 
-.formInput:focus, .formSelect:focus, .formTextarea:focus {
+.formInput:focus,
+.formSelect:focus,
+.formTextarea:focus {
   outline: none;
   border-color: #d87421;
 }
@@ -610,21 +632,54 @@
   letter-spacing: 0.06em;
 }
 
-.badgeApproval { background: rgba(52, 152, 219, 0.12); color: #2980b9; }
-.badgePayment { background: rgba(155, 89, 182, 0.12); color: #8e44ad; }
-.badgeFulfillment { background: rgba(243, 156, 18, 0.12); color: #e67e22; }
-.badgeDelivery { background: rgba(46, 204, 113, 0.12); color: #27ae60; }
-.badgeCompleted { background: rgba(46, 204, 113, 0.2); color: #27ae60; }
-.badgeDispute { background: rgba(192, 57, 43, 0.12); color: #c0392b; }
-.badgeRefunded { background: rgba(192, 57, 43, 0.12); color: #c0392b; }
+.badgeApproval {
+  background: rgba(52, 152, 219, 0.12);
+  color: #2980b9;
+}
+.badgePayment {
+  background: rgba(155, 89, 182, 0.12);
+  color: #8e44ad;
+}
+.badgeFulfillment {
+  background: rgba(243, 156, 18, 0.12);
+  color: #e67e22;
+}
+.badgeDelivery {
+  background: rgba(46, 204, 113, 0.12);
+  color: #27ae60;
+}
+.badgeCompleted {
+  background: rgba(46, 204, 113, 0.2);
+  color: #27ae60;
+}
+.badgeDispute {
+  background: rgba(192, 57, 43, 0.12);
+  color: #c0392b;
+}
+.badgeRefunded {
+  background: rgba(192, 57, 43, 0.12);
+  color: #c0392b;
+}
 
 /* ─── Responsive ─── */
 
 @media (max-width: 720px) {
-  .shell { padding: 16px; }
-  .dealGrid { grid-template-columns: 1fr; }
-  .walletGrid { grid-template-columns: 1fr; }
-  .formGrid { grid-template-columns: 1fr; }
-  .stepper { flex-wrap: wrap; }
-  .step::after { display: none; }
+  .shell {
+    padding: 16px;
+  }
+  .dealGrid {
+    grid-template-columns: 1fr;
+  }
+  .walletGrid {
+    grid-template-columns: 1fr;
+  }
+  .formGrid {
+    grid-template-columns: 1fr;
+  }
+  .stepper {
+    flex-wrap: wrap;
+  }
+  .step::after {
+    display: none;
+  }
 }

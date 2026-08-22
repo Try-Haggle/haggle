@@ -1,15 +1,11 @@
-import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { createClient } from "@/lib/supabase/server";
-import { Nav } from "@/components/nav";
+import { redirect } from "next/navigation";
 import { BottomNav } from "@/components/bottom-nav";
+import { Nav } from "@/components/nav";
+import { createClient } from "@/lib/supabase/server";
 import { NotificationProvider } from "./_components/notification-provider";
 
-export default async function AppLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -22,8 +18,12 @@ export default async function AppLayout({
     redirect(`/sign-in${next}`);
   }
 
-  const userName = (user.user_metadata?.display_name || user.user_metadata?.name || null) as string | null;
-  const userAvatarUrl = (user.user_metadata?.custom_avatar_url || user.user_metadata?.avatar_url || null) as string | null;
+  const userName = (user.user_metadata?.display_name || user.user_metadata?.name || null) as
+    | string
+    | null;
+  const userAvatarUrl = (user.user_metadata?.custom_avatar_url ||
+    user.user_metadata?.avatar_url ||
+    null) as string | null;
 
   return (
     <NotificationProvider>

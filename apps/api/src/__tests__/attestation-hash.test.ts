@@ -1,9 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  canonicalizeAttestation,
-  computeCommitHash,
   ATTESTATION_CANONICAL_VERSION,
   type AttestationInput,
+  canonicalizeAttestation,
+  computeCommitHash,
 } from "../lib/attestation-hash.js";
 
 const FIXTURE: AttestationInput = {
@@ -24,8 +24,7 @@ const FIXTURE: AttestationInput = {
 // Regression guard — if canonicalizeAttestation ever drifts, this hash
 // changes and the test fails loudly. Updating this constant requires
 // explicit acknowledgement that every historical commit is invalidated.
-const FIXTURE_EXPECTED_HASH =
-  "7f9a1f9853ec8fa5c485249a379ab8e56fafcf11b5e7a44de9ec7ce9a6d256f7";
+const FIXTURE_EXPECTED_HASH = "7f9a1f9853ec8fa5c485249a379ab8e56fafcf11b5e7a44de9ec7ce9a6d256f7";
 
 describe("canonicalizeAttestation", () => {
   it("produces a deterministic string for the fixture", () => {
@@ -58,28 +57,22 @@ describe("canonicalizeAttestation", () => {
   });
 
   it("rejects non-integer battery health", () => {
-    expect(() =>
-      canonicalizeAttestation({ ...FIXTURE, batteryHealthPct: 92.5 }),
-    ).toThrow(/batteryHealthPct/);
+    expect(() => canonicalizeAttestation({ ...FIXTURE, batteryHealthPct: 92.5 })).toThrow(
+      /batteryHealthPct/,
+    );
   });
 
   it("rejects out-of-range battery health", () => {
-    expect(() =>
-      canonicalizeAttestation({ ...FIXTURE, batteryHealthPct: 150 }),
-    ).toThrow(/out of range/);
+    expect(() => canonicalizeAttestation({ ...FIXTURE, batteryHealthPct: 150 })).toThrow(
+      /out of range/,
+    );
   });
 
   it("rejects empty listingId/sellerId/imei/committedAt", () => {
-    expect(() =>
-      canonicalizeAttestation({ ...FIXTURE, listingId: "" }),
-    ).toThrow();
-    expect(() =>
-      canonicalizeAttestation({ ...FIXTURE, sellerId: "" }),
-    ).toThrow();
+    expect(() => canonicalizeAttestation({ ...FIXTURE, listingId: "" })).toThrow();
+    expect(() => canonicalizeAttestation({ ...FIXTURE, sellerId: "" })).toThrow();
     expect(() => canonicalizeAttestation({ ...FIXTURE, imei: "" })).toThrow();
-    expect(() =>
-      canonicalizeAttestation({ ...FIXTURE, committedAt: "" }),
-    ).toThrow();
+    expect(() => canonicalizeAttestation({ ...FIXTURE, committedAt: "" })).toThrow();
   });
 });
 

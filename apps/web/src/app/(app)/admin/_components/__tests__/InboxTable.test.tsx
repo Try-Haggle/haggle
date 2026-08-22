@@ -1,11 +1,7 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { InboxTable, type ColumnDef } from "../InboxTable";
-import type {
-  InboxListResponse,
-  InboxType,
-  TagInboxItem,
-} from "@/lib/admin-api";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import type { InboxListResponse, InboxType, TagInboxItem } from "@/lib/admin-api";
+import { type ColumnDef, InboxTable } from "../InboxTable";
 
 function makeTagItems(n: number, prefix = "a"): TagInboxItem[] {
   return Array.from({ length: n }, (_, i) => ({
@@ -52,9 +48,7 @@ describe("<InboxTable />", () => {
       />,
     );
 
-    await waitFor(() =>
-      expect(screen.getByTestId("inbox-row-a-0")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByTestId("inbox-row-a-0")).toBeInTheDocument());
     expect(screen.getByText("Tag 0")).toBeInTheDocument();
     expect(screen.getByText("Tag 1")).toBeInTheDocument();
 
@@ -75,32 +69,19 @@ describe("<InboxTable />", () => {
         items: p.offset === 0 ? makeTagItems(2, "p0") : makeTagItems(1, "p1"),
       }));
 
-    render(
-      <InboxTable
-        type="tag"
-        columns={tagColumns}
-        fetchList={fetchList}
-        pageSize={2}
-      />,
-    );
+    render(<InboxTable type="tag" columns={tagColumns} fetchList={fetchList} pageSize={2} />);
 
-    await waitFor(() =>
-      expect(screen.getByTestId("inbox-row-p0-0")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByTestId("inbox-row-p0-0")).toBeInTheDocument());
     expect(fetchList).toHaveBeenCalledWith("tag", { limit: 2, offset: 0 });
 
     fireEvent.click(screen.getByText("Next"));
 
-    await waitFor(() =>
-      expect(screen.getByTestId("inbox-row-p1-0")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByTestId("inbox-row-p1-0")).toBeInTheDocument());
     expect(fetchList).toHaveBeenCalledWith("tag", { limit: 2, offset: 2 });
 
     fireEvent.click(screen.getByText("Prev"));
 
-    await waitFor(() =>
-      expect(screen.getByTestId("inbox-row-p0-0")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByTestId("inbox-row-p0-0")).toBeInTheDocument());
   });
 
   it("shows retry button on error and re-fetches when clicked", async () => {
@@ -118,23 +99,12 @@ describe("<InboxTable />", () => {
         return { items: makeTagItems(1, "ok") };
       });
 
-    render(
-      <InboxTable
-        type="tag"
-        columns={tagColumns}
-        fetchList={fetchList}
-        pageSize={2}
-      />,
-    );
+    render(<InboxTable type="tag" columns={tagColumns} fetchList={fetchList} pageSize={2} />);
 
-    await waitFor(() =>
-      expect(screen.getByTestId("inbox-retry")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByTestId("inbox-retry")).toBeInTheDocument());
 
     fireEvent.click(screen.getByTestId("inbox-retry"));
 
-    await waitFor(() =>
-      expect(screen.getByTestId("inbox-row-ok-0")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByTestId("inbox-row-ok-0")).toBeInTheDocument());
   });
 });

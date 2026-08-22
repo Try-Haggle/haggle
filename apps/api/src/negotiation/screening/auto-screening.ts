@@ -1,4 +1,4 @@
-import type { ScreeningResult } from '../types.js';
+import type { ScreeningResult } from "../types.js";
 
 interface ScreeningInput {
   messageText: string;
@@ -42,7 +42,7 @@ export function screenMessage(input: ScreeningInput): ScreeningResult {
   for (const pattern of LOW_QUALITY_PATTERNS) {
     if (pattern.test(messageText)) {
       spamScore += 0.15;
-      reasons.push('Low-quality message pattern');
+      reasons.push("Low-quality message pattern");
     }
   }
 
@@ -61,7 +61,7 @@ export function screenMessage(input: ScreeningInput): ScreeningResult {
   // Empty or very short messages
   if (messageText.trim().length < 5) {
     spamScore += 0.3;
-    reasons.push('Message too short');
+    reasons.push("Message too short");
   }
 
   const confidence = Math.min(1, spamScore);
@@ -73,7 +73,7 @@ export function screenMessage(input: ScreeningInput): ScreeningResult {
   return {
     is_spam,
     confidence,
-    reason: reasons.length > 0 ? reasons.join('; ') : undefined,
+    reason: reasons.length > 0 ? reasons.join("; ") : undefined,
     should_upgrade_model,
   };
 }

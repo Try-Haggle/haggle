@@ -16,9 +16,7 @@ export function computeSessionTimePressure(
     return clamp01((nowMs - createdAtMs) / maxDurationMs);
   }
 
-  return session.max_rounds > 0
-    ? clamp01(1 - session.rounds_remaining / session.max_rounds)
-    : 0;
+  return session.max_rounds > 0 ? clamp01(1 - session.rounds_remaining / session.max_rounds) : 0;
 }
 
 function finitePositive(value: unknown): number | null {

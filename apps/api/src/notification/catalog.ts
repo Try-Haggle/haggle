@@ -4,7 +4,7 @@ import { z } from "zod";
 
 export const EVENT_TYPES = [
   "negotiation.session.concluded", // AI agents reached agreed price → buyer to review
-  "negotiation.offer.accepted",    // Human buyer accepted → seller notified
+  "negotiation.offer.accepted", // Human buyer accepted → seller notified
   "user.signed_up",
   "listing.published",
 ] as const;

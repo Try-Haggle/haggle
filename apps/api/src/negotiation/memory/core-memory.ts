@@ -1,10 +1,10 @@
 import type {
-  CoreMemory,
-  NegotiationPhase,
-  HumanInterventionMode,
-  RefereeCoaching,
   BuddyDNA,
-} from '../types.js';
+  CoreMemory,
+  HumanInterventionMode,
+  NegotiationPhase,
+  RefereeCoaching,
+} from "../types.js";
 
 export class CoreMemoryStore {
   private store = new Map<string, CoreMemory>();
@@ -21,7 +21,7 @@ export class CoreMemoryStore {
   /** 세션 초기화 — 전체 CoreMemory 생성 */
   initialize(params: {
     sessionId: string;
-    role: 'buyer' | 'seller';
+    role: "buyer" | "seller";
     target: number;
     floor: number;
     maxRounds: number;
@@ -32,7 +32,7 @@ export class CoreMemoryStore {
     const memory: CoreMemory = {
       session: {
         session_id: params.sessionId,
-        phase: 'DISCOVERY',
+        phase: "DISCOVERY",
         round: 0,
         rounds_remaining: params.maxRounds,
         role: params.role,
@@ -48,14 +48,17 @@ export class CoreMemoryStore {
       },
       terms: {
         active: [],
-        resolved_summary: '',
+        resolved_summary: "",
       },
       coaching: {
         recommended_price: params.target,
-        acceptable_range: { min: Math.min(params.target, params.floor), max: Math.max(params.target, params.floor) },
-        suggested_tactic: 'anchoring',
-        hint: '',
-        opponent_pattern: 'UNKNOWN',
+        acceptable_range: {
+          min: Math.min(params.target, params.floor),
+          max: Math.max(params.target, params.floor),
+        },
+        suggested_tactic: "anchoring",
+        hint: "",
+        opponent_pattern: "UNKNOWN",
         convergence_rate: 0,
         time_pressure: 0,
         utility_snapshot: { u_price: 0, u_time: 0, u_risk: 0, u_quality: 0, u_total: 0 },
@@ -89,9 +92,10 @@ export class CoreMemoryStore {
     const role = memory.session.role;
 
     // Gap calculation: buyer wants lower price, seller wants higher
-    const gap = role === 'buyer'
-      ? roundResult.opponentPrice - roundResult.price   // buyer: opponent - my offer
-      : roundResult.price - roundResult.opponentPrice;  // seller: my offer - opponent
+    const gap =
+      role === "buyer"
+        ? roundResult.opponentPrice - roundResult.price // buyer: opponent - my offer
+        : roundResult.price - roundResult.opponentPrice; // seller: my offer - opponent
 
     const updated: CoreMemory = {
       ...memory,

@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { getStrategyTimeWindow, reconstructStrategy } from '../lib/session-reconstructor.js';
+import { describe, expect, it } from "vitest";
+import { getStrategyTimeWindow, reconstructStrategy } from "../lib/session-reconstructor.js";
 
-describe('session-reconstructor time value', () => {
-  it('uses listing time_value as the negotiation clock', () => {
+describe("session-reconstructor time value", () => {
+  it("uses listing time_value as the negotiation clock", () => {
     const strategy = reconstructStrategy({
       p_target: 100_000,
       p_reservation: 80_000,
@@ -21,7 +21,7 @@ describe('session-reconstructor time value', () => {
     expect(strategy.t_deadline).toBe(10_000);
   });
 
-  it('falls back to DB session timestamps when no listing time_value exists', () => {
+  it("falls back to DB session timestamps when no listing time_value exists", () => {
     const window = getStrategyTimeWindow(
       { p_target: 100_000, p_reservation: 80_000 },
       2_000,

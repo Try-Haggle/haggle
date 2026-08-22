@@ -5,8 +5,8 @@
  * Step 67-A — provides data for deciding when full→lite switch is safe.
  */
 
-import type { ValidationResult } from '../types.js';
-import type { ValidationMode } from '../config.js';
+import type { ValidationMode } from "../config.js";
+import type { ValidationResult } from "../types.js";
 
 export interface ViolationStats {
   total_rounds: number;
@@ -29,12 +29,12 @@ const MIN_SAMPLE_SIZE = 100;
 export class ViolationTracker {
   private _totalRounds = 0;
   private _hardViolations = 0;
-  private _lastHard: ViolationStats['last_hard_violation'] | undefined;
+  private _lastHard: ViolationStats["last_hard_violation"] | undefined;
 
   /** Record a round's validation result */
   record(validation: ValidationResult, round?: number): void {
     this._totalRounds++;
-    const hardVios = validation.violations.filter((v) => v.severity === 'HARD');
+    const hardVios = validation.violations.filter((v) => v.severity === "HARD");
     if (hardVios.length > 0) {
       this._hardViolations++;
       this._lastHard = {
@@ -59,9 +59,9 @@ export class ViolationTracker {
 
   /** Recommended mode: lite only if enough samples and rate < 1% */
   getRecommendedMode(): ValidationMode {
-    if (this._totalRounds < MIN_SAMPLE_SIZE) return 'full';
+    if (this._totalRounds < MIN_SAMPLE_SIZE) return "full";
     const rate = this._hardViolations / this._totalRounds;
-    return rate < LITE_THRESHOLD ? 'lite' : 'full';
+    return rate < LITE_THRESHOLD ? "lite" : "full";
   }
 
   /** Reset all counters (test utility) */

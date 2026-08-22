@@ -1,6 +1,6 @@
-import { eq, asc, negotiationCheckpoints, type Database } from '@haggle/db';
-import type { CheckpointPersistence } from './checkpoint-store.js';
-import type { Checkpoint } from '../types.js';
+import { asc, type Database, eq, negotiationCheckpoints } from "@haggle/db";
+import type { Checkpoint } from "../types.js";
+import type { CheckpointPersistence } from "./checkpoint-store.js";
 
 /**
  * PostgreSQL-backed implementation of CheckpointPersistence.
@@ -32,11 +32,11 @@ export class PgCheckpointPersistence implements CheckpointPersistence {
     return rows.map((row) => ({
       id: row.id,
       session_id: sessionId,
-      phase: row.phase as Checkpoint['phase'],
+      phase: row.phase as Checkpoint["phase"],
       version: row.version,
       total_rounds_at_checkpoint: row.roundAtCheckpoint,
-      core_memory_snapshot: row.coreMemorySnapshot as unknown as Checkpoint['core_memory_snapshot'],
-      conditions_state: (row.conditionsState ?? {}) as unknown as Checkpoint['conditions_state'],
+      core_memory_snapshot: row.coreMemorySnapshot as unknown as Checkpoint["core_memory_snapshot"],
+      conditions_state: (row.conditionsState ?? {}) as unknown as Checkpoint["conditions_state"],
       both_agreed: false,
       created_at: row.createdAt.getTime(),
       memo_hash: row.memoHash ?? undefined,

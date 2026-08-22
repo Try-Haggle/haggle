@@ -1,17 +1,17 @@
+import { TemplateMessageRenderer } from "../rendering/message-renderer.js";
 import type {
-  CoreMemory,
-  RoundFact,
-  OpponentPattern,
   BuddyDNA,
+  CoreMemory,
   EngineDecision,
   NegotiationMove,
   NegotiationPhase,
+  OpponentPattern,
   RefereeCoaching,
+  RoundFact,
   ValidationResult,
-} from '../types.js';
-import { computeCoaching } from './coach.js';
-import { validateMove } from './validator.js';
-import { TemplateMessageRenderer } from '../rendering/message-renderer.js';
+} from "../types.js";
+import { computeCoaching } from "./coach.js";
+import { validateMove } from "./validator.js";
 
 const MAX_RETRY = 2;
 
@@ -57,7 +57,7 @@ export class RefereeService {
 
     while (!validation.hardPassed && retryCount < MAX_RETRY) {
       // Apply suggested fixes from HARD violations only
-      const hardViolations = validation.violations.filter((v) => v.severity === 'HARD');
+      const hardViolations = validation.violations.filter((v) => v.severity === "HARD");
 
       for (const violation of hardViolations) {
         if (violation.suggested_fix) {
@@ -73,7 +73,7 @@ export class RefereeService {
     const message = this.renderer.render(decision, {
       phase,
       role: memory.session.role,
-      locale: locale ?? 'en',
+      locale: locale ?? "en",
       activeTerms: memory.terms.active,
       tone: buddyDna.tone,
     });

@@ -22,12 +22,7 @@
  * See docs/mvp/2026-04-08_hfmi-spec.md §3, §6.
  */
 
-import {
-  type Database,
-  hfmiPriceObservations,
-  hfmiModelCoefficients,
-  sql,
-} from "@haggle/db";
+import { type Database, hfmiModelCoefficients, hfmiPriceObservations, sql } from "@haggle/db";
 import { mean, standardDeviation } from "simple-statistics";
 
 import { HFMI_SKUS } from "./hfmi-ingest.js";
@@ -158,13 +153,13 @@ async function loadObservations(
       AND cosmetic_grade IS NOT NULL
       AND observed_price_usd BETWEEN 200 AND 1500
   `);
-  const rows = (raw as unknown as { rows?: Record<string, unknown>[] }).rows
-    ?? (raw as unknown as Record<string, unknown>[]);
+  const rows =
+    (raw as unknown as { rows?: Record<string, unknown>[] }).rows ??
+    (raw as unknown as Record<string, unknown>[]);
   return (rows as Record<string, unknown>[]).map((r) => ({
     source: String(r.source),
     storageGb: r.storage_gb == null ? null : Number(r.storage_gb),
-    batteryHealthPct:
-      r.battery_health_pct == null ? null : Number(r.battery_health_pct),
+    batteryHealthPct: r.battery_health_pct == null ? null : Number(r.battery_health_pct),
     cosmeticGrade: (r.cosmetic_grade ?? null) as "A" | "B" | "C" | null,
     carrierLocked: Boolean(r.carrier_locked),
     priceUsd: Number(r.observed_price_usd),
@@ -174,11 +169,7 @@ async function loadObservations(
 
 // ─── Fit core ─────────────────────────────────────────────────────────
 
-export function fitSku(
-  modelId: string,
-  rows: ObservationRow[],
-  now: Date,
-): HfmiFitResult {
+export function fitSku(modelId: string, rows: ObservationRow[], now: Date): HfmiFitResult {
   if (rows.length < MIN_SAMPLE_SIZE) {
     return {
       modelId,
@@ -195,8 +186,7 @@ export function fitSku(
   const batteriesKnown = rows
     .map((r) => r.batteryHealthPct)
     .filter((b): b is number => b != null && b > 0);
-  const batteryMedian =
-    batteriesKnown.length > 0 ? median(batteriesKnown) : 90;
+  const batteryMedian = batteriesKnown.length > 0 ? median(batteriesKnown) : 90;
 
   // Build y (log corrected price) and X (feature matrix)
   const y: number[] = [];
@@ -208,8 +198,7 @@ export function fitSku(
     if (price <= 0) continue;
 
     const battery = r.batteryHealthPct ?? batteryMedian;
-    const daysSince =
-      (now.getTime() - r.observedAt.getTime()) / 86_400_000;
+    const daysSince = (now.getTime() - r.observedAt.getTime()) / 86_400_000;
 
     const row = [
       1, // intercept
@@ -260,8 +249,7 @@ export function fitSku(
   const yMean = mean(y);
   const ssTot = y.reduce((a, yi) => a + (yi - yMean) ** 2, 0);
   const rSq = ssTot === 0 ? 0 : 1 - ssRes / ssTot;
-  const residualStd =
-    residuals.length > 1 ? standardDeviation(residuals) : 0;
+  const residualStd = residuals.length > 1 ? standardDeviation(residuals) : 0;
 
   const coefficients: Record<FeatureKey | "residual_std", number> = {
     intercept: betas[0],
@@ -352,9 +340,7 @@ function dot(a: number[], b: number[]): number {
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = sorted.length >> 1;
-  return sorted.length % 2 === 0
-    ? (sorted[mid - 1] + sorted[mid]) / 2
-    : sorted[mid];
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 }
 
 function zeroCoefficients(): Record<FeatureKey | "residual_std", number> {

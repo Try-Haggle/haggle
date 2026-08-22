@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-import { recordAgreedPrice, type AgreedPriceEvent } from "../services/price-observation-sink.js";
+import { describe, expect, it, vi } from "vitest";
+import { type AgreedPriceEvent, recordAgreedPrice } from "../services/price-observation-sink.js";
 
 // Mock @haggle/db
 vi.mock("@haggle/db", () => ({

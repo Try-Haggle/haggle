@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  extractConversationSignals,
   type ConversationSignal,
   type ConversationSignalType,
+  extractConversationSignals,
 } from "../services/conversation-signal-extractor.js";
 
 function findSignal(
@@ -10,7 +10,9 @@ function findSignal(
   type: ConversationSignalType,
   normalizedValue: string,
 ): ConversationSignal | undefined {
-  return signals.find((signal) => signal.type === type && signal.normalizedValue === normalizedValue);
+  return signals.find(
+    (signal) => signal.type === type && signal.normalizedValue === normalizedValue,
+  );
 }
 
 describe("Conversation Signal Extractor", () => {
@@ -102,8 +104,12 @@ describe("Conversation Signal Extractor", () => {
   });
 
   it("drops low-information noise instead of storing it as a signal", () => {
-    expect(extractConversationSignals({ text: "!!!!!!!!!!!!", rolePerspective: "buyer" })).toEqual([]);
-    expect(extractConversationSignals({ text: "aaaaaaaaaaaa", rolePerspective: "buyer" })).toEqual([]);
+    expect(extractConversationSignals({ text: "!!!!!!!!!!!!", rolePerspective: "buyer" })).toEqual(
+      [],
+    );
+    expect(extractConversationSignals({ text: "aaaaaaaaaaaa", rolePerspective: "buyer" })).toEqual(
+      [],
+    );
   });
 
   it("deduplicates repeated signals and clamps confidence", () => {

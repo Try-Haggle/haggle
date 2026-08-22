@@ -2,8 +2,8 @@ import { createSign, generateKeyPairSync } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   canonicalJson,
-  validateHnpDetachedSignature,
   type HnpSignedEnvelope,
+  validateHnpDetachedSignature,
 } from "../services/hnp-signature.service.js";
 
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -89,7 +89,11 @@ describe("validateHnpDetachedSignature", () => {
 
     const result = validateHnpDetachedSignature({
       ...envelope,
-      payload: { proposal_id: "proposal-1", total_price: { currency: "USD", units_minor: 9999 }, issues: [] },
+      payload: {
+        proposal_id: "proposal-1",
+        total_price: { currency: "USD", units_minor: 9999 },
+        issues: [],
+      },
     });
 
     expect(result).toMatchObject({ ok: false, status: 401, error: "INVALID_SIGNATURE" });
@@ -117,15 +121,18 @@ function baseEnvelope(): HnpSignedEnvelope {
   };
 }
 
-function signedEnvelope(envelope: HnpSignedEnvelope, options: { b64?: false } = {}): HnpSignedEnvelope {
-  const header = options.b64 === false
-    ? { alg: "RS256", kid: "test-key", b64: false, crit: ["b64"] }
-    : { alg: "RS256", kid: "test-key" };
+function signedEnvelope(
+  envelope: HnpSignedEnvelope,
+  options: { b64?: false } = {},
+): HnpSignedEnvelope {
+  const header =
+    options.b64 === false
+      ? { alg: "RS256", kid: "test-key", b64: false, crit: ["b64"] }
+      : { alg: "RS256", kid: "test-key" };
   const encodedHeader = Buffer.from(JSON.stringify(header)).toString("base64url");
   const canonicalPayload = canonicalJson(envelope);
-  const payload = options.b64 === false
-    ? canonicalPayload
-    : Buffer.from(canonicalPayload).toString("base64url");
+  const payload =
+    options.b64 === false ? canonicalPayload : Buffer.from(canonicalPayload).toString("base64url");
   const signer = createSign("RSA-SHA256");
   signer.update(`${encodedHeader}.${payload}`);
   signer.end();

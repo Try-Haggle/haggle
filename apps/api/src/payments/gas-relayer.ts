@@ -10,8 +10,8 @@
 import {
   createPublicClient,
   createWalletClient,
-  http,
   type Hash,
+  http,
   type TransactionReceipt,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -46,9 +46,7 @@ export interface RelayerConfig {
 // ---------------------------------------------------------------------------
 
 function getRelayerEnv() {
-  const privateKey = process.env.HAGGLE_ROUTER_RELAYER_PRIVATE_KEY as
-    | `0x${string}`
-    | undefined;
+  const privateKey = process.env.HAGGLE_ROUTER_RELAYER_PRIVATE_KEY as `0x${string}` | undefined;
   const rpcUrl = process.env.HAGGLE_BASE_RPC_URL;
   const network = process.env.HAGGLE_X402_NETWORK ?? "base";
 
@@ -83,20 +81,14 @@ export function getRelayerConfig(): RelayerConfig {
  *
  * @throws if relayer is not configured or transaction fails
  */
-export async function relayTransaction(
-  request: RelayRequest,
-): Promise<RelayResult> {
+export async function relayTransaction(request: RelayRequest): Promise<RelayResult> {
   const { privateKey, rpcUrl, network } = getRelayerEnv();
 
   if (!privateKey) {
-    throw new Error(
-      "Gas relayer not configured: HAGGLE_ROUTER_RELAYER_PRIVATE_KEY is missing",
-    );
+    throw new Error("Gas relayer not configured: HAGGLE_ROUTER_RELAYER_PRIVATE_KEY is missing");
   }
   if (!rpcUrl) {
-    throw new Error(
-      "Gas relayer not configured: HAGGLE_BASE_RPC_URL is missing",
-    );
+    throw new Error("Gas relayer not configured: HAGGLE_BASE_RPC_URL is missing");
   }
 
   const account = privateKeyToAccount(privateKey);
@@ -116,8 +108,9 @@ export async function relayTransaction(
   });
 
   // Wait for the receipt
-  const receipt: TransactionReceipt =
-    await publicClient.waitForTransactionReceipt({ hash: txHash });
+  const receipt: TransactionReceipt = await publicClient.waitForTransactionReceipt({
+    hash: txHash,
+  });
 
   // Estimate gas cost in USD
   // Base L2 gas is extremely cheap (~$0.001/tx).

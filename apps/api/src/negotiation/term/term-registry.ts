@@ -1,9 +1,4 @@
-import type {
-  CategoryTerm,
-  TermCategory,
-  SkillTermDeclaration,
-  ActiveTerm,
-} from '../types.js';
+import type { ActiveTerm, CategoryTerm, SkillTermDeclaration, TermCategory } from "../types.js";
 
 /**
  * Term Registry — manages standard, skill, and custom terms.
@@ -37,7 +32,7 @@ export class TermRegistry {
     id: string;
     display_name: string;
     parent_category: TermCategory;
-    value_type: 'number' | 'enum' | 'boolean' | 'text';
+    value_type: "number" | "enum" | "boolean" | "text";
     buyer_value_assessment: number;
   }): CategoryTerm {
     const categoryTerm: CategoryTerm = {
@@ -47,7 +42,7 @@ export class TermRegistry {
       value_type: term.value_type,
       typical_impact: `User-assessed value: $${term.buyer_value_assessment}`,
       evaluate_hint:
-        term.parent_category !== 'CUSTOM'
+        term.parent_category !== "CUSTOM"
           ? `Custom term under ${term.parent_category}. User-assessed monetary value: $${term.buyer_value_assessment}.`
           : `Custom term. User-assessed monetary value: $${term.buyer_value_assessment}.`,
     };
@@ -95,7 +90,13 @@ export class TermRegistry {
 
   /** Build ActiveTerm list for CoreMemory */
   buildActiveTerms(
-    sessionTerms: Array<{ termId: string; status: ActiveTerm['status']; value?: unknown; proposed_by?: 'buyer' | 'seller' | 'protocol'; round_introduced?: number }>,
+    sessionTerms: Array<{
+      termId: string;
+      status: ActiveTerm["status"];
+      value?: unknown;
+      proposed_by?: "buyer" | "seller" | "protocol";
+      round_introduced?: number;
+    }>,
   ): ActiveTerm[] {
     const result: ActiveTerm[] = [];
     for (const st of sessionTerms) {
@@ -107,7 +108,7 @@ export class TermRegistry {
         display_name: resolved.display_name,
         status: st.status,
         value: st.value,
-        proposed_by: st.proposed_by ?? 'protocol',
+        proposed_by: st.proposed_by ?? "protocol",
         round_introduced: st.round_introduced ?? 0,
       });
     }

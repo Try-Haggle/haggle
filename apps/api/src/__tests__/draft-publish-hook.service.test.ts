@@ -119,8 +119,9 @@ function createFakeDb(draft: Record<string, unknown>): FakeDb {
       where: (..._a: unknown[]) => {
         const p = Promise.resolve([{ ...(db.draft ?? {}), status: "published" }]);
         // Support both `.where()` (resolve) and `.where().returning()`
-        (p as unknown as { returning: () => Promise<unknown> }).returning =
-          async () => [{ ...(db.draft ?? {}), status: "published" }];
+        (p as unknown as { returning: () => Promise<unknown> }).returning = async () => [
+          { ...(db.draft ?? {}), status: "published" },
+        ];
         return p as unknown as Promise<unknown[]> & {
           returning: () => Promise<unknown>;
         };
@@ -201,9 +202,7 @@ describe("publishDraft — tag placement hook", () => {
     expect(mockedPlace).toHaveBeenCalledTimes(1);
     // Snapshot update (update.set) payload should include tags: labels
     const snapshotUpdateCall = db.calls.find(
-      (c) =>
-        c.op === "update.set" &&
-        !!(c.payload as Record<string, unknown>)?.snapshotJson,
+      (c) => c.op === "update.set" && !!(c.payload as Record<string, unknown>)?.snapshotJson,
     );
     expect(snapshotUpdateCall).toBeDefined();
     const snapshot = (snapshotUpdateCall!.payload as Record<string, unknown>)
@@ -221,9 +220,7 @@ describe("publishDraft — tag placement hook", () => {
     expect(result!.published).toBeDefined();
     // No snapshot update call
     const snapshotUpdateCall = db.calls.find(
-      (c) =>
-        c.op === "update.set" &&
-        !!(c.payload as Record<string, unknown>)?.snapshotJson,
+      (c) => c.op === "update.set" && !!(c.payload as Record<string, unknown>)?.snapshotJson,
     );
     expect(snapshotUpdateCall).toBeUndefined();
   });
@@ -259,9 +256,7 @@ describe("publishDraft — tag placement hook", () => {
 
     expect(result).not.toBeNull();
     const snapshotUpdateCall = db.calls.find(
-      (c) =>
-        c.op === "update.set" &&
-        !!(c.payload as Record<string, unknown>)?.snapshotJson,
+      (c) => c.op === "update.set" && !!(c.payload as Record<string, unknown>)?.snapshotJson,
     );
     expect(snapshotUpdateCall).toBeUndefined();
   });
@@ -298,9 +293,7 @@ describe("publishDraft — tag placement hook", () => {
 
     expect(result).not.toBeNull();
     const snapshotUpdateCall = db.calls.find(
-      (c) =>
-        c.op === "update.set" &&
-        !!(c.payload as Record<string, unknown>)?.snapshotJson,
+      (c) => c.op === "update.set" && !!(c.payload as Record<string, unknown>)?.snapshotJson,
     );
     expect(snapshotUpdateCall).toBeUndefined();
   });

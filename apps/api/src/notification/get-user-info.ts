@@ -1,4 +1,4 @@
-import { type Database } from "@haggle/db";
+import type { Database } from "@haggle/db";
 import { sql } from "drizzle-orm";
 
 interface UserInfo {

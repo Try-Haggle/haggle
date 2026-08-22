@@ -8,9 +8,7 @@
 
 export type EmbeddingCategory = "electronics" | "fashion" | "default";
 
-export type EmbeddingInputBuilder = (
-  snapshot: Record<string, unknown>,
-) => string;
+export type EmbeddingInputBuilder = (snapshot: Record<string, unknown>) => string;
 
 export interface EmbeddingBuilderEntry {
   category: EmbeddingCategory;

@@ -1,9 +1,8 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/admin-api", async () => {
-  const actual =
-    await vi.importActual<typeof import("@/lib/admin-api")>("@/lib/admin-api");
+  const actual = await vi.importActual<typeof import("@/lib/admin-api")>("@/lib/admin-api");
   return {
     ...actual,
     adminApi: {

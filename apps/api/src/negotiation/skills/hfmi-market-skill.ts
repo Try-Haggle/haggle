@@ -9,16 +9,8 @@
  */
 
 import type { Database } from "@haggle/db";
-import type {
-  SkillManifest,
-  SkillRuntime,
-  HookContext,
-  HookResult,
-} from "./skill-types.js";
-import {
-  resolveHfmiFromTags,
-  extractTagAttributes,
-} from "../../services/hfmi-tag-resolver.js";
+import { extractTagAttributes, resolveHfmiFromTags } from "../../services/hfmi-tag-resolver.js";
+import type { HookContext, HookResult, SkillManifest, SkillRuntime } from "./skill-types.js";
 
 const manifest: SkillManifest = {
   id: "hfmi-market-v1",
@@ -74,9 +66,7 @@ export class HfmiMarketSkill implements SkillRuntime {
       if (!tagAttrs.model && context.memory?.session) {
         const sessionAny = context.memory.session as Record<string, unknown>;
         if (typeof sessionAny.item_model === "string") {
-          tagAttrs.model = sessionAny.item_model
-            .toLowerCase()
-            .replace(/[\s-]+/g, "_");
+          tagAttrs.model = sessionAny.item_model.toLowerCase().replace(/[\s-]+/g, "_");
         }
       }
 

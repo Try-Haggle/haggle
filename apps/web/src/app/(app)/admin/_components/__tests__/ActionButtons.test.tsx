@@ -1,13 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const tagApprove = vi.fn();
 const tagReject = vi.fn();
 const tagMerge = vi.fn();
 
 vi.mock("@/lib/admin-api", async () => {
-  const actual =
-    await vi.importActual<typeof import("@/lib/admin-api")>("@/lib/admin-api");
+  const actual = await vi.importActual<typeof import("@/lib/admin-api")>("@/lib/admin-api");
   return {
     ...actual,
     adminApi: {
@@ -23,8 +22,8 @@ vi.mock("@/lib/admin-api", async () => {
   };
 });
 
-import { ActionButtons } from "../ActionButtons";
 import type { AdminInboxDetail } from "@/lib/admin-api";
+import { ActionButtons } from "../ActionButtons";
 
 const tagDetail: AdminInboxDetail = {
   type: "tag",
@@ -66,12 +65,8 @@ describe("<ActionButtons />", () => {
     render(<ActionButtons detail={tagDetail} onDone={onDone} />);
     fireEvent.click(screen.getByTestId("action-tag-approve"));
 
-    await waitFor(() =>
-      expect(screen.getByTestId("action-error")).toBeInTheDocument(),
-    );
-    expect(screen.getByTestId("action-error")).toHaveTextContent(
-      "server exploded",
-    );
+    await waitFor(() => expect(screen.getByTestId("action-error")).toBeInTheDocument());
+    expect(screen.getByTestId("action-error")).toHaveTextContent("server exploded");
     expect(onDone).not.toHaveBeenCalled();
   });
 });

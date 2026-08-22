@@ -5,8 +5,8 @@
  *   OPENAI_API_KEY=sk-... npx tsx apps/api/src/scripts/test-proposed-tags.ts
  */
 
-import { placeTagsWithLlm, type LlmPlacementInput } from "../services/tag-placement-llm.service.js";
 import type { TagCandidate } from "../services/tag-candidate.service.js";
+import { type LlmPlacementInput, placeTagsWithLlm } from "../services/tag-placement-llm.service.js";
 
 // ─── Helpers ─────────────────────────────────────────────
 
@@ -53,14 +53,18 @@ function printResult(
   console.log(`  ├─ title:    "${input.title}"`);
   console.log(`  ├─ category: ${input.category ?? "(none)"}`);
   console.log(`  ├─ price:    ${input.priceBand ?? "(none)"}`);
-  console.log(`  ├─ desc:     "${input.description.slice(0, 80)}${input.description.length > 80 ? "..." : ""}"`);
+  console.log(
+    `  ├─ desc:     "${input.description.slice(0, 80)}${input.description.length > 80 ? "..." : ""}"`,
+  );
   console.log(`  └─ candidates (${input.candidates.length}):`);
   for (const c of input.candidates) {
     console.log(`     ${c.id.padEnd(6)} ${c.label.padEnd(28)} idf=${c.idf.toFixed(1)}`);
   }
 
   // ── LLM response ──
-  console.log(`\n  🤖 LLM RESPONSE  (${result.latencyMs}ms, ${result.tokensIn}+${result.tokensOut} tokens)`);
+  console.log(
+    `\n  🤖 LLM RESPONSE  (${result.latencyMs}ms, ${result.tokensIn}+${result.tokensOut} tokens)`,
+  );
 
   // Selected
   const selectedLabels = result.selectedTagIds.map((id) => {
@@ -73,7 +77,9 @@ function printResult(
   // NOT selected
   const notSelected = input.candidates.filter((c) => !result.selectedTagIds.includes(c.id));
   if (notSelected.length > 0) {
-    console.log(`  ├─ skipped (${notSelected.length}):  ${notSelected.map((c) => c.label).join(", ")}`);
+    console.log(
+      `  ├─ skipped (${notSelected.length}):  ${notSelected.map((c) => c.label).join(", ")}`,
+    );
   }
 
   // Proposed
@@ -92,12 +98,16 @@ function printResult(
   const checks = [
     {
       name: "labels lowercase-hyphenated",
-      pass: result.proposedTags.every((t) => t.label === t.label.toLowerCase() && !t.label.includes(" ")),
+      pass: result.proposedTags.every(
+        (t) => t.label === t.label.toLowerCase() && !t.label.includes(" "),
+      ),
     },
     {
       name: "categories in enum",
       pass: result.proposedTags.every((t) =>
-        ["condition", "style", "size", "material", "feature", "compatibility", "other"].includes(t.category),
+        ["condition", "style", "size", "material", "feature", "compatibility", "other"].includes(
+          t.category,
+        ),
       ),
     },
     {
@@ -350,7 +360,9 @@ async function main() {
   console.log(`  SUMMARY`);
   console.log(`${"═".repeat(70)}`);
   console.log(`  Scenarios:    ${scenarioNum}`);
-  console.log(`  Total tokens: ${totalTokensIn} in + ${totalTokensOut} out = ${totalTokensIn + totalTokensOut}`);
+  console.log(
+    `  Total tokens: ${totalTokensIn} in + ${totalTokensOut} out = ${totalTokensIn + totalTokensOut}`,
+  );
   console.log(`  Total time:   ${(totalLatency / 1000).toFixed(1)}s`);
   const cost = (totalTokensIn * 0.15 + totalTokensOut * 0.6) / 1_000_000;
   console.log(`  Est. cost:    $${cost.toFixed(4)} (gpt-4o-mini pricing)`);
