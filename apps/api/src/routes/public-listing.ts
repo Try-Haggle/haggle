@@ -1,6 +1,7 @@
 import type { Database } from "@haggle/db";
 import { ITEM_CONDITIONS, LISTING_CATEGORIES } from "@haggle/shared";
 import type { FastifyInstance } from "fastify";
+import { parseListingParcel, parseSellerFulfillmentOffer } from "../lib/negotiation-fulfillment.js";
 import {
   getPublishedListingByPublicId,
   getPublishedPriceBuckets,
@@ -248,6 +249,8 @@ export function registerPublicListingRoutes(app: FastifyInstance, db: Database) 
     // + ask only — no stance/leverage/floor). Lets the buyer builder surface "the
     // seller requires X" so the buyer mirrors it, and seeds the pause resolved-set.
     const sellerRequiredCriteria = extractSellerRequiredCriteria(cfg);
+    const sellerFulfillmentOffer = parseSellerFulfillmentOffer(cfg.sellerFulfillmentOffer) ?? null;
+    const parcel = parseListingParcel(cfg.parcel) ?? null;
 
     return reply.send({
       ok: true,
@@ -257,6 +260,8 @@ export function registerPublicListingRoutes(app: FastifyInstance, db: Database) 
         subtype,
         attributes,
         sellerRequiredCriteria,
+        sellerFulfillmentOffer,
+        parcel,
       },
       // Included for ownership check — not sensitive (just a UUID)
       sellerId,

@@ -13,6 +13,7 @@ import {
   presetToEngineParameters,
   requiredCriteria,
 } from "@haggle/shared";
+import { parseListingParcel } from "../lib/negotiation-fulfillment.js";
 
 /** Resolve the canonical default preset's parameters (balancer). */
 function defaultEngineParameters(): EngineParameters {
@@ -57,6 +58,12 @@ export interface ListingContext {
   photoUrl?: string;
   subtype?: string;
   attributes?: Record<string, unknown>;
+  parcel?: {
+    weight_oz: number;
+    length_in?: number;
+    width_in?: number;
+    height_in?: number;
+  };
 }
 
 export interface ListingStrategyContext {
@@ -106,6 +113,9 @@ export function extractListingContext(
     }
   }
   if (Object.keys(attributes).length > 0) ctx.attributes = attributes;
+
+  const parcel = parseListingParcel(negotiationAgentSnapshot.parcel);
+  if (parcel) ctx.parcel = parcel;
 
   return ctx;
 }

@@ -1,4 +1,4 @@
-import { type Database, sql } from "@haggle/db";
+import { and, type Database, eq, sql, userSavedAddresses } from "@haggle/db";
 import {
   compileNegotiationAgentSnapshot,
   computeHnpProposalHash,
@@ -28,6 +28,14 @@ import { z } from "zod";
 import type { EventDispatcher } from "../lib/event-dispatcher.js";
 import { getExecutor } from "../lib/executor-factory.js";
 import { executeGroupOrchestration, executeGroupTerminal } from "../lib/group-executor.js";
+import {
+  type BuyerShippingAddress,
+  type FulfillmentPreference,
+  fulfillmentPreferenceSchema,
+  parseListingParcel,
+  parseSellerFulfillmentOffer,
+  snapshotFulfillmentFields,
+} from "../lib/negotiation-fulfillment.js";
 import type { AuthUser } from "../middleware/auth.js";
 import { requireAuth } from "../middleware/require-auth.js";
 import { projectSellerFacts } from "../negotiation/memory/seller-facts.js";
@@ -113,6 +121,7 @@ const startSessionSchema = z.object({
     .positive()
     .max(24 * 14)
     .optional(),
+  fulfillment: fulfillmentPreferenceSchema.optional(),
 });
 
 const runNextAutoPlayRoundSchema = z.object({
@@ -1093,6 +1102,40 @@ export function registerNegotiationRoutes(
         ? { ...((listingContextSnapshot as object | undefined) ?? {}), seller_facts: sellerFacts }
         : listingContextSnapshot;
     const sellerNegotiationAgentPresetId = listingContext.sellerNegotiationAgentPresetId;
+    const listingSnapshot = listing.negotiationAgentSnapshot as Record<string, unknown> | null;
+    const listingOffer = parseSellerFulfillmentOffer(listingSnapshot?.sellerFulfillmentOffer);
+    const listingParcel =
+      parseListingParcel(listingSnapshot?.parcel) ?? listingContext.listingContext?.parcel;
+    let fulfillment = body.fulfillment as FulfillmentPreference | undefined;
+    if (fulfillment && listingOffer) {
+      const allowed = new Set(listingOffer.options.map((option) => option.method));
+      const methods = fulfillment.methods.filter((method) => allowed.has(method));
+      if (methods.length === 0) {
+        return reply.code(400).send({
+          error: "FULFILLMENT_NOT_OFFERED",
+          message: "Choose at least one delivery method the seller offered.",
+        });
+      }
+      fulfillment = {
+        ...fulfillment,
+        methods,
+        preferred:
+          fulfillment.preferred && methods.includes(fulfillment.preferred)
+            ? fulfillment.preferred
+            : methods[0],
+        seller_offer: fulfillment.seller_offer ?? listingOffer,
+      };
+    }
+    if (fulfillment && (listingParcel || fulfillment.methods.includes("carrier"))) {
+      fulfillment = {
+        ...fulfillment,
+        ...(listingParcel ? { parcel: fulfillment.parcel ?? listingParcel } : {}),
+        ...(fulfillment.methods.includes("carrier")
+          ? { carrier_priority: fulfillment.carrier_priority ?? "balanced" }
+          : {}),
+      };
+    }
+    const fulfillmentFields = snapshotFulfillmentFields(fulfillment);
     const sellerSnapshot: Record<string, unknown> = {
       ...sellerStrategy,
       max_rounds: AUTO_PLAY_MAX_ROUNDS,
@@ -1118,6 +1161,7 @@ export function registerNegotiationRoutes(
         ? { negotiation_agent_preset_id: sellerNegotiationAgentPresetId }
         : {}),
       buyer_requested_strategy: buyerRequestedStrategy,
+      ...fulfillmentFields,
     };
     // Phase G Flow 3: the seller's REQUIRED criteria travel on the buyer snapshot so
     // the executor can pause and ask the buyer about any the buyer never addressed.
@@ -1187,6 +1231,7 @@ export function registerNegotiationRoutes(
       ...(body.agent_weights ? { agent_weights: body.agent_weights } : {}),
       ...(body.agent_overrides ? { agent_overrides: body.agent_overrides } : {}),
       buyer_requested_strategy: buyerRequestedStrategy,
+      ...fulfillmentFields,
     };
 
     const strategyId = sellerStrategy.compiler.selected_playbook;
@@ -1209,6 +1254,12 @@ export function registerNegotiationRoutes(
       negotiationAgentSnapshot: autoPlay.sellerSnapshot,
       expiresAt,
     });
+
+    if (!isGuest && body.fulfillment?.save_address && body.fulfillment.buyer_address) {
+      await saveBuyerDefaultAddress(db, buyer.id, body.fulfillment.buyer_address).catch((err) => {
+        console.error("[negotiations] save default address failed:", (err as Error).message);
+      });
+    }
 
     return reply.code(202).send({
       session_id: session.id,
@@ -2385,4 +2436,29 @@ function numberFromUnknown(value: unknown): number {
     return Number.isFinite(parsed) ? parsed : 0;
   }
   return 0;
+}
+
+async function saveBuyerDefaultAddress(
+  db: Database,
+  userId: string,
+  address: BuyerShippingAddress,
+) {
+  await db
+    .update(userSavedAddresses)
+    .set({ isDefault: false })
+    .where(and(eq(userSavedAddresses.userId, userId), eq(userSavedAddresses.isDefault, true)));
+
+  await db.insert(userSavedAddresses).values({
+    userId,
+    label: "home",
+    name: address.name,
+    street1: address.street1,
+    street2: address.street2 ?? null,
+    city: address.city,
+    state: address.state,
+    zip: address.zip,
+    country: address.country,
+    phone: address.phone ?? null,
+    isDefault: true,
+  });
 }

@@ -20,6 +20,16 @@ interface ListingData {
   subtype: string | null;
   attributes: Record<string, unknown> | null;
   sellerRequiredCriteria: Array<{ checkId: string; ask: string }> | null;
+  sellerFulfillmentOffer: {
+    options: Array<{ method: string; radius_miles?: number; max_weight_lb?: number }>;
+    preferred?: string;
+  } | null;
+  parcel: {
+    weight_oz: number;
+    length_in?: number;
+    width_in?: number;
+    height_in?: number;
+  } | null;
 }
 
 const VALID_ORIGINS = ["browse", "buy-dashboard", "sell-dashboard"] as const;

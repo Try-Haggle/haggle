@@ -10,6 +10,7 @@ import { updateIntentStatus } from "../services/intent.service.js";
 import { getSessionById } from "../services/negotiation-session.service.js";
 import { recordAgreedPrice } from "../services/price-observation-sink.js";
 import type { EventDispatcher } from "./event-dispatcher.js";
+import { readFulfillmentFromSnapshot } from "./negotiation-fulfillment.js";
 
 /**
  * Register all action handlers on the event dispatcher.
@@ -32,6 +33,9 @@ export function registerActionHandlers(dispatcher: EventDispatcher, db: Database
 
     const now = new Date();
     const acceptedAt = now.toISOString();
+    const fulfillment = readFulfillmentFromSnapshot(
+      session.negotiationAgentSnapshot as Record<string, unknown> | null,
+    );
 
     await db
       .insert(settlementApprovals)
@@ -59,7 +63,16 @@ export function registerActionHandlers(dispatcher: EventDispatcher, db: Database
           settlement_asset: "USDC",
           settlement_network: "base",
           settlement_contract: "HaggleConditionalSettlement",
-          fulfillment_type: "physical_shipping",
+          fulfillment_type: fulfillment.fulfillment_type,
+          ...(fulfillment.fulfillment_context
+            ? { fulfillment_method: fulfillment.fulfillment_context.method }
+            : {}),
+          ...(fulfillment.fulfillment_context?.shipping_cost_minor !== undefined
+            ? { shipping_cost_minor: fulfillment.fulfillment_context.shipping_cost_minor }
+            : {}),
+          ...(fulfillment.buyer_shipping_address
+            ? { buyer_shipping_address: fulfillment.buyer_shipping_address }
+            : {}),
           currency: "USD",
           seller_policy_shipment_input_due_days: 3,
           seller_policy_median_response_minutes: 30,

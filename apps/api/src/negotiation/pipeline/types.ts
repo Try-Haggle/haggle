@@ -36,6 +36,8 @@ import type {
 export interface UnderstandInput {
   raw_message: string;
   sender_role: "buyer" | "seller";
+  /** Pre-negotiation fulfillment already locked the shipping term set. */
+  known_shipping_terms?: boolean;
 }
 
 export type ConversationType =

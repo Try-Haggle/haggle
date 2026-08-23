@@ -64,6 +64,7 @@ describe("registerActionHandlers", () => {
       buyerId,
       sellerId,
       status: "ACCEPTED",
+      negotiationAgentSnapshot: {},
     } as never);
 
     registerActionHandlers(dispatcher, db.db as never);
@@ -98,6 +99,7 @@ describe("registerActionHandlers", () => {
           selected_payment_rail: "x402",
           currency: "USD",
           seller_policy_shipment_input_due_days: 3,
+          fulfillment_type: "physical_shipping",
         }),
       }),
     );
@@ -128,6 +130,7 @@ describe("registerActionHandlers", () => {
       buyerId,
       sellerId,
       status: "ACCEPTED",
+      negotiationAgentSnapshot: {},
     } as never);
 
     registerActionHandlers(dispatcher, db.db as never);
@@ -162,6 +165,54 @@ describe("registerActionHandlers", () => {
           session_id: sessionId,
           buyer_id: buyerId,
           seller_id: sellerId,
+        }),
+      }),
+    );
+  });
+
+  it("copies local pickup from the session snapshot into settlement terms", async () => {
+    const { dispatcher, handlers } = buildDispatcher();
+    const db = buildDb();
+    const sessionId = "00000000-0000-4000-a000-000000000099";
+    const listingId = "00000000-0000-4000-a000-000000000011";
+    const buyerId = "00000000-0000-4000-a000-000000000022";
+    const sellerId = "00000000-0000-4000-a000-000000000033";
+
+    mockGetSessionById.mockResolvedValue({
+      id: sessionId,
+      listingId,
+      buyerId,
+      sellerId,
+      status: "ACCEPTED",
+      negotiationAgentSnapshot: {
+        fulfillment_context: {
+          method: "local_pickup",
+          fulfillment_type: "local_pickup",
+          negotiable: true,
+          shipping_included_in_total: true,
+          shipping_cost_known: true,
+          shipping_cost_minor: 0,
+          rate_note: "No carrier shipping.",
+        },
+      },
+    } as never);
+
+    registerActionHandlers(dispatcher, db.db as never);
+
+    await handlers.get("create_settlement")?.({
+      action: "create_settlement",
+      sessionId,
+      agreedPriceMinor: 50_000,
+      buyerId,
+      sellerId,
+    });
+
+    expect(db.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        termsSnapshot: expect.objectContaining({
+          fulfillment_type: "local_pickup",
+          fulfillment_method: "local_pickup",
+          shipping_cost_minor: 0,
         }),
       }),
     );

@@ -11,6 +11,12 @@ import { ArrowRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { AgentBuilder } from "@/app/(app)/sell/agents/_components/AgentBuilder";
 import { Nav } from "@/components/nav";
+import {
+  canStartWithFulfillment,
+  emptyFulfillmentValue,
+  PreNegotiationFulfillment,
+  type PreNegotiationFulfillmentValue,
+} from "@/components/shipping/pre-negotiation-fulfillment";
 import { Alert } from "@/components/ui/alert";
 import { BackLink } from "@/components/ui/back-link";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +24,13 @@ import { Button } from "@/components/ui/button";
 import { Price } from "@/components/ui/price";
 import { ApiError, api } from "@/lib/api-client";
 import { formatPriceStr } from "@/lib/format";
+import {
+  formatListingParcel,
+  parseListingParcel,
+  parseSellerFulfillmentOffer,
+} from "@/lib/fulfillment-options";
 import { storeNegotiationRunToken } from "@/lib/negotiation-auto-play-token";
+import { isCompleteShippingAddress, toApiAddress } from "@/lib/shipping-address";
 import { useAmplitude } from "@/providers/amplitude-provider";
 import {
   NegotiationAgentBuilderChat,
@@ -44,6 +56,16 @@ interface Listing {
   attributes: Record<string, unknown> | null;
   /** Phase G Flow 2: the seller's REQUIRED category criteria (buyer-safe: id + ask). */
   sellerRequiredCriteria: Array<{ checkId: string; ask: string }> | null;
+  sellerFulfillmentOffer?: {
+    options: Array<{ method: string; radius_miles?: number; max_weight_lb?: number }>;
+    preferred?: string;
+  } | null;
+  parcel?: {
+    weight_oz: number;
+    length_in?: number;
+    width_in?: number;
+    height_in?: number;
+  } | null;
 }
 
 /* ─── Helpers ─────────────────────────────────────────────── */
@@ -133,6 +155,11 @@ export function BuyerLanding({
   >("idle");
   const [negotiationMessage, setNegotiationMessage] = useState("");
   const [hfmiData, setHfmiData] = useState<HfmiData | null>(null);
+  const sellerOffer = parseSellerFulfillmentOffer(listing.sellerFulfillmentOffer);
+  const listingParcel = parseListingParcel(listing.parcel);
+  const [fulfillment, setFulfillment] = useState<PreNegotiationFulfillmentValue>(() =>
+    emptyFulfillmentValue(sellerOffer, !!user),
+  );
 
   const selectedAgent = agentValue ? resolveEffectivePreset(agentValue) : null;
   const deadline = timeRemaining(listing.sellingDeadline);
@@ -262,6 +289,11 @@ export function BuyerLanding({
                       </Badge>
                     ))}
                   </div>
+                  {listingParcel && (
+                    <p className="mt-3 text-sm text-ink-secondary">
+                      Parcel: {formatListingParcel(listingParcel)}
+                    </p>
+                  )}
 
                   {/* Phone specs */}
                   {listing.attributes && Object.keys(listing.attributes).length > 0 && (
@@ -362,6 +394,14 @@ export function BuyerLanding({
               }
             />
 
+            <PreNegotiationFulfillment
+              signedIn={!!user}
+              offer={sellerOffer}
+              parcel={listingParcel}
+              value={fulfillment}
+              onChange={setFulfillment}
+            />
+
             {/* CTA below the builder */}
             <div>
               <div className="mb-3 flex items-center gap-2 text-[12px] text-ink-muted">
@@ -406,7 +446,7 @@ export function BuyerLanding({
                   <Button
                     fullWidth
                     loading={negotiationState === "loading"}
-                    disabled={!selectedAgent}
+                    disabled={!selectedAgent || !canStartWithFulfillment(fulfillment)}
                     aria-busy={negotiationState === "loading"}
                     onClick={async () => {
                       if (!selectedAgent) return;
@@ -440,6 +480,26 @@ export function BuyerLanding({
                               | NegotiationAgentBuilderMemory
                               | undefined) ??
                             undefined,
+                          fulfillment: {
+                            methods: fulfillment.methods,
+                            preferred: fulfillment.preferred,
+                            ...(fulfillment.methods.includes("carrier") &&
+                            isCompleteShippingAddress(fulfillment.address)
+                              ? { buyer_address: toApiAddress(fulfillment.address) }
+                              : {}),
+                            save_address:
+                              !!user &&
+                              fulfillment.methods.includes("carrier") &&
+                              fulfillment.saveAddress,
+                            constraints: {
+                              travel_radius_miles: fulfillment.travel_radius_miles,
+                              max_pickup_weight_lb: fulfillment.max_pickup_weight_lb,
+                            },
+                            ...(fulfillment.methods.includes("carrier")
+                              ? { carrier_priority: fulfillment.carrier_priority }
+                              : {}),
+                            ...(sellerOffer ? { seller_offer: sellerOffer } : {}),
+                          },
                         });
                         // Stash guest buyer id for the post-signup claim step.
                         // Logged-in callers never receive guest_buyer_id back,
@@ -486,6 +546,11 @@ export function BuyerLanding({
                       </>
                     )}
                   </Button>
+                  {selectedAgent && !canStartWithFulfillment(fulfillment) && (
+                    <p className="mt-3 text-center text-ink-muted text-sm">
+                      Add a delivery address to start.
+                    </p>
+                  )}
                   {negotiationState === "error" && (
                     <div className="mt-3 text-center text-error text-sm">{negotiationMessage}</div>
                   )}
