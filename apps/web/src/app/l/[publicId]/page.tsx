@@ -101,25 +101,23 @@ export default async function BuyerListingPage({
   return (
     <>
       {useLegacy ? (
-        <BuyerLanding listing={data.listing} user={userInfo} isOwner={isOwner} from={from} />
+        <>
+          <BuyerLanding listing={data.listing} user={userInfo} isOwner={isOwner} from={from} />
+          <SimilarListings publicId={publicId} userId={user?.id ?? null} from={from} />
+        </>
       ) : (
+        /* v2 takes it through `footerSlot` rather than as a sibling: the page's
+           sticky action bar is fixed, and only what renders inside v2 gets the
+           bottom clearance it reserves. As a sibling the last row of cards sat
+           82px behind the bar. v1 has no such bar, so it keeps the sibling. */
         <BuyerLandingV2
           listing={data.listing}
           user={userInfo}
           isOwner={isOwner}
           from={from ?? undefined}
+          footerSlot={<SimilarListings publicId={publicId} userId={user?.id ?? null} from={from} />}
         />
       )}
-      {/* Similar Listings — v1 only, temporarily.
-          The multi-signal scorer's detail-page threshold (0.65) currently sits
-          above what the live corpus can reach: semantic is raw cosine (avg
-          0.61 / max 0.78 across same-category pairs here) at weight 0.8, tags
-          score 0 whenever either side has none, and price scores 0 past a 10x
-          gap — so the section renders its empty state on every listing. Left
-          mounted on v1 so nothing about the legacy page changes; hidden on v2
-          rather than shipping a permanent "No similar listings found yet".
-          Restore once the threshold/weights are tuned against real data. */}
-      {useLegacy && <SimilarListings publicId={publicId} userId={user?.id ?? null} from={from} />}
     </>
   );
 }

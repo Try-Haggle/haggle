@@ -89,9 +89,11 @@ interface BuyerLandingV2Props {
   user: ViewerInfo | null;
   isOwner: boolean;
   from?: Origin;
+  /** Rendered below the fold, inside the page — so it clears the sticky bar. */
+  footerSlot?: React.ReactNode;
 }
 
-export function BuyerLandingV2({ listing, user, isOwner, from }: BuyerLandingV2Props) {
+export function BuyerLandingV2({ listing, user, isOwner, from, footerSlot }: BuyerLandingV2Props) {
   const router = useRouter();
   const { track } = useAmplitude();
   const [savedAgents, setSavedAgents] = useState<SavedAgentOption[]>([]);
@@ -200,6 +202,7 @@ export function BuyerLandingV2({ listing, user, isOwner, from }: BuyerLandingV2P
       listing={listing}
       viewer={user}
       isOwner={isOwner}
+      footerSlot={footerSlot}
       savedAgents={savedAgents}
       briefHintCount={countHints(briefMemory)}
       headerSlot={
