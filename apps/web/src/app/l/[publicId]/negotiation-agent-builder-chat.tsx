@@ -7,7 +7,7 @@ import type {
   NegotiationAgentPreset,
 } from "@haggle/shared";
 import { buildBuyerChoiceQuestions, buildSellerChoiceQuestions } from "@haggle/shared";
-import { MessageSquare, RotateCcw, Send } from "lucide-react";
+import { ChevronLeft, ChevronRight, MessageSquare, RotateCcw, Send } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Badge,
@@ -495,6 +495,22 @@ export function NegotiationAgentBuilderChat({
     };
   }, [agent]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  /**
+   * Which quick-setup question the strip is showing.
+   *
+   * The picker used to render every question at once, in a `shrink-0` block
+   * that took its height straight out of the message list. That is fine for a
+   * car seat (3 checks) and ruinous for an RV (11, eight of them
+   * deal-breakers): measured in the listing drawer, the chat was left 4% of
+   * the pane and the composer was pushed off the bottom. Capping the block and
+   * scrolling inside it only trades that for two stacked scroll areas and a
+   * slab that holds its space whether or not you are using it.
+   *
+   * One question on a fixed strip costs the same height at any N, and the
+   * counter states the real total up front instead of implying it by how far
+   * the block runs.
+   */
+  const [choiceIndex, setChoiceIndex] = useState(0);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [memory, setMemory] = useState<NegotiationAgentBuilderMemory>(() =>
@@ -527,8 +543,12 @@ export function NegotiationAgentBuilderChat({
         requirement: option.requirement,
         stance: option.stance,
       };
+      const wasUnanswered = idx < 0 || !criteria[idx]?.stance;
       if (idx >= 0) criteria[idx] = { ...criteria[idx], ...upserted };
       else criteria.push(upserted);
+      // Answering moves you on; CORRECTING does not. Advancing on a re-tap
+      // would yank the strip away from the question you came back to fix.
+      if (wasUnanswered) setChoiceIndex((i) => i + 1);
       const next = { ...memory, categoryCriteria: criteria };
       setMemory(next);
       onNegotiationAgentBuilderMemoryUpdate?.(next);
@@ -957,6 +977,7 @@ export function NegotiationAgentBuilderChat({
     clearSession(listingPublicId, agent.id);
     const newMemory = buildInitialMemory(agent, listingCategory);
     setMemory(newMemory);
+    setChoiceIndex(0);
 
     if (autoOpenFirst) {
       // Re-fire the opening LLM turn on the now-empty chat.
@@ -1217,53 +1238,21 @@ export function NegotiationAgentBuilderChat({
       {/* ④+① Quick-setup: tappable multiple-choice for the item's taxonomy checks.
           Fully client-side/deterministic — a pick sets the criterion with no LLM turn.
           Renders for BOTH sides (buyer requirement-framed, seller fact-framed); only
-          checks that carry canonical options appear (hard/deal-breaker first). */}
+          checks that carry canonical options appear (hard/deal-breaker first).
+
+          One question at a time, on a strip of fixed height. See {@link choiceIndex}
+          for why the whole list is no longer laid out here. The counter is the part
+          that has to be honest — "3 / 11" tells you the size of what you agreed to
+          before you are eight taps into it. */}
       {choiceQuestions.length > 0 && hasAgentSelected && (
-        <div className="shrink-0 border-line border-t bg-surface-overlay px-4 py-3">
-          <div className="mb-2 flex items-center gap-1.5">
-            <span className="font-semibold text-[10px] text-ink-muted tracking-wider">
-              QUICK SETUP
-            </span>
-            <span className="text-[10px] text-ink-muted">tap to set, no typing</span>
-          </div>
-          <div className="flex flex-col gap-2.5">
-            {choiceQuestions.map((q) => {
-              const chosen = memory.categoryCriteria?.find((c) => c.checkId === q.checkId)?.stance;
-              return (
-                <div key={q.checkId} className="flex flex-col gap-1">
-                  <span className="text-[12px] text-ink-secondary">
-                    {q.question}
-                    {q.enforcement === "hard" && (
-                      <span className="ml-1.5 font-semibold text-[10px] text-warning">
-                        deal-breaker
-                      </span>
-                    )}
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {q.options.map((opt) => {
-                      const selected = chosen === opt.stance;
-                      return (
-                        <button
-                          key={opt.label}
-                          type="button"
-                          onClick={() => applyChoice(q, opt)}
-                          className={`rounded-full border px-3 py-1 text-[12px] transition-colors ${
-                            selected
-                              ? "border-transparent text-white"
-                              : "border-line bg-surface-raised text-ink-secondary hover:bg-surface-sunken"
-                          }`}
-                          style={selected ? { background: accent } : undefined}
-                        >
-                          {opt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <QuickSetupStrip
+          questions={choiceQuestions}
+          index={Math.min(choiceIndex, choiceQuestions.length - 1)}
+          onIndexChange={setChoiceIndex}
+          answers={memory.categoryCriteria}
+          accent={accent}
+          onChoose={applyChoice}
+        />
       )}
 
       {/* Input area — bespoke chat composer (flat transparent field); the shared Input is a
@@ -1341,5 +1330,135 @@ export function NegotiationAgentBuilderChat({
         .msg-anim { animation: fadeSlideIn 0.3s ease-out; }
       `}</style>
     </div>
+  );
+}
+
+/* ─── Quick-setup strip ─────────────────────────────────────────── */
+
+/**
+ * The item's taxonomy checks, one at a time on a strip of constant height.
+ *
+ * Laying all of them out was the bug: the block sits below the message list
+ * and above the composer, and it does not shrink, so an eleven-check category
+ * consumed the conversation it was meant to support. Height here is the same
+ * whether the category carries three checks or eleven — what changes is the
+ * counter, which is also the only honest way to state the size of the task
+ * before someone is halfway through it.
+ *
+ * Paging is deliberate rather than automatic-only: answering advances (see
+ * `applyChoice`), and the arrows exist for the case that actually happens on a
+ * long list — realising two questions later that you mis-tapped one.
+ *
+ * No progress meter. A bar here lands ten pixels above the composer's own top
+ * border and reads as a second hairline more than as a measure, and the strip
+ * already sits between two rules in a column this file has twice been rebuilt
+ * to keep quiet. The counter carries the same information in text.
+ */
+function QuickSetupStrip({
+  questions,
+  index,
+  onIndexChange,
+  answers,
+  accent,
+  onChoose,
+}: {
+  questions: CategoryChoiceQuestion[];
+  index: number;
+  onIndexChange: (next: number) => void;
+  answers: NegotiationAgentBuilderMemory["categoryCriteria"];
+  accent: string;
+  onChoose: (question: CategoryChoiceQuestion, option: CheckAnswerOption) => void;
+}) {
+  const question = questions[index];
+  if (!question) return null;
+  const chosen = answers?.find((c) => c.checkId === question.checkId)?.stance;
+  return (
+    <div className="shrink-0 border-line border-t bg-surface-overlay px-4 py-2.5">
+      <div className="mb-1.5 flex items-center gap-2">
+        <span className="flex-1 font-semibold text-[10px] text-ink-muted tracking-wider">
+          QUICK SETUP
+        </span>
+        <StepButton
+          label="Previous question"
+          disabled={index === 0}
+          onClick={() => onIndexChange(index - 1)}
+        >
+          <ChevronLeft className="size-3.5" />
+        </StepButton>
+        <span className="min-w-10 text-center text-[10.5px] text-ink-muted tabular-nums">
+          {index + 1} / {questions.length}
+        </span>
+        <StepButton
+          label="Next question"
+          disabled={index === questions.length - 1}
+          onClick={() => onIndexChange(index + 1)}
+        >
+          <ChevronRight className="size-3.5" />
+        </StepButton>
+      </div>
+
+      {/* The question, and nothing else.
+          A "deal-breaker" badge used to sit here, carrying the check's
+          taxonomy enforcement. It went for two reasons. It did not change
+          anyone's answer — the options say what they mean ("Clean title only"
+          / "Salvage OK" / "Doesn't matter"), so you pick what you want, not
+          what a label tells you to want. And it could be falsified by the very
+          tap it was labelling: choose "Doesn't matter" and the check is no
+          longer a deal-breaker, while the badge still says it is. Enforcement
+          still orders the set (hard first, see `sortHardFirst`), which is the
+          honest way to say "this one matters more" — by asking it earlier. */}
+      {/* Two lines are reserved whether or not this question needs them.
+          Paging between a one-line and a two-line question otherwise moved the
+          strip 24px, which shifts the composer and the whole conversation
+          above it — the exact jitter a fixed-height strip exists to prevent.
+          Same reason the agent tiles reserve two label lines. */}
+      <span className="block min-h-[2.75em] text-[12px] text-ink-secondary leading-snug">
+        {question.question}
+      </span>
+      <div className="mt-1.5 flex flex-wrap gap-1.5">
+        {question.options.map((opt) => {
+          const selected = chosen === opt.stance;
+          return (
+            <button
+              key={opt.label}
+              type="button"
+              onClick={() => onChoose(question, opt)}
+              className={`rounded-full border px-3 py-1 text-[12px] transition-colors ${
+                selected
+                  ? "border-transparent text-white"
+                  : "border-line bg-surface-raised text-ink-secondary hover:bg-surface-sunken"
+              }`}
+              style={selected ? { background: accent } : undefined}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function StepButton({
+  label,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="flex size-5.5 items-center justify-center rounded-md border border-line bg-surface-raised text-ink-muted transition-colors hover:bg-surface-sunken disabled:cursor-default disabled:opacity-35 disabled:hover:bg-surface-raised"
+    >
+      {children}
+    </button>
   );
 }
