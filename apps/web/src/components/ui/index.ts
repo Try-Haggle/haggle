@@ -19,6 +19,7 @@ export * from "./evidence-card";
 export * from "./icon-button";
 export * from "./input";
 export * from "./list-row";
+export * from "./logo";
 export * from "./message-list";
 export * from "./modal";
 export * from "./nav-tab";
