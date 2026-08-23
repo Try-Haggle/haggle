@@ -89,9 +89,11 @@ interface BuyerLandingV2Props {
   user: ViewerInfo | null;
   isOwner: boolean;
   from?: Origin;
+  /** Rendered below the fold, inside the page — so it clears the sticky bar. */
+  footerSlot?: React.ReactNode;
 }
 
-export function BuyerLandingV2({ listing, user, isOwner, from }: BuyerLandingV2Props) {
+export function BuyerLandingV2({ listing, user, isOwner, from, footerSlot }: BuyerLandingV2Props) {
   const router = useRouter();
   const { track } = useAmplitude();
   const [savedAgents, setSavedAgents] = useState<SavedAgentOption[]>([]);
@@ -200,6 +202,7 @@ export function BuyerLandingV2({ listing, user, isOwner, from }: BuyerLandingV2P
       listing={listing}
       viewer={user}
       isOwner={isOwner}
+      footerSlot={footerSlot}
       savedAgents={savedAgents}
       briefHintCount={countHints(briefMemory)}
       headerSlot={
@@ -208,7 +211,7 @@ export function BuyerLandingV2({ listing, user, isOwner, from }: BuyerLandingV2P
             <Nav userEmail={user.email} userName={user.name} userAvatarUrl={user.avatarUrl} />
           ) : (
             <nav className="fixed inset-x-0 top-0 z-50 h-14 border-line border-b bg-surface/80 backdrop-blur-md">
-              <div className="mx-auto flex h-full max-w-6xl items-center justify-between px-4 sm:px-6">
+              <div className="mx-auto flex h-full max-w-7xl items-center justify-between px-4 sm:px-6">
                 <span className="font-bold text-ink text-lg">Haggle</span>
                 <a
                   href="/sign-in"
@@ -222,7 +225,7 @@ export function BuyerLandingV2({ listing, user, isOwner, from }: BuyerLandingV2P
           {/* Clears the fixed nav. Always rendered, back link or not: without
               it the photo starts underneath the bar. Matches v1's offsets —
               the app nav is desktop-only, the guest bar is not. */}
-          <div className={`mx-auto max-w-6xl px-4 sm:px-6 ${user ? "pt-8 md:pt-24" : "pt-[88px]"}`}>
+          <div className={`mx-auto max-w-7xl px-4 sm:px-6 ${user ? "pt-8 md:pt-24" : "pt-[88px]"}`}>
             {/* mb-6 matches v1 — the wrapper's padding only clears the fixed
                 nav, so without this the link sits flush against the photo. */}
             {from && (

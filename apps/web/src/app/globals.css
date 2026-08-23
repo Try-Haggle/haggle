@@ -467,6 +467,18 @@ input[type="number"] {
   display: none;
 }
 
+/* Tailwind v4 dropped the preflight rule that gave buttons a pointer cursor,
+   so every button in the app fell back to the default arrow unless someone
+   remembered `cursor-pointer` — which is why that class appears ~97 times.
+   Restoring the default fixes the whole class of miss at once, including the
+   hand-rolled buttons the `Button` component does not cover. Disabled controls
+   are excluded, and a utility class still wins on specificity where a surface
+   wants a different cursor. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
 /* Date input calendar icon — invert only in dark theme.
    Lower-specificity rule first to satisfy noDescendingSpecificity. */
 input[type="date"]::-webkit-calendar-picker-indicator {

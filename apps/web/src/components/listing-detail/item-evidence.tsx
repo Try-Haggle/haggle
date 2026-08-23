@@ -70,11 +70,18 @@ export function ItemPhoto({ listing, className }: { listing: ListingDetail; clas
           className="block"
           transition={{ duration: DURATION.slow, ease: EASE.standard }}
         >
+          {/* 4:3 up to a ceiling. The ratio alone ties the photo's height to
+              the column's width, so a wide column made it tall enough to push
+              the title off a laptop screen — on a page whose subject is the
+              negotiation, not the picture. 520px lands the photo near 3:2 at
+              the current column width: a real photographic ratio rather than
+              an arbitrary crop. A phone never reaches the cap, so mobile keeps
+              a clean 4:3. */}
           {/* biome-ignore lint/performance/noImgElement: remote listing photo */}
           <img
             src={listing.photoUrl}
             alt={listing.title}
-            className="aspect-[4/3] w-full object-cover"
+            className="aspect-[4/3] max-h-[520px] w-full object-cover"
           />
         </motion.span>
         <span className="pointer-events-none absolute right-3 bottom-3 flex items-center gap-1.5 rounded-lg bg-surface-overlay/85 px-2.5 py-1.5 font-medium text-[11px] text-ink opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">

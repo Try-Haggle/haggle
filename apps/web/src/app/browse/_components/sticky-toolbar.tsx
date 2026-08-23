@@ -65,7 +65,7 @@ export function StickyToolbar({ children }: { children: React.ReactNode }) {
         stuck ? "border-line border-b" : "border-transparent border-b"
       }`}
     >
-      <div className="mx-auto max-w-6xl px-4 py-3 sm:px-6">{children}</div>
+      <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6">{children}</div>
     </div>
   );
 }

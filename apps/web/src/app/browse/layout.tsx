@@ -23,7 +23,7 @@ export default async function BrowseLayout({ children }: { children: React.React
         <Nav userEmail={user.email ?? ""} userName={userName} userAvatarUrl={userAvatarUrl} />
       ) : (
         <nav className="fixed inset-x-0 top-0 z-50 h-14 border-line border-b bg-surface/80 backdrop-blur-md">
-          <div className="mx-auto flex h-full max-w-6xl items-center justify-between px-4 sm:px-6">
+          <div className="mx-auto flex h-full max-w-7xl items-center justify-between px-4 sm:px-6">
             <a
               href="/"
               className="font-bold text-ink text-lg transition-colors hover:text-action-primary"

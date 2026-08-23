@@ -138,6 +138,28 @@ export function ListingDetailV2({
   const isCompact = useMediaQuery("(max-width: 1023px)");
 
   /**
+   * The sticky bar's real height, so the page can end above it.
+   *
+   * It was a hardcoded `pb-*` before, which is a guess at something that
+   * changes: the bar grows a line for the chosen agent, another for the
+   * guest note, another for an error. The guess was 64px against a 69px bar,
+   * so the last line of the description sat 5px behind it — and any new line
+   * in the bar would have broken it again, silently. Measuring is the only
+   * version of this that cannot drift.
+   */
+  const barRef = useRef<HTMLDivElement | null>(null);
+  const [barHeight, setBarHeight] = useState(0);
+  useEffect(() => {
+    const node = barRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) =>
+      setBarHeight(Math.ceil(entry.contentRect.height)),
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  /**
    * Everything a surface needs to present a selection, derived in one place.
    * The rail/sticky/CTA read the COMMITTED selection; the panel (and the chat
    * inside it) read the draft while open. `named` is the preset re-labeled
@@ -199,19 +221,6 @@ export function ListingDetailV2({
     });
   }
 
-  // The sticky bar exists only while the real CTA is off screen.
-  const ctaRef = useRef<HTMLDivElement | null>(null);
-  const [ctaVisible, setCtaVisible] = useState(true);
-  useEffect(() => {
-    const node = ctaRef.current;
-    if (!node || typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver(([entry]) => setCtaVisible(entry.isIntersecting), {
-      rootMargin: "-72px 0px 0px 0px",
-    });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, []);
-
   /** Tile taps toggle: picking a different agent switches, tapping the
    *  current one deselects. The rail commits immediately; the panel edits its
    *  draft — same feel, different target. */
@@ -255,14 +264,18 @@ export function ListingDetailV2({
      * which keeps the first render identical on both sides.
      */
     <MotionConfig reducedMotion="user">
-      <main className="min-h-screen bg-surface">
+      {/* The bar's clearance lives here, not on the content column: whatever a
+          host hangs off `footerSlot` (similar listings) renders after that
+          column and would otherwise end up behind the bar. */}
+      <main
+        className="min-h-screen bg-surface"
+        style={isOwner ? undefined : { paddingBottom: `calc(${barHeight}px + 1.5rem)` }}
+      >
         {headerSlot}
 
-        {/* Extra bottom room on mobile for buyers: the sticky bar is always up
-            there, and `pb-16` is shorter than the bar itself, so the last card
-            in the rail ended up behind it at full scroll. Owners get no bar,
-            so they keep the plain padding instead of dead space. */}
-        <div className={cn("mx-auto max-w-6xl px-4 sm:px-6", isOwner ? "pb-16" : "pb-28 lg:pb-16")}>
+        {/* Owners get plain padding — no bar renders for them, so reserving
+            room for one would only be dead space. */}
+        <div className="mx-auto max-w-7xl px-4 pb-16 sm:px-6">
           {/* Two columns, two jobs: the LEFT column is the item (photo first —
               the marketplace instinct — then title, then the evidence), the
               RIGHT rail is the negotiation (price and its room to move, the
@@ -386,106 +399,33 @@ export function ListingDetailV2({
                 </>
               )}
 
-              {/* ④ Go */}
-              <motion.div
-                variants={riseIn}
-                ref={ctaRef}
-                /* Buyers get this button on desktop only. On a phone the
-                   sticky bar is the action — repeating it inside the rail
-                   meant two Start buttons for the same deal, and the bar
-                   vanishing as you scrolled past the duplicate. Hidden with a
-                   breakpoint class rather than `isCompact`, because
-                   `useMediaQuery` is false on the first render and would
-                   hydrate the wrong markup.
+              {/* ④ Go — owners only.
+                  A buyer's action lives in the sticky bar on every breakpoint
+                  now, so putting a second Start button in the rail would have
+                  meant two controls for one deal. It also retires a button
+                  that could only ever appear disabled here: before an agent is
+                  picked there is nothing to start, and a greyed-out primary is
+                  a dead end at exactly the moment the user needs the picker.
+                  The bar says "Pick an agent" instead and opens it.
 
-                   Hiding it also drives the bar: a `display:none` node never
-                   intersects, so `ctaVisible` stays false on mobile and the
-                   bar simply stays up — which is what a phone wants.
+                  Owners keep theirs: no bar renders for them, so hiding this
+                  would leave them with no action at all. */}
+              {isOwner && (
+                <motion.div variants={riseIn} className="mt-6">
+                  <Link
+                    href={`/sell/listings/${listing.publicId}`}
+                    className={buttonVariants({ size: "lg", fullWidth: true })}
+                  >
+                    Manage this listing
+                    <ArrowRight className="size-4" aria-hidden="true" />
+                  </Link>
 
-                   The owner's action is exempt: no sticky bar renders for
-                   owners, so hiding theirs would leave them with nothing. */
-                className={isOwner ? "mt-6" : "mt-6 hidden lg:block"}
-              >
-                {isOwner ? (
-                  /* Jakob's Law: on every marketplace a seller knows, opening
-                     your own listing lands you in a management view — not the
-                     buyer's funnel with the button greyed out. So the action
-                     slot carries the one thing an owner is actually here to
-                     do — their own listing's management view, reached by the
-                     public id the seller route now also accepts.
-
-                     Styled as the primary CTA, same as the buyer's "Start
-                     negotiation": it is the rail's only action, and nothing
-                     competes with it here. The earlier sunken treatment was
-                     actively misleading — `primary` renders its DISABLED state
-                     as exactly that muted fill, so a live link wearing it read
-                     as an inert button. */
-                  <>
-                    <Link
-                      href={`/sell/listings/${listing.publicId}`}
-                      className={buttonVariants({ size: "lg", fullWidth: true })}
-                    >
-                      Manage this listing
-                      <ArrowRight className="size-4" aria-hidden="true" />
-                    </Link>
-
-                    <p className="mt-2.5 flex items-center justify-center gap-1.5 text-center text-[11.5px] text-ink-muted">
-                      <Info className="size-3 shrink-0" aria-hidden="true" />
-                      Your listing — buyers negotiate against the agent above.
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <Button
-                      size="lg"
-                      fullWidth
-                      loading={status === "starting"}
-                      disabled={!selection}
-                      onClick={handleStart}
-                    >
-                      {status === "starting" ? (
-                        message
-                      ) : (
-                        <>
-                          Start negotiation
-                          <ArrowRight className="size-4" aria-hidden="true" />
-                        </>
-                      )}
-                    </Button>
-
-                    <AnimatePresence mode="wait">
-                      {status === "error" ? (
-                        <motion.p
-                          key="error"
-                          initial={{ opacity: 0, y: -4 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0 }}
-                          transition={{ duration: DURATION.quick, ease: EASE.standard }}
-                          className="mt-2.5 text-center text-[12px] text-error"
-                        >
-                          {message}
-                        </motion.p>
-                      ) : (
-                        <motion.p
-                          key="hint"
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          exit={{ opacity: 0 }}
-                          transition={{ duration: DURATION.quick }}
-                          className="mt-2.5 flex items-center justify-center gap-1.5 text-center text-[11.5px] text-ink-muted"
-                        >
-                          <Info className="size-3 shrink-0" aria-hidden="true" />
-                          {!selection
-                            ? "Pick a negotiator to begin."
-                            : viewer
-                              ? "You can watch every round live."
-                              : "No account needed — create one later to save this agent."}
-                        </motion.p>
-                      )}
-                    </AnimatePresence>
-                  </>
-                )}
-              </motion.div>
+                  <p className="mt-2.5 flex items-center justify-center gap-1.5 text-center text-[11.5px] text-ink-muted">
+                    <Info className="size-3 shrink-0" aria-hidden="true" />
+                    Your listing — buyers negotiate against the agent above.
+                  </p>
+                </motion.div>
+              )}
             </motion.aside>
           </div>
         </div>
@@ -524,8 +464,9 @@ export function ListingDetailV2({
 
         {/* Sticky action bar — the answer to a CTA that scrolls away. */}
         <AnimatePresence>
-          {!ctaVisible && !isOwner && (
+          {!isOwner && (
             <motion.div
+              ref={barRef}
               initial={{ y: "100%", opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: "100%", opacity: 0 }}
@@ -537,12 +478,12 @@ export function ListingDetailV2({
               {status === "error" && (
                 <p
                   role="alert"
-                  className="mx-auto max-w-6xl px-4 pt-2.5 text-center text-[12px] text-error sm:px-6"
+                  className="mx-auto max-w-7xl px-4 pt-2.5 text-center text-[12px] text-error sm:px-6"
                 >
                   {message}
                 </p>
               )}
-              <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
+              <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 sm:px-6">
                 {/* The price and who you are sending — nothing else. The title
                     used to sit under the price, but it is the one fact a reader
                     on this page already has, and it pushed the agent (which
@@ -556,9 +497,15 @@ export function ListingDetailV2({
                   <p className="truncate font-semibold text-[15px] text-ink">
                     {formatPrice(askingPrice)}
                   </p>
-                  {committed.named && (
-                    <p className="truncate text-[11.5px] text-ink-secondary">
-                      {committed.named.emoji} {committed.named.copy.buyer.name}
+                  {/* Guests arriving from a shared link are the most common
+                      first impression here, and "do I need an account?" is the
+                      first thing that stops them. It used to sit under the
+                      rail's CTA; the bar inherited the answer with it.
+                      Signed-in buyers get nothing extra — the chosen agent is
+                      already named on the button's own side of the page. */}
+                  {!viewer && (
+                    <p className="truncate text-[11.5px] text-ink-muted">
+                      No account needed to start.
                     </p>
                   )}
                 </div>
