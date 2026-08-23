@@ -50,7 +50,7 @@
       "assignmentConfidence": "confirmed",
       "domains": ["협상", "결제", "배송", "분쟁", "E2E"],
       "outcome": "구매부터 결제, 실제 배송, 정산 또는 분쟁까지 한 거래를 테스트 자산으로 끝까지 재현한다.",
-      "nextAction": "EasyPost 잔액이 열리기 전에는 실제 링크의 협상 종료와 결제 전 구간을 재검증하고, 협상 전 주소·배송 선택(W2026-08-17-01)으로 결제 금액이 중간에 주소 입력 없이 확정되게 만든다. 잔액이 열리면 판매자 개인 staging 계정과 별도 Haggle 구매자 계정으로 two-account headed 리허설을 실행하고 링크·협상·Base Sepolia funding·양쪽 주문 ID·배송·release 또는 분쟁 결과를 한 거래로 묶는다.",
+      "nextAction": "협상 전 주소·택배 선택(W2026-08-17-01)은 staging에 올렸다. 떠 있는 physical_live 건이 DELIVERED가 되면 구매자 리뷰/release 또는 분쟁까지 한 거래로 닫고 증거를 남긴다.",
       "reviewBrief": "협상이 round 0에서 멈추지 않고 종료까지 진행되며, 중복 청구·배송·정산이 없고, 분쟁 중 release가 멈추며, 외부 이벤트와 서버 장부가 일치하는지 확인한다.",
       "evidence": ["staging 실행 기록", "결제·배송 receipt", "양쪽 분쟁 결과", "재시도·중복 요청 결과"],
       "verifiedEvidence": [
@@ -67,12 +67,13 @@
         "2026-08-15 staging Galaxy S22 실제 협상에서 세션 생성 후 ROUND 0 정지를 재현하고, 별도 게스트 API의 auto-play/next도 65초 무응답 타임아웃임을 확인",
     "2026-08-15 종료된 transaction DB handle을 모듈 전역 CheckpointStore가 재사용하던 원인을 제거하고 API 151개·web 17개 관련 테스트, API·web typecheck, Biome 검사를 통과; 브라우저 라운드 요청은 75초에 중단 후 Retry 가능",
     "2026-08-15 CI remediation 로컬 검증 통과: Playwright public smoke 3개, production dependency audit gate(신규 critical/high 0건), 전체 29개 test task, 32개 typecheck task, 18개 build task, migration·DB invariant·Biome 검사. nanoid 3.3.18, fast-uri 3.1.3, postcss 8.5.18로 취약 의존성을 교체하고 해소된 기존 예외 7건을 baseline에서 제거",
-        "2026-08-22 ROUND 0 수정은 staging에 이미 있음: PR #67이 2026-08-15 22:09 UTC에 staging 머지. 이후 생성된 세션 3건(a0050eaa, 3ba98cc0, c1eb04f0)이 모두 current_round 5/5/7로 ACCEPTED. CREATED/ACTIVE/WAITING에 남은 round 0 세션 0건"
+        "2026-08-22 ROUND 0 수정은 staging에 이미 있음: PR #67이 2026-08-15 22:09 UTC에 staging 머지. 이후 생성된 세션 3건(a0050eaa, 3ba98cc0, c1eb04f0)이 모두 current_round 5/5/7로 ACCEPTED. CREATED/ACTIVE/WAITING에 남은 round 0 세션 0건",
+        "2026-08-22 staging physical_live 1건 IN_TRANSIT: order 2486bbd2-77e0-4f96-b159-38f54a3bc829, shipment 109cb7d4-0d9c-468d-95a6-294b053b9a7c, USPS 9400136208303613359257, EasyPost shp_4df18ebab8c54140b27a569473beaa92, signed webhook evt_fdfa73869e4911f194e57dbc5eacc6ab COMPLETED/200"
       ],
       "remainingGaps": [
         "staging에서 판매자 개인 계정·별도 Haggle 구매자 계정·테스트 지갑으로 two-account Playwright 리허설 실실행: 기본 뒤로 가기/재견적과 선택적 지갑 변경·잘못된 네트워크·승인 거절 증거 수집",
         "판매자 개인 계정의 Base Sepolia 수취 지갑 등록 경로 확인: wallet settings 구현은 존재하지만 현재 Account Settings 화면에 연결되지 않아 staging fallback 주소를 쓸 경우 계정별 수취 검증이 불가함",
-        "EasyPost 테스트 라벨과 physical_live 실배송 라벨 증거",
+        "physical_live 건 DELIVERED 이후 구매자 리뷰/release 또는 분쟁과 receipt",
         "실제 API·DB·webhook을 통과한 구매자/판매자 승소 결과와 receipt",
         "중복 클릭·webhook 재전송·동시 요청 리허설",
         "Base Sepolia에서 FUNDED로 남은 4건의 테스트 예치 처리와 receipt reconciliation: 첫 실제 expire 뒤 관측 시점 만료 2건 2,495.00 hUSDC, 이후 만료 예정 2건 470.00 hUSDC",
@@ -295,12 +296,19 @@
       "assignmentConfidence": "confirmed",
       "domains": ["Web/UI", "배송", "협상", "결제"],
       "outcome": "구매자가 협상 전에 기본 주소 또는 새 주소와 배송 방법·택배 선호(가격/속도)를 고르고, 판매자는 리스팅에 소포와 제공 방법을 남긴다. 에이전트는 그 교집합을 엔진 terms로 보고 결제 가능한 금액을 협상한다. 결제 중간에 주소를 넣는 흐름은 없어진다.",
-      "nextAction": "MVP는 택배만 연다. 직거래(픽업/만남/문앞)는 타입만 남기고 시작 API와 UI에서 막은 뒤, parcel·택배 선호·terms.active가 세션 메모리와 DeepSeek 프롬프트에 남는지 검증하고 종우 리뷰를 확정한다.",
-      "reviewBrief": "게스트와 로그인 구매자가 협상 전에 배송 방법과 택배 선호를 이해하고, 택배면 주소가 있어야 시작되며, 판매자가 carrier를 열면 parcel이 필수인지, 선택된 방법이 협상 terms와 정산 fulfillment_type에 남는지 확인하면 좋다.",
-      "evidence": ["협상 시작 API 테스트", "정산 fulfillment 테스트", "엔진 fulfillment terms 테스트", "buyer landing 주소·방법·택배 선호", "설정 주소록", "리스팅 parcel"],
+      "nextAction": "staging에 택배-only가 올라갔다. 종우가 buyer landing에서 주소 없이 시작이 막히는지와 택배 선호가 협상에 남는지 확인하고 리뷰를 확정한다.",
+      "reviewBrief": "게스트와 로그인 구매자가 협상 전에 택배와 주소를 이해하고, 주소 없이 시작되지 않으며, 판매자 parcel과 구매자 택배 선호가 협상 terms와 정산 fulfillment_type에 남는지 확인하면 좋다. 픽업/만남/문앞은 MVP에서 닫혀 있어야 한다.",
+      "evidence": ["협상 시작 API 테스트", "정산 fulfillment 테스트", "엔진 fulfillment terms 테스트", "buyer landing 주소·택배 선호", "설정 주소록", "리스팅 parcel"],
+      "verifiedEvidence": [
+        "2026-08-22 로컬 API 테스트: negotiation-fulfillment 10, negotiations 108, fulfillment-terms 2 통과. pickup/meetup/porch start는 400.",
+        "2026-08-22 feature/w2026-08-17-01-pre-negotiation-shipping 를 staging에 반영. MVP 수령 방식은 carrier만."
+      ],
+      "remainingGaps": [
+        "종우 리뷰어 확정(proposed)과 staging 실제 링크에서 주소 게이트·parcel·terms.active 확인"
+      ],
       "dependsOn": [],
       "dueDate": "2026-08-20",
-      "sourceNote": "2026-08-17 정행: EasyPost 충전이 아직이라 실배송 리허설은 막혀 있고, 지금은 결제 금액이 배송 선택 뒤에 확정되도록 협상 전 주소·배송을 먼저 받기로 했다. 2026-08-22 정행: 직거래는 연락처·사기 위험이 있어 MVP에서는 택배만 열고 픽업/만남/문앞은 나중에 연결한다."
+      "sourceNote": "2026-08-17 정행: EasyPost 충전이 아직이라 실배송 리허설은 막혀 있고, 지금은 결제 금액이 배송 선택 뒤에 확정되도록 협상 전 주소·배송을 먼저 받기로 했다. 2026-08-22 정행: 직거래는 연락처·사기 위험이 있어 MVP에서는 택배만 열고 픽업/만남/문앞은 나중에 연결한다. 2026-08-22 staging 반영."
     }
   ]
 }
