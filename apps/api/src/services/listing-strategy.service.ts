@@ -80,14 +80,17 @@ export interface ListingStrategyContext {
   sellerNegotiationAgentPresetId?: string;
 }
 
-export function extractListingContext(base: {
-  title?: string | null;
-  description?: string | null;
-  category?: string | null;
-  condition?: string | null;
-  tags?: string[] | null;
-  photoUrl?: string | null;
-}): ListingContext {
+export function extractListingContext(
+  base: {
+    title?: string | null;
+    description?: string | null;
+    category?: string | null;
+    condition?: string | null;
+    tags?: string[] | null;
+    photoUrl?: string | null;
+  },
+  negotiationAgentSnapshot?: Record<string, unknown>,
+): ListingContext {
   const ctx: ListingContext = {};
   if (base.title) ctx.title = base.title;
   if (base.description) ctx.description = base.description;
@@ -96,7 +99,7 @@ export function extractListingContext(base: {
   if (base.tags && base.tags.length > 0) ctx.tags = base.tags;
   if (base.photoUrl) ctx.photoUrl = base.photoUrl;
 
-  const parcel = parseListingParcel(negotiationAgentSnapshot.parcel);
+  const parcel = parseListingParcel(negotiationAgentSnapshot?.parcel);
   if (parcel) ctx.parcel = parcel;
 
   return ctx;
@@ -272,7 +275,7 @@ export async function loadListingStrategyContext(
   const negotiationAgentSnapshot = (row.negotiationAgentSnapshot ?? {}) as Record<string, unknown>;
   const sellerNegotiationAgentBuilderMemory =
     extractNegotiationAgentBuilderMemory(negotiationAgentSnapshot);
-  const listingContext = extractListingContext(row);
+  const listingContext = extractListingContext(row, negotiationAgentSnapshot);
   const sellerNegotiationAgentPresetId =
     typeof negotiationAgentSnapshot.preset === "string"
       ? negotiationAgentSnapshot.preset

@@ -301,10 +301,11 @@
       "evidence": ["협상 시작 API 테스트", "정산 fulfillment 테스트", "엔진 fulfillment terms 테스트", "buyer landing 주소·택배 선호", "설정 주소록", "리스팅 parcel"],
       "verifiedEvidence": [
         "2026-08-22 로컬 API 테스트: negotiation-fulfillment 10, negotiations 108, fulfillment-terms 2 통과. pickup/meetup/porch start는 400.",
-        "2026-08-22 feature/w2026-08-17-01-pre-negotiation-shipping 를 staging에 반영. MVP 수령 방식은 carrier만."
+        "2026-08-22 feature/w2026-08-17-01-pre-negotiation-shipping 를 staging에 반영. MVP 수령 방식은 carrier만.",
+        "2026-08-22 staging 머지 후 extractListingContext가 빠진 snapshot 변수로 typecheck 실패. snapshot을 다시 넘겨 parcel만 읽도록 핫픽스."
       ],
       "remainingGaps": [
-        "종우 리뷰어 확정(proposed)과 staging 실제 링크에서 주소 게이트·parcel·terms.active 확인"
+        "핫픽스 staging 반영 후 종우 리뷰어 확정(proposed)과 실제 링크에서 주소 게이트·parcel·terms.active 확인"
       ],
       "dependsOn": [],
       "dueDate": "2026-08-20",

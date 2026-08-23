@@ -30,9 +30,11 @@ POST /negotiations/sessions/:id/auto-play/next  ← 반복 (최대 8라운드)
 negotiation_rounds 테이블에서 결과 읽기 → NegotiationResult
 ```
 
-- **상품 속성이 협상에 반영되는 경로:** `negotiationAgentSnapshot.phoneAnswers`
-  → `extractListingContext` → `listingContext.attributes` → LLM 프롬프트.
-  즉 배터리/스크래치/용량 같은 속성은 **LLM 경로에서만** 협상에 영향을 준다.
+- **상품 속성이 협상에 반영되는 경로:** 판매자가 답한 카테고리 기준은
+  `projectSellerFacts` → `listing_context.seller_facts` → DeepSeek 프롬프트.
+  소포는 `negotiationAgentSnapshot.parcel` → `extractListingContext` →
+  `listing_context.parcel`. 배터리/스크래치 같은 사실은 **LLM 경로에서만**
+  가격에 영향을 준다. 예전 `phoneAnswers` → `attributes` 경로는 제거됐다.
 - **격리:** 실제(원격 Supabase) DB는 절대 건드리지 않는다. 로컬 전용 테스트 DB
   `haggle_negolab`만 사용하며, DATABASE_URL에 그 이름이 없으면 실행을 거부한다
   (`harness.ts`).
