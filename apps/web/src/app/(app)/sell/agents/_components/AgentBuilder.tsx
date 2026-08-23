@@ -1,5 +1,14 @@
 "use client";
 
+/**
+ * NOTE: despite living under `sell/agents/`, this is no longer what backs the
+ * Agents tab — that is the Agent Studio (`(app)/_components/agent-studio-page`).
+ * Two surfaces still use this form-based builder and are deliberately out of
+ * that swap's scope: the seller listing wizard's step 5, and listing detail v1
+ * (`?v=1`). It should move somewhere neutral when one of those two is next
+ * touched; moving it now would only add unrelated churn to their diffs.
+ */
+
 import {
   type AgentBuilderState,
   builderStateFromAgentRow,

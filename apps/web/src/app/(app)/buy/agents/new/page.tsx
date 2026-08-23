@@ -1,17 +1,19 @@
-import { NewAgentForm } from "../../../sell/agents/new/NewAgentForm";
+import { redirect } from "next/navigation";
 
-interface NewAgentPageProps {
-  searchParams: Promise<{ preset?: string }>;
-}
-
+/**
+ * The standalone "new agent" page is gone — the Agent Studio creates and edits
+ * in one place, so starting from a preset is just selecting it in the roster.
+ *
+ * Kept as a redirect rather than deleted: `?preset=` links are still emitted by
+ * the embedded preset picker inside AgentBuilder, which the seller listing
+ * wizard and the v1 listing page still use. Those clicks are intercepted, but
+ * an opened-in-a-new-tab link should land on the right thread, not a 404.
+ */
 export default async function NewBuyAgentPage({
   searchParams,
-}: NewAgentPageProps) {
+}: {
+  searchParams: Promise<{ preset?: string }>;
+}) {
   const { preset } = await searchParams;
-  return <NewAgentForm role="buyer" initialPresetId={preset} />;
+  redirect(preset ? `/buy/agents?preset=${encodeURIComponent(preset)}` : "/buy/agents");
 }
-
-export const metadata = {
-  title: "Create Buying Agent | Haggle",
-  description: "Pick a negotiation style and customize.",
-};
