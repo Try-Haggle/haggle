@@ -474,7 +474,14 @@ export function NegotiationAgentBuilderChat({
   // questions for this category, we skip that entirely — a static greeting + the
   // quick-setup picker render instantly. The LLM opener only fires for the long tail
   // (a category with no taxonomy checks). Buyer keeps its instant static greeting.
-  const autoOpenFirst = side === "seller" && choiceQuestions.length === 0;
+  // `listingPrice` is what makes a listing a listing here — `makeGreeting` uses
+  // the same signal to decide between its per-item and standalone openers. Without
+  // it this fired on the Agent Studio too, where a seller building a reusable agent
+  // waited ~15s for an LLM to invent an opener about an item that does not exist,
+  // and got a different one every time. The static greeting already covers that
+  // case; the LLM opener is only for a real listing whose category has no
+  // taxonomy checks to ask from.
+  const autoOpenFirst = side === "seller" && !!listingPrice && choiceQuestions.length === 0;
 
   // Current radar numbers, sent so the LLM adjusts from them (not invents).
   const buildCurrentStrategy = useCallback((): ChatStrategy | undefined => {
@@ -564,9 +571,14 @@ export function NegotiationAgentBuilderChat({
       // No listing context (standalone reusable agent) — price is set per-listing,
       // so never ask for an asking/floor price here. Gather posture instead.
       if (!askNum) {
+        // "Build on", not "set up": with no listing this is the Agent Studio,
+        // where the roster splits Presets from My agents and a preset is
+        // explicitly a starting template. Saying it will be set up framed the
+        // archetype as the finished agent, when what the conversation actually
+        // does is move away from it.
         return {
           text:
-            `I'll set up **${agentName}** for your selling negotiations.` +
+            `We'll build on **${agentName}** for your selling negotiations.` +
             (hasQuickSetup
               ? sellerQuickSetup
               : ` Tell me what you'd emphasize (condition, accessories, rarity), any deal-breakers, and how firmly you like to hold your price.`),
@@ -600,7 +612,7 @@ export function NegotiationAgentBuilderChat({
     // skip the budget slider and gather general style/preferences instead.
     return {
       text:
-        `I'll set up **${agentName}** for your buying negotiations.` +
+        `We'll build on **${agentName}** for your buying negotiations.` +
         (hasQuickSetup
           ? buyerQuickSetup
           : ` Tell me your must-haves, deal-breakers, and how aggressively you like to negotiate.`),
@@ -1254,55 +1266,66 @@ export function NegotiationAgentBuilderChat({
         </div>
       )}
 
-      {/* Strategy chips — only show when we have them */}
-      {chips.length > 0 && (
-        <div className="flex shrink-0 flex-wrap gap-1.5 overflow-x-auto border-line border-t bg-surface-overlay px-4 py-2">
-          <span className="mr-1 self-center font-semibold text-[10px] text-ink-muted tracking-wider">
-            STRATEGY
-          </span>
-          {chips.map((chip) => (
-            <Badge
-              key={`${chip.category}-${chip.value}`}
-              tone={CHIP_TONE[chip.category]}
-              size="sm"
-              className="whitespace-nowrap"
-              style={{ animation: "chipIn 0.3s ease-out" }}
-            >
-              {chip.label}
-            </Badge>
-          ))}
-        </div>
-      )}
-
       {/* Input area — bespoke chat composer (flat transparent field); the shared Input is a
           bordered form field and doesn't fit this toolbar. Send is a fixed-CTA IconButton
           (not the agent accent) so action buttons read consistently across the app. */}
-      <div className="flex shrink-0 items-center gap-2 border-line border-t bg-surface-overlay px-3 py-2.5">
-        <input
-          ref={inputRef}
-          type="text"
-          placeholder={
-            !hasAgentSelected
-              ? "Select an agent first"
-              : side === "seller"
-                ? "Tell me what to emphasize, deal-breakers, etc..."
-                : "Tell me your budget, must-haves, etc..."
-          }
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          disabled={!hasAgentSelected || isLoading}
-          className="flex-1 bg-transparent text-[13px] text-ink placeholder:text-ink-muted outline-none disabled:cursor-not-allowed disabled:opacity-40"
-        />
-        <IconButton
-          variant="solid"
-          onClick={handleSend}
-          disabled={!input.trim() || isLoading || !hasAgentSelected}
-          aria-label="Send message"
-          className="size-7 rounded-lg"
-        >
-          <Send className="size-3.5" />
-        </IconButton>
+      {/* The composer reads as a field rather than a bare line of text: the row
+          used to be a transparent input under a hairline, which left nothing
+          to aim at. The border and focus ring live on the wrapper so the send
+          button sits inside the same field, the way every chat input people
+          already use is built. */}
+      <div className="shrink-0 border-line border-t bg-surface-overlay p-3">
+        {/* The strategy chips sit inside the composer rather than in a band of
+            their own. They used to carry a second top border, which stacked
+            three hairlines within 50px at the bottom of the pane and made the
+            whole column read as bars on bars. They also belong here: they say
+            what the agent currently believes, which is exactly the context for
+            the message about to be typed. */}
+        {chips.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5 overflow-x-auto">
+            <span className="mr-1 self-center font-semibold text-[10px] text-ink-muted tracking-wider">
+              STRATEGY
+            </span>
+            {chips.map((chip) => (
+              <Badge
+                key={`${chip.category}-${chip.value}`}
+                tone={CHIP_TONE[chip.category]}
+                size="sm"
+                className="whitespace-nowrap"
+                style={{ animation: "chipIn 0.3s ease-out" }}
+              >
+                {chip.label}
+              </Badge>
+            ))}
+          </div>
+        )}
+        <div className="flex items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2 transition-colors focus-within:border-line-strong">
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder={
+              !hasAgentSelected
+                ? "Select an agent first"
+                : side === "seller"
+                  ? "Tell me what to emphasize, deal-breakers, etc..."
+                  : "Tell me your budget, must-haves, etc..."
+            }
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={!hasAgentSelected || isLoading}
+            className="flex-1 bg-transparent text-[13px] text-ink placeholder:text-ink-muted outline-none disabled:cursor-not-allowed disabled:opacity-40"
+          />
+          <IconButton
+            variant="solid"
+            onClick={handleSend}
+            disabled={!input.trim() || isLoading || !hasAgentSelected}
+            aria-label="Send message"
+            className="size-7 rounded-lg"
+          >
+            <Send className="size-3.5" />
+          </IconButton>
+        </div>
       </div>
 
       {/* Animations */}
