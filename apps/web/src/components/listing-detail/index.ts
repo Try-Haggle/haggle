@@ -1,4 +1,4 @@
-export type { AgentSelection, SavedAgentOption } from "./agent-picker";
+export type { AgentRole, AgentSelection, SavedAgentOption } from "./agent-picker";
 export { AgentPicker, AgentTile, resolveSelectedPreset } from "./agent-picker";
 export { AskingPrice } from "./asking-price";
 export { Countdown } from "./countdown";
@@ -9,4 +9,11 @@ export { MotionRadar } from "./motion-radar";
 export { NegotiatorPanel } from "./negotiator-panel";
 export { OpponentCard } from "./opponent-card";
 export { RequiredQuestions } from "./required-questions";
+export type { AgentView } from "./strategy";
+export {
+  deriveAgentView,
+  mergeOverride,
+  nameAfterSavedAgent,
+  selectionOverrideKey,
+} from "./strategy";
 export type { ListingDetail, ListingOrigin, StrategyOverride, ViewerInfo } from "./types";

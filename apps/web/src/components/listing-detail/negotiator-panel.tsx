@@ -11,7 +11,12 @@ import { ChevronDown, RotateCcw, SlidersHorizontal } from "lucide-react";
 import { useId, useState } from "react";
 import { WeightTuner } from "@/components/agent-studio/weight-tuner";
 import { Carousel, Slider } from "@/components/ui";
-import { type AgentSelection, AgentTile, type SavedAgentOption } from "./agent-picker";
+import {
+  type AgentRole,
+  type AgentSelection,
+  AgentTile,
+  type SavedAgentOption,
+} from "./agent-picker";
 import { DURATION, EASE, expandPanel } from "./motion";
 import type { StrategyOverride } from "./types";
 
@@ -34,6 +39,8 @@ import type { StrategyOverride } from "./types";
  */
 
 interface NegotiatorPanelProps {
+  /** Buyer on the listing page, seller in the listing wizard. Only copy changes. */
+  role?: AgentRole;
   selection: AgentSelection | null;
   onSelect: (selection: AgentSelection) => void;
   savedAgents?: SavedAgentOption[];
@@ -42,11 +49,34 @@ interface NegotiatorPanelProps {
   override: StrategyOverride | null;
   onOverrideChange: (next: StrategyOverride) => void;
   onResetOverride: () => void;
+  /**
+   * Whether the archetype grid is part of this visit.
+   *
+   * Opening the panel to TUNE an agent you already picked is a different
+   * errand from opening it to CHOOSE one, and the grid only serves the
+   * second. Left visible on a tuning visit it is the first thing in the
+   * panel, so the errand you came for starts below four options you already
+   * rejected. The caller decides, because only the caller knows which door
+   * was used; defaults to true, which is the choose-an-agent case.
+   */
+  showPresets?: boolean;
+  /**
+   * Whether the buyer's own saved agents are part of this visit.
+   *
+   * The mirror of {@link showPresets}, and for the same reason: the roster
+   * offers whatever errand the door promised. Arriving through the
+   * "Set up a new negotiator" door, the saved row is already one tap away on
+   * the rail behind — repeating it here makes the panel answer a question the
+   * caller did not ask, and makes that door read as a duplicate of the row
+   * above it. Defaults to true, which is the tuning case.
+   */
+  showSaved?: boolean;
   /** The briefing chat for the current selection — rendered by the page. */
   chatSlot?: React.ReactNode;
 }
 
 export function NegotiatorPanel({
+  role = "buyer",
   selection,
   onSelect,
   savedAgents = [],
@@ -54,29 +84,35 @@ export function NegotiatorPanel({
   override,
   onOverrideChange,
   onResetOverride,
+  showPresets = true,
+  showSaved = true,
   chatSlot,
 }: NegotiatorPanelProps) {
   return (
     <div className="flex h-full min-h-[70vh] flex-col">
       {/* ── Roster (compact) ── */}
       <section className="shrink-0">
-        <p className="text-label text-ink-muted">Presets</p>
-        <div className="mt-2 grid grid-cols-4 gap-2">
-          {NEGOTIATION_AGENT_PRESETS.map((preset) => (
-            <AgentTile
-              key={preset.id}
-              emoji={preset.emoji}
-              label={preset.copy.buyer.name}
-              accent={preset.accentColor}
-              selected={selection?.kind === "preset" && selection.id === preset.id}
-              onClick={() => onSelect({ kind: "preset", id: preset.id })}
-            />
-          ))}
-        </div>
+        {showPresets && (
+          <>
+            <p className="text-label text-ink-muted">Presets</p>
+            <div className="mt-2 grid grid-cols-4 gap-2">
+              {NEGOTIATION_AGENT_PRESETS.map((preset) => (
+                <AgentTile
+                  key={preset.id}
+                  emoji={preset.emoji}
+                  label={preset.copy[role].name}
+                  accent={preset.accentColor}
+                  selected={selection?.kind === "preset" && selection.id === preset.id}
+                  onClick={() => onSelect({ kind: "preset", id: preset.id })}
+                />
+              ))}
+            </div>
+          </>
+        )}
 
-        {savedAgents.length > 0 && (
+        {showSaved && savedAgents.length > 0 && (
           <Carousel
-            className="mt-3"
+            className={showPresets ? "mt-3" : ""}
             ariaLabel="Saved agents"
             title={<p className="text-label text-ink-muted">Saved agents</p>}
             scrollBy="card"
@@ -105,6 +141,7 @@ export function NegotiatorPanel({
         <>
           {/* ── Strategy, folded to a strip so the chat keeps the stage ── */}
           <StrategyStrip
+            role={role}
             effective={effective}
             customized={override !== null}
             override={override}
@@ -126,8 +163,8 @@ export function NegotiatorPanel({
         <div className="mt-4 flex min-h-90 flex-1 flex-col items-center justify-center gap-2 rounded-xl border border-line-subtle border-dashed p-6">
           <p className="font-semibold text-[14px] text-ink">Pick a negotiator above</p>
           <p className="max-w-70 text-center text-[12px] text-ink-muted leading-relaxed">
-            Then tell it what matters — your budget, deal-breakers, how hard to push. It takes shape
-            as you talk.
+            Then tell it what matters — your {role === "seller" ? "floor" : "budget"},
+            deal-breakers, how hard to push. It takes shape as you talk.
           </p>
         </div>
       )}
@@ -138,12 +175,14 @@ export function NegotiatorPanel({
 /* ─── Strategy strip (radar thumb → tuner + advanced) ─────── */
 
 function StrategyStrip({
+  role,
   effective,
   customized,
   override,
   onOverrideChange,
   onResetOverride,
 }: {
+  role: AgentRole;
   effective: NegotiationAgentPreset;
   customized: boolean;
   override: StrategyOverride | null;
@@ -175,7 +214,7 @@ function StrategyStrip({
         <span className="min-w-0 flex-1">
           <span className="block font-semibold text-[12.5px] text-ink">Strategy</span>
           <span className="block truncate text-[10.5px] text-ink-muted">
-            {customized ? "Tuned for this deal" : effective.copy.buyer.name} · tap to tune
+            {customized ? "Tuned for this deal" : effective.copy[role].name} · tap to tune
           </span>
         </span>
         {customized && (

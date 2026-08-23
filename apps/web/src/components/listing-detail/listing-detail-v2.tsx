@@ -19,6 +19,7 @@ import { DURATION, EASE, riseIn, staggerGroup } from "./motion";
 import { NegotiatorPanel } from "./negotiator-panel";
 import { OpponentCard } from "./opponent-card";
 import { RequiredQuestions } from "./required-questions";
+import { deriveAgentView } from "./strategy";
 import type { ListingDetail, StrategyOverride, ViewerInfo } from "./types";
 
 /**
@@ -88,26 +89,6 @@ interface ListingDetailV2Props {
   onStart?: (selection: AgentSelection, strategy: StrategyOverride | null) => Promise<void>;
 }
 
-/** Stable key for per-selection override storage. */
-function selectionOverrideKey(selection: AgentSelection): string {
-  return `${selection.kind}:${selection.id}`;
-}
-
-/** Preset with this page's strategy overrides merged on top. The spread order
- *  does the sparseness: any knob absent from the override resolves from the
- *  preset, so the merged object stays a complete NegotiationAgentPreset. */
-function mergeOverride(
-  preset: NegotiationAgentPreset,
-  override: StrategyOverride | undefined,
-): NegotiationAgentPreset {
-  if (!override) return preset;
-  const { weights, ...knobs } = override;
-  const defined = Object.fromEntries(
-    Object.entries(knobs).filter(([, value]) => value !== undefined),
-  );
-  return { ...preset, ...defined, weights: { ...weights } };
-}
-
 export function ListingDetailV2({
   listing,
   viewer,
@@ -137,6 +118,20 @@ export function ListingDetailV2({
    * question nobody asked.
    */
   const [panelDraft, setPanelDraft] = useState<AgentSelection | null>(null);
+  /**
+   * Whether this panel visit is a CHOOSING errand, frozen when it opens.
+   *
+   * Opening the panel to tune the agent you already picked is a different
+   * errand from opening it to pick one, and the archetype grid only serves
+   * the second. Left visible on a tuning visit it is the first thing in the
+   * drawer, so the errand you came for starts below four options you already
+   * rejected.
+   *
+   * Frozen rather than derived from "is anything picked": arriving through
+   * the empty-state door and tapping the first archetype would make the grid
+   * vanish mid-comparison, which is the one moment it is actually needed.
+   */
+  const [openedToChoose, setOpenedToChoose] = useState(false);
   // Strategy tuned on this page (drawer dials or briefing chat), kept per
   // selection so switching agents and back never loses a tune.
   const [overrides, setOverrides] = useState<Record<string, StrategyOverride>>({});
@@ -175,24 +170,13 @@ export function ListingDetailV2({
    * the base archetype's name.
    */
   function deriveView(sel: AgentSelection | null) {
-    const key = sel ? selectionOverrideKey(sel) : null;
-    const saved0 = sel?.kind === "saved" ? savedAgents.find((a) => a.id === sel.id) : undefined;
-    // A saved agent starts from the tuning it was saved with; page edits layer
-    // on top. "Reset to preset" then means the bare archetype, which is the
-    // meaning the label promises.
-    const override = key ? (overrides[key] ?? saved0?.strategy ?? null) : null;
-    const base = resolveSelectedPreset(sel);
-    const merged = base ? mergeOverride(base, override ?? undefined) : undefined;
-    const saved = sel?.kind === "saved" ? savedAgents.find((a) => a.id === sel.id) : undefined;
-    const named =
-      merged && saved
-        ? {
-            ...merged,
-            emoji: saved.emoji ?? merged.emoji,
-            copy: { ...merged.copy, buyer: { ...merged.copy.buyer, name: saved.name } },
-          }
-        : merged;
-    return { key, override, merged, named };
+    return deriveAgentView({
+      selection: sel,
+      overrides,
+      savedAgents,
+      role: "buyer",
+      resolvePreset: resolveSelectedPreset,
+    });
   }
 
   const committed = deriveView(selection);
@@ -202,6 +186,8 @@ export function ListingDetailV2({
 
   function openPanel() {
     setPanelDraft(selection);
+    // No pick yet means the empty-state door, which exists to choose one.
+    setOpenedToChoose(selection === null);
     setPanelOpen(true);
   }
 
@@ -476,6 +462,17 @@ export function ListingDetailV2({
               onSelect={handlePanelToggle}
               savedAgents={savedAgents}
               effective={panel.named}
+              /* Two live exceptions to the frozen flag: deselecting everything
+                 is the buyer asking to re-pick, and a buyer with no saved
+                 agents has nothing else in the roster — hiding the grid there
+                 would leave an empty header and no way to change archetype. */
+              showPresets={openedToChoose || panelSelection === null || savedAgents.length === 0}
+              /* The "new negotiator" door promised a fresh start, and the
+                 rail it was tapped from already lists the saved agents one tap
+                 away. No live exception here: a choosing visit STARTS with
+                 nothing selected, so keying this off `panelSelection` would
+                 show the saved row exactly when it was meant to be gone. */
+              showSaved={!openedToChoose}
               override={panel.override}
               onOverrideChange={applyOverride}
               onResetOverride={clearOverride}
