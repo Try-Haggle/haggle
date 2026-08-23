@@ -37,7 +37,7 @@
 | 협상 엔진 SOT | [engine/SOT.md](./engine/SOT.md) · 렌더뷰 [site/negotiation-engine.html](./site/negotiation-engine.html) |
 | 코드 네이밍 컨벤션 (협상 에이전트/빌더 챗) | [CODE_NAMING_CONVENTIONS.md](./CODE_NAMING_CONVENTIONS.md) |
 | 미팅 overview | [meetings/overview.html](./meetings/overview.html) |
-| 이번 주 작업·리뷰 그래프 | [meetings/WORK_GRAPH.md](./meetings/WORK_GRAPH.md) · 데이터 [current-week-work-graph.json](./meetings/current-week-work-graph.json) |
+| 이번 주 작업·리뷰 그래프 | [meetings/WORK_GRAPH.md](./meetings/WORK_GRAPH.md) · 데이터 [current-week-work-graph.json](./meetings/current-week-work-graph.json) · [2026-08-22 회의](./meetings/2026-08-22-weekly.md) |
 | 개발 참여 규칙 | [../CONTRIBUTING.md](../CONTRIBUTING.md) |
 
 ---
