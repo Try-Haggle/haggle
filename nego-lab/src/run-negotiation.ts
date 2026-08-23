@@ -26,7 +26,7 @@ async function seedListing(ctx: LabContext, c: ScenarioCase): Promise<string> {
       sellingDeadline: new Date(Date.now() + c.item.deadlineHours * 60 * 60 * 1000),
       negotiationAgentSnapshot: {
         preset: c.seller.agent,
-        // MVP: phone attributes reach the LLM via phoneAnswers (extractListingContext).
+        // Lab still stores attributes here; live path uses seller_facts, not phoneAnswers.
         phoneAnswers: c.item.attributes,
       },
       updatedAt: new Date(),

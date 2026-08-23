@@ -22,7 +22,7 @@
 | 📄 | 설계만 존재 — 코드 없음 |
 | ❓ | 미확인 — 코드 대조 필요 |
 
-**문서 메타:** 현재 저장소 코드 대조 2026-07-14 · 최초 통합 2026-07 · 통합 출처 `docs/engine/legacy/01~31_*.md` (v1.0.0~v1.1.0 혼재 원본 28개, 1차 백업 보존)
+**문서 메타:** 현재 저장소 코드 대조 2026-08-22 (fulfillment_context가 CoreMemory에 합류. 배송 달러 견적은 아직 Decide 입력이 아님) · 최초 통합 2026-07 · 통합 출처 `docs/engine/legacy/01~31_*.md` (v1.0.0~v1.1.0 혼재 원본 28개, 1차 백업 보존)
 
 **폴더 구조:** `SOT.md`(이 문서, 유일 SOT) · `legacy/`(원본 28개 백업) · `reference/`(SOT에 담기엔 방대한 현재-엔진 심화, 필요 시)
 
@@ -112,7 +112,7 @@ POST /negotiations/start · /sessions/:id/offers · MCP haggle_submit_offer
 ④ CoreMemory         라운드 작업 메모리 (영속 아님, 매 라운드 조립)
    negotiation/types.ts · memory-reconstructor.ts
    session·boundaries·terms·coaching·buddy_dna·strategy_context·
-   strategy_params·listing_context·competition
+   strategy_params·listing_context·fulfillment_context·competition
         ▼
    StrategyParams = { beta, alpha, anchor_ratio, v_t_floor, u_threshold, u_aspiration, weights }
    ← 결정 로직이 실제로 읽는 서브셋

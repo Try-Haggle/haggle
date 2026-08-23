@@ -1,15 +1,14 @@
 # Negotiation Start Known Issues
 
-Last verified: 2026-07-16
+Last verified: 2026-08-22
 
-This document records user-visible issues found while testing the listing agent builder and the transition into a live negotiation. It is a problem record, not evidence that the fixes have been deployed.
+This document records user-visible issues found while testing the listing agent builder and the transition into a live negotiation. Historical P0 notes below are kept for the failure chain. The ROUND 0 hang itself is no longer open on staging.
 
 ## Environment and branch state
 
 - Staging application: `https://app.staging.tryhaggle.ai`
-- Staging branch at verification: `origin/staging` at `5dd1808`
-- Candidate fix branch: `fix/live-negotiation-rounds`
-- The candidate branch has not been merged into `staging` or deployed.
+- ROUND 0 fix landed on staging in [PR #67](https://github.com/Try-Haggle/haggle/pull/67) (`4b9a149`, 2026-08-15). Sessions created after that merge reached `ACCEPTED` at rounds 5/5/7.
+- Pre-negotiation carrier + address landed in [PR #76](https://github.com/Try-Haggle/haggle/pull/76). A follow-up hotfix restores `extractListingContext(snapshot)` so parcel reads do not typecheck-fail.
 
 ## P0: The listing page appears stuck while negotiation starts
 
