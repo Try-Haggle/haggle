@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNotificationContext } from "@/app/(app)/_components/notification-provider";
-import { Avatar, NavTab, NotificationItem, Spinner } from "@/components/ui";
+import { Avatar, Logo, NavTab, NotificationItem, Spinner } from "@/components/ui";
 import { useTheme } from "@/hooks/use-theme";
 import { type Notification, notificationApi } from "@/lib/api-client";
 import { createClient } from "@/lib/supabase/client";
@@ -18,18 +18,34 @@ interface NavProps {
   modeOverride?: Mode;
 }
 
+/**
+ * Tabs, per side of the deal — dashboard deliberately absent from both.
+ *
+ * The logo already goes to the current side's dashboard, which is the
+ * convention everywhere else (GitHub, Linear, Vercel): the wordmark is home.
+ * A "Dashboard" tab sitting next to it was a second door to the same room,
+ * and the pair asked the reader to work out whether they differed. They did
+ * not. The tabs are now the places that are NOT home.
+ *
+ * The consequence is that standing on the dashboard highlights nothing —
+ * also the convention, and the honest reading: you are at the root, not in
+ * a section.
+ */
 const SELL_TABS = [
-  { label: "Dashboard", href: "/sell/dashboard" },
   { label: "Orders", href: "/orders" },
   { label: "Agents", href: "/sell/agents" },
-  { label: "Staging", href: "/staging" },
+  // Hidden from the nav — an internal test hub, not a place to offer people.
+  // The route itself still answers at /staging for anyone who knows it.
+  // { label: "Staging", href: "/staging" },
 ];
 
 const BUY_TABS = [
-  { label: "Browse", href: "/browse" },
-  { label: "Dashboard", href: "/buy/dashboard" },
+  // "Marketplace" on desktop only. The mobile tab bar keeps "Browse": it is a
+  // verb next to other verbs on a 375px row, where the noun would both crowd
+  // the row and stop matching its neighbours.
+  { label: "Marketplace", href: "/browse" },
   { label: "Agents", href: "/buy/agents" },
-  { label: "Staging", href: "/staging" },
+  // { label: "Staging", href: "/staging" }, — see SELL_TABS
 ];
 
 export function Nav({ userEmail, userName, userAvatarUrl, modeOverride }: NavProps) {
@@ -67,14 +83,10 @@ export function Nav({ userEmail, userName, userAvatarUrl, modeOverride }: NavPro
   const tabs = mode === "buying" ? BUY_TABS : SELL_TABS;
 
   // For /l/ pages, resolve which tab href should be highlighted based on origin.
-  const activeHrefFromOrigin: string | null =
-    from === "browse"
-      ? "/browse"
-      : from === "buy-dashboard"
-        ? "/buy/dashboard"
-        : from === "sell-dashboard"
-          ? "/sell/dashboard"
-          : null;
+  // Only browse maps to a tab now: arriving from either dashboard means you
+  // came from home, which has no tab to light up. `from` still carries those
+  // values — they decide buyer/seller mode above.
+  const activeHrefFromOrigin: string | null = from === "browse" ? "/browse" : null;
 
   // Keep localStorage in sync — only write when path gives us a definitive mode
   // (avoid overwriting stored mode on ambiguous paths like /profile, /settings)
@@ -114,6 +126,7 @@ export function Nav({ userEmail, userName, userAvatarUrl, modeOverride }: NavPro
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === "dark";
 
+  // Home for the side you are on — and the only way to it from the nav.
   const logoHref = mode === "buying" ? "/buy/dashboard" : "/sell/dashboard";
   const switchLabel = mode === "selling" ? "Switch to buying" : "Switch to selling";
 
@@ -124,9 +137,19 @@ export function Nav({ userEmail, userName, userAvatarUrl, modeOverride }: NavPro
         <div className="flex h-full items-center gap-6">
           <Link
             href={logoHref}
-            className="font-bold text-ink text-lg transition-colors hover:text-action-primary"
+            aria-label="Haggle — home"
+            className="flex items-center text-ink transition-opacity hover:opacity-75"
           >
-            Haggle
+            {/* 24px: the wordmark's cap height then lands about twice the 14px tab
+                text, which reads as the primary mark without shouting. At 28px it
+                dominated the bar; below 20px the gold ligature between the two g's
+                muddies and the lockup stops being legible as two tones.
+
+                Lifted 1.5px because the artboard includes the descenders of the
+                two g's — its baseline sits at 113.55 of 127, so centring the BOX
+                drops the baseline 1.5px below the tabs' at this size. Type is
+                aligned on baselines, not bounding boxes. */}
+            <Logo className="-translate-y-[1.5px] h-6" />
           </Link>
 
           {/* Navigation Tabs */}
