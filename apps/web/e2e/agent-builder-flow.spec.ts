@@ -8,6 +8,10 @@
  *   3. Save persists a negotiation_agents row (verified via the same
  *      /negotiations/agents API the UI uses).
  *
+ * Runs against the Agent Studio, which replaced the list → new → edit pages.
+ * The old /sell/agents/new?preset= URL is still the entry point here so its
+ * redirect into the studio stays covered.
+ *
  * Run:
  *   E2E_BASE_URL=http://localhost:3002 \
  *   pnpm exec playwright test agent-builder-flow --headed
@@ -90,6 +94,9 @@ test("Scenario 1: seller creates an agent (chat works + persists to backend)", a
   });
 
   await test.step("Open builder + chat from the 'closer' preset", async () => {
+    // The old /agents/new route now redirects into the Agent Studio, which
+    // opens the preset as a thread. Kept as the entry point precisely so this
+    // redirect stays covered.
     await page.goto(`/sell/agents/new?preset=${PRESET}`);
     // Chat input placeholder is SELLER-side + English → proves context wiring.
     const chatInput = page.getByPlaceholder("Tell me what to emphasize, deal-breakers, etc...");
@@ -129,10 +136,19 @@ test("Scenario 1: seller creates an agent (chat works + persists to backend)", a
   });
 
   await test.step("Name + Save the agent", async () => {
-    await page.locator("#agent-name").fill(agentName);
+    // The studio derives the field id per panel instance (it renders one copy
+    // for the desktop rail and one for the mobile sheet), so this addresses it
+    // by its label rather than a fixed id.
+    await page.getByLabel("Agent name").first().fill(agentName);
     await page.getByRole("button", { name: /^save agent$/i }).click();
-    await page.waitForURL(/\/sell\/agents(\?|$|\/)/, { timeout: 30_000 });
-    console.log(`[5] saved → ${page.url()}`);
+
+    // Saving no longer navigates — the studio stays on the thread and hands it
+    // over to the agent it just created. The commit button flipping to "Saved",
+    // and then to "Save changes", is what says the write landed.
+    await expect(page.getByRole("button", { name: /^save changes$/i })).toBeVisible({
+      timeout: 30_000,
+    });
+    console.log(`[5] saved → thread handed over on ${page.url()}`);
   });
 
   await test.step("Verify persistence in backend", async () => {

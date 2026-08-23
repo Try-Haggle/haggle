@@ -1,10 +1,11 @@
-import { EditAgentForm } from "../../../../sell/agents/[id]/edit/EditAgentForm";
+import { redirect } from "next/navigation";
 
-export default function EditBuyAgentPage() {
-  return <EditAgentForm />;
+/**
+ * Editing happens inside the Agent Studio now — the agent id selects the
+ * thread instead of opening a separate page. Kept as a redirect so existing
+ * links and bookmarks still resolve.
+ */
+export default async function EditBuyAgentPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  redirect(`/buy/agents?agent=${encodeURIComponent(id)}`);
 }
-
-export const metadata = {
-  title: "Edit Buying Agent | Haggle",
-  description: "Customize this agent's negotiation behavior.",
-};
