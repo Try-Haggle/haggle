@@ -36,11 +36,16 @@ export interface SavedAgentOption {
   strategy?: StrategyOverride;
 }
 
+/** Which side of the deal is picking. Copy diverges per side; strategy does not. */
+export type AgentRole = "buyer" | "seller";
+
 export type AgentSelection =
   | { kind: "preset"; id: string }
   | { kind: "saved"; id: string; presetId: string };
 
 interface AgentPickerProps {
+  /** Buyer on the listing page, seller in the listing wizard. Only copy changes. */
+  role?: AgentRole;
   selection: AgentSelection | null;
   onSelect: (selection: AgentSelection) => void;
   /** Selected preset with page-level tuning merged (panel dials, chat).
@@ -67,6 +72,7 @@ export function resolveSelectedPreset(
 }
 
 export function AgentPicker({
+  role = "buyer",
   selection,
   onSelect,
   presetOverride,
@@ -172,14 +178,14 @@ export function AgentPicker({
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-bold text-[15px] text-ink">
-                          {savedName ?? preset.copy.buyer.name}
+                          {savedName ?? preset.copy[role].name}
                         </span>
                         {/* Saved agents carry one useful fact the name alone
                             doesn't: which archetype they were forked from. A
                             fresh preset IS its archetype, so it gets the role
                             line instead. */}
                         <span className="mt-0.5 block truncate text-[11.5px] text-ink-muted">
-                          {savedRow ? `Based on ${preset.copy.buyer.name}` : "Your AI negotiator"}
+                          {savedRow ? `Based on ${preset.copy[role].name}` : "Your AI negotiator"}
                         </span>
                       </span>
                     </motion.div>
@@ -229,7 +235,9 @@ export function AgentPicker({
                           ? `${briefHintCount} strategy hint${briefHintCount === 1 ? "" : "s"} captured, tap to keep going`
                           : openRequirementCount > 0
                             ? `This deal has ${openRequirementCount} required question${openRequirementCount === 1 ? "" : "s"} to answer before it can close.`
-                            : "Tune its strategy and tell it your budget and deal-breakers."}
+                            : role === "seller"
+                              ? "Tune its strategy and tell it your floor and what you won't accept."
+                              : "Tune its strategy and tell it your budget and deal-breakers."}
                       </span>
                     </span>
                     <ChevronRight className="size-4 shrink-0 text-ink-muted" aria-hidden="true" />
@@ -239,7 +247,13 @@ export function AgentPicker({
             </div>
           </motion.div>
         ) : (
-          /* Nothing picked yet — a single inviting door into the panel. */
+          /* Nothing picked yet — a single inviting door into the panel.
+
+             It says "new" on purpose: the saved-agent tiles above already
+             cover reuse in one tap, so this door's job is the other errand.
+             A door labeled "choose" here would say the same thing as the row
+             directly above it. What the door promises is also what the panel
+             opens onto — the drawer drops its saved section on this visit. */
           <motion.div
             key="empty"
             variants={expandPanel}
