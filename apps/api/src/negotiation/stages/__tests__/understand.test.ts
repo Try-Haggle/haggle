@@ -127,6 +127,21 @@ describe("Stage 1: understand", () => {
       );
     });
 
+    it("does not ask for shipping terms when fulfillment is already known", () => {
+      const result = understand({
+        raw_message: "What is the battery health, is it unlocked, and is shipping included?",
+        sender_role: "buyer",
+        known_shipping_terms: true,
+      });
+
+      expect(result.missing_information).toEqual(
+        expect.arrayContaining([expect.objectContaining({ slot: "battery_health" })]),
+      );
+      expect(result.missing_information?.some((need) => need.slot === "shipping_terms")).toBe(
+        false,
+      );
+    });
+
     it("flags trust safety risks as high-priority missing information", () => {
       const result = understand({
         raw_message: "Text me directly and I can pay with Zelle.",

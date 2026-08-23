@@ -404,7 +404,14 @@ export async function executeStagedNegotiationRound(
     const senderRole = role === "buyer" ? "seller" : "buyer";
     const understood = input.messageText
       ? {
-          ...understand({ raw_message: input.messageText, sender_role: senderRole }),
+          ...understand({
+            raw_message: input.messageText,
+            sender_role: senderRole,
+            known_shipping_terms: Boolean(
+              updatedMemory.fulfillment_context ||
+                updatedMemory.terms.active.some((term) => term.term_id === "shipping_method"),
+            ),
+          }),
           price_offer: input.offerPriceMinor,
         }
       : understandFromStructured(input.offerPriceMinor, senderRole);

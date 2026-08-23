@@ -106,6 +106,7 @@ const statusLabels = {
   planned: "예정",
   in_progress: "진행 중",
   blocked: "막힘",
+  deferred: "후속",
   done: "완료",
   unassigned: "미배정",
 };

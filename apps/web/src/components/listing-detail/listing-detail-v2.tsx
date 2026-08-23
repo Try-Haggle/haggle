@@ -79,6 +79,10 @@ interface ListingDetailV2Props {
   }) => React.ReactNode;
   /** Hints captured by the chat so far; drives the picker's briefed state. */
   briefHintCount?: number;
+  /** Delivery address / carrier setup, rendered in the decision rail. */
+  setupSlot?: React.ReactNode;
+  /** When false, Start scrolls to the delivery setup instead of posting. */
+  canStart?: boolean;
   /** Starts the negotiation with whatever the buyer tuned on top of the
    *  preset (drawer dials or chat) — null when the preset is untouched. */
   onStart?: (selection: AgentSelection, strategy: StrategyOverride | null) => Promise<void>;
@@ -113,6 +117,8 @@ export function ListingDetailV2({
   footerSlot,
   chatSlot,
   briefHintCount = 0,
+  setupSlot,
+  canStart = true,
   onStart,
 }: ListingDetailV2Props) {
   const [selection, setSelection] = useState<AgentSelection | null>(null);
@@ -237,8 +243,19 @@ export function ListingDetailV2({
     );
   }
 
+  function focusSetup() {
+    document.getElementById("delivery-setup")?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  }
+
   async function handleStart() {
     if (!selection || !onStart) return;
+    if (!canStart) {
+      focusSetup();
+      return;
+    }
     setStatus("starting");
     setMessage("Preparing your agent…");
     try {
@@ -399,6 +416,15 @@ export function ListingDetailV2({
                 </>
               )}
 
+              {!isOwner && setupSlot && (
+                <>
+                  <Divider />
+                  <motion.div variants={riseIn} id="delivery-setup">
+                    {setupSlot}
+                  </motion.div>
+                </>
+              )}
+
               {/* ④ Go — owners only.
                   A buyer's action lives in the sticky bar on every breakpoint
                   now, so putting a second Start button in the rail would have
@@ -515,10 +541,14 @@ export function ListingDetailV2({
                     furthest from the control they need. */}
                 <Button
                   loading={status === "starting"}
-                  onClick={selection ? handleStart : openPanel}
+                  onClick={!selection ? openPanel : canStart ? handleStart : focusSetup}
                   className="shrink-0"
                 >
-                  {selection ? "Start negotiation" : "Pick an agent"}
+                  {!selection
+                    ? "Pick an agent"
+                    : canStart
+                      ? "Start negotiation"
+                      : "Add a delivery address"}
                   <ArrowRight className="size-4" aria-hidden="true" />
                 </Button>
               </div>

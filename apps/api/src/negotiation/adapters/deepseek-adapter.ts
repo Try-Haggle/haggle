@@ -89,6 +89,9 @@ export class DeepSeekAdapter implements ModelAdapter {
     const listingLine = encodeListingContext(memory);
     if (listingLine) parts.push(listingLine);
 
+    const fulfillmentLine = encodeFulfillmentContext(memory);
+    if (fulfillmentLine) parts.push(fulfillmentLine);
+
     // L2.5: Strategy context — persona, advisor memory, dealbreakers.
     const strategyLine = encodeStrategyContext(memory);
     if (strategyLine) parts.push(strategyLine);
@@ -348,6 +351,14 @@ export function encodeListingContext(memory: CoreMemory): string | null {
       .join(", ");
     if (attrLine) lines.push(`  attrs: ${attrLine}`);
   }
+  if (lc.parcel) {
+    const dims = [lc.parcel.length_in, lc.parcel.width_in, lc.parcel.height_in]
+      .filter((n): n is number => typeof n === "number")
+      .join("x");
+    lines.push(
+      `  parcel: ${lc.parcel.weight_oz}oz${dims ? ` ${dims}in` : ""} (seller-stated; rate error is the seller's)`,
+    );
+  }
   if (lc.description) lines.push(`  description: ${truncate(lc.description, 280)}`);
   // Facts the seller stated about THIS item (battery %, storage, scratches, …).
   // Shown to BOTH sides: the buyer's agent cites them as concrete price leverage;
@@ -362,6 +373,61 @@ export function encodeListingContext(memory: CoreMemory): string | null {
       .slice(0, 24);
     if (facts.length > 0) lines.push(`  sellerStatedFacts: ${facts.join("; ")}`);
   }
+  return lines.length > 1 ? lines.join("\n") : null;
+}
+
+function encodeFulfillmentContext(memory: CoreMemory): string | null {
+  const fc = memory.fulfillment_context;
+  if (!fc) return null;
+  const lines: string[] = ["FULFILLMENT:"];
+  const methods = fc.methods && fc.methods.length > 0 ? fc.methods : fc.method ? [fc.method] : [];
+  if (methods.length > 0) lines.push(`  buyer_will_accept: ${methods.join(", ")}`);
+  if (fc.method) lines.push(`  buyer_opening: ${fc.method}`);
+  if (fc.seller_options && fc.seller_options.length > 0) {
+    const offered = fc.seller_options
+      .map((option) => {
+        const extras = [
+          option.radius_miles ? `${option.radius_miles}mi` : null,
+          option.max_weight_lb ? `${option.max_weight_lb}lb` : null,
+        ]
+          .filter(Boolean)
+          .join("/");
+        return extras ? `${option.method}(${extras})` : option.method;
+      })
+      .join(", ");
+    lines.push(`  seller_offered: ${offered}`);
+  }
+  if (fc.constraints?.travel_radius_miles) {
+    lines.push(`  buyer_travel_radius_miles: ${fc.constraints.travel_radius_miles}`);
+  }
+  if (fc.constraints?.max_pickup_weight_lb) {
+    lines.push(`  buyer_max_pickup_weight_lb: ${fc.constraints.max_pickup_weight_lb}`);
+  }
+  if (fc.carrier_priority) {
+    lines.push(`  buyer_carrier_priority: ${fc.carrier_priority}`);
+  }
+  if (fc.parcel) {
+    const dims = [fc.parcel.length_in, fc.parcel.width_in, fc.parcel.height_in]
+      .filter((n): n is number => typeof n === "number")
+      .join("x");
+    lines.push(`  seller_parcel: ${fc.parcel.weight_oz}oz${dims ? ` ${dims}in` : ""}`);
+  }
+  if (fc.destination) {
+    const dest = [fc.destination.city, fc.destination.state, fc.destination.zip]
+      .filter(Boolean)
+      .join(", ");
+    if (dest) lines.push(`  destination: ${dest}`);
+  }
+  lines.push("  shipping_is_negotiable: yes — stay inside buyer_will_accept ∩ seller_offered.");
+  lines.push("  total_price_includes_shipping: yes");
+  if (fc.shipping_cost_known && fc.shipping_cost_minor === 0) {
+    lines.push("  shipping_money: $0 unless both sides agree to add carrier shipping.");
+  } else {
+    lines.push(
+      "  shipping_money: if carrier stays in play, include it in the all-in total. Parcel-rate error is the seller's problem.",
+    );
+  }
+  if (fc.rate_note) lines.push(`  note: ${truncate(fc.rate_note, 220)}`);
   return lines.length > 1 ? lines.join("\n") : null;
 }
 

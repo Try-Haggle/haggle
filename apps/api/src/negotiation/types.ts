@@ -210,6 +210,12 @@ export interface CoreMemory {
    */
   listing_context?: ListingContextMemory;
   /**
+   * Buyer-chosen delivery method captured before the first round. Prompt-safe:
+   * city/state/zip only. Agents should treat this as a negotiable opening
+   * position and keep shipping inside the all-in total.
+   */
+  fulfillment_context?: FulfillmentContextMemory;
+  /**
    * Strategy/persona context for THIS side of the negotiation: which agent
    * preset is driving us, the advisor memory captured from the strategy chat,
    * tone/dealbreakers/mustEmphasize, etc.
@@ -265,6 +271,46 @@ export interface ListingContextMemory {
    * sessions.
    */
   seller_facts?: Array<{ checkId: string; question?: string; stance: string }>;
+  /** Seller-stated box used for carrier quotes and pickup feasibility. */
+  parcel?: {
+    weight_oz: number;
+    length_in?: number;
+    width_in?: number;
+    height_in?: number;
+  };
+}
+
+export interface FulfillmentContextMemory {
+  method?: "carrier" | "local_pickup" | "porch_drop" | "meetup" | "buyer_arranged";
+  methods?: Array<"carrier" | "local_pickup" | "porch_drop" | "meetup">;
+  fulfillment_type?: "physical_shipping" | "local_pickup";
+  negotiable?: boolean;
+  shipping_included_in_total?: boolean;
+  shipping_cost_known?: boolean;
+  shipping_cost_minor?: number;
+  destination?: {
+    city?: string;
+    state?: string;
+    zip?: string;
+    country?: string;
+  };
+  constraints?: {
+    travel_radius_miles?: number;
+    max_pickup_weight_lb?: number;
+  };
+  seller_options?: Array<{
+    method: "carrier" | "local_pickup" | "porch_drop" | "meetup";
+    radius_miles?: number;
+    max_weight_lb?: number;
+  }>;
+  carrier_priority?: "cheapest" | "balanced" | "fastest";
+  parcel?: {
+    weight_oz: number;
+    length_in?: number;
+    width_in?: number;
+    height_in?: number;
+  };
+  rate_note?: string;
 }
 
 /** Per-side negotiator profile. Captures persona + advisor memory + agent

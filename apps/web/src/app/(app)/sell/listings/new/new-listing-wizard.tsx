@@ -19,6 +19,8 @@ import {
   NegotiationAgentBuilderChat,
   type NegotiationAgentBuilderMemory,
 } from "@/app/l/[publicId]/negotiation-agent-builder-chat";
+import { FulfillmentOfferEditor } from "@/components/shipping/fulfillment-offer-editor";
+import { ListingParcelFields } from "@/components/shipping/listing-parcel-fields";
 import {
   Alert,
   Button,
@@ -32,6 +34,17 @@ import {
   Textarea,
 } from "@/components/ui";
 import { api } from "@/lib/api-client";
+import {
+  DEFAULT_SELLER_OFFER,
+  EMPTY_LISTING_PARCEL,
+  isCompleteListingParcel,
+  type ListingParcelInput,
+  listingParcelFromInput,
+  listingParcelToInput,
+  parseListingParcel,
+  parseSellerFulfillmentOffer,
+  type SellerFulfillmentOffer,
+} from "@/lib/fulfillment-options";
 import { createNegotiationAgent } from "@/lib/negotiation-agents-api";
 import { createClient } from "@/lib/supabase/client";
 import { useAmplitude } from "@/providers/amplitude-provider";
@@ -192,6 +205,9 @@ export function NewListingWizard({
   const [targetPrice, setTargetPrice] = useState("");
   const [floorPrice, setFloorPrice] = useState("");
   const [sellingDeadline, setSellingDeadline] = useState("");
+  const [fulfillmentOffer, setFulfillmentOffer] =
+    useState<SellerFulfillmentOffer>(DEFAULT_SELLER_OFFER);
+  const [parcel, setParcel] = useState<ListingParcelInput>(EMPTY_LISTING_PARCEL);
 
   // Step 5: Agent — all state lives in a single AgentBuilderState.
   const [agentValue, setAgentValue] = useState<AgentBuilderState | null>(null);
@@ -315,6 +331,12 @@ export function NewListingWizard({
         // so resuming a draft and publishing WITHOUT re-running the chat does not wipe
         // it — patchDraft overwrites the whole snapshot, so an unrestored (null) memory
         // would erase everything the earlier session captured.
+        const savedOffer = parseSellerFulfillmentOffer(
+          d.negotiationAgentSnapshot?.sellerFulfillmentOffer,
+        );
+        if (savedOffer) setFulfillmentOffer(savedOffer);
+        const savedParcel = parseListingParcel(d.negotiationAgentSnapshot?.parcel);
+        if (savedParcel) setParcel(listingParcelToInput(savedParcel));
         const savedMemory = d.negotiationAgentSnapshot?.negotiationAgentBuilderMemory;
         if (savedMemory && typeof savedMemory === "object" && !Array.isArray(savedMemory)) {
           setNegotiationAgentBuilderMemory(savedMemory as NegotiationAgentBuilderMemory);
@@ -434,6 +456,10 @@ export function NewListingWizard({
     if (sellingDeadline) patch.sellingDeadline = localDateToDeadlineIso(sellingDeadline);
     const strategyBase: Record<string, unknown> = {};
     if (sellingDeadline) Object.assign(strategyBase, deadlineStrategyConfig());
+    strategyBase.sellerFulfillmentOffer =
+      parseSellerFulfillmentOffer(fulfillmentOffer) ?? DEFAULT_SELLER_OFFER;
+    const listingParcel = listingParcelFromInput(parcel);
+    if (listingParcel) strategyBase.parcel = listingParcel;
     if (agentValue) {
       // Single serializer — emits the full strategy (weights + every engine
       // knob + memory). Same function publish uses, so the two can't diverge.
@@ -512,7 +538,12 @@ export function NewListingWizard({
       case 3:
         return true;
       case 4:
-        return !!targetPrice.trim() && !!sellingDeadline;
+        return (
+          !!targetPrice.trim() &&
+          !!sellingDeadline &&
+          (!fulfillmentOffer.options.some((option) => option.method === "carrier") ||
+            isCompleteListingParcel(parcel))
+        );
       case 5:
         return !!agentValue;
       default:
@@ -533,6 +564,12 @@ export function NewListingWizard({
       case 4:
         if (!targetPrice.trim()) return "Asking price is required";
         if (!sellingDeadline) return "Selling deadline is required";
+        if (
+          fulfillmentOffer.options.some((option) => option.method === "carrier") &&
+          !isCompleteListingParcel(parcel)
+        ) {
+          return "Parcel weight and box size are required when you offer carrier shipping";
+        }
         break;
       case 5:
         if (!agentValue) return "Please select an agent";
@@ -880,7 +917,7 @@ export function NewListingWizard({
   /* ─── Questionnaire Layout ──────────────────────────────── */
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "var(--bg-primary)" }}>
+    <div className="fixed inset-0 z-[60] flex flex-col" style={{ background: "var(--bg-primary)" }}>
       <style>{`
         @keyframes wizard-step-in {
           from { opacity: 0; transform: translateY(12px); }
@@ -959,7 +996,9 @@ export function NewListingWizard({
 
       {/* ── Scrollable content area — vertically centered ── */}
       <div className="flex-1 overflow-y-auto px-5 sm:px-8">
-        <div className="flex min-h-full flex-col justify-center">
+        <div
+          className={`flex min-h-full flex-col ${step === 4 ? "justify-start" : "justify-center"}`}
+        >
           <div
             key={step}
             className={`mx-auto w-full ${step === 5 ? "max-w-[1100px]" : "max-w-lg"} py-10 sm:py-16`}
@@ -1210,6 +1249,26 @@ export function NewListingWizard({
                     Your AI agent becomes more flexible as the deadline approaches
                   </p>
                 </div>
+
+                <div>
+                  <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-ink-secondary">
+                    How can the buyer get it <span className="text-warning">*</span>
+                  </span>
+                  <p className="mb-3 text-xs text-ink-muted">
+                    MVP ships with a carrier. Pickup, porch drop, and meetup will reconnect later. A
+                    close box size is enough for a rate.
+                  </p>
+                  <FulfillmentOfferEditor
+                    audience="seller"
+                    value={fulfillmentOffer}
+                    onChange={setFulfillmentOffer}
+                  />
+                  {fulfillmentOffer.options.some((option) => option.method === "carrier") && (
+                    <div className="mt-5">
+                      <ListingParcelFields value={parcel} onChange={setParcel} required />
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -1252,7 +1311,7 @@ export function NewListingWizard({
       </div>
 
       {/* ── Bottom bar: Back / Next ── */}
-      <div className="shrink-0 border-line border-t px-4 pt-2 pb-3 sm:px-8 sm:pt-3 sm:pb-6">
+      <div className="relative z-20 shrink-0 border-line border-t bg-[var(--bg-primary)] px-4 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-8 sm:pt-3 sm:pb-6">
         <div className="mx-auto flex max-w-lg items-center justify-between gap-4">
           {/* Back (hidden on step 1) */}
           {step > 1 ? (

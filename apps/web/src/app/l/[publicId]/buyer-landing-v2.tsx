@@ -11,10 +11,18 @@ import {
   type ViewerInfo,
 } from "@/components/listing-detail";
 import { Nav } from "@/components/nav";
+import {
+  canStartWithFulfillment,
+  emptyFulfillmentValue,
+  PreNegotiationFulfillment,
+  type PreNegotiationFulfillmentValue,
+} from "@/components/shipping/pre-negotiation-fulfillment";
 import { BackLink } from "@/components/ui/back-link";
 import { ApiError, api } from "@/lib/api-client";
+import { parseListingParcel, parseSellerFulfillmentOffer } from "@/lib/fulfillment-options";
 import { listNegotiationAgents, rowToNegotiationAgent } from "@/lib/negotiation-agents-api";
 import { storeNegotiationRunToken } from "@/lib/negotiation-auto-play-token";
+import { isCompleteShippingAddress, toApiAddress } from "@/lib/shipping-address";
 import { useAmplitude } from "@/providers/amplitude-provider";
 import {
   NegotiationAgentBuilderChat,
@@ -107,6 +115,12 @@ export function BuyerLandingV2({ listing, user, isOwner, from, footerSlot }: Buy
     Record<string, NegotiationAgentBuilderMemory | undefined>
   >({});
   const [briefMemory, setBriefMemory] = useState<NegotiationAgentBuilderMemory | null>(null);
+  const sellerOffer = parseSellerFulfillmentOffer(listing.sellerFulfillmentOffer);
+  const listingParcel = parseListingParcel(listing.parcel);
+  const [fulfillment, setFulfillment] = useState<PreNegotiationFulfillmentValue>(() =>
+    emptyFulfillmentValue(sellerOffer, !!user),
+  );
+  const canStart = canStartWithFulfillment(fulfillment);
 
   // Guests have no saved agents; skipping the call also avoids a guaranteed 401.
   useEffect(() => {
@@ -169,6 +183,20 @@ export function BuyerLandingV2({ listing, user, isOwner, from, footerSlot }: Buy
       // agent, so picking "My iPhone hunter" still carries its deal-breakers.
       negotiation_agent_builder_memory:
         briefMemory ?? (savedId ? savedMemory[savedId] : undefined) ?? undefined,
+      fulfillment: {
+        methods: fulfillment.methods,
+        preferred: fulfillment.preferred,
+        ...(fulfillment.methods.includes("carrier") &&
+        isCompleteShippingAddress(fulfillment.address)
+          ? { buyer_address: toApiAddress(fulfillment.address) }
+          : {}),
+        save_address: !!user && fulfillment.methods.includes("carrier") && fulfillment.saveAddress,
+        ...(fulfillment.methods.includes("carrier")
+          ? { carrier_priority: fulfillment.carrier_priority }
+          : {}),
+        ...(sellerOffer ? { seller_offer: sellerOffer } : {}),
+        ...(listingParcel ? { parcel: listingParcel } : {}),
+      },
     });
 
     // Stash the guest buyer id for the post-signup claim step. Logged-in
@@ -258,6 +286,16 @@ export function BuyerLandingV2({ listing, user, isOwner, from, footerSlot }: Buy
           onStrategyUpdate={onStrategyUpdate}
         />
       )}
+      setupSlot={
+        <PreNegotiationFulfillment
+          signedIn={!!user}
+          offer={sellerOffer}
+          parcel={listingParcel}
+          value={fulfillment}
+          onChange={setFulfillment}
+        />
+      }
+      canStart={canStart}
       onStart={handleStart}
     />
   );

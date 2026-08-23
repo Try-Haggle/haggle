@@ -60,6 +60,7 @@ export function understand(input: UnderstandInput | UnderstandOutput): Understan
     informationLinks,
     conditions,
     price,
+    input.known_shipping_terms === true,
   );
 
   const extractedFeatures = mapSignalsToFeatures(
@@ -291,6 +292,7 @@ function inferMissingInformation(
   links: InformationLink[],
   conditions: Record<string, unknown>,
   price?: number,
+  knownShippingTerms = false,
 ): MissingInformationNeed[] {
   const needs: MissingInformationNeed[] = [];
   const lower = text.toLowerCase();
@@ -369,6 +371,7 @@ function inferMissingInformation(
   }
 
   if (
+    !knownShippingTerms &&
     (conditions.shipping_mentioned || conversationType === "LOGISTICS_NEGOTIATION") &&
     (actionIntent === "QUESTION" ||
       !/\b(included|insured|pickup|local|free|\$\d|tracking)\b/i.test(text))

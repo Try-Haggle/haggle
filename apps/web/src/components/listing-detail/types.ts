@@ -28,6 +28,16 @@ export interface ListingDetail {
    * along with the phone question flow. Facts only — never negotiation posture.
    */
   specs?: Array<{ checkId: string; label: string; value: string }> | null;
+  sellerFulfillmentOffer?: {
+    options: Array<{ method: string; radius_miles?: number; max_weight_lb?: number }>;
+    preferred?: string;
+  } | null;
+  parcel?: {
+    weight_oz: number;
+    length_in?: number;
+    width_in?: number;
+    height_in?: number;
+  } | null;
 }
 
 export interface ViewerInfo {

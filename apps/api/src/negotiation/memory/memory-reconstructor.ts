@@ -8,9 +8,14 @@
  */
 
 import { DEFAULT_BUDDY_DNA, DEFAULT_INTERVENTION_MODE, DEFAULT_MAX_ROUNDS } from "../config.js";
+import {
+  buildFulfillmentActiveTerms,
+  summarizeFulfillmentTerms,
+} from "../term/fulfillment-terms.js";
 import type {
   BuddyDNA,
   CoreMemory,
+  FulfillmentContextMemory,
   HumanInterventionMode,
   ListingContextMemory,
   NegotiationPhase,
@@ -195,6 +200,7 @@ export function reconstructCoreMemory(
     : DEFAULT_BUDDY_DNA;
 
   const listingContext = extractListingContextMemory(strategy);
+  const fulfillmentContext = extractFulfillmentContextMemory(strategy);
   const strategyContext = extractStrategyContextMemory(strategy, role);
   const strategyParams = extractStrategyParams(strategy);
 
@@ -225,14 +231,18 @@ export function reconstructCoreMemory(
       // which the envelope must not confuse with an offer that equals the target.
       ...(offers.myLastOfferMinor !== undefined ? { my_last_offer: offers.myLastOfferMinor } : {}),
     },
-    terms: {
-      active: [], // Terms populated from separate term tracking (future)
-      resolved_summary: "",
-    },
+    terms: (() => {
+      const active = buildFulfillmentActiveTerms(fulfillmentContext, listingContext?.parcel);
+      return {
+        active,
+        resolved_summary: summarizeFulfillmentTerms(active),
+      };
+    })(),
     coaching,
     buddy_dna: buddyDna,
     skill_summary: "electronics-iphone-pro-v1",
     ...(listingContext ? { listing_context: listingContext } : {}),
+    ...(fulfillmentContext ? { fulfillment_context: fulfillmentContext } : {}),
     ...(strategyContext ? { strategy_context: strategyContext } : {}),
     ...(strategyParams ? { strategy_params: strategyParams } : {}),
   };
@@ -323,6 +333,115 @@ export function extractListingContextMemory(
       }));
     if (facts.length > 0) out.seller_facts = facts;
   }
+  const parcel = extractParcelMemory(src.parcel);
+  if (parcel) out.parcel = parcel;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function extractParcelMemory(raw: unknown): ListingContextMemory["parcel"] | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const src = raw as Record<string, unknown>;
+  if (typeof src.weight_oz !== "number" || !Number.isFinite(src.weight_oz) || src.weight_oz <= 0) {
+    return undefined;
+  }
+  const parcel: NonNullable<ListingContextMemory["parcel"]> = { weight_oz: src.weight_oz };
+  if (typeof src.length_in === "number" && src.length_in > 0) parcel.length_in = src.length_in;
+  if (typeof src.width_in === "number" && src.width_in > 0) parcel.width_in = src.width_in;
+  if (typeof src.height_in === "number" && src.height_in > 0) parcel.height_in = src.height_in;
+  return parcel;
+}
+
+function extractFulfillmentContextMemory(
+  strategy: Record<string, unknown>,
+): FulfillmentContextMemory | undefined {
+  const raw = strategy.fulfillment_context;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const src = raw as Record<string, unknown>;
+  const out: FulfillmentContextMemory = {};
+  if (
+    src.method === "carrier" ||
+    src.method === "local_pickup" ||
+    src.method === "porch_drop" ||
+    src.method === "meetup" ||
+    src.method === "buyer_arranged"
+  ) {
+    out.method = src.method;
+  }
+  if (Array.isArray(src.methods)) {
+    const methods = src.methods.filter(
+      (method): method is NonNullable<FulfillmentContextMemory["methods"]>[number] =>
+        method === "carrier" ||
+        method === "local_pickup" ||
+        method === "porch_drop" ||
+        method === "meetup",
+    );
+    if (methods.length > 0) out.methods = methods;
+  }
+  if (src.fulfillment_type === "physical_shipping" || src.fulfillment_type === "local_pickup") {
+    out.fulfillment_type = src.fulfillment_type;
+  }
+  if (typeof src.negotiable === "boolean") out.negotiable = src.negotiable;
+  if (typeof src.shipping_included_in_total === "boolean") {
+    out.shipping_included_in_total = src.shipping_included_in_total;
+  }
+  if (typeof src.shipping_cost_known === "boolean")
+    out.shipping_cost_known = src.shipping_cost_known;
+  if (typeof src.shipping_cost_minor === "number" && Number.isFinite(src.shipping_cost_minor)) {
+    out.shipping_cost_minor = src.shipping_cost_minor;
+  }
+  if (typeof src.rate_note === "string") out.rate_note = src.rate_note;
+  if (src.destination && typeof src.destination === "object" && !Array.isArray(src.destination)) {
+    const dest = src.destination as Record<string, unknown>;
+    const destination: NonNullable<FulfillmentContextMemory["destination"]> = {};
+    if (typeof dest.city === "string") destination.city = dest.city;
+    if (typeof dest.state === "string") destination.state = dest.state;
+    if (typeof dest.zip === "string") destination.zip = dest.zip;
+    if (typeof dest.country === "string") destination.country = dest.country;
+    if (Object.keys(destination).length > 0) out.destination = destination;
+  }
+  if (src.constraints && typeof src.constraints === "object" && !Array.isArray(src.constraints)) {
+    const rawConstraints = src.constraints as Record<string, unknown>;
+    const constraints: NonNullable<FulfillmentContextMemory["constraints"]> = {};
+    if (typeof rawConstraints.travel_radius_miles === "number") {
+      constraints.travel_radius_miles = rawConstraints.travel_radius_miles;
+    }
+    if (typeof rawConstraints.max_pickup_weight_lb === "number") {
+      constraints.max_pickup_weight_lb = rawConstraints.max_pickup_weight_lb;
+    }
+    if (Object.keys(constraints).length > 0) out.constraints = constraints;
+  }
+  if (Array.isArray(src.seller_options)) {
+    const sellerOptions: NonNullable<FulfillmentContextMemory["seller_options"]> = [];
+    for (const item of src.seller_options) {
+      if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+      const option = item as Record<string, unknown>;
+      if (
+        option.method !== "carrier" &&
+        option.method !== "local_pickup" &&
+        option.method !== "porch_drop" &&
+        option.method !== "meetup"
+      ) {
+        continue;
+      }
+      sellerOptions.push({
+        method: option.method,
+        ...(typeof option.radius_miles === "number" ? { radius_miles: option.radius_miles } : {}),
+        ...(typeof option.max_weight_lb === "number"
+          ? { max_weight_lb: option.max_weight_lb }
+          : {}),
+      });
+    }
+    if (sellerOptions.length > 0) out.seller_options = sellerOptions;
+  }
+  if (
+    src.carrier_priority === "cheapest" ||
+    src.carrier_priority === "balanced" ||
+    src.carrier_priority === "fastest"
+  ) {
+    out.carrier_priority = src.carrier_priority;
+  }
+  const parcel = extractParcelMemory(src.parcel);
+  if (parcel) out.parcel = parcel;
   return Object.keys(out).length > 0 ? out : undefined;
 }
 

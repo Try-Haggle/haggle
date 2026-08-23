@@ -13,6 +13,7 @@ import {
   type Database,
   eq,
   inArray,
+  orderAddresses,
   paymentAuthorizations,
   paymentDisclosures,
   paymentIntents,
@@ -265,6 +266,7 @@ export async function ensureCommerceOrderForApproval(db: Database, approval: Set
     .returning();
 
   if (upserted) {
+    await copyBuyerShippingAddressToOrder(db, approval.id, upserted.id);
     return upserted;
   }
 
@@ -721,4 +723,43 @@ export async function completePaymentOperationIdempotencyRecord(
         eq(paymentOperationIdempotency.idempotencyKey, idempotencyKey),
       ),
     );
+}
+
+async function copyBuyerShippingAddressToOrder(
+  db: Database,
+  settlementApprovalId: string,
+  orderId: string,
+) {
+  const approval = await db.query.settlementApprovals.findFirst({
+    where: (fields, ops) => ops.eq(fields.id, settlementApprovalId),
+  });
+  const snapshot = (approval?.termsSnapshot ?? {}) as Record<string, unknown>;
+  const raw = snapshot.buyer_shipping_address;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
+  const address = raw as Record<string, unknown>;
+  if (
+    typeof address.name !== "string" ||
+    typeof address.street1 !== "string" ||
+    typeof address.city !== "string" ||
+    typeof address.state !== "string" ||
+    typeof address.zip !== "string"
+  ) {
+    return;
+  }
+
+  await db
+    .insert(orderAddresses)
+    .values({
+      orderId,
+      role: "buyer",
+      name: address.name,
+      street1: address.street1,
+      street2: typeof address.street2 === "string" ? address.street2 : null,
+      city: address.city,
+      state: address.state,
+      zip: address.zip,
+      country: typeof address.country === "string" ? address.country : "US",
+      phone: typeof address.phone === "string" ? address.phone : null,
+    })
+    .onConflictDoNothing();
 }

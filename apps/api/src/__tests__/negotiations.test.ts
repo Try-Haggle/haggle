@@ -828,6 +828,38 @@ describe("Negotiation API", () => {
       });
       expect(mockCreateSession).not.toHaveBeenCalled();
     });
+
+    it("rejects carrier shipping without a delivery address", async () => {
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/start",
+        payload: {
+          listing_public_id: "any-listing",
+          negotiation_agent_preset_id: "balancer",
+          fulfillment: { method: "carrier" },
+        },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toBe("INVALID_START_REQUEST");
+      expect(mockCreateSession).not.toHaveBeenCalled();
+    });
+
+    it("rejects pickup fulfillment until in-person methods reconnect", async () => {
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/start",
+        payload: {
+          listing_public_id: "any-listing",
+          negotiation_agent_preset_id: "balancer",
+          fulfillment: { method: "local_pickup" },
+        },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toBe("INVALID_START_REQUEST");
+      expect(mockCreateSession).not.toHaveBeenCalled();
+    });
   });
 
   describe("Phase G Flow 3 — seller-criteria pause resume", () => {

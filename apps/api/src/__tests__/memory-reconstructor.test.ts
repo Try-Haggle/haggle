@@ -152,6 +152,38 @@ describe("reconstructCoreMemory", () => {
     expect(memory.boundaries.my_target).toBe(45000);
     expect(memory.boundaries.my_floor).toBe(60000);
     expect(memory.coaching).toBe(coaching);
+    expect(memory.terms.active).toEqual([]);
+  });
+
+  it("hydrates fulfillment engine terms from the snapshot", () => {
+    const session = makeDbSession({
+      negotiationAgentSnapshot: {
+        p_target: 45000,
+        p_limit: 60000,
+        max_rounds: 15,
+        listing_context: {
+          parcel: { weight_oz: 16, length_in: 10, width_in: 8, height_in: 4 },
+        },
+        fulfillment_context: {
+          method: "carrier",
+          methods: ["carrier", "meetup"],
+          carrier_priority: "cheapest",
+        },
+      },
+    });
+    const memory = reconstructCoreMemory(session, session.negotiationAgentSnapshot, makeCoaching());
+    expect(memory.terms.active.map((term) => term.term_id)).toEqual(
+      expect.arrayContaining([
+        "shipping_method",
+        "shipping_cost_split",
+        "carrier_service_priority",
+        "parcel_weight_oz",
+        "parcel_dims",
+      ]),
+    );
+    expect(memory.terms.resolved_summary).toContain("cheapest");
+    expect(memory.fulfillment_context?.carrier_priority).toBe("cheapest");
+    expect(memory.listing_context?.parcel?.weight_oz).toBe(16);
   });
 
   it("infers phase from status when phase column is null", () => {

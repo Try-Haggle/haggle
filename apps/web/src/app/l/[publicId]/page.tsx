@@ -19,6 +19,16 @@ interface ListingData {
   sellerAgentPreset: string | null;
   sellingDeadline: string | null;
   sellerRequiredCriteria: Array<{ checkId: string; ask: string }> | null;
+  sellerFulfillmentOffer?: {
+    options: Array<{ method: string; radius_miles?: number; max_weight_lb?: number }>;
+    preferred?: string;
+  } | null;
+  parcel?: {
+    weight_oz: number;
+    length_in?: number;
+    width_in?: number;
+    height_in?: number;
+  } | null;
   /** Product facts the seller answered with canonical taxonomy options. */
   specs?: Array<{ checkId: string; label: string; value: string }> | null;
 }

@@ -52,6 +52,10 @@ export async function executePipeline(
       understandOutput = understand({
         raw_message: message,
         sender_role: deps.memory.session.role === "buyer" ? "seller" : "buyer",
+        known_shipping_terms: Boolean(
+          deps.memory.fulfillment_context ||
+            deps.memory.terms.active.some((term) => term.term_id === "shipping_method"),
+        ),
       });
     }
   } else {

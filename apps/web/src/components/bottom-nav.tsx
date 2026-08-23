@@ -226,6 +226,10 @@ export function BottomNav() {
   const mode: Mode = pathMode ?? storedMode;
   const tabs = mode === "buying" ? BUY_TABS : SELL_TABS;
 
+  if (pathname.startsWith("/sell/listings/new")) {
+    return null;
+  }
+
   return (
     <nav className="fixed inset-x-0 bottom-0 z-50 border-line border-t bg-surface/95 backdrop-blur-md md:hidden">
       <div className="flex h-14 items-center justify-around">

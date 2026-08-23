@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import { SavedAddressSettings } from "@/components/shipping/saved-address-settings";
 import { Alert, Avatar, Button, Field, Input } from "@/components/ui";
 import { ApiError, api } from "@/lib/api-client";
 import { createClient } from "@/lib/supabase/client";
@@ -255,6 +256,8 @@ export function SettingsContent({ email, displayName, avatarUrl, provider }: Set
           {profileSaving ? "Saving…" : "Save Profile"}
         </Button>
       </section>
+
+      <SavedAddressSettings />
 
       {/* ── Password Section ───────────────────────────── */}
       <section className="rounded-xl border border-line bg-surface-raised p-4 sm:p-6 mb-6">

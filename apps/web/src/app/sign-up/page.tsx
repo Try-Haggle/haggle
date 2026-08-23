@@ -3,8 +3,15 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import { ShippingAddressFields } from "@/components/shipping/shipping-address-fields";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
+import {
+  EMPTY_SHIPPING_ADDRESS,
+  isCompleteShippingAddress,
+  type ShippingAddressInput,
+  writePendingDefaultAddress,
+} from "@/lib/shipping-address";
 import { createClient } from "@/lib/supabase/client";
 
 export default function SignUpPage() {
@@ -41,6 +48,8 @@ function SignUpForm() {
   const [emailSent, setEmailSent] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [showAddress, setShowAddress] = useState(false);
+  const [address, setAddress] = useState<ShippingAddressInput>(EMPTY_SHIPPING_ADDRESS);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: run the auth check once on mount
   useEffect(() => {
@@ -84,6 +93,10 @@ function SignUpForm() {
       return;
     }
 
+    if (isCompleteShippingAddress(address)) {
+      writePendingDefaultAddress(address);
+    }
+
     setIsLoading(true);
     setAuthError(null);
 
@@ -106,6 +119,9 @@ function SignUpForm() {
   }
 
   async function handleGoogleLogin() {
+    if (isCompleteShippingAddress(address)) {
+      writePendingDefaultAddress(address);
+    }
     setAuthError(null);
 
     const nextPath = token ? `/sell/dashboard?claim=${token}` : defaultNext;
@@ -375,6 +391,30 @@ function SignUpForm() {
               </button>
             </div>
           </div>
+          <div className="rounded-xl border border-line bg-surface-raised p-4 text-left">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between text-sm font-medium text-ink"
+              onClick={() => setShowAddress((open) => !open)}
+            >
+              Default delivery address
+              <span className="text-ink-muted">{showAddress ? "Hide" : "Optional"}</span>
+            </button>
+            <p className="mt-1 text-xs text-ink-muted">
+              Saved after you confirm your email. You can also add this later in settings or before
+              a negotiation.
+            </p>
+            {showAddress && (
+              <div className="mt-3">
+                <ShippingAddressFields
+                  idPrefix="signup-address"
+                  value={address}
+                  onChange={setAddress}
+                />
+              </div>
+            )}
+          </div>
+
           {/* Error */}
           {authError && <p className="-mb-1 text-center text-error text-sm">{authError}</p>}
 

@@ -15,6 +15,7 @@ import {
   type SellerProductFact,
   sellerProductFacts,
 } from "@haggle/shared";
+import { parseListingParcel } from "../lib/negotiation-fulfillment.js";
 
 /** Resolve the canonical default preset's parameters (balancer). */
 function defaultEngineParameters(): EngineParameters {
@@ -58,6 +59,12 @@ export interface ListingContext {
   tags?: string[];
   photoUrl?: string;
   attributes?: Record<string, unknown>;
+  parcel?: {
+    weight_oz: number;
+    length_in?: number;
+    width_in?: number;
+    height_in?: number;
+  };
 }
 
 export interface ListingStrategyContext {
@@ -88,6 +95,9 @@ export function extractListingContext(base: {
   if (base.condition) ctx.condition = base.condition;
   if (base.tags && base.tags.length > 0) ctx.tags = base.tags;
   if (base.photoUrl) ctx.photoUrl = base.photoUrl;
+
+  const parcel = parseListingParcel(negotiationAgentSnapshot.parcel);
+  if (parcel) ctx.parcel = parcel;
 
   return ctx;
 }

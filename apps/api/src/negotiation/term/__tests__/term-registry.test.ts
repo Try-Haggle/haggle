@@ -22,7 +22,7 @@ describe("TermRegistry", () => {
     expect(registry.resolve("nonexistent")).toBeNull();
   });
 
-  it("should resolve all 12 electronics terms", () => {
+  it("should resolve all registered electronics terms", () => {
     for (const t of ELECTRONICS_TERMS) {
       expect(registry.resolve(t.id)).not.toBeNull();
     }

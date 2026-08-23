@@ -62,10 +62,18 @@ export const ELECTRONICS_TERMS: CategoryTerm[] = [
     parent_category: "LOGISTICS",
     display_name: "배송 방법",
     value_type: "enum",
-    value_range: ["local_pickup", "standard_shipping", "express_shipping", "insured_shipping"],
+    value_range: [
+      "carrier",
+      "local_pickup",
+      "porch_drop",
+      "meetup",
+      "standard_shipping",
+      "express_shipping",
+      "insured_shipping",
+    ],
     typical_impact: "보험 배송 $15-25 추가, 직거래 시 무료",
     evaluate_hint:
-      "Insured shipping adds $15-25 but reduces risk. Local pickup saves cost for both parties.",
+      "Stay inside the intersection of seller-offered and buyer-accepted methods. Carrier shipping stays inside the all-in total. Local pickup, porch drop, and meetup have $0 shipping unless both sides add a carrier.",
   },
   {
     id: "shipping_cost_split",
