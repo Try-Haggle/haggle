@@ -1,9 +1,9 @@
-import { eq } from "drizzle-orm";
 import { type Database, emailDeliveries } from "@haggle/db";
+import { eq } from "drizzle-orm";
 import type { Resend } from "resend";
 import type { EventType } from "../catalog.js";
-import { renderEmailTemplate } from "../templates/render.js";
 import { getNotificationUserInfo } from "../get-user-info.js";
+import { renderEmailTemplate } from "../templates/render.js";
 
 interface EmailInput {
   db: Database;
@@ -66,7 +66,12 @@ export async function sendEmail(input: EmailInput): Promise<void> {
     if (error || !data?.id) {
       await db
         .update(emailDeliveries)
-        .set({ status: "failed", errorMessage: error?.message ?? "no message id", attempts: delivery.attempts + 1, updatedAt: new Date() })
+        .set({
+          status: "failed",
+          errorMessage: error?.message ?? "no message id",
+          attempts: delivery.attempts + 1,
+          updatedAt: new Date(),
+        })
         .where(eq(emailDeliveries.id, delivery.id));
       return;
     }
@@ -78,7 +83,12 @@ export async function sendEmail(input: EmailInput): Promise<void> {
   } catch (err) {
     await db
       .update(emailDeliveries)
-      .set({ status: "failed", errorMessage: String(err), attempts: delivery.attempts + 1, updatedAt: new Date() })
+      .set({
+        status: "failed",
+        errorMessage: String(err),
+        attempts: delivery.attempts + 1,
+        updatedAt: new Date(),
+      })
       .where(eq(emailDeliveries.id, delivery.id));
   }
 }

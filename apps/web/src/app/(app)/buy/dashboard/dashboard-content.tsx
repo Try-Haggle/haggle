@@ -42,7 +42,7 @@ export function BuyerDashboardContent({
   activeNegotiations: ActiveNegotiation[];
 }) {
   return (
-    <main className="mx-auto min-h-[calc(100vh-4rem)] max-w-6xl px-4 py-6 sm:p-6">
+    <main className="mx-auto min-h-[calc(100vh-4rem)] max-w-7xl px-4 py-6 sm:p-6">
       {/* Header */}
       <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>

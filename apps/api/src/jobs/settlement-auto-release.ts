@@ -8,14 +8,7 @@
  * Batch limit: 100 records per run
  */
 
-import {
-  type Database,
-  settlementReleases,
-  commerceOrders,
-  eq,
-  and,
-  lt,
-} from "@haggle/db";
+import { and, commerceOrders, type Database, eq, lt, settlementReleases } from "@haggle/db";
 
 const BATCH_LIMIT = 100;
 

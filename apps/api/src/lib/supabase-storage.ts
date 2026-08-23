@@ -14,9 +14,7 @@ function getSupabaseAdmin() {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!url || !key) {
-    throw new Error(
-      "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variable",
-    );
+    throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variable");
   }
 
   return createClient(url, key, {
@@ -51,20 +49,16 @@ export async function uploadListingPhoto(
   // Validate size
   if (buffer.byteLength > MAX_FILE_SIZE) {
     const sizeMB = (buffer.byteLength / (1024 * 1024)).toFixed(1);
-    throw new Error(
-      `Image too large (${sizeMB} MB). Maximum allowed size is 5 MB.`,
-    );
+    throw new Error(`Image too large (${sizeMB} MB). Maximum allowed size is 5 MB.`);
   }
 
   const supabase = getSupabaseAdmin();
   const filePath = `${draftId}/${Date.now()}${ext}`;
 
-  const { error } = await supabase.storage
-    .from(BUCKET)
-    .upload(filePath, buffer, {
-      contentType: mimeType,
-      upsert: false,
-    });
+  const { error } = await supabase.storage.from(BUCKET).upload(filePath, buffer, {
+    contentType: mimeType,
+    upsert: false,
+  });
 
   if (error) {
     throw new Error(`Storage upload failed: ${error.message}`);

@@ -9,15 +9,7 @@
  * Batch limit: 100 records per run
  */
 
-import {
-  type Database,
-  disputeDeposits,
-  disputeCases,
-  eq,
-  and,
-  lt,
-  inArray,
-} from "@haggle/db";
+import { and, type Database, disputeCases, disputeDeposits, eq, inArray, lt } from "@haggle/db";
 
 const BATCH_LIMIT = 100;
 
@@ -31,12 +23,7 @@ export async function runDisputeDepositExpiry(db: Database): Promise<void> {
       disputeId: disputeDeposits.disputeId,
     })
     .from(disputeDeposits)
-    .where(
-      and(
-        eq(disputeDeposits.status, "PENDING"),
-        lt(disputeDeposits.deadlineAt, now),
-      ),
-    )
+    .where(and(eq(disputeDeposits.status, "PENDING"), lt(disputeDeposits.deadlineAt, now)))
     .limit(BATCH_LIMIT);
 
   if (expired.length === 0) return;
@@ -74,7 +61,12 @@ export async function runDisputeDepositExpiry(db: Database): Promise<void> {
         .where(
           and(
             eq(disputeCases.id, row.disputeId),
-            inArray(disputeCases.status, ["OPEN", "UNDER_REVIEW", "WAITING_FOR_BUYER", "WAITING_FOR_SELLER"]),
+            inArray(disputeCases.status, [
+              "OPEN",
+              "UNDER_REVIEW",
+              "WAITING_FOR_BUYER",
+              "WAITING_FOR_SELLER",
+            ]),
           ),
         );
 

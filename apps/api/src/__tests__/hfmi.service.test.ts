@@ -1,9 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
-import {
-  getHfmiMedian,
-  HfmiUnavailableError,
-} from "../services/hfmi.service.js";
 import type { Database } from "@haggle/db";
+import { describe, expect, it, vi } from "vitest";
+import { getHfmiMedian, HfmiUnavailableError } from "../services/hfmi.service.js";
 
 // Build a mocked db object shaped for the service's call pattern.
 function makeDb(row: Record<string, unknown> | null): Database {
@@ -67,11 +64,17 @@ describe("getHfmiMedian", () => {
   it("applies storage premium for 256GB", async () => {
     const db = makeDb(BASELINE_ROW);
     const base = await getHfmiMedian(db, {
-      model: "iphone_14_pro", storageGb: 128, batteryHealthPct: 90, cosmeticGrade: "A",
+      model: "iphone_14_pro",
+      storageGb: 128,
+      batteryHealthPct: 90,
+      cosmeticGrade: "A",
     });
     const db2 = makeDb(BASELINE_ROW);
     const bumped = await getHfmiMedian(db2, {
-      model: "iphone_14_pro", storageGb: 256, batteryHealthPct: 90, cosmeticGrade: "A",
+      model: "iphone_14_pro",
+      storageGb: 256,
+      batteryHealthPct: 90,
+      cosmeticGrade: "A",
     });
     expect(bumped.medianUsd).toBeGreaterThan(base.medianUsd);
     // +10% log bump ≈ 10.5% in price
@@ -81,11 +84,19 @@ describe("getHfmiMedian", () => {
   it("applies carrier-lock discount", async () => {
     const db = makeDb(BASELINE_ROW);
     const unlocked = await getHfmiMedian(db, {
-      model: "iphone_14_pro", storageGb: 128, batteryHealthPct: 90, cosmeticGrade: "A", carrierLocked: false,
+      model: "iphone_14_pro",
+      storageGb: 128,
+      batteryHealthPct: 90,
+      cosmeticGrade: "A",
+      carrierLocked: false,
     });
     const db2 = makeDb(BASELINE_ROW);
     const locked = await getHfmiMedian(db2, {
-      model: "iphone_14_pro", storageGb: 128, batteryHealthPct: 90, cosmeticGrade: "A", carrierLocked: true,
+      model: "iphone_14_pro",
+      storageGb: 128,
+      batteryHealthPct: 90,
+      cosmeticGrade: "A",
+      carrierLocked: true,
     });
     expect(locked.medianUsd).toBeLessThan(unlocked.medianUsd);
   });
@@ -98,7 +109,10 @@ describe("getHfmiMedian", () => {
     };
     const db = makeDb(tight);
     const result = await getHfmiMedian(db, {
-      model: "iphone_14_pro", storageGb: 128, batteryHealthPct: 90, cosmeticGrade: "A",
+      model: "iphone_14_pro",
+      storageGb: 128,
+      batteryHealthPct: 90,
+      cosmeticGrade: "A",
     });
     const [lo, hi] = result.confidenceInterval;
     const halfWidth = (hi - lo) / 2;
@@ -113,7 +127,10 @@ describe("getHfmiMedian", () => {
     };
     const db = makeDb(wide);
     const result = await getHfmiMedian(db, {
-      model: "iphone_14_pro", storageGb: 128, batteryHealthPct: 90, cosmeticGrade: "A",
+      model: "iphone_14_pro",
+      storageGb: 128,
+      batteryHealthPct: 90,
+      cosmeticGrade: "A",
     });
     const [lo, hi] = result.confidenceInterval;
     expect((hi - lo) / 2).toBeGreaterThan(35);
@@ -122,11 +139,16 @@ describe("getHfmiMedian", () => {
   it("defaults battery to 90 when not provided", async () => {
     const db = makeDb(BASELINE_ROW);
     const r1 = await getHfmiMedian(db, {
-      model: "iphone_14_pro", storageGb: 128, cosmeticGrade: "A",
+      model: "iphone_14_pro",
+      storageGb: 128,
+      cosmeticGrade: "A",
     });
     const db2 = makeDb(BASELINE_ROW);
     const r2 = await getHfmiMedian(db2, {
-      model: "iphone_14_pro", storageGb: 128, batteryHealthPct: 90, cosmeticGrade: "A",
+      model: "iphone_14_pro",
+      storageGb: 128,
+      batteryHealthPct: 90,
+      cosmeticGrade: "A",
     });
     expect(r1.medianUsd).toBeCloseTo(r2.medianUsd, 2);
   });

@@ -37,18 +37,18 @@ vi.mock("../services/tag-placement-llm.service.js", () => ({
   TAG_PLACEMENT_MODEL_DEFAULT: "gpt-4o-mini-2024-07-18",
 }));
 
+import type { TagCandidate } from "../services/tag-candidate.service.js";
+import { gatherTagCandidates } from "../services/tag-candidate.service.js";
+import { pruneAncestorsFromSet } from "../services/tag-graph.service.js";
 // Import AFTER mocks are registered.
 import {
   computeCacheKey,
+  type PlacementInput,
   placeListingTags,
   prefilterCandidates,
   queueMissingTags,
-  type PlacementInput,
 } from "../services/tag-placement.service.js";
-import { gatherTagCandidates } from "../services/tag-candidate.service.js";
-import { pruneAncestorsFromSet } from "../services/tag-graph.service.js";
 import { placeTagsWithLlm } from "../services/tag-placement-llm.service.js";
-import type { TagCandidate } from "../services/tag-candidate.service.js";
 
 const mockedGather = vi.mocked(gatherTagCandidates);
 const mockedPrune = vi.mocked(pruneAncestorsFromSet);
@@ -56,9 +56,7 @@ const mockedLlm = vi.mocked(placeTagsWithLlm);
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
-function cand(
-  partial: Partial<TagCandidate> & { id: string; label: string },
-): TagCandidate {
+function cand(partial: Partial<TagCandidate> & { id: string; label: string }): TagCandidate {
   return {
     id: partial.id,
     label: partial.label,
@@ -98,10 +96,7 @@ function createFakeDb(opts: { cacheHit?: boolean } = {}): FakeDb {
       const values = (d?.values as unknown[] | undefined) ?? [];
       calls.push({ raw, values });
 
-      if (
-        raw.includes("SELECT selected_tag_ids") &&
-        raw.includes("FROM tag_placement_cache")
-      ) {
+      if (raw.includes("SELECT selected_tag_ids") && raw.includes("FROM tag_placement_cache")) {
         return cacheRows;
       }
       return [];
@@ -235,9 +230,7 @@ describe("queueMissingTags (backward compat wrapper)", () => {
       "listing-1",
     );
     expect(count).toBe(2);
-    const inserts = db.calls.filter((c) =>
-      c.raw.includes("INSERT INTO tag_suggestions"),
-    );
+    const inserts = db.calls.filter((c) => c.raw.includes("INSERT INTO tag_suggestions"));
     expect(inserts).toHaveLength(2);
     // normalized_label should be lowercased/trimmed with spaces→hyphens
     expect(inserts[0]!.values).toContain("iphone-17-pro-max");
@@ -254,15 +247,9 @@ describe("queueMissingTags (backward compat wrapper)", () => {
   it("10. excludes whitespace-only labels", async () => {
     const db = createFakeDb();
     const spy = vi.spyOn(console, "info").mockImplementation(() => {});
-    const count = await queueMissingTags(
-      asDb(db),
-      ["   ", "", "real-label"],
-      null,
-    );
+    const count = await queueMissingTags(asDb(db), ["   ", "", "real-label"], null);
     expect(count).toBe(1);
-    const inserts = db.calls.filter((c) =>
-      c.raw.includes("INSERT INTO tag_suggestions"),
-    );
+    const inserts = db.calls.filter((c) => c.raw.includes("INSERT INTO tag_suggestions"));
     expect(inserts).toHaveLength(1);
     spy.mockRestore();
   });
@@ -290,8 +277,7 @@ describe("placeListingTags", () => {
     // An UPDATE call for hit_count must be present.
     const updates = db.calls.filter(
       (c) =>
-        c.raw.includes("UPDATE tag_placement_cache") &&
-        c.raw.includes("hit_count = hit_count + 1"),
+        c.raw.includes("UPDATE tag_placement_cache") && c.raw.includes("hit_count = hit_count + 1"),
     );
     expect(updates).toHaveLength(1);
   });
@@ -318,9 +304,7 @@ describe("placeListingTags", () => {
     expect(result.trace.llmOk).toBe(true);
     expect(result.trace.fallbackUsed).toBe(false);
     expect(mockedLlm).toHaveBeenCalledTimes(1);
-    const cacheInserts = db.calls.filter((c) =>
-      c.raw.includes("INSERT INTO tag_placement_cache"),
-    );
+    const cacheInserts = db.calls.filter((c) => c.raw.includes("INSERT INTO tag_placement_cache"));
     expect(cacheInserts).toHaveLength(1);
   });
 
@@ -377,9 +361,7 @@ describe("placeListingTags", () => {
     const result = await placeListingTags(asDb(db), baseInput());
 
     expect(result.trace.suggestionsQueued).toBe(2);
-    const inserts = db.calls.filter((c) =>
-      c.raw.includes("INSERT INTO tag_suggestions"),
-    );
+    const inserts = db.calls.filter((c) => c.raw.includes("INSERT INTO tag_suggestions"));
     expect(inserts).toHaveLength(2);
   });
 

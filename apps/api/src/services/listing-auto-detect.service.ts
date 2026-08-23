@@ -2,10 +2,8 @@
  * Listing Auto-Detect Service.
  *
  * Given a draft listing's photo URL + title (+ optional description),
- * calls GPT-4o-mini (vision) to:
- *   - classify the item into a subtype we have specialized handling for
- *     (currently: "phone" or null)
- *   - propose 4–8 lowercase-hyphenated descriptive tags
+ * calls GPT-4o-mini (vision) to propose 4–8 lowercase-hyphenated
+ * descriptive tags.
  *
  * Pure LLM layer. No DB reads/writes. Never throws — failures returned
  * as `{ ok: false, error }`.
@@ -15,8 +13,6 @@ import { getTaxonomyVocabulary } from "@haggle/shared";
 import OpenAI from "openai";
 import { usageExtractors, withLLMTelemetry } from "../lib/llm-telemetry.js";
 
-export type ListingSubtype = "phone" | null;
-
 export interface AutoDetectInput {
   photoUrl: string;
   title: string;
@@ -25,7 +21,6 @@ export interface AutoDetectInput {
 
 export interface AutoDetectSuccess {
   ok: true;
-  subtype: ListingSubtype;
   tags: string[];
   modelVersion: string;
   tokensIn: number;
@@ -75,11 +70,7 @@ export interface OpenAIClientLike {
  */
 const ITEM_TYPE_VOCABULARY = getTaxonomyVocabulary();
 
-const SYSTEM_PROMPT = `You analyze marketplace listings. Given a product photo, title, and optional description, classify the item and propose descriptive tags.
-
-Subtype rules:
-- "phone" — any handheld smartphone (iPhone, Galaxy, Pixel, Android, etc.)
-- null — anything else (laptop, watch, tablet, accessories, non-electronics, etc.)
+const SYSTEM_PROMPT = `You analyze marketplace listings. Given a product photo, title, and optional description, propose descriptive tags.
 
 Tag rules:
 - 4 to 8 tags total
@@ -148,11 +139,6 @@ export async function autoDetectListing(
               schema: {
                 type: "object",
                 properties: {
-                  subtype: {
-                    type: ["string", "null"],
-                    enum: ["phone", null],
-                    description: "phone if a smartphone, otherwise null",
-                  },
                   tags: {
                     type: "array",
                     items: {
@@ -163,7 +149,7 @@ export async function autoDetectListing(
                     maxItems: MAX_TAGS,
                   },
                 },
-                required: ["subtype", "tags"],
+                required: ["tags"],
                 additionalProperties: false,
               },
             },
@@ -198,8 +184,7 @@ export async function autoDetectListing(
       };
     }
 
-    const obj = parsed as { subtype?: unknown; tags?: unknown };
-    const subtype: ListingSubtype = obj.subtype === "phone" ? "phone" : null;
+    const obj = parsed as { tags?: unknown };
     const tags = Array.isArray(obj.tags)
       ? (obj.tags as unknown[])
           .filter((t): t is string => typeof t === "string")
@@ -210,7 +195,6 @@ export async function autoDetectListing(
 
     return {
       ok: true,
-      subtype,
       tags,
       modelVersion,
       tokensIn,

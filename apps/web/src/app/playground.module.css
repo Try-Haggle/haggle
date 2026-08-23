@@ -122,7 +122,10 @@
   padding: 10px 14px;
   font-size: 0.9rem;
   cursor: pointer;
-  transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+  transition:
+    transform 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease;
 }
 
 .presetButton,

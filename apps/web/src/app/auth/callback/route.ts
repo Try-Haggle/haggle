@@ -38,7 +38,9 @@ export async function GET(request: Request) {
     if (!error) {
       // Notification is best-effort — never block redirect on failure
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         if (user) await triggerSignedUpNotification(user.id, user.created_at);
       } catch (err) {
         console.error("[auth/callback] notification error (non-fatal):", err);
@@ -55,7 +57,9 @@ export async function GET(request: Request) {
     });
     if (!error) {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         if (user) await triggerSignedUpNotification(user.id, user.created_at);
       } catch (err) {
         console.error("[auth/callback] notification error (non-fatal):", err);

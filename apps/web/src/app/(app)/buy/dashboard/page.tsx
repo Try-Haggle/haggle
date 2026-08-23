@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { serverApi } from "@/lib/api-server";
+import { createClient } from "@/lib/supabase/server";
 import { BuyerDashboardContent } from "./dashboard-content";
 
 export interface ViewedListing {

@@ -52,8 +52,6 @@ interface Listing {
   tags: string[] | null;
   sellerAgentPreset: string | null;
   sellingDeadline: string | null;
-  subtype: string | null;
-  attributes: Record<string, unknown> | null;
   /** Phase G Flow 2: the seller's REQUIRED category criteria (buyer-safe: id + ask). */
   sellerRequiredCriteria: Array<{ checkId: string; ask: string }> | null;
   sellerFulfillmentOffer?: {
@@ -69,20 +67,6 @@ interface Listing {
 }
 
 /* ─── Helpers ─────────────────────────────────────────────── */
-
-const PHONE_ATTR_LABELS: Record<string, string> = {
-  storage: "Storage",
-  batteryHealth: "Battery",
-  carrierLock: "Carrier",
-  screenCondition: "Screen",
-};
-
-function formatAttrValue(key: string, value: unknown): string {
-  const v = String(value);
-  if (key === "batteryHealth" && /^\d+$/.test(v)) return `${v}%`;
-  if (key === "carrierLock") return v === "unlocked" ? "Unlocked" : v === "locked" ? "Locked" : v;
-  return v;
-}
 
 function getSellerAgentName(presetId: string | null): string {
   const map: Record<string, string> = {
@@ -200,7 +184,7 @@ export function BuyerLanding({
         <Nav userEmail={user.email} userName={user.name} userAvatarUrl={user.avatarUrl} />
       ) : (
         <nav className="fixed inset-x-0 top-0 z-50 h-14 border-line border-b bg-surface/80 backdrop-blur-md">
-          <div className="mx-auto flex h-full max-w-6xl items-center justify-between px-4 sm:px-6">
+          <div className="mx-auto flex h-full max-w-7xl items-center justify-between px-4 sm:px-6">
             <span className="text-lg font-bold text-ink">Haggle</span>
             <a
               href="/sign-in"
@@ -212,7 +196,7 @@ export function BuyerLanding({
         </nav>
       )}
 
-      <div className={`mx-auto max-w-6xl px-4 pb-8 ${user ? "pt-8 md:pt-24" : "pt-[88px]"}`}>
+      <div className={`mx-auto max-w-7xl px-4 pb-8 ${user ? "pt-8 md:pt-24" : "pt-[88px]"}`}>
         {/* ── Back link (if originated from a known surface) ── */}
         {from && (
           <BackLink href={ORIGIN_HREF[from]} className="mb-6">
@@ -293,27 +277,6 @@ export function BuyerLanding({
                     <p className="mt-3 text-sm text-ink-secondary">
                       Parcel: {formatListingParcel(listingParcel)}
                     </p>
-                  )}
-
-                  {/* Phone specs */}
-                  {listing.attributes && Object.keys(listing.attributes).length > 0 && (
-                    <div className="mt-4 grid grid-cols-2 gap-2">
-                      {Object.entries(listing.attributes)
-                        .filter(([k]) => k in PHONE_ATTR_LABELS)
-                        .map(([k, v]) => (
-                          <div
-                            key={k}
-                            className="rounded-lg border border-line bg-surface-sunken px-3 py-2"
-                          >
-                            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
-                              {PHONE_ATTR_LABELS[k]}
-                            </p>
-                            <p className="mt-0.5 text-sm font-medium text-ink">
-                              {formatAttrValue(k, v)}
-                            </p>
-                          </div>
-                        ))}
-                    </div>
                   )}
 
                   {/* Description */}

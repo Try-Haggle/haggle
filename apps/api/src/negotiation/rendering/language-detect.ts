@@ -66,7 +66,11 @@ export function detectLanguage(text: string): DetectionResult {
 
   // Japanese: Kana > 10% (even with Kanji, kana presence = Japanese)
   if (japaneseRatio > 0.1) {
-    return { locale: "ja", confidence: Math.min(1, japaneseRatio + cjkRatio + 0.2), script: "kana" };
+    return {
+      locale: "ja",
+      confidence: Math.min(1, japaneseRatio + cjkRatio + 0.2),
+      script: "kana",
+    };
   }
 
   // Chinese: CJK > 30% and no Kana (distinguish from Japanese Kanji)
@@ -77,13 +81,21 @@ export function detectLanguage(text: string): DetectionResult {
   // Vietnamese: Latin + specific diacritics (ơ, ư, ă, đ)
   const vietnameseCount = (clean.match(VIETNAMESE_REGEX) || []).length;
   if (vietnameseCount >= 2) {
-    return { locale: "vi", confidence: Math.min(1, vietnameseCount / total + 0.5), script: "vietnamese_latin" };
+    return {
+      locale: "vi",
+      confidence: Math.min(1, vietnameseCount / total + 0.5),
+      script: "vietnamese_latin",
+    };
   }
 
   // Spanish: ñ, ¿, ¡ markers
   const spanishCount = (clean.match(SPANISH_MARKERS) || []).length;
   if (spanishCount >= 1) {
-    return { locale: "es", confidence: Math.min(1, spanishCount / total + 0.5), script: "spanish_latin" };
+    return {
+      locale: "es",
+      confidence: Math.min(1, spanishCount / total + 0.5),
+      script: "spanish_latin",
+    };
   }
 
   // Default: English (Latin script)

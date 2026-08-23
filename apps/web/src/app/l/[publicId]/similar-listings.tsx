@@ -62,7 +62,7 @@ export function SimilarListings({
   }, [publicId, userId]);
 
   return (
-    <section className="mx-auto max-w-6xl px-4 pb-12 sm:px-6">
+    <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6">
       {loading ? (
         <>
           <h2 className="mb-4 font-bold text-ink text-lg">Similar Listings</h2>

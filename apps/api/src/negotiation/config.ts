@@ -5,38 +5,38 @@
  * for the LLM negotiation engine integration.
  */
 
-import type { BuddyDNA, HumanInterventionMode, OpponentPatternType } from './types.js';
+import type { BuddyDNA, HumanInterventionMode, OpponentPatternType } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Feature Flag
 // ---------------------------------------------------------------------------
 
-export type NegotiationEngineMode = 'llm' | 'rule';
+export type NegotiationEngineMode = "llm" | "rule";
 
 export function getEngineMode(): NegotiationEngineMode {
   const mode = process.env.NEGOTIATION_ENGINE;
-  if (mode === 'llm') return 'llm';
-  return 'rule'; // default: rule-based
+  if (mode === "llm") return "llm";
+  return "rule"; // default: rule-based
 }
 
 // ---------------------------------------------------------------------------
 // Validation Mode (Step 67-A)
 // ---------------------------------------------------------------------------
 
-export type ValidationMode = 'full' | 'lite';
+export type ValidationMode = "full" | "lite";
 
 export function getValidationMode(): ValidationMode {
-  return (process.env.VALIDATION_MODE as ValidationMode) ?? 'full';
+  return (process.env.VALIDATION_MODE as ValidationMode) ?? "full";
 }
 
 // ---------------------------------------------------------------------------
 // Memo Encoding (Step 67-B)
 // ---------------------------------------------------------------------------
 
-export type MemoEncodingConfig = 'auto' | 'codec' | 'raw';
+export type MemoEncodingConfig = "auto" | "codec" | "raw";
 
 export function getMemoEncoding(): MemoEncodingConfig {
-  return (process.env.MEMO_ENCODING as MemoEncodingConfig) ?? 'auto';
+  return (process.env.MEMO_ENCODING as MemoEncodingConfig) ?? "auto";
 }
 
 /**
@@ -47,14 +47,14 @@ export function resolveMemoEncoding(config: {
   modelContextWindow?: number;
   tokenCostPerM?: number;
   encoding: MemoEncodingConfig;
-}): 'codec' | 'raw' {
-  if (config.encoding !== 'auto') return config.encoding;
+}): "codec" | "raw" {
+  if (config.encoding !== "auto") return config.encoding;
 
   // Context 500K+ AND token $0.05/M 이하 → raw
   if ((config.modelContextWindow ?? 0) > 500_000 && (config.tokenCostPerM ?? 999) < 0.05) {
-    return 'raw';
+    return "raw";
   }
-  return 'codec';
+  return "codec";
 }
 
 // ---------------------------------------------------------------------------
@@ -76,13 +76,13 @@ export interface ReasoningTriggerInput {
  */
 export function shouldUseReasoning(input: ReasoningTriggerInput): boolean {
   // Gap < 10% of range — close to deal, judgment matters
-  if (input.gapRatio < 0.10 && input.gapRatio > 0) return true;
+  if (input.gapRatio < 0.1 && input.gapRatio > 0) return true;
 
   // 2+ coach warnings (stagnation + time pressure, etc.)
   if (input.coachWarnings.length >= 2) return true;
 
   // Opponent is firm — strategic judgment needed
-  if (input.opponentPattern === 'BOULWARE') return true;
+  if (input.opponentPattern === "BOULWARE") return true;
 
   // 2+ soft violations — need to rethink approach
   if (input.softViolationCount >= 2) return true;
@@ -95,14 +95,14 @@ export function shouldUseReasoning(input: ReasoningTriggerInput): boolean {
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_BUDDY_DNA: BuddyDNA = {
-  style: 'balanced',
-  preferred_tactic: 'reciprocal_concession',
-  category_experience: 'electronics',
+  style: "balanced",
+  preferred_tactic: "reciprocal_concession",
+  category_experience: "electronics",
   condition_trade_success_rate: 0.5,
-  best_timing: 'mid-session',
+  best_timing: "mid-session",
   tone: {
-    style: 'professional',
-    formality: 'neutral',
+    style: "professional",
+    formality: "neutral",
     emoji_use: false,
   },
 };
@@ -111,7 +111,7 @@ export const DEFAULT_BUDDY_DNA: BuddyDNA = {
 // Default Settings
 // ---------------------------------------------------------------------------
 
-export const DEFAULT_INTERVENTION_MODE: HumanInterventionMode = 'FULL_AUTO';
+export const DEFAULT_INTERVENTION_MODE: HumanInterventionMode = "FULL_AUTO";
 export const DEFAULT_MAX_ROUNDS = 15;
 
 // ---------------------------------------------------------------------------
@@ -119,4 +119,4 @@ export const DEFAULT_MAX_ROUNDS = 15;
 // Already defined in types.ts, re-exported for convenience
 // ---------------------------------------------------------------------------
 
-export { PHASE_TOKEN_BUDGET } from './types.js';
+export { PHASE_TOKEN_BUDGET } from "./types.js";

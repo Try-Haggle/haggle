@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  defaultIphoneFilter,
+  EbayAuthError,
   EbayBrowseClient,
   EbayRateLimitExceededError,
-  EbayAuthError,
-  defaultIphoneFilter,
 } from "../lib/ebay-browse-client.js";
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -13,7 +13,10 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-function makeClient(fetchImpl: typeof fetch, overrides: Partial<ConstructorParameters<typeof EbayBrowseClient>[0]> = {}) {
+function makeClient(
+  fetchImpl: typeof fetch,
+  overrides: Partial<ConstructorParameters<typeof EbayBrowseClient>[0]> = {},
+) {
   return new EbayBrowseClient({
     clientId: "test_id",
     clientSecret: "test_secret",
@@ -35,9 +38,9 @@ describe("EbayBrowseClient", () => {
       fetchImpl: vi.fn() as unknown as typeof fetch,
     });
     expect(client.hasCredentials()).toBe(false);
-    await expect(
-      client.searchActiveListings({ q: "iPhone" }),
-    ).rejects.toBeInstanceOf(EbayAuthError);
+    await expect(client.searchActiveListings({ q: "iPhone" })).rejects.toBeInstanceOf(
+      EbayAuthError,
+    );
   });
 
   it("caches OAuth token across calls within expiry", async () => {
@@ -100,9 +103,9 @@ describe("EbayBrowseClient", () => {
     ) as unknown as typeof fetch;
     const client = makeClient(fetchImpl, { dailyLimit: 4500 });
     client._setCallsTodayForTest(4500);
-    await expect(
-      client.searchActiveListings({ q: "iPhone" }),
-    ).rejects.toBeInstanceOf(EbayRateLimitExceededError);
+    await expect(client.searchActiveListings({ q: "iPhone" })).rejects.toBeInstanceOf(
+      EbayRateLimitExceededError,
+    );
   });
 
   it("increments counter before call and blocks the next one at the ceiling", async () => {
@@ -132,7 +135,12 @@ describe("EbayBrowseClient", () => {
       }
       attempts++;
       if (attempts < 3) return new Response("rate limited", { status: 429 });
-      return jsonResponse({ itemSummaries: [{ itemId: "a", title: "t", price: { value: "500", currency: "USD" } }], total: 1, limit: 100, offset: 0 });
+      return jsonResponse({
+        itemSummaries: [{ itemId: "a", title: "t", price: { value: "500", currency: "USD" } }],
+        total: 1,
+        limit: 100,
+        offset: 0,
+      });
     }) as unknown as typeof fetch;
 
     const client = makeClient(fetchImpl);

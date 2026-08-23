@@ -46,13 +46,15 @@ describe("validateHnpProtocolOrder", () => {
 
   it("rejects idempotency key reuse with a different protocol identity", () => {
     const result = validateHnpProtocolOrder(
-      [round({
-        messageId: "offer-msg-1",
-        sequence: 2,
-        idempotencyKey: "idem-1",
-        type: "OFFER",
-        proposalHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      })],
+      [
+        round({
+          messageId: "offer-msg-1",
+          sequence: 2,
+          idempotencyKey: "idem-1",
+          type: "OFFER",
+          proposalHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        }),
+      ],
       {
         messageId: "accept-msg-1",
         sequence: 3,
@@ -69,10 +71,11 @@ describe("validateHnpProtocolOrder", () => {
   });
 
   it("rejects out-of-order sequence values", () => {
-    const result = validateHnpProtocolOrder(
-      [round({ messageId: "msg-1", sequence: 5 })],
-      { messageId: "msg-2", sequence: 4, idempotencyKey: "idem-2" },
-    );
+    const result = validateHnpProtocolOrder([round({ messageId: "msg-1", sequence: 5 })], {
+      messageId: "msg-2",
+      sequence: 4,
+      idempotencyKey: "idem-2",
+    });
 
     expect(result).toMatchObject({ ok: false, error: "OUT_OF_ORDER" });
   });

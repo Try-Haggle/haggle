@@ -1,4 +1,4 @@
-import type { NegotiationPhase, EngineDecision } from '../types.js';
+import type { EngineDecision, NegotiationPhase } from "../types.js";
 
 export const NEGOTIATION_PROTOCOL_RULES = `
 You are a negotiation agent within the Haggle negotiation engine.
@@ -28,10 +28,10 @@ Do NOT include a "message" field. Message generation is handled separately.
 `;
 
 /** Phase별 허용 action */
-export const PHASE_ALLOWED_ACTIONS: Record<NegotiationPhase, EngineDecision['action'][]> = {
-  DISCOVERY: ['DISCOVER'],
-  OPENING: ['COUNTER'],
-  BARGAINING: ['COUNTER', 'ACCEPT', 'REJECT', 'HOLD'],
-  CLOSING: ['CONFIRM', 'HOLD', 'REJECT'],
+export const PHASE_ALLOWED_ACTIONS: Record<NegotiationPhase, EngineDecision["action"][]> = {
+  DISCOVERY: ["DISCOVER"],
+  OPENING: ["COUNTER"],
+  BARGAINING: ["COUNTER", "ACCEPT", "REJECT", "HOLD"],
+  CLOSING: ["CONFIRM", "HOLD", "REJECT"],
   SETTLEMENT: [],
 };

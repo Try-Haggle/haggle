@@ -1,7 +1,7 @@
-import { negotiationRoundFacts, type Database } from '@haggle/db';
-import { computeFactHash } from '@haggle/engine-session';
-import type { RoundFactPayload } from '@haggle/engine-session';
-import type { RoundFact } from '../types.js';
+import { type Database, negotiationRoundFacts } from "@haggle/db";
+import type { RoundFactPayload } from "@haggle/engine-session";
+import { computeFactHash } from "@haggle/engine-session";
+import type { RoundFact } from "../types.js";
 
 /**
  * Pending fact entry before flush.
@@ -63,9 +63,10 @@ export class PgRoundFactSink {
         gap: String(fact.gap),
         buyer_tactic: fact.buyer_tactic ?? null,
         seller_tactic: fact.seller_tactic ?? null,
-        conditions_changed: Object.entries(fact.conditions_changed ?? {}).map(
-          ([term, value]) => ({ term, value }),
-        ),
+        conditions_changed: Object.entries(fact.conditions_changed ?? {}).map(([term, value]) => ({
+          term,
+          value,
+        })),
         coaching_recommended_price: String(fact.coaching_given.recommended),
         coaching_recommended_tactic: fact.coaching_given.tactic ?? null,
         coaching_followed: fact.coaching_followed,
@@ -83,9 +84,12 @@ export class PgRoundFactSink {
         gap: String(fact.gap),
         buyerTactic: fact.buyer_tactic ?? null,
         sellerTactic: fact.seller_tactic ?? null,
-        conditionsChanged: Object.entries(fact.conditions_changed ?? {}).map(
-          ([term, value]) => ({ term, old_value: null, new_value: value, who: 'unknown' }),
-        ),
+        conditionsChanged: Object.entries(fact.conditions_changed ?? {}).map(([term, value]) => ({
+          term,
+          old_value: null,
+          new_value: value,
+          who: "unknown",
+        })),
         coachingRecommendedPrice: String(fact.coaching_given.recommended),
         coachingRecommendedTactic: fact.coaching_given.tactic ?? null,
         coachingFollowed: fact.coaching_followed,

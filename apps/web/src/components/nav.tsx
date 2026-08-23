@@ -119,7 +119,7 @@ export function Nav({ userEmail, userName, userAvatarUrl, modeOverride }: NavPro
 
   return (
     <nav className="fixed inset-x-0 top-0 z-50 hidden border-line border-b bg-surface/80 backdrop-blur-md md:block">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
         {/* Left: Logo + Tabs */}
         <div className="flex h-full items-center gap-6">
           <Link

@@ -24,7 +24,6 @@ import { ListingParcelFields } from "@/components/shipping/listing-parcel-fields
 import {
   Alert,
   Button,
-  Checkbox,
   Chip,
   CopyButton,
   Dropzone,
@@ -181,7 +180,7 @@ export function NewListingWizard({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
 
-  // Step 3: Category, Condition, Tags, Phone details
+  // Step 3: Category, Condition, Tags
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   /** False when the vision tagger was unavailable — tags then come from text inference only. */
@@ -201,12 +200,6 @@ export function NewListingWizard({
     return resolveChecks(tagSet).some((c) => c.enforcement === "hard");
   }, [category, tags]);
   const [condition, setCondition] = useState("good");
-  const [subtype, setSubtype] = useState<"phone" | null>(null);
-  const [phoneBatteryHealth, setPhoneBatteryHealth] = useState<string | null>(null);
-  const [phoneCarrierLock, setPhoneCarrierLock] = useState<string | null>(null);
-  const [phoneStorage, setPhoneStorage] = useState<string | null>(null);
-  const [phoneScreenCondition, setPhoneScreenCondition] = useState<string | null>(null);
-  const [phoneFactoryResetConfirmed, setPhoneFactoryResetConfirmed] = useState(false);
 
   // Step 4: Pricing
   const [targetPrice, setTargetPrice] = useState("");
@@ -328,17 +321,6 @@ export function NewListingWizard({
           setSellingDeadline(savedLocalDate ?? formatLocalDateInput(new Date(d.sellingDeadline)));
         }
         if (d.draftName) setDraftName(d.draftName);
-        if (d.negotiationAgentSnapshot?.subtype === "phone") {
-          setSubtype("phone");
-          const pa = d.negotiationAgentSnapshot.phoneAnswers as Record<string, unknown> | undefined;
-          if (pa) {
-            if (typeof pa.batteryHealth === "string") setPhoneBatteryHealth(pa.batteryHealth);
-            if (typeof pa.carrierLock === "string") setPhoneCarrierLock(pa.carrierLock);
-            if (typeof pa.storage === "string") setPhoneStorage(pa.storage);
-            if (typeof pa.screenCondition === "string") setPhoneScreenCondition(pa.screenCondition);
-            if (pa.factoryResetConfirmed === true) setPhoneFactoryResetConfirmed(true);
-          }
-        }
         if (typeof d.negotiationAgentSnapshot?.preset === "string") {
           const candidate = d.negotiationAgentSnapshot.preset as NegotiationAgentPresetId;
           if (RECOGNIZED_PRESET_IDS.includes(candidate)) {
@@ -473,16 +455,6 @@ export function NewListingWizard({
     if (floorPrice.trim()) patch.floorPrice = floorPrice.trim();
     if (sellingDeadline) patch.sellingDeadline = localDateToDeadlineIso(sellingDeadline);
     const strategyBase: Record<string, unknown> = {};
-    if (subtype) strategyBase.subtype = subtype;
-    if (subtype === "phone") {
-      strategyBase.phoneAnswers = {
-        storage: phoneStorage,
-        batteryHealth: phoneBatteryHealth,
-        carrierLock: phoneCarrierLock,
-        screenCondition: phoneScreenCondition,
-        factoryResetConfirmed: phoneFactoryResetConfirmed,
-      };
-    }
     if (sellingDeadline) Object.assign(strategyBase, deadlineStrategyConfig());
     strategyBase.sellerFulfillmentOffer =
       parseSellerFulfillmentOffer(fulfillmentOffer) ?? DEFAULT_SELLER_OFFER;
@@ -564,14 +536,7 @@ export function NewListingWizard({
       case 2:
         return !!title.trim();
       case 3:
-        return (
-          subtype !== "phone" ||
-          (!!phoneStorage &&
-            !!phoneBatteryHealth &&
-            !!phoneCarrierLock &&
-            !!phoneScreenCondition &&
-            phoneFactoryResetConfirmed)
-        );
+        return true;
       case 4:
         return (
           !!targetPrice.trim() &&
@@ -595,13 +560,6 @@ export function NewListingWizard({
         if (!title.trim()) return "Title is required";
         break;
       case 3:
-        if (subtype === "phone") {
-          if (!phoneStorage) return "Storage capacity is required";
-          if (!phoneBatteryHealth) return "Battery health is required";
-          if (!phoneCarrierLock) return "Carrier lock status is required";
-          if (!phoneScreenCondition) return "Screen condition is required";
-          if (!phoneFactoryResetConfirmed) return "Please confirm the pre-ship checklist";
-        }
         break;
       case 4:
         if (!targetPrice.trim()) return "Asking price is required";
@@ -652,18 +610,11 @@ export function NewListingWizard({
         try {
           const detected = await api.post<{
             ok: boolean;
-            /** Absent when the vision pass failed — do NOT clobber a prior subtype. */
-            subtype?: "phone" | null;
             tags: string[];
             /** False when the vision pass failed; tags are still enriched deterministically. */
             visionOk?: boolean;
           }>(`/api/drafts/${id}/auto-detect`, {});
           if (detected.ok) {
-            // Only vision decides the subtype. On failure the server omits the key, and
-            // overwriting with null here would drop the subtype-specific step-3 questions.
-            if (detected.visionOk !== false && detected.subtype !== undefined) {
-              setSubtype(detected.subtype);
-            }
             if (Array.isArray(detected.tags)) setTags(detected.tags);
             setVisionOk(detected.visionOk !== false);
           }
@@ -1165,154 +1116,11 @@ export function NewListingWizard({
                   </div>
                 </div>
 
-                {/* Phone Details — only when subtype === "phone" */}
-                {subtype === "phone" && (
-                  <div
-                    className="rounded-xl p-5 space-y-6"
-                    style={{
-                      background: "color-mix(in srgb, var(--action-primary) 3%, transparent)",
-                      border:
-                        "1px solid color-mix(in srgb, var(--action-primary) 20%, transparent)",
-                    }}
-                  >
-                    <div
-                      className="pb-4"
-                      style={{
-                        borderBottom:
-                          "1px solid color-mix(in srgb, var(--action-primary) 12%, transparent)",
-                      }}
-                    >
-                      <p className="text-sm font-bold text-ink">📱 Phone details</p>
-                      <p className="text-xs mt-1 text-ink-secondary">
-                        Buyers expect this info upfront. All required to publish.
-                      </p>
-                    </div>
-
-                    {/* Storage */}
-                    <div>
-                      <span className="mb-3 block text-xs font-semibold uppercase tracking-wider text-ink-secondary">
-                        Storage <span className="text-warning">*</span>
-                      </span>
-                      <div className="flex flex-wrap gap-2">
-                        {[
-                          { v: "64gb", l: "64GB" },
-                          { v: "128gb", l: "128GB" },
-                          { v: "256gb", l: "256GB" },
-                          { v: "512gb", l: "512GB" },
-                          { v: "1tb", l: "1TB" },
-                          { v: "other", l: "Other" },
-                        ].map(({ v, l }) => (
-                          <Chip
-                            key={v}
-                            size="sm"
-                            selected={phoneStorage === v}
-                            onClick={() => setPhoneStorage(v)}
-                          >
-                            {l}
-                          </Chip>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Battery Health */}
-                    <div>
-                      <span className="mb-3 block text-xs font-semibold uppercase tracking-wider text-ink-secondary">
-                        Battery Health <span className="text-warning">*</span>
-                      </span>
-                      <div className="flex flex-wrap gap-2">
-                        {[
-                          { v: "ge_90", l: "90%+" },
-                          { v: "ge_85", l: "85–89%" },
-                          { v: "ge_80", l: "80–84%" },
-                          { v: "lt_80", l: "Under 80%" },
-                          { v: "unknown", l: "Not sure" },
-                        ].map(({ v, l }) => (
-                          <Chip
-                            key={v}
-                            size="sm"
-                            selected={phoneBatteryHealth === v}
-                            onClick={() => setPhoneBatteryHealth(v)}
-                          >
-                            {l}
-                          </Chip>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Carrier Lock */}
-                    <div>
-                      <span className="mb-3 block text-xs font-semibold uppercase tracking-wider text-ink-secondary">
-                        Carrier Lock <span className="text-warning">*</span>
-                      </span>
-                      <div className="flex flex-wrap gap-2">
-                        {[
-                          { v: "unlocked", l: "Unlocked" },
-                          { v: "locked", l: "Carrier-locked" },
-                          { v: "unknown", l: "Not sure" },
-                        ].map(({ v, l }) => (
-                          <Chip
-                            key={v}
-                            size="sm"
-                            selected={phoneCarrierLock === v}
-                            onClick={() => setPhoneCarrierLock(v)}
-                          >
-                            {l}
-                          </Chip>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Screen Condition */}
-                    <div>
-                      <span className="mb-3 block text-xs font-semibold uppercase tracking-wider text-ink-secondary">
-                        Screen Condition <span className="text-warning">*</span>
-                      </span>
-                      <div className="flex flex-wrap gap-2">
-                        {[
-                          { v: "perfect", l: "Perfect" },
-                          { v: "minor_scratches", l: "Minor scratches" },
-                          { v: "visible_scratches", l: "Visible scratches" },
-                          { v: "cracked", l: "Cracked" },
-                        ].map(({ v, l }) => (
-                          <Chip
-                            key={v}
-                            size="sm"
-                            selected={phoneScreenCondition === v}
-                            onClick={() => setPhoneScreenCondition(v)}
-                          >
-                            {l}
-                          </Chip>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Pre-ship checklist */}
-                    <div>
-                      <span className="mb-3 block text-xs font-semibold uppercase tracking-wider text-ink-secondary">
-                        Pre-ship Checklist <span className="text-warning">*</span>
-                      </span>
-                      <Checkbox
-                        className="mt-0.5"
-                        checked={phoneFactoryResetConfirmed}
-                        onChange={(e) => setPhoneFactoryResetConfirmed(e.target.checked)}
-                        label={
-                          <span className="text-ink-secondary text-sm">
-                            Before shipping, I will{" "}
-                            <strong className="text-ink">turn off Find My</strong> and{" "}
-                            <strong className="text-ink">factory reset</strong> the phone so the
-                            buyer can activate it.
-                          </span>
-                        }
-                      />
-                    </div>
-                  </div>
-                )}
-
                 {/* Tags */}
                 <div>
                   <span className="mb-3 block text-xs font-semibold uppercase tracking-wider text-ink-secondary">
                     Tags{" "}
-                    {subtype === "phone" && tags.length > 0 && (
+                    {visionOk && tags.length > 0 && (
                       <span className="ml-1 font-normal normal-case tracking-normal text-ink-muted">
                         (auto-suggested)
                       </span>

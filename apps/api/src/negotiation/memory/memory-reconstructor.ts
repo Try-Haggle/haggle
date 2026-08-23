@@ -307,7 +307,6 @@ export function extractListingContextMemory(
   if (typeof src.category === "string") out.category = src.category;
   if (typeof src.condition === "string") out.condition = src.condition;
   if (typeof src.photoUrl === "string") out.photoUrl = src.photoUrl;
-  if (typeof src.subtype === "string") out.subtype = src.subtype;
   if (Array.isArray(src.tags)) {
     const tags = src.tags.filter((t): t is string => typeof t === "string");
     if (tags.length > 0) out.tags = tags;

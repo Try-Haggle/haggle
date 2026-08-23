@@ -1,8 +1,8 @@
-import { type Database } from "@haggle/db";
+import type { Database } from "@haggle/db";
 import type { Resend } from "resend";
 import { EVENT_CATALOG, type EventType } from "./catalog.js";
-import { sendInApp } from "./channels/in-app.js";
 import { sendEmail } from "./channels/email.js";
+import { sendInApp } from "./channels/in-app.js";
 
 export interface PublishInput {
   type: EventType;

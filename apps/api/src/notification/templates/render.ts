@@ -1,16 +1,16 @@
 import { render } from "@react-email/render";
 import React from "react";
-import type { EventType } from "../catalog.js";
-import { SessionConcludedEmail } from "./session-concluded.js";
-import { OfferAcceptedEmail } from "./offer-accepted.js";
-import { UserSignedUpEmail } from "./user-signed-up.js";
-import { ListingPublishedEmail } from "./listing-published.js";
 import type {
-  SessionConcludedPayload,
-  OfferAcceptedPayload,
-  UserSignedUpPayload,
+  EventType,
   ListingPublishedPayload,
+  OfferAcceptedPayload,
+  SessionConcludedPayload,
+  UserSignedUpPayload,
 } from "../catalog.js";
+import { ListingPublishedEmail } from "./listing-published.js";
+import { OfferAcceptedEmail } from "./offer-accepted.js";
+import { SessionConcludedEmail } from "./session-concluded.js";
+import { UserSignedUpEmail } from "./user-signed-up.js";
 
 interface RenderResult {
   subject: string;

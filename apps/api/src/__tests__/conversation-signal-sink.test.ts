@@ -29,9 +29,9 @@ function makeMockDb() {
     db: { execute } as unknown as import("@haggle/db").Database,
     execute,
     getSourceQuery: () =>
-      execute.mock.calls.find((call) => String(call[0]?.raw).includes("INSERT INTO conversation_signal_sources"))?.[0] as
-        | { raw: string; values: unknown[] }
-        | undefined,
+      execute.mock.calls.find((call) =>
+        String(call[0]?.raw).includes("INSERT INTO conversation_signal_sources"),
+      )?.[0] as { raw: string; values: unknown[] } | undefined,
     getMarketQueries: () =>
       execute.mock.calls
         .map((call) => call[0] as { raw: string; values: unknown[] })
@@ -72,7 +72,12 @@ describe("Conversation Signal Sink", () => {
 
     const marketQueries = mock.getMarketQueries();
     expect(marketQueries.some((query) => query.values.includes("price_resistance"))).toBe(true);
-    expect(marketQueries.some((query) => query.values.includes("product_identity") && query.values.includes("iphone_15_pro"))).toBe(true);
+    expect(
+      marketQueries.some(
+        (query) =>
+          query.values.includes("product_identity") && query.values.includes("iphone_15_pro"),
+      ),
+    ).toBe(true);
 
     const priceQuery = marketQueries.find((query) => query.values.includes("price_resistance"));
     expect(priceQuery?.raw).toContain("ON CONFLICT (signal_key) DO NOTHING");
@@ -88,7 +93,8 @@ describe("Conversation Signal Sink", () => {
       ]),
     );
     const evidenceValue = priceQuery?.values.find(
-      (value): value is string => typeof value === "string" && value.includes('"sourceKey":"msg-123"'),
+      (value): value is string =>
+        typeof value === "string" && value.includes('"sourceKey":"msg-123"'),
     );
     expect(evidenceValue).toBeTruthy();
     expect(JSON.stringify(priceQuery?.values)).not.toContain('"text"');
@@ -109,7 +115,9 @@ describe("Conversation Signal Sink", () => {
       sourceLabel: "incoming",
     });
 
-    expect(mock.getSourceQuery()?.raw).toContain("WHERE conversation_signal_sources.raw_text_hash = EXCLUDED.raw_text_hash");
+    expect(mock.getSourceQuery()?.raw).toContain(
+      "WHERE conversation_signal_sources.raw_text_hash = EXCLUDED.raw_text_hash",
+    );
     expect(mock.getMarketQueries().length).toBeGreaterThan(0);
   });
 
@@ -142,7 +150,9 @@ describe("Conversation Signal Sink", () => {
     expect(result.extracted).toBeGreaterThan(0);
     expect(result.inserted).toBe(0);
     expect(
-      execute.mock.calls.some((call) => String(call[0]?.raw).includes("INSERT INTO tag_suggestions")),
+      execute.mock.calls.some((call) =>
+        String(call[0]?.raw).includes("INSERT INTO tag_suggestions"),
+      ),
     ).toBe(false);
   });
 

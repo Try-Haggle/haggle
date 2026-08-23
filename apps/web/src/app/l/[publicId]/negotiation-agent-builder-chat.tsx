@@ -99,6 +99,23 @@ interface NegotiationAgentBuilderChatProps {
   listingMarketMedian?: string | null;
   /** Which side the user is on. Drives copy + LLM prompt direction. Default "buyer". */
   role?: "buyer" | "seller";
+  /**
+   * How the chat frames itself.
+   *
+   * "card" (default) is the inline form used by the listing page and the seller
+   * wizard: its own border, rounded corners, raised background and a top margin,
+   * sized by `minHeight`. "bare" drops all of that and fills its parent instead —
+   * for when the chat already sits inside a surface that provides the frame, such
+   * as a drawer, where the card would read as a box inside a box and would stop
+   * short of the panel's height.
+   */
+  variant?: "card" | "bare";
+  /**
+   * Type scale + spacing. "compact" shrinks bubbles, the budget widget, and
+   * list padding for narrow hosts (the listing page's negotiator drawer);
+   * "comfortable" (default) keeps the sizes the wide surfaces use.
+   */
+  density?: "comfortable" | "compact";
   onNegotiationAgentBuilderMemoryUpdate?: (memory: NegotiationAgentBuilderMemory) => void;
   /** Called when the chat adjusts the radar numbers (4 weights + 4 curves). */
   onStrategyUpdate?: (strategy: ChatStrategy) => void;
@@ -319,9 +336,11 @@ function renderMarkdownLite(text: string): string {
 function BudgetWidget({
   listingPrice,
   onSubmit,
+  compact = false,
 }: {
   listingPrice: string | null;
   onSubmit: (target: number, max: number) => void;
+  compact?: boolean;
 }) {
   const basePrice = listingPrice ? parseInt(listingPrice, 10) : 1000;
   const minRange = Math.floor(basePrice * 0.5);
@@ -331,24 +350,30 @@ function BudgetWidget({
   const [max, setMax] = useState(basePrice);
 
   return (
-    <div className="mt-4 p-4 rounded-xl bg-surface-raised border border-line">
-      <div className="flex justify-between items-center mb-5">
+    <div
+      className={`rounded-xl bg-surface-raised border border-line ${compact ? "mt-2.5 p-3" : "mt-4 p-4"}`}
+    >
+      <div className={`flex justify-between items-center ${compact ? "mb-3" : "mb-5"}`}>
         <div className="text-center">
           <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wider mb-1">
             Target price
           </p>
-          <p className="text-[16px] font-bold text-action-primary">${target.toLocaleString()}</p>
+          <p className={`font-bold text-action-primary ${compact ? "text-[14px]" : "text-[16px]"}`}>
+            ${target.toLocaleString()}
+          </p>
         </div>
         <div className="h-[30px] w-[1px] bg-surface-sunken" />
         <div className="text-center">
           <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wider mb-1">
             Max budget
           </p>
-          <p className="text-[16px] font-bold text-action-primary">${max.toLocaleString()}</p>
+          <p className={`font-bold text-action-primary ${compact ? "text-[14px]" : "text-[16px]"}`}>
+            ${max.toLocaleString()}
+          </p>
         </div>
       </div>
 
-      <div className="flex flex-col gap-6 mb-6">
+      <div className={`flex flex-col ${compact ? "gap-4 mb-4" : "gap-6 mb-6"}`}>
         <Slider
           aria-label="Target price"
           min={minRange}
@@ -373,7 +398,12 @@ function BudgetWidget({
         />
       </div>
 
-      <Button variant="primary" fullWidth onClick={() => onSubmit(target, max)}>
+      <Button
+        variant="primary"
+        fullWidth
+        size={compact ? "sm" : "md"}
+        onClick={() => onSubmit(target, max)}
+      >
         Set budget
       </Button>
     </div>
@@ -420,6 +450,8 @@ export function NegotiationAgentBuilderChat({
   sellerRequiredCriteria,
   listingMarketMedian,
   role = "buyer",
+  variant = "card",
+  density = "comfortable",
   onNegotiationAgentBuilderMemoryUpdate,
   onStrategyUpdate,
 }: NegotiationAgentBuilderChatProps) {
@@ -442,7 +474,14 @@ export function NegotiationAgentBuilderChat({
   // questions for this category, we skip that entirely — a static greeting + the
   // quick-setup picker render instantly. The LLM opener only fires for the long tail
   // (a category with no taxonomy checks). Buyer keeps its instant static greeting.
-  const autoOpenFirst = side === "seller" && choiceQuestions.length === 0;
+  // `listingPrice` is what makes a listing a listing here — `makeGreeting` uses
+  // the same signal to decide between its per-item and standalone openers. Without
+  // it this fired on the Agent Studio too, where a seller building a reusable agent
+  // waited ~15s for an LLM to invent an opener about an item that does not exist,
+  // and got a different one every time. The static greeting already covers that
+  // case; the LLM opener is only for a real listing whose category has no
+  // taxonomy checks to ask from.
+  const autoOpenFirst = side === "seller" && !!listingPrice && choiceQuestions.length === 0;
 
   // Current radar numbers, sent so the LLM adjusts from them (not invents).
   const buildCurrentStrategy = useCallback((): ChatStrategy | undefined => {
@@ -532,9 +571,14 @@ export function NegotiationAgentBuilderChat({
       // No listing context (standalone reusable agent) — price is set per-listing,
       // so never ask for an asking/floor price here. Gather posture instead.
       if (!askNum) {
+        // "Build on", not "set up": with no listing this is the Agent Studio,
+        // where the roster splits Presets from My agents and a preset is
+        // explicitly a starting template. Saying it will be set up framed the
+        // archetype as the finished agent, when what the conversation actually
+        // does is move away from it.
         return {
           text:
-            `I'll set up **${agentName}** for your selling negotiations.` +
+            `We'll build on **${agentName}** for your selling negotiations.` +
             (hasQuickSetup
               ? sellerQuickSetup
               : ` Tell me what you'd emphasize (condition, accessories, rarity), any deal-breakers, and how firmly you like to hold your price.`),
@@ -568,7 +612,7 @@ export function NegotiationAgentBuilderChat({
     // skip the budget slider and gather general style/preferences instead.
     return {
       text:
-        `I'll set up **${agentName}** for your buying negotiations.` +
+        `We'll build on **${agentName}** for your buying negotiations.` +
         (hasQuickSetup
           ? buyerQuickSetup
           : ` Tell me your must-haves, deal-breakers, and how aggressively you like to negotiate.`),
@@ -1068,8 +1112,14 @@ export function NegotiationAgentBuilderChat({
     <div
       id="negotiation-agent-builder-chat-container"
       ref={chatTopRef}
-      className="mt-4 flex flex-1 flex-col overflow-hidden rounded-xl border border-line bg-surface-raised transition-all duration-300"
-      style={{ minHeight: isExpanded ? "400px" : "200px" }}
+      className={
+        variant === "bare"
+          ? "flex h-full min-h-0 flex-col overflow-hidden"
+          : "mt-4 flex flex-1 flex-col overflow-hidden rounded-xl border border-line bg-surface-raised transition-all duration-300"
+      }
+      // "bare" takes its height from the surface around it, so a minHeight here
+      // would only stop it from filling that surface.
+      style={variant === "bare" ? undefined : { minHeight: isExpanded ? "400px" : "200px" }}
     >
       {/* Header */}
       <div className="flex shrink-0 items-center gap-2 border-line border-b px-4 py-3">
@@ -1097,7 +1147,9 @@ export function NegotiationAgentBuilderChat({
       </div>
 
       {/* Messages area */}
-      <MessageList className="min-h-0 flex-1 gap-3 p-4">
+      <MessageList
+        className={`min-h-0 flex-1 ${density === "compact" ? "gap-2.5 p-3" : "gap-3 p-4"}`}
+      >
         {messages.map((msg) => (
           <ChatBubble
             key={msg.id}
@@ -1115,7 +1167,9 @@ export function NegotiationAgentBuilderChat({
             }
           >
             <p
-              className="text-[13px] leading-[1.6]"
+              className={
+                density === "compact" ? "text-[12.5px] leading-[1.55]" : "text-[13px] leading-[1.6]"
+              }
               style={{
                 color: msg.role === "user" ? "var(--color-ink)" : "var(--color-ink-secondary)",
               }}
@@ -1126,7 +1180,11 @@ export function NegotiationAgentBuilderChat({
             />
 
             {msg.widget === "budget-slider" && (
-              <BudgetWidget listingPrice={listingPrice} onSubmit={handleBudgetSubmit} />
+              <BudgetWidget
+                listingPrice={listingPrice}
+                onSubmit={handleBudgetSubmit}
+                compact={density === "compact"}
+              />
             )}
 
             {/* A failed turn is recoverable: the builder is stateless and the whole
@@ -1208,55 +1266,66 @@ export function NegotiationAgentBuilderChat({
         </div>
       )}
 
-      {/* Strategy chips — only show when we have them */}
-      {chips.length > 0 && (
-        <div className="flex shrink-0 flex-wrap gap-1.5 overflow-x-auto border-line border-t bg-surface-overlay px-4 py-2">
-          <span className="mr-1 self-center font-semibold text-[10px] text-ink-muted tracking-wider">
-            STRATEGY
-          </span>
-          {chips.map((chip) => (
-            <Badge
-              key={`${chip.category}-${chip.value}`}
-              tone={CHIP_TONE[chip.category]}
-              size="sm"
-              className="whitespace-nowrap"
-              style={{ animation: "chipIn 0.3s ease-out" }}
-            >
-              {chip.label}
-            </Badge>
-          ))}
-        </div>
-      )}
-
       {/* Input area — bespoke chat composer (flat transparent field); the shared Input is a
           bordered form field and doesn't fit this toolbar. Send is a fixed-CTA IconButton
           (not the agent accent) so action buttons read consistently across the app. */}
-      <div className="flex shrink-0 items-center gap-2 border-line border-t bg-surface-overlay px-3 py-2.5">
-        <input
-          ref={inputRef}
-          type="text"
-          placeholder={
-            !hasAgentSelected
-              ? "Select an agent first"
-              : side === "seller"
-                ? "Tell me what to emphasize, deal-breakers, etc..."
-                : "Tell me your budget, must-haves, etc..."
-          }
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          disabled={!hasAgentSelected || isLoading}
-          className="flex-1 bg-transparent text-[13px] text-ink placeholder:text-ink-muted outline-none disabled:cursor-not-allowed disabled:opacity-40"
-        />
-        <IconButton
-          variant="solid"
-          onClick={handleSend}
-          disabled={!input.trim() || isLoading || !hasAgentSelected}
-          aria-label="Send message"
-          className="size-7 rounded-lg"
-        >
-          <Send className="size-3.5" />
-        </IconButton>
+      {/* The composer reads as a field rather than a bare line of text: the row
+          used to be a transparent input under a hairline, which left nothing
+          to aim at. The border and focus ring live on the wrapper so the send
+          button sits inside the same field, the way every chat input people
+          already use is built. */}
+      <div className="shrink-0 border-line border-t bg-surface-overlay p-3">
+        {/* The strategy chips sit inside the composer rather than in a band of
+            their own. They used to carry a second top border, which stacked
+            three hairlines within 50px at the bottom of the pane and made the
+            whole column read as bars on bars. They also belong here: they say
+            what the agent currently believes, which is exactly the context for
+            the message about to be typed. */}
+        {chips.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5 overflow-x-auto">
+            <span className="mr-1 self-center font-semibold text-[10px] text-ink-muted tracking-wider">
+              STRATEGY
+            </span>
+            {chips.map((chip) => (
+              <Badge
+                key={`${chip.category}-${chip.value}`}
+                tone={CHIP_TONE[chip.category]}
+                size="sm"
+                className="whitespace-nowrap"
+                style={{ animation: "chipIn 0.3s ease-out" }}
+              >
+                {chip.label}
+              </Badge>
+            ))}
+          </div>
+        )}
+        <div className="flex items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2 transition-colors focus-within:border-line-strong">
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder={
+              !hasAgentSelected
+                ? "Select an agent first"
+                : side === "seller"
+                  ? "Tell me what to emphasize, deal-breakers, etc..."
+                  : "Tell me your budget, must-haves, etc..."
+            }
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={!hasAgentSelected || isLoading}
+            className="flex-1 bg-transparent text-[13px] text-ink placeholder:text-ink-muted outline-none disabled:cursor-not-allowed disabled:opacity-40"
+          />
+          <IconButton
+            variant="solid"
+            onClick={handleSend}
+            disabled={!input.trim() || isLoading || !hasAgentSelected}
+            aria-label="Send message"
+            className="size-7 rounded-lg"
+          >
+            <Send className="size-3.5" />
+          </IconButton>
+        </div>
       </div>
 
       {/* Animations */}

@@ -12,6 +12,8 @@ import {
   getNegotiationAgentPreset,
   presetToEngineParameters,
   requiredCriteria,
+  type SellerProductFact,
+  sellerProductFacts,
 } from "@haggle/shared";
 import { parseListingParcel } from "../lib/negotiation-fulfillment.js";
 
@@ -56,7 +58,6 @@ export interface ListingContext {
   condition?: string;
   tags?: string[];
   photoUrl?: string;
-  subtype?: string;
   attributes?: Record<string, unknown>;
   parcel?: {
     weight_oz: number;
@@ -79,19 +80,14 @@ export interface ListingStrategyContext {
   sellerNegotiationAgentPresetId?: string;
 }
 
-const CATEGORY_ATTRIBUTE_KEYS = ["phoneAnswers"] as const;
-
-export function extractListingContext(
-  base: {
-    title?: string | null;
-    description?: string | null;
-    category?: string | null;
-    condition?: string | null;
-    tags?: string[] | null;
-    photoUrl?: string | null;
-  },
-  negotiationAgentSnapshot: Record<string, unknown>,
-): ListingContext {
+export function extractListingContext(base: {
+  title?: string | null;
+  description?: string | null;
+  category?: string | null;
+  condition?: string | null;
+  tags?: string[] | null;
+  photoUrl?: string | null;
+}): ListingContext {
   const ctx: ListingContext = {};
   if (base.title) ctx.title = base.title;
   if (base.description) ctx.description = base.description;
@@ -99,20 +95,6 @@ export function extractListingContext(
   if (base.condition) ctx.condition = base.condition;
   if (base.tags && base.tags.length > 0) ctx.tags = base.tags;
   if (base.photoUrl) ctx.photoUrl = base.photoUrl;
-  if (typeof negotiationAgentSnapshot.subtype === "string")
-    ctx.subtype = negotiationAgentSnapshot.subtype;
-
-  const attributes: Record<string, unknown> = {};
-  for (const key of CATEGORY_ATTRIBUTE_KEYS) {
-    const raw = negotiationAgentSnapshot[key];
-    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-      for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-        if (v === null || v === undefined || v === "") continue;
-        attributes[k] = v;
-      }
-    }
-  }
-  if (Object.keys(attributes).length > 0) ctx.attributes = attributes;
 
   const parcel = parseListingParcel(negotiationAgentSnapshot.parcel);
   if (parcel) ctx.parcel = parcel;
@@ -206,6 +188,22 @@ export type BuyerVisibleSellerCriterion = { checkId: string; ask: string };
  * builder surfaces "the seller requires X" so the buyer mirrors it) and Flow 3
  * (the mid-negotiation pause's must-resolve set).
  */
+/**
+ * The seller's answered checks that are product FACTS, for the listing page's
+ * spec cards. Category-agnostic: any taxonomy check the seller answered with a
+ * canonical option publishes, so a laptop or a bike gets specs the same way a
+ * phone does — unlike `phoneAnswers`, which only exists for one subtype.
+ * Negotiation posture never rides along; see `sellerProductFacts`.
+ */
+export function extractSellerProductFacts(
+  negotiationAgentSnapshot: Record<string, unknown>,
+): SellerProductFact[] {
+  const memory = extractNegotiationAgentBuilderMemory(negotiationAgentSnapshot);
+  const criteria = memory?.categoryCriteria;
+  if (!Array.isArray(criteria)) return [];
+  return sellerProductFacts(criteria as CategoryCriterion[]);
+}
+
 export function extractSellerRequiredCriteria(
   negotiationAgentSnapshot: Record<string, unknown>,
 ): BuyerVisibleSellerCriterion[] {
@@ -274,7 +272,7 @@ export async function loadListingStrategyContext(
   const negotiationAgentSnapshot = (row.negotiationAgentSnapshot ?? {}) as Record<string, unknown>;
   const sellerNegotiationAgentBuilderMemory =
     extractNegotiationAgentBuilderMemory(negotiationAgentSnapshot);
-  const listingContext = extractListingContext(row, negotiationAgentSnapshot);
+  const listingContext = extractListingContext(row);
   const sellerNegotiationAgentPresetId =
     typeof negotiationAgentSnapshot.preset === "string"
       ? negotiationAgentSnapshot.preset

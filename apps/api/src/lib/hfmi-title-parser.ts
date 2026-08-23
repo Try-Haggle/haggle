@@ -100,8 +100,8 @@ export function parseStorageGb(title: string): number | null {
 export function parseBatteryHealthPct(title: string): number | null {
   // "battery ... N%" or "battery health ... N%" or "BH N%"
   const patterns: RegExp[] = [
-    /battery(?:\s*health)?\s*[:\-]?\s*(\d{2,3})\s*%/i,
-    /\bbh\s*[:\-]?\s*(\d{2,3})\s*%/i,
+    /battery(?:\s*health)?\s*[:-]?\s*(\d{2,3})\s*%/i,
+    /\bbh\s*[:-]?\s*(\d{2,3})\s*%/i,
     /(\d{2,3})\s*%\s*battery/i,
   ];
   for (const re of patterns) {
@@ -122,7 +122,11 @@ export function parseBatteryHealthPct(title: string): number | null {
  */
 export function parseCarrierLocked(title: string): boolean | null {
   if (/\bunlocked\b/i.test(title)) return false;
-  if (/\b(locked|at\s*&\s*t\s*locked|verizon\s*locked|t-?mobile\s*locked|sprint\s*locked)\b/i.test(title)) {
+  if (
+    /\b(locked|at\s*&\s*t\s*locked|verizon\s*locked|t-?mobile\s*locked|sprint\s*locked)\b/i.test(
+      title,
+    )
+  ) {
     return true;
   }
   return null;

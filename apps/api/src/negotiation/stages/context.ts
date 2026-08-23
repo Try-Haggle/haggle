@@ -5,15 +5,15 @@
  * Absorbs logic from adapters/context-assembly.ts + briefing integration + memo-codec.
  */
 
-import type { ContextInput, ContextOutput } from '../pipeline/types.js';
-import type { SkillAppliedRecord } from '../skills/skill-types.js';
-import { VERIFICATION_BADGES } from '../skills/skill-types.js';
-import type { SkillStack } from '../skills/skill-stack.js';
-import { assembleContextLayers } from '../adapters/context-assembly.js';
-import { computeBriefing } from '../referee/briefing.js';
-import { encodeMemo, type MemoEncoding } from '../memo/memo-codec.js';
-import { formatUserMemoryBriefSignals } from '../../services/user-memory-card.service.js';
-import { formatEvermemoBriefSignals } from '../../services/evermemo-bridge.service.js';
+import { formatEvermemoBriefSignals } from "../../services/evermemo-bridge.service.js";
+import { formatUserMemoryBriefSignals } from "../../services/user-memory-card.service.js";
+import { assembleContextLayers } from "../adapters/context-assembly.js";
+import { encodeMemo, type MemoEncoding } from "../memo/memo-codec.js";
+import type { ContextInput, ContextOutput } from "../pipeline/types.js";
+import { computeBriefing } from "../referee/briefing.js";
+import type { SkillStack } from "../skills/skill-stack.js";
+import type { SkillAppliedRecord } from "../skills/skill-types.js";
+import { VERIFICATION_BADGES } from "../skills/skill-types.js";
 
 /**
  * Assemble full negotiation context for a round.
@@ -24,8 +24,8 @@ import { formatEvermemoBriefSignals } from '../../services/evermemo-bridge.servi
  */
 export function assembleStageContext(
   input: ContextInput,
-  adapter: import('../types.js').ModelAdapter,
-  memoEncoding: MemoEncoding = 'codec',
+  adapter: import("../types.js").ModelAdapter,
+  memoEncoding: MemoEncoding = "codec",
   skillStack?: SkillStack,
 ): ContextOutput {
   const { memory, facts, opponent, skill, l5_signals, memory_brief, evermemo_brief } = input;
@@ -57,11 +57,7 @@ export function assembleStageContext(
   });
 
   // 5. Encode memo snapshot
-  const memoSnapshot = encodeMemo(
-    memory,
-    memoEncoding,
-    facts.slice(-5),
-  );
+  const memoSnapshot = encodeMemo(memory, memoEncoding, facts.slice(-5));
 
   return {
     layers,
@@ -76,20 +72,18 @@ export function assembleStageContext(
 // L5 Signal formatting
 // ---------------------------------------------------------------------------
 
-function buildL5SignalStrings(
-  signals?: import('../types.js').L5Signals,
-): string[] {
+function buildL5SignalStrings(signals?: import("../types.js").L5Signals): string[] {
   if (!signals) return [];
 
   const parts: string[] = [];
 
   if (signals.market) {
     const m = signals.market;
-    parts.push(`MKT:avg30d=$${m.avg_sold_price_30d}|trend:${m.price_trend}|listings:${m.active_listings_count}`);
+    parts.push(
+      `MKT:avg30d=$${m.avg_sold_price_30d}|trend:${m.price_trend}|listings:${m.active_listings_count}`,
+    );
     if (m.source_prices.length > 0) {
-      const sources = m.source_prices
-        .map((s) => `${s.platform}:$${s.price}`)
-        .join(',');
+      const sources = m.source_prices.map((s) => `${s.platform}:$${s.price}`).join(",");
       parts.push(`PRICES:${sources}`);
     }
   }
@@ -105,34 +99,42 @@ function buildL5SignalStrings(
 
   if (signals.category) {
     const cat = signals.category;
-    parts.push(`CAT:avg_disc:${(cat.avg_discount_rate * 100).toFixed(1)}%|avg_rounds:${cat.avg_rounds_to_deal}`);
+    parts.push(
+      `CAT:avg_disc:${(cat.avg_discount_rate * 100).toFixed(1)}%|avg_rounds:${cat.avg_rounds_to_deal}`,
+    );
   }
 
   return parts;
 }
 
-function buildUnderstandingSignalStrings(
-  understood: ContextInput['understood'],
-): string[] {
+function buildUnderstandingSignalStrings(understood: ContextInput["understood"]): string[] {
   const parts: string[] = [];
 
   if (understood.conversation_type) {
-    parts.push(`UTYPE:${understood.conversation_type}|intent:${understood.action_intent}|sentiment:${understood.sentiment}`);
+    parts.push(
+      `UTYPE:${understood.conversation_type}|intent:${understood.action_intent}|sentiment:${understood.sentiment}`,
+    );
   }
 
   if (understood.information_links && understood.information_links.length > 0) {
     parts.push(
-      ...understood.information_links.slice(0, 8).map((link) => (
-        `ULINK:${link.connects_to}:${link.entity_type}=${link.value}|conf:${link.confidence.toFixed(2)}`
-      )),
+      ...understood.information_links
+        .slice(0, 8)
+        .map(
+          (link) =>
+            `ULINK:${link.connects_to}:${link.entity_type}=${link.value}|conf:${link.confidence.toFixed(2)}`,
+        ),
     );
   }
 
   if (understood.missing_information && understood.missing_information.length > 0) {
     parts.push(
-      ...understood.missing_information.slice(0, 4).map((need) => (
-        `UNEED:${need.priority}:${need.slot}|reason:${need.reason}|ask:${need.question}`
-      )),
+      ...understood.missing_information
+        .slice(0, 4)
+        .map(
+          (need) =>
+            `UNEED:${need.priority}:${need.slot}|reason:${need.reason}|ask:${need.question}`,
+        ),
     );
   }
 

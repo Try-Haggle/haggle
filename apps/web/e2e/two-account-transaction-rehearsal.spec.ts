@@ -75,17 +75,6 @@ async function uploadListingPhoto(page: Page, photoPath: string) {
   await chooser.setFiles(photoPath);
 }
 
-async function completeOptionalPhoneQuestions(page: Page) {
-  const phoneDetails = page.getByText("Phone details", { exact: true });
-  if (!(await phoneDetails.isVisible())) return;
-
-  await page.getByRole("button", { name: "128GB", exact: true }).click();
-  await page.getByRole("button", { name: "90%+", exact: true }).click();
-  await page.getByRole("button", { name: "Unlocked", exact: true }).click();
-  await page.getByRole("button", { name: "Perfect", exact: true }).click();
-  await page.getByRole("checkbox").check();
-}
-
 async function publishListing(page: Page, photoPath: string, title: string): Promise<string> {
   await page.goto("/sell/listings/new");
 
@@ -106,7 +95,6 @@ async function publishListing(page: Page, photoPath: string, title: string): Pro
     await expect(page.getByRole("heading", { name: "Categorize it" })).toBeVisible({
       timeout: 30_000,
     });
-    await completeOptionalPhoneQuestions(page);
     await page.getByRole("button", { name: "Next", exact: true }).click();
   });
 

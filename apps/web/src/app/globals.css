@@ -82,6 +82,45 @@
   --font-sans: var(--font-jakarta), system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-display: var(--font-lora), Georgia, serif;
   --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+
+  /* Motion · easing → utilities like `ease-standard`, `ease-decelerate`.
+     Mirrored in components/listing-detail/motion.ts for framer-motion, which
+     needs the same curves as control-point arrays. Keep the two in sync. */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --ease-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
+  --ease-select: cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+/* ----------------------------------------------------------------
+   MOTION · durations
+   Plain custom props (not a Tailwind namespace) — use via
+   `duration-[var(--motion-base)]` or in inline styles / CSS.
+   Character: unhurried, decelerating. Premium motion settles; it
+   does not bounce. Overshoot is reserved for direct manipulation.
+   ---------------------------------------------------------------- */
+:root {
+  --motion-instant: 120ms;
+  --motion-quick: 200ms;
+  --motion-base: 320ms;
+  --motion-slow: 520ms;
+  --motion-deliberate: 800ms;
+}
+
+/* Users who ask for less motion still get state changes — just not
+   travel through space. Blanket brake; components additionally swap
+   to opacity-only variants via framer-motion's useReducedMotion. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-instant: 1ms;
+    --motion-quick: 1ms;
+    --motion-base: 1ms;
+    --motion-slow: 1ms;
+    --motion-deliberate: 1ms;
+  }
+  html {
+    scroll-behavior: auto;
+  }
 }
 
 /* ----------------------------------------------------------------
@@ -426,6 +465,18 @@ input[type="number"] {
 }
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
+}
+
+/* Tailwind v4 dropped the preflight rule that gave buttons a pointer cursor,
+   so every button in the app fell back to the default arrow unless someone
+   remembered `cursor-pointer` — which is why that class appears ~97 times.
+   Restoring the default fixes the whole class of miss at once, including the
+   hand-rolled buttons the `Button` component does not cover. Disabled controls
+   are excluded, and a utility class still wins on specificity where a surface
+   wants a different cursor. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
 }
 
 /* Date input calendar icon — invert only in dark theme.

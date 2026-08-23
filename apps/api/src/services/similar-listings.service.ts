@@ -80,7 +80,21 @@ const WEIGHTS_DASHBOARD = {
   price: 0,
 } as const;
 
-const SIMILARITY_THRESHOLD_DETAIL = 0.65; // Detail page: single listing comparison
+/**
+ * Detail page cut-off.
+ *
+ * 0.65 was unreachable, not strict: `semanticSimilarity` passes raw cosine
+ * through, and cosine between two distinct same-category listings runs about
+ * 0.50-0.78 here. At weight 0.8 that caps the semantic term near 0.62, so with
+ * tags scoring 0 whenever either side has none, nothing could ever clear 0.65
+ * and the section rendered its empty state on every listing.
+ *
+ * 0.55 is the value the design doc's own note settled on. It still excludes
+ * the bottom half of the range while letting genuinely close pairs through.
+ * Both this and the semantic curve want re-tuning once there are enough real
+ * listings to measure against — see docs/Similar_Listings_Algorithm_Plan.md.
+ */
+const SIMILARITY_THRESHOLD_DETAIL = 0.55;
 const SIMILARITY_THRESHOLD_DASHBOARD = 0.6; // Dashboard: filter out low-relevance items
 
 // ─── Signal Functions ──────────────────────────────────

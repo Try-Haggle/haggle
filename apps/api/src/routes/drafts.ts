@@ -125,19 +125,10 @@ export function registerDraftRoutes(
     // safety gates (a monitor demanding an IMEI). The title names the item; the body doesn't.
     const { tags: enrichedTags, inferred } = enrichTagsWithTaxonomy(mergedTags, draft.title);
 
-    const existingConfig = (draft.negotiationAgentSnapshot ?? {}) as Record<string, unknown>;
-    await patchDraft(db, id, {
-      tags: enrichedTags,
-      ...(result.ok
-        ? { negotiationAgentSnapshot: { ...existingConfig, subtype: result.subtype } }
-        : {}),
-    });
+    await patchDraft(db, id, { tags: enrichedTags });
 
     return reply.send({
       ok: true,
-      // Omitted (not null) on vision failure so the client cannot clobber a previously
-      // detected subtype — `null` would overwrite it and drop the subtype-specific step.
-      ...(result.ok ? { subtype: result.subtype } : {}),
       tags: enrichedTags,
       /** Tags the taxonomy inference added — lets the wizard show what was auto-derived. */
       inferred,

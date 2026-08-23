@@ -10,7 +10,7 @@ import {
   listPublishedListings,
 } from "../services/draft.service.js";
 import {
-  extractListingContext,
+  extractSellerProductFacts,
   extractSellerRequiredCriteria,
 } from "../services/listing-strategy.service.js";
 
@@ -239,26 +239,25 @@ export function registerPublicListingRoutes(app: FastifyInstance, db: Database) 
 
     // Only expose the seller's agent preset name (not thresholds)
     const sellerAgentPreset = cfg.preset ?? null;
-    // Subtype + category-specific spec answers the seller filled in. These are
-    // product facts the seller chose to publish (battery health, storage,
-    // scratches, carrier lock, etc.) — buyers must see them to negotiate
-    // informedly. Floor price, agent weights, and advisor memory stay hidden.
-    const subtype = typeof cfg.subtype === "string" ? cfg.subtype : null;
-    const attributes = extractListingContext(listing, cfg).attributes ?? null;
     // Phase G Flow 2: the seller's REQUIRED category criteria, buyer-safe (check id
     // + ask only — no stance/leverage/floor). Lets the buyer builder surface "the
     // seller requires X" so the buyer mirrors it, and seeds the pause resolved-set.
     const sellerRequiredCriteria = extractSellerRequiredCriteria(cfg);
     const sellerFulfillmentOffer = parseSellerFulfillmentOffer(cfg.sellerFulfillmentOffer) ?? null;
     const parcel = parseListingParcel(cfg.parcel) ?? null;
+    // Product facts the seller answered during the builder chat, published as
+    // spec cards. Category-agnostic: any taxonomy check the seller answered
+    // publishes, so a laptop or a bike gets specs the same way a phone does.
+    // This is now the only spec path — the phone-only `subtype`/`attributes`
+    // pair it used to sit beside was removed with the phone question flow.
+    const specs = extractSellerProductFacts(cfg);
 
     return reply.send({
       ok: true,
       listing: {
         ...publicFields,
         sellerAgentPreset,
-        subtype,
-        attributes,
+        specs,
         sellerRequiredCriteria,
         sellerFulfillmentOffer,
         parcel,

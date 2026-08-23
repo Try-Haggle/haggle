@@ -18,7 +18,7 @@
  */
 
 import { CATEGORY_TAXONOMY, resolveChecks } from "./taxonomy.js";
-import type { CheckAnswerOption, CheckEnforcement } from "./types.js";
+import type { CheckAnswerOption, CheckEnforcement, NegotiationCheck } from "./types.js";
 
 /** Whether a party has made a criterion a hard requirement or an optional point. */
 export type CriterionRequirement = "required" | "optional";
@@ -70,6 +70,86 @@ export function buildCategoryCriteriaScaffold(tags: readonly string[]): Category
 /** Whether a criterion has been answered (a non-empty, non-blank stance). */
 export function criterionAnswered(criterion: CategoryCriterion): boolean {
   return typeof criterion.stance === "string" && criterion.stance.trim().length > 0;
+}
+
+/** One published product fact: a taxonomy check the seller answered with a
+ *  canonical option, rendered as a spec card on the listing page. */
+export interface SellerProductFact {
+  /** Taxonomy check id — stable key for dedupe and React keys. */
+  checkId: string;
+  /** Card label: the check's `sellerAsk` reduced to a noun phrase. */
+  label: string;
+  /** Card value, from the matched option's short `label` ("256GB", "Unlocked"). */
+  value: string;
+}
+
+/**
+ * The seller's answers that are product FACTS, ready to publish as spec cards.
+ *
+ * The listing page may show what the item *is*, never how its owner intends to
+ * bargain. Two properties of the data make that separation exact rather than a
+ * judgement call:
+ *
+ *   1. Only criteria answered with a canonical `sellerOptions` entry qualify.
+ *      Those options are authored as observable states of the object —
+ *      "256GB", "Unlocked", "90%+", "Cracked / dead pixels" — while free-text
+ *      stances are prose that can carry intent, so they are dropped.
+ *   2. `requirement` (the seller's must-have vs nice-to-have posture) is read
+ *      to select nothing and is never emitted. A fact is published because it
+ *      is true, not because the seller cares about it.
+ *
+ * Unflattering answers are included deliberately: a cracked screen is a fact
+ * the buyer is entitled to before opening a negotiation, and hiding it would
+ * make the surface an advertisement rather than a disclosure.
+ *
+ * Deduped by check id (first wins), matching the rest of this module.
+ */
+/**
+ * A check's seller-facing ask, reduced to a spec-card label.
+ *
+ * `sellerAsk` is written to be asked ("Battery health?", "What's the title
+ * status?"); a card states instead of asks. Nearly every ask is already a noun
+ * phrase carrying a question mark, so dropping the mark is usually the whole
+ * job — but a leading interrogative has to go too, or the card reads "What's
+ * the title status | Clean title".
+ */
+function factLabel(sellerAsk: string): string {
+  const stripped = sellerAsk
+    .replace(/\s*\?\s*$/, "")
+    .replace(/^(?:what(?:'s| is| are)?|which|how)\s+(?:the\s+|a\s+|an\s+)?/i, "")
+    .trim();
+  if (!stripped) return sellerAsk.replace(/\s*\?\s*$/, "");
+  return stripped.charAt(0).toUpperCase() + stripped.slice(1);
+}
+
+export function sellerProductFacts(criteria: readonly CategoryCriterion[]): SellerProductFact[] {
+  const byCheckId = new Map<string, NegotiationCheck>();
+  for (const node of CATEGORY_TAXONOMY) {
+    for (const check of node.checks) {
+      if (!byCheckId.has(check.id)) byCheckId.set(check.id, check);
+    }
+  }
+
+  const seen = new Set<string>();
+  const facts: SellerProductFact[] = [];
+  for (const criterion of criteria) {
+    if (seen.has(criterion.checkId)) continue;
+    const stance = criterion.stance?.trim();
+    if (!stance) continue;
+
+    const check = byCheckId.get(criterion.checkId);
+    const option = check?.sellerOptions?.find((o) => o.stance === stance);
+    // No canonical option matched → free text → not publishable as a fact.
+    if (!check || !option) continue;
+
+    seen.add(criterion.checkId);
+    facts.push({
+      checkId: criterion.checkId,
+      label: factLabel(check.sellerAsk ?? criterion.checkId),
+      value: option.label,
+    });
+  }
+  return facts;
 }
 
 /**

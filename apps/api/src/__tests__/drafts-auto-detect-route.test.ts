@@ -80,7 +80,6 @@ describe("auto-detect — taxonomy enrichment (vision OK)", () => {
     getDraftByIdMock.mockResolvedValue(draft());
     autoDetectMock.mockResolvedValue({
       ok: true,
-      subtype: "phone",
       tags: ["256gb", "space-black", "minor-scratches"],
     });
 
@@ -104,27 +103,9 @@ describe("auto-detect — taxonomy enrichment (vision OK)", () => {
     await app.close();
   });
 
-  it("persists the vision subtype when vision succeeded", async () => {
-    getDraftByIdMock.mockResolvedValue(draft());
-    autoDetectMock.mockResolvedValue({ ok: true, subtype: "phone", tags: [] });
-
-    const app = buildApp();
-    const { body } = await call(app);
-
-    expect(body.subtype).toBe("phone");
-    expect(patchDraftMock).toHaveBeenCalledWith(
-      expect.anything(),
-      "draft-1",
-      expect.objectContaining({
-        negotiationAgentSnapshot: expect.objectContaining({ subtype: "phone" }),
-      }),
-    );
-    await app.close();
-  });
-
   it("keeps tags the seller already added", async () => {
     getDraftByIdMock.mockResolvedValue(draft({ tags: ["seller-added"] }));
-    autoDetectMock.mockResolvedValue({ ok: true, subtype: null, tags: ["v-tag"] });
+    autoDetectMock.mockResolvedValue({ ok: true, tags: ["v-tag"] });
 
     const app = buildApp();
     const { body } = await call(app);
@@ -149,8 +130,6 @@ describe("auto-detect — vision FAILURE degrades instead of 500", () => {
     expect(status).toBe(200);
     expect(body.ok).toBe(true);
     expect(body.visionOk).toBe(false);
-    // Omitted (not null) so the client cannot clobber a previously detected subtype.
-    expect(body.subtype).toBeUndefined();
     // The safety-critical part still happens.
     expect(body.inferred).toContain("mattress");
     expect(patchDraftMock).toHaveBeenCalledWith(
@@ -161,10 +140,8 @@ describe("auto-detect — vision FAILURE degrades instead of 500", () => {
     await app.close();
   });
 
-  it("does not overwrite the snapshot subtype on vision failure", async () => {
-    getDraftByIdMock.mockResolvedValue(
-      draft({ negotiationAgentSnapshot: { subtype: "phone", keep: 1 } }),
-    );
+  it("only persists tags — never touches the negotiation snapshot", async () => {
+    getDraftByIdMock.mockResolvedValue(draft({ negotiationAgentSnapshot: { keep: 1 } }));
     autoDetectMock.mockResolvedValue({ ok: false, error: { message: "boom" } });
 
     const app = buildApp();
@@ -192,7 +169,7 @@ describe("auto-detect — vision FAILURE degrades instead of 500", () => {
 describe("auto-detect — accessory listings stay un-enriched", () => {
   it("an iPhone case does not get the phone's item-type tag", async () => {
     getDraftByIdMock.mockResolvedValue(draft({ title: "iPhone 15 case, leather" }));
-    autoDetectMock.mockResolvedValue({ ok: true, subtype: null, tags: ["leather"] });
+    autoDetectMock.mockResolvedValue({ ok: true, tags: ["leather"] });
 
     const app = buildApp();
     const { body } = await call(app);

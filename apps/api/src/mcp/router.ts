@@ -1,11 +1,11 @@
 import type { IncomingMessage } from "node:http";
-import type { FastifyInstance } from "fastify";
 import type { Database } from "@haggle/db";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { registerTools } from "./tools/index.js";
-import { registerResources } from "./resources.js";
+import type { FastifyInstance } from "fastify";
 import type { EventDispatcher } from "../lib/event-dispatcher.js";
+import { registerResources } from "./resources.js";
+import { registerTools } from "./tools/index.js";
 
 /** Active MCP sessions keyed by session ID, with creation timestamp for TTL */
 const sessions = new Map<string, { transport: StreamableHTTPServerTransport; createdAt: number }>();
@@ -39,7 +39,11 @@ function createMcpServer(db: Database, eventDispatcher?: EventDispatcher): McpSe
  * Register MCP Streamable HTTP routes on the Fastify instance.
  * Handles POST (requests), GET (SSE stream), DELETE (session cleanup).
  */
-export function registerMcpRoutes(app: FastifyInstance, db: Database, eventDispatcher?: EventDispatcher) {
+export function registerMcpRoutes(
+  app: FastifyInstance,
+  db: Database,
+  eventDispatcher?: EventDispatcher,
+) {
   // ─── POST /mcp — Initialize or send requests ────────────
   app.post("/mcp", async (request, reply) => {
     const sessionId = request.headers["mcp-session-id"] as string | undefined;
