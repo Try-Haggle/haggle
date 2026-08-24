@@ -70,7 +70,7 @@ L3 Wire+Data 프로토콜 직렬화(HNP) + Redis(hot) / PostgreSQL(cold)
 ### 1.3 현황 — 실제 실행 경로 ✅ (경로) / 🚧 (역할 분담)
 프로덕션 라운드는 **단일 경로**로만 실행됩니다. 여러 진입점이 모두 하나의 executor로 수렴:
 ```
-POST /negotiations/start · /sessions/:id/offers · MCP haggle_submit_offer
+POST /negotiations/start · /sessions/:id/offers · MCP hnp_submit_offer
   → getExecutor()                       lib/executor-factory.ts
   → executeStagedNegotiationRound        negotiation/pipeline/executor.ts (DB 트랜잭션)
       ├ reconstructCoreMemory            상태 → 라운드 작업본
@@ -231,13 +231,16 @@ coach.ts:101 / :115          params?.anchor_ratio / params?.beta
 ### 5.0 현황 — 실행 모드: 두 개의 진입점 ★ `routes/negotiations.ts`
 협상을 시작하는 경로가 **둘**이며, 프로덕션 제품 흐름은 첫 번째입니다.
 
-**(A) `POST /negotiations/start` — AI-vs-AI 자동재생 (buyer-landing 실제 흐름)** `:931`
-- 구매자 **AND** 판매자 **양쪽 스냅샷을 컴파일**(`:1018`·`:1038`)한 뒤, `for (i<AUTO_PLAY_MAX_ROUNDS)` 루프(`:1099`)에서 **매 라운드 `setSessionPerspective`로 역할·스냅샷을 교체**(`:1104`)하며 executor를 번갈아 호출.
-- **협상 전체를 한 HTTP 요청에서 서버가 자동으로 끝까지 재생.** 양쪽 다 Haggle AI 에이전트 — 사람이 라운드마다 개입하지 않음. 이전 라운드의 메시지를 다음 입력으로 전달(대화 연속성), 터미널/REJECT/무효가격에서 중단.
+**(A) `POST /negotiations/start` + `/auto-play/next` — AI-vs-AI 자동재생 (buyer-landing 실제 흐름)**
+- 시작은 세션과 run token만 만든다. 브라우저는 `/auto-play/next`를 라운드마다 호출한다.
+- 매 라운드 호스트가 HNP OFFER/COUNTER 봉투를 만들고 REST와 같은 ingress를 탄 뒤 executor를 호출한다.
+- 양쪽 다 Haggle AI — 사람이 라운드마다 개입하지 않음. 이전 라운드 메시지를 다음 입력으로 전달.
 - ⚠️ **이게 제품의 실제 형태:** "사람 vs AI가 시간을 두고 주고받는" 게 아니라 **AI 양측이 즉시 자동 협상**하고 결과(합의/결렬)를 반환.
 
-**(B) `POST /negotiations/sessions/:id/offers` — 단건 오퍼 (외부/HNP 에이전트)** `:429`
+**(B) `POST /negotiations/sessions/:id/offers` — 단건 오퍼 (외부/HNP 에이전트)**
 - 외부에서 오퍼 하나를 제출하면 executor가 **한 라운드**만 실행. HNP/agent-delegation 검증 경유. 세션이 그룹 소속이면 라운드 후 그룹 오케스트레이션 호출(§9).
+- MCP `hnp_submit_offer` / `hnp_accept`는 같은 엔벨로프·ingress를 쓴다. 가격만 받는 MCP 오퍼 도구는 없다.
+- 공개 스펙: [`docs/protocol/HNP.md`](../protocol/HNP.md). 발견/검색은 HNP 범위가 아니다.
 
 두 경로 모두 아래 §5.1 executor 한 라운드를 공유합니다. §5.1~5.5는 "한 라운드"의 내부입니다.
 
@@ -281,6 +284,8 @@ executor는 매 라운드 **coach와 briefing을 둘 다** 호출하며, 역할�
 - ✅ decide 흐름: `skill.evaluateOffer`(룰 baseline) → **OPENING/BARGAINING의 COUNTER**면 LLM 증강. LLM이 유효 COUNTER 가격(또는 ACCEPT/REJECT/HOLD) 반환 시 대체, 실패 시 룰 결정 fallback(`decide.ts:84-96`).
 - 🎯 **ACCEPT를 유도하는 실제 gap 휴리스틱 = `encodeClosingHint`**(`deepseek-adapter.ts:317`): 서버가 gap 비율을 계산해 **gap<5% 또는 <$5 → "이건 사실상 딜, ACCEPT하라"**, gap<10%+종반 → "ACCEPT 강하게 고려"를 프롬프트에 직접 주입. 시스템 프롬프트의 추상 규칙을 서버가 숫자로 못박음.
 - 🔎 프롬프트 STRATEGY 블록 = persona + **빌더챗 메모리만**(숫자 파라미터 미도달, §4.2). `encodeDelta`(차등 컨텍스트)는 decide 경로에서 **죽은 코드**(`prevMemory=undefined`로 호출 → 항상 full).
+- 📄 **태그·스펙·few-shot 역할과 주고받는 흐름** — 설계 [`tag-spec-fewshot.md`](./tag-spec-fewshot.md). 프로덕션 시스템 프롬프트에는 아직 민감도 few-shot이 없다.
+- ✅ **Decide 기억** — 공개 흐름은 HNP compact state(`HNP:` 블록, DST/합의 추적). 비공개는 엔진 `MEMO`. 최근 창으로 앞 대화를 버리지 않는다. 설계 [`hnp-compact-state.md`](./hnp-compact-state.md).
 
 ### 5.5 현황 — Referee / Validate 🚧 `referee/validator.ts` → 상세 [`reference/referee.md`](./reference/referee.md)
 - ✅ 7규칙 실제 가동. V1~V3 HARD(V1 가격 floor 초과→floor / V2 phase 미허용 action→allowed[0] / V3 라운드소진 COUNTER→REJECT), V4~V7 SOFT(역전·정체·일방양보·양보폭과다, auto-fix 없음).

@@ -10,6 +10,7 @@
 |------|------|-------|
 | [`mvp/`](./mvp/00_INDEX.md) | MVP 출시 계획, 기술 부채, 운영 정책 | [00_INDEX](./mvp/00_INDEX.md) |
 | [`engine/`](./engine/SOT.md) | 협상 엔진 **Source of Truth** (이상형+현황). 원본 28개는 `engine/legacy/` | [SOT.md](./engine/SOT.md) |
+| [`protocol/`](./protocol/HNP.md) | HNP 공개 스펙 — 협상 전용, 발견은 범위 밖 | [HNP.md](./protocol/HNP.md) |
 | [`contracts/`](./contracts/00_INDEX.md) | 스마트 컨트랙트 보안 감사 | [00_INDEX](./contracts/00_INDEX.md) |
 | [`strategy/`](./strategy/00_INDEX.md) | 사업 전략, 해자, 파트너 리서치 | [00_INDEX](./strategy/00_INDEX.md) |
 | [`features/`](./features/00_INDEX.md) | 기능별 설계 문서 (태그, 분쟁, 게이미피케이션) | [00_INDEX](./features/00_INDEX.md) |
@@ -35,6 +36,9 @@
 | 분쟁 시스템 v2 | [features/분쟁_시스템_v2.md](./features/분쟁_시스템_v2.md) |
 | 게이미피케이션 | [features/게이미피케이션_설계.md](./features/게이미피케이션_설계.md) |
 | 협상 엔진 SOT | [engine/SOT.md](./engine/SOT.md) · 렌더뷰 [site/negotiation-engine.html](./site/negotiation-engine.html) |
+| 태그·스펙·few-shot 협상 | [engine/tag-spec-fewshot.md](./engine/tag-spec-fewshot.md) |
+| HNP 공개 스펙 | [protocol/HNP.md](./protocol/HNP.md) |
+| HNP 공개 압축 상태 | [engine/hnp-compact-state.md](./engine/hnp-compact-state.md) |
 | 코드 네이밍 컨벤션 (협상 에이전트/빌더 챗) | [CODE_NAMING_CONVENTIONS.md](./CODE_NAMING_CONVENTIONS.md) |
 | 미팅 overview | [meetings/overview.html](./meetings/overview.html) |
 | 이번 주 작업·리뷰 그래프 | [meetings/WORK_GRAPH.md](./meetings/WORK_GRAPH.md) · 데이터 [current-week-work-graph.json](./meetings/current-week-work-graph.json) · [2026-08-22 회의](./meetings/2026-08-22-weekly.md) |
@@ -50,4 +54,4 @@
 4. **INDEX 업데이트**: 문서 추가/이동 시 해당 폴더의 `00_INDEX.md`와 이 README 둘 다 업데이트
 5. **단일 파일 → 폴더 승격**: 같은 주제에 2개 이상 문서 쌓이면 전용 폴더 생성
 
-*Last Updated: 2026-08-12*
+*Last Updated: 2026-08-24*

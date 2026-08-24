@@ -133,10 +133,10 @@ const SELLER_FLOW: FlowStep[] = [
   {
     num: "S3",
     title: "Seller Negotiation",
-    description: "Watch AI negotiate on your behalf, intervene if needed",
-    href: "/sell/negotiations/demo",
-    status: "needs_data",
-    features: ["Chat bubbles (7 languages)", "Real-time WebSocket", "Skill badges"],
+    description: "Status on the listing only. Sellers do not type prices; the buyer live path runs auto-play.",
+    href: "/sell/dashboard",
+    status: "ready",
+    features: ["Listing negotiation history", "No seller price-entry chat"],
   },
 ];
 

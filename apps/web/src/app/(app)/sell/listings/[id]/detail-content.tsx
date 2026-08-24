@@ -252,8 +252,6 @@ export function DetailContent({
           {sessions.map((neg) => (
             <ListRow
               key={neg.id}
-              href={`/sell/negotiations/${neg.id}`}
-              showChevron
               title={<span className="font-mono">{neg.id.slice(0, 8)}...</span>}
               badges={
                 <Badge tone={STATUS_TONE[neg.status] ?? "neutral"} size="sm">

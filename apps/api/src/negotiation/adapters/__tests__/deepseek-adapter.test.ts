@@ -140,7 +140,7 @@ describe("DeepSeekAdapter", () => {
     expect(prompt).toContain("competition_active");
   });
 
-  it("should render OPP_SAID and THREAD when conversation is supplied", () => {
+  it("should render OPP_SAID and FLOW when conversation is supplied", () => {
     const prompt = adapter.buildUserPrompt(makeMemory(), [], undefined, undefined, {
       opponent_message: "The battery is at 92% and it has minor scratches.",
       recent_turns: [
@@ -155,10 +155,40 @@ describe("DeepSeekAdapter", () => {
     });
     expect(prompt).toContain("OPP_SAID:");
     expect(prompt).toContain("battery is at 92%");
-    expect(prompt).toContain("THREAD:");
-    // memory.session.role is 'buyer' in makeMemory() — buyer turn is ME, seller turn is OPP
-    expect(prompt).toContain("R1 ME");
-    expect(prompt).toContain("R2 OPP");
+    expect(prompt).toContain("HNP:");
+    expect(prompt).toContain("MEMO:");
+    expect(prompt).toContain("ACTS:");
+    expect(prompt).toContain("PRICE:");
+  });
+
+  it("keeps early HNP acts and HIST rounds instead of a last-N window", () => {
+    const facts: RoundFact[] = Array.from({ length: 8 }, (_, i) => ({
+      round: i + 1,
+      phase: "BARGAINING" as const,
+      buyer_offer: 40000 + i * 100,
+      seller_offer: 50000 - i * 100,
+      gap: 10000 - i * 200,
+      conditions_changed: {},
+      coaching_given: { recommended: 45000, tactic: "reciprocal_concession" },
+      coaching_followed: true,
+      human_intervened: false,
+      timestamp: Date.now(),
+    }));
+    const turns = Array.from({ length: 8 }, (_, i) => ({
+      round: i + 1,
+      sender: (i % 2 === 0 ? "BUYER" : "SELLER") as "BUYER" | "SELLER",
+      text: `round ${i + 1} argued storage and battery`,
+      price_minor: 40000 + i * 100,
+    }));
+    const prompt = adapter.buildUserPrompt(makeMemory(), facts, undefined, undefined, {
+      opponent_message: "round 8 argued storage and battery",
+      recent_turns: turns,
+    });
+    expect(prompt).toContain("R1:");
+    expect(prompt).toContain("R8:");
+    expect(prompt).toContain("1 BUYER OFFER");
+    expect(prompt).toContain("8 SELLER COUNTER");
+    expect(prompt).toContain("RM:R1:");
   });
 
   it("should embed seller persona language in system prompt", () => {

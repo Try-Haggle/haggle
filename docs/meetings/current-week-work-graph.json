@@ -519,7 +519,10 @@
       "verifiedEvidence": [
         "2026-08-23 정행: DECIDE가 읽는 값은 Faratin beta/alpha가 아니라 listing seller_facts(판매자 categoryCriteria stance)와 STRATEGY requiredCriteria/preferences, BOX, B:/C: 다.",
         "2026-08-23 정행: 같은 태그 패밀리면 같은 시스템 프롬프트. DeepSeek는 별도 설정 없이 prefix cache. buyer/seller는 prefix가 둘.",
-        "2026-08-23 정행: 전자제품 14개 패밀리(iPhone·Galaxy·Pixel·태블릿·노트북·GPU·카메라·렌즈·TV·에어팟·콘솔·워치·드론)에 오픈/잘못된 비교/공표 결함 양보/하드 게이트 HOLD 흐름 예시를 nego-lab/local-fewshot/fewshot.md 로 초안. 랩 소스는 브랜치에 있음. 프로덕션 미반영."
+        "2026-08-23 정행: 전자제품 14개 패밀리(iPhone·Galaxy·Pixel·태블릿·노트북·GPU·카메라·렌즈·TV·에어팟·콘솔·워치·드론)에 오픈/잘못된 비교/공표 결함 양보/하드 게이트 HOLD 흐름 예시를 nego-lab/local-fewshot/fewshot.md 로 초안. 랩 소스는 브랜치에 있음. 프로덕션 미반영.",
+        "2026-08-24 정행: 태그=가든 이름, 스펙=매물 값, few-shot=칸이 바뀌면 협상이 바뀐다는 민감도만. 전략 대본 금지. 흐름 문서 docs/engine/tag-spec-fewshot.md.",
+        "2026-08-24 정행: Decide가 최근 5~6줄 창으로 앞 대화를 버리고 있었음. HNP는 이번 오퍼만 나르고 엔진이 전체 FLOW+HIST+MEMO를 재조립하도록 연결. 슬라이딩 윈도 제거.",
+        "2026-08-24 정행: 공개 압축은 HNP compact v1(DST/합의 추적, 이슈 슬롯 덮어쓰기). 비공개는 엔진. 문서 docs/engine/hnp-compact-state.md."
       ],
       "remainingGaps": [
         "로컬 랩에서 저장공간만 다른 케이스의 타결가·대사 비교",
@@ -614,6 +617,74 @@
       "dependsOn": [],
       "dueDate": null,
       "sourceNote": "8/22 회의에서 정행·종우·인오는 크레딧이 협상 전체에만 붙고 직거래 추가 요금이 아니라는 데 동의했다. 구현 담당자는 정하지 않았다."
+    },
+    {
+      "id": "W2026-08-22-06",
+      "title": "HNP를 협상 전용 공개 프로토콜로 고정",
+      "status": "in_progress",
+      "ownerId": "jeonghaeng",
+      "reviewerId": null,
+      "reviewerAssignmentStatus": "not_assigned",
+      "reviewerReason": null,
+      "assignmentConfidence": "confirmed",
+      "domains": [
+        "HNP",
+        "프로토콜",
+        "MCP"
+      ],
+      "outcome": "외부 에이전트가 발견 없이도 HNP 엔벨로프로 오퍼·수락하고, 수락 뒤 UCP/A2A로 넘길 수 있다. 발견은 우리가 하지 않는다.",
+      "nextAction": "엔진 품질은 정행이 이어서 본다. 사이트 스펙 공개는 MVP와 같이. 리뷰어는 회의에서 정한다.",
+      "reviewBrief": "HNP가 검색/랭킹을 가져가지 않는지, MCP hnp_submit_offer/hnp_accept가 REST와 같은 ingress를 쓰는지, 엔진 바닥/목표가가 와이어에 안 나가는지 본다.",
+      "evidence": [
+        "docs/protocol/HNP.md",
+        "UCP/A2A 바인딩 타입",
+        "MCP hnp_submit_offer",
+        "MCP hnp_accept",
+        "auto-play/next host HNP envelope",
+        "/.well-known/hnp compact_state + attachments"
+      ],
+      "verifiedEvidence": [
+        "2026-08-24 정행: 발견은 경쟁 불가. 협상에 올인. 자체 리스팅은 지금, 다른 호스트 연결은 나중. 프로토콜과 엔진은 분리.",
+        "2026-08-24 정행: 사이트 공개는 지금 하지 않고 MVP와 동시에. 리뷰어는 회의에서 정한다. 당분간 개발은 정행·종우 위주, 엔진은 정행.",
+        "2026-08-24 정행: 웹 자동협상도 HNP를 쓴다. /auto-play/next가 호스트 엔벨로프로 ingress를 탄다.",
+        "2026-08-24 정행: 판매자 수동 가격 채팅(/sell/negotiations)은 없앤다. 사람은 중간 개입만 하고 가격은 엔진이 정한다."
+      ],
+      "remainingGaps": [
+        "회의에서 리뷰어 정하기",
+        "MVP와 같이 공개 사이트 스펙 게시",
+        "REST price_minor 전용 오퍼는 아직 ingress를 건너뛴다"
+      ],
+      "dependsOn": [],
+      "dueDate": "2026-08-29",
+      "sourceNote": "2026-08-24 정행: UCP/A2A는 연결만 열고 발견은 하지 않는다. 프로토콜을 공개하면 카피캣을 막지 못한다. 해자는 엔진과 네트워크다. 리뷰어는 두지 말고 회의에서 이야기한다."
+    },
+    {
+      "id": "W2026-08-22-07",
+      "title": "UCP/A2A 라이브 어댑터",
+      "status": "planned",
+      "ownerId": "jeonghaeng",
+      "reviewerId": null,
+      "reviewerAssignmentStatus": "not_assigned",
+      "reviewerReason": null,
+      "assignmentConfidence": "confirmed",
+      "domains": [
+        "HNP",
+        "UCP",
+        "A2A"
+      ],
+      "outcome": "다른 호스트가 발견한 리스팅을 HNP 세션에 붙이고, 수락된 딜을 그쪽 체크아웃으로 넘길 수 있다. 발견/검색은 여전히 우리가 하지 않는다.",
+      "nextAction": "지금은 매핑만 열어 둔다. 라이브 호스트 어댑터는 HNP 코어(`W2026-08-22-06`)와 엔진이 안정된 뒤에 시작한다.",
+      "reviewBrief": "리뷰어는 회의에서 정한다. 라이브 어댑터가 카탈로그/랭킹을 가져가지 않는지, HNP 엔벨로프를 그대로 나르는지 본다.",
+      "evidence": [
+        "라이브 UCP checkout bridge",
+        "라이브 A2A task part",
+        "다른 호스트 리스팅으로 세션 시작"
+      ],
+      "dependsOn": [
+        "W2026-08-22-06"
+      ],
+      "dueDate": null,
+      "sourceNote": "2026-08-24 정행: 연결은 열어 두되 지금은 구현하지 않는다. 할 일만 정행 아래로 넣는다. 발견은 경쟁하지 않는다."
     }
   ]
 }

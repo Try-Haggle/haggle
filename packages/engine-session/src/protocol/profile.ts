@@ -1,6 +1,7 @@
 // HNP Profile & Discovery Types
 // Agent profiles, transport entries, auth, and /.well-known/hnp structure.
 
+import { HNP_COMPACT_STATE_CAPABILITY } from "./compact-state.js";
 import type { HnpCoreRevision, HnpTransport } from "./core.js";
 import { HNP_CORE_CAPABILITY, HNP_CORE_REVISIONS } from "./core.js";
 
@@ -71,6 +72,11 @@ export function createHnpProfile(input: {
       })),
       capabilities: {
         [HNP_CORE_CAPABILITY]: { versions: ["1.0.0"], required: true },
+        [HNP_COMPACT_STATE_CAPABILITY]: {
+          versions: ["1.0.0"],
+          required: false,
+          description: "Deterministic public compact state over speech acts and issue slots.",
+        },
         ...input.capabilities,
       },
       issue_namespaces: input.issue_namespaces ?? ["hnp.issue"],

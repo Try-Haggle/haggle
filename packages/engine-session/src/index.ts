@@ -78,6 +78,21 @@ export {
   proposalMatchesAcceptedHash,
 } from "./protocol/binding.js";
 export type {
+  HnpIssueTrack,
+  HnpIssueTrackStatus,
+  HnpPublicAct,
+  HnpPublicActType,
+  HnpPublicCompactState,
+} from "./protocol/compact-state.js";
+export {
+  encodeHnpCompactStateForLlm,
+  HNP_COMPACT_STATE_CAPABILITY,
+  HNP_COMPACT_STATE_LEGEND,
+  HNP_COMPACT_STATE_VERSION,
+  reduceHnpPublicCompactState,
+  sanitizeHnpPublicClaim,
+} from "./protocol/compact-state.js";
+export type {
   HnpConformanceIssue,
   HnpConformanceOptions,
   HnpConformanceResult,
@@ -170,6 +185,17 @@ export type {
   HnpTransportEntry,
   HnpWellKnownProfile,
 } from "./protocol/profile.js";
+export type { A2AHnpTaskPart } from "./protocol/bindings/a2a.js";
+export {
+  A2A_HNP_SKILL,
+  a2aTaskPartToHnpEnvelope,
+  hnpEnvelopeToA2ATaskPart,
+} from "./protocol/bindings/a2a.js";
+export type { HnpUcpCheckoutBridge, UcpListingRef } from "./protocol/bindings/ucp.js";
+export {
+  hnpAgreementToUcpCheckoutBridge,
+  UCP_HNP_EXTENSION_ID,
+} from "./protocol/bindings/ucp.js";
 export { createHnpProfile } from "./protocol/profile.js";
 export type {
   CreateHnpShippingTermsInput,
