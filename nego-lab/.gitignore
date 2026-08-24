@@ -1,3 +1,6 @@
 node_modules/
 results/
-local-fewshot/
+local-fewshot/results/
+local-fewshot/node_modules/
+local-fewshot/.env
+local-fewshot/.env.*

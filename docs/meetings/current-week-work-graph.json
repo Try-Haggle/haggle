@@ -519,7 +519,7 @@
       "verifiedEvidence": [
         "2026-08-23 정행: DECIDE가 읽는 값은 Faratin beta/alpha가 아니라 listing seller_facts(판매자 categoryCriteria stance)와 STRATEGY requiredCriteria/preferences, BOX, B:/C: 다.",
         "2026-08-23 정행: 같은 태그 패밀리면 같은 시스템 프롬프트. DeepSeek는 별도 설정 없이 prefix cache. buyer/seller는 prefix가 둘.",
-        "2026-08-23 정행: 전자제품 14개 패밀리(iPhone·Galaxy·Pixel·태블릿·노트북·GPU·카메라·렌즈·TV·에어팟·콘솔·워치·드론)에 오픈/잘못된 비교/공표 결함 양보/하드 게이트 HOLD 흐름 예시를 로컬 few-shot으로 초안. 랩은 nego-lab/local-fewshot/ (gitignore, 프로덕션 미반영)."
+        "2026-08-23 정행: 전자제품 14개 패밀리(iPhone·Galaxy·Pixel·태블릿·노트북·GPU·카메라·렌즈·TV·에어팟·콘솔·워치·드론)에 오픈/잘못된 비교/공표 결함 양보/하드 게이트 HOLD 흐름 예시를 nego-lab/local-fewshot/fewshot.md 로 초안. 랩 소스는 브랜치에 있음. 프로덕션 미반영."
       ],
       "remainingGaps": [
         "로컬 랩에서 저장공간만 다른 케이스의 타결가·대사 비교",
