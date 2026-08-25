@@ -3,8 +3,9 @@
  *
  * Living Memo Compressed Codec (Doc 26 §3).
  * Independent module used by Stage 2 (Context) in the 6-Stage pipeline.
- * Decide also puts this string in the user prompt as MEMO so the model
- * sees the living session state, not only the latest window.
+ * Persist/hash codec (createSnapshot). Not the Decide user prompt.
+ * The model reads S/B/C under MEMO: from decide-user-prompt.ts.
+ * See docs/engine/decide-prompt-contract.md.
  */
 
 import type { CoreMemory, RoundFact } from "../types.js";

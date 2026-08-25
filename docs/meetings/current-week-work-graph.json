@@ -509,7 +509,7 @@
         "테스트"
       ],
       "outcome": "같은 상품이라도 상태·저장공간 같은 사실이 타결가와 대사에 드러나고, 사용자가 전략이 있다고 느낄 수 있다.",
-      "nextAction": "로컬 전자제품 few-shot으로 저장공간 비교를 한 뒤, 같은 텍스트를 프로덕션 system 프롬프트에 넣고 인오에게 재측정을 맡긴다. 옷·차 패밀리는 아직 쓰지 않는다.",
+      "nextAction": "스킬 훅이 ## Skills 칸으로 Decide에 들어가게 연결됨. 인오가 저장공간만 다른 케이스를 다시 잰다.",
       "reviewBrief": "저장공간만 다른 두 케이스가 같은 가격으로 끝나지 않는지, 대사가 단순 반복이 아닌지, 지연이 더 나빠지지 않았는지 본다.",
       "evidence": [
         "동일 시나리오 전후 로그",
@@ -522,13 +522,16 @@
         "2026-08-23 정행: 전자제품 14개 패밀리(iPhone·Galaxy·Pixel·태블릿·노트북·GPU·카메라·렌즈·TV·에어팟·콘솔·워치·드론)에 오픈/잘못된 비교/공표 결함 양보/하드 게이트 HOLD 흐름 예시를 nego-lab/local-fewshot/fewshot.md 로 초안. 랩 소스는 브랜치에 있음. 프로덕션 미반영.",
         "2026-08-24 정행: 태그=가든 이름, 스펙=매물 값, few-shot=칸이 바뀌면 협상이 바뀐다는 민감도만. 전략 대본 금지. 흐름 문서 docs/engine/tag-spec-fewshot.md.",
         "2026-08-24 정행: Decide가 최근 5~6줄 창으로 앞 대화를 버리고 있었음. HNP는 이번 오퍼만 나르고 엔진이 전체 FLOW+HIST+MEMO를 재조립하도록 연결. 슬라이딩 윈도 제거.",
-        "2026-08-24 정행: 공개 압축은 HNP compact v1(DST/합의 추적, 이슈 슬롯 덮어쓰기). 비공개는 엔진. 문서 docs/engine/hnp-compact-state.md."
+        "2026-08-24 정행: 공개 압축은 HNP compact v1(DST/합의 추적, 이슈 슬롯 덮어쓰기). 비공개는 엔진. 문서 docs/engine/hnp-compact-state.md.",
+        "2026-08-24 정행: Decide 입력이 문서마다 달랐음. 계약 docs/engine/decide-prompt-contract.md. 공개 이력은 HNP만, 비공개 숫자는 S/B/C MEMO, memo-codec NS/RM은 persist 해시. HIST는 HNP 없을 때만.",
+        "2026-08-24 정행: 문서와 코드가 엇갈린 곳은 문서에 맞춤. 시스템 프롬프트에 HNP/MEMO 범례. 가격 fact는 HNP act로 바꿈(HIST 제거). REST price_minor는 호스트 봉투로 wrap 후 ingress. 전자제품 태그 패밀리 하나 few-shot을 decide-system-prompt에 넣음.",
+        "2026-08-24 정행: few-shot을 카테고리 패밀리에서 뺌. 태그에 질문이 있고 올리기·에이전트 만들 때 답을 고른다는 범례만 시스템에 고정. 옷·차도 같은 문장. 칸 값은 LISTING/STRATEGY.",
+        "2026-08-24 정행: 태그가 연 hard/soft는 criteria(기준). HNP issues가 아님. 시스템 범례에 HARD=게이트, SOFT=가격 레버. 이번 태그 목록은 스킬 본문.",
+        "2026-08-24 정행: 이름 문서 docs/engine/criteria-and-issues.md. Decide 시스템 프롬프트에 열린 criteria마다 카드 한 장(criteria-fewshot.ts). 매 LLM 호출에 항상 첨부.",
+        "2026-08-25 정행: 엔진에 ## Skills 칸(Knowledge/Valuation/Tactics/Advisor/Market/Constraints/Tone/Services). 파이프라인 훅이 L3가 아니라 이 칸으로 감. HNP에는 스킬 본문 없음 — 공개 사실은 issue/evidence."
       ],
       "remainingGaps": [
-        "로컬 랩에서 저장공간만 다른 케이스의 타결가·대사 비교",
-        "검증된 few-shot을 프로덕션 DeepSeekAdapter system에 넣기",
-        "인오가 같은 시나리오로 재측정 (W2026-08-08-07)",
-        "옷·차 등 비전자 패밀리 few-shot"
+        "인오가 같은 시나리오로 재측정 (W2026-08-08-07) — 저장공간만 다를 때 타결가·대사가 갈리는지"
       ],
       "dependsOn": [],
       "dueDate": "2026-08-29",
@@ -652,7 +655,7 @@
       "remainingGaps": [
         "회의에서 리뷰어 정하기",
         "MVP와 같이 공개 사이트 스펙 게시",
-        "REST price_minor 전용 오퍼는 아직 ingress를 건너뛴다"
+        "REST price_minor는 호스트 봉투로 wrap 후 ingress"
       ],
       "dependsOn": [],
       "dueDate": "2026-08-29",

@@ -22,9 +22,9 @@
 | 📄 | 설계만 존재 — 코드 없음 |
 | ❓ | 미확인 — 코드 대조 필요 |
 
-**문서 메타:** 현재 저장소 코드 대조 2026-08-22 (fulfillment_context가 CoreMemory에 합류. 배송 달러 견적은 아직 Decide 입력이 아님) · 최초 통합 2026-07 · 통합 출처 `docs/engine/legacy/01~31_*.md` (v1.0.0~v1.1.0 혼재 원본 28개, 1차 백업 보존)
+**문서 메타:** 현재 저장소 코드 대조 2026-08-24 (Decide 시스템=프로토콜 범례+criteria 카드. 공개 이력은 HNP, 비공개는 S/B/C MEMO. memo-codec은 persist 해시) · 최초 통합 2026-07 · 통합 출처 `docs/engine/legacy/01~31_*.md` (v1.0.0~v1.1.0 혼재 원본 28개, 1차 백업 보존)
 
-**폴더 구조:** `SOT.md`(이 문서, 유일 SOT) · `legacy/`(원본 28개 백업) · `reference/`(SOT에 담기엔 방대한 현재-엔진 심화, 필요 시)
+**폴더 구조:** `SOT.md`(이 문서, 엔진 이상형+현황) · [`tag-spec-fewshot.md`](./tag-spec-fewshot.md)(사람·에이전트 전체 흐름) · [`criteria-and-issues.md`](./criteria-and-issues.md)(criteria vs HNP issues) · [`decide-prompt-contract.md`](./decide-prompt-contract.md)(Decide 입력) · [`hnp-compact-state.md`](./hnp-compact-state.md)(공개 압축) · `legacy/` · `reference/`
 
 ---
 
@@ -284,14 +284,16 @@ executor는 매 라운드 **coach와 briefing을 둘 다** 호출하며, 역할�
 - ✅ decide 흐름: `skill.evaluateOffer`(룰 baseline) → **OPENING/BARGAINING의 COUNTER**면 LLM 증강. LLM이 유효 COUNTER 가격(또는 ACCEPT/REJECT/HOLD) 반환 시 대체, 실패 시 룰 결정 fallback(`decide.ts:84-96`).
 - 🎯 **ACCEPT를 유도하는 실제 gap 휴리스틱 = `encodeClosingHint`**(`deepseek-adapter.ts:317`): 서버가 gap 비율을 계산해 **gap<5% 또는 <$5 → "이건 사실상 딜, ACCEPT하라"**, gap<10%+종반 → "ACCEPT 강하게 고려"를 프롬프트에 직접 주입. 시스템 프롬프트의 추상 규칙을 서버가 숫자로 못박음.
 - 🔎 프롬프트 STRATEGY 블록 = persona + **빌더챗 메모리만**(숫자 파라미터 미도달, §4.2). `encodeDelta`(차등 컨텍스트)는 decide 경로에서 **죽은 코드**(`prevMemory=undefined`로 호출 → 항상 full).
-- 📄 **태그·스펙·few-shot 역할과 주고받는 흐름** — 설계 [`tag-spec-fewshot.md`](./tag-spec-fewshot.md). 프로덕션 시스템 프롬프트에는 아직 민감도 few-shot이 없다.
-- ✅ **Decide 기억** — 공개 흐름은 HNP compact state(`HNP:` 블록, DST/합의 추적). 비공개는 엔진 `MEMO`. 최근 창으로 앞 대화를 버리지 않는다. 설계 [`hnp-compact-state.md`](./hnp-compact-state.md).
+- ✅ **태그·스펙·few-shot** — 설계 [`tag-spec-fewshot.md`](./tag-spec-fewshot.md) · 이름 [`criteria-and-issues.md`](./criteria-and-issues.md). 시스템 프롬프트는 criteria 범례와 **이번 태그가 연 카드**를 매 Decide 호출에 넣는다 (`criteria-fewshot.ts`). 이번 매물 칸 값은 유저 프롬프트 LISTING / STRATEGY.
+- ✅ **Decide가 보는 입력** — 산 경로·블록·넣지 않는 것: [`decide-prompt-contract.md`](./decide-prompt-contract.md). 공개 이력은 `HNP:` 하나. 비공개 숫자는 `MEMO:`의 `S:`/`B:`/`C:`. 말한 턴이 없으면 가격 fact를 HNP act로 바꾼다. `HIST`는 내지 않는다. `memo-codec`(`NS:`/`RM:`)은 persist 해시.
+- ✅ **스킬 칸** — 파이프라인이 decide/validate/respond 훅을 모아 `encodeSkillSlots`로 시스템 프롬프트 `## Skills`(Knowledge/Valuation/Tactics/Advisor/Market/Constraints/Tone/Services)에 넣는다. L2/L3 덤프는 Decide가 안 읽음. 스킬은 조언, BOX·바닥·HARD가 이김. HNP 와이어에 스킬 본문 없음.
+- ✅ **Decide 기억** — 공개 흐름은 HNP compact state. 최근 창으로 앞 대화를 버리지 않는다. 설계 [`hnp-compact-state.md`](./hnp-compact-state.md).
 
 ### 5.5 현황 — Referee / Validate 🚧 `referee/validator.ts` → 상세 [`reference/referee.md`](./reference/referee.md)
 - ✅ 7규칙 실제 가동. V1~V3 HARD(V1 가격 floor 초과→floor / V2 phase 미허용 action→allowed[0] / V3 라운드소진 COUNTER→REJECT), V4~V7 SOFT(역전·정체·일방양보·양보폭과다, auto-fix 없음).
 - ⚠️ **HARD도 실제로는 차단 안 됨** — auto-fix `MAX_RETRY=2` 후 위반 남아도 그대로 통과. `'BLOCK'`은 감사 라벨일 뿐 실행 미차단.
 - ⚠️ **"가격 lock" 없음** — `respond.ts`에 clamp/lock 전무. 코드의 유일한 가격 개입은 V1 위반 시 floor 덮어쓰기(soft, 2회). 최종가는 결국 LLM/skill `decision.price`.
-- 💀 `ViolationTracker`(세션 위반 누적·lite 모드 전환) 미사용 → 항상 `full`. 🚧 Stage 4.5 skill validate hook은 로깅만("Future: merge").
+- 💀 `ViolationTracker`(세션 위반 누적·lite 모드 전환) 미사용 → 항상 `full`. 🚧 Stage 4.5 skill validate hook의 **코드 병합**은 아직 로깅만. 같은 규칙 텍스트는 Decide 전 peek로 `## Skills → Constraints`에 들어간다.
 
 ---
 
@@ -364,7 +366,7 @@ P(t) = P_start + (P_limit − P_start) × (t/T)^(1/β)      t/T는 [0,1] clamp
 **현황:**
 - 💀 **"라운드당 2회"는 틀림 → 실제 1회(Decide만).** Understand·Validate는 규칙, **Respond는 템플릿**(`executor.ts:104` `RESPOND:"template"`)이라 LLM 미호출. pipeline의 respond 토큰 합산은 항상 0(죽은 코드).
 - ✅ DeepSeek V4 Pro 기본 모델. 일반 모드는 30초/temperature 0.5, reasoning 요청 모드는 45초/temperature 0.3이다. ⚠️ 현재 reasoning은 별도 provider reasoning parameter가 아니라 이 timeout/temperature 정책과 `reasoning_used` 표시다(`deepseek-client.ts:54-55,121-130`).
-- ✅ 프롬프트용 `S:/B:/C:` 압축은 `deepseek-adapter.ts:205`의 `encodeCoreMemoCompact`. (별개로 `memo-codec.ts`의 `NS:/PT:…`는 **해시 전용**이고 프롬프트에 안 쓰임 — `context.ts`의 `memo_snapshot`은 dead field.)
+- ✅ 프롬프트용 `S:/B:/C:`는 `decide-user-prompt.ts`가 `MEMO:` 아래로 넣는다. `memo-codec.ts`의 `NS:/PT:/RM:`는 persist 해시 전용이다. `context.ts`의 `memo_snapshot`은 해시 입력이지 Decide 프롬프트가 아니다. 계약 [`decide-prompt-contract.md`](./decide-prompt-contract.md).
 - ✅ 토큰은 DeepSeek API 실측(`usage.prompt_tokens/completion_tokens`) → 라운드별 `negotiation_rounds.llm_tokens_used` 저장. latency와 token usage는 telemetry에도 수집된다.
 - 🚧 **정확한 USD 비용은 단가 설정이 필요** — `LLM_PRICE_DEEPSEEK_V4_PRO_INPUT_PER_1M_USD`와 `LLM_PRICE_DEEPSEEK_V4_PRO_OUTPUT_PER_1M_USD`(또는 global 가격 env)가 모두 있어야 telemetry cost가 계산된다. 미설정 시 null이다. pipeline의 `tokens/1000 × 0.0007`은 입출력 미분리 러프 추정이며 DB에 저장되지 않는다.
 - 🚧 **세션당 정확 비용 집계 없음** — `LLM_TELEMETRY=db`에서 호출별 row는 저장하지만 세션 합계 read model이 없다. DB telemetry의 `reasoningUsed`도 현재 false로 고정되어 실제 요청 모드와 어긋날 수 있다.
@@ -386,7 +388,8 @@ P(t) = P_start + (P_limit − P_start) × (t/T)^(1/β)      t/T는 [0,1] clamp
 
 ## 10. 데이터 영속화
 
-**현황 ✅** `db/schema/negotiation-sessions.ts`
+**현황 ✅** `db/schema/negotiation-sessions.ts`  
+사람 기준 흐름은 [`tag-spec-fewshot.md`](./tag-spec-fewshot.md) §6. 와이어는 HNP만. MEMO는 세션 스냅샷·해시로 남고 봉투에 안 탄다.
 - `negotiation_sessions` — 세션 상태 + 스냅샷 + 데이터모트 컬럼(outcome·priceTrajectory·opponentModel·coreMemorySnapshot·memoHash·sessionFactChainHash…)
 - `negotiation_rounds` — append-only 라운드 로그 (utility·coaching·validation·referee_violations·coach_recommended·deviation…)
 - `negotiation_groups` — 1:N 컨테이너

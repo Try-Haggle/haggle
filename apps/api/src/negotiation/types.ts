@@ -602,7 +602,11 @@ export interface ModelAdapter {
   readonly location: "remote" | "local";
   readonly capabilities: readonly ("parse" | "reason" | "generate")[];
 
-  buildSystemPrompt(skillContext: string, role?: "buyer" | "seller"): string;
+  buildSystemPrompt(
+    skillContext: string,
+    role?: "buyer" | "seller",
+    listing?: { tags?: string[]; category?: string } | null,
+  ): string;
   buildUserPrompt(
     memory: CoreMemory,
     recentFacts: RoundFact[],

@@ -11,6 +11,6 @@
 비워두는 게 정상입니다. SOT의 한 섹션이 너무 두꺼워질 때만 분리합니다. 예상 후보:
 - `referee.md` — V1~V7 규칙 + auto-fix (Referee 완전 정독 후)
 - `pipeline-stages.md` — 6-Stage 각 스테이지 입출력 상세
-- `llm-prompt.md` — `S:/B:/C:` 압축 인코딩 포맷 전체
+- Decide 프롬프트 블록·산 경로 — [`../decide-prompt-contract.md`](../decide-prompt-contract.md)
 
 *(현재 비어 있음 — 필요할 때 생성)*

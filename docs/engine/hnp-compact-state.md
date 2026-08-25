@@ -3,6 +3,8 @@
 **상태:** 2026-08-24 설계·프로토콜 모듈 추가.  
 **코드:** `packages/engine-session/src/protocol/compact-state.ts`
 
+전체 흐름 [`tag-spec-fewshot.md`](./tag-spec-fewshot.md) · Decide 블록 [`decide-prompt-contract.md`](./decide-prompt-contract.md) · 와이어 [`../protocol/HNP.md`](../protocol/HNP.md)
+
 ---
 
 ## 프로토콜이 반드시 해야 하는 것
@@ -43,7 +45,7 @@ LLMLingua처럼 토큰만 지우는 압축은 쓰지 않는다. 다른 에이전
   → 바닥, 목표가, 박스, 상대 패턴
 ```
 
-모델은 `HNP:` 블록에서 공개 흐름을 보고, `MEMO:`에서 자기 편 숫자만 본다.
+모델은 `HNP:` 블록에서 공개 흐름을 보고, `MEMO:`에서 자기 편 숫자(`S:`/`B:`/`C:`)만 본다. 같은 이력을 `HIST`나 memo-codec `RM:`으로 다시 넣지 않는다. Decide 조립 계약 [`decide-prompt-contract.md`](./decide-prompt-contract.md).
 
 `/.well-known/hnp`는 `hnp.core.compact_state`를 optional capability로 알린다. 공개 스펙은 [`docs/protocol/HNP.md`](../protocol/HNP.md).
 

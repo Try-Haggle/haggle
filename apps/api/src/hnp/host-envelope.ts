@@ -10,8 +10,10 @@ export function buildHostHnpOfferEnvelope(input: {
   senderRole: "BUYER" | "SELLER";
   priceMinor: number;
   nowMs: number;
+  senderAgentId?: string;
+  idempotencyKey?: string;
 }): HnpOfferEnvelope {
-  const idempotencyKey = `auto-${input.sessionId}-r${input.roundNo}`;
+  const idempotencyKey = input.idempotencyKey ?? `auto-${input.sessionId}-r${input.roundNo}`;
   return {
     spec_version: HNP_CORE_REVISIONS[0],
     capability: HNP_CORE_CAPABILITY,
@@ -21,7 +23,7 @@ export function buildHostHnpOfferEnvelope(input: {
     sequence: input.roundNo,
     sent_at_ms: input.nowMs,
     expires_at_ms: input.nowMs + ENVELOPE_TTL_MS,
-    sender_agent_id: `haggle.autoplay.${input.senderRole.toLowerCase()}`,
+    sender_agent_id: input.senderAgentId ?? `haggle.autoplay.${input.senderRole.toLowerCase()}`,
     sender_role: input.senderRole,
     type: input.roundNo === 1 ? "OFFER" : "COUNTER",
     payload: {
@@ -33,4 +35,27 @@ export function buildHostHnpOfferEnvelope(input: {
       },
     },
   };
+}
+
+/**
+ * REST `{ price_minor }` is a host convenience, not a second protocol.
+ * Wrap it as an unsigned host envelope so ingress still runs.
+ */
+export function wrapPriceOnlyAsHostEnvelope(input: {
+  sessionId: string;
+  currentRound: number;
+  senderRole: "BUYER" | "SELLER";
+  priceMinor: number;
+  idempotencyKey: string;
+  nowMs: number;
+}): HnpOfferEnvelope {
+  return buildHostHnpOfferEnvelope({
+    sessionId: input.sessionId,
+    roundNo: input.currentRound + 1,
+    senderRole: input.senderRole,
+    priceMinor: input.priceMinor,
+    nowMs: input.nowMs,
+    senderAgentId: `haggle.host.${input.senderRole.toLowerCase()}`,
+    idempotencyKey: input.idempotencyKey,
+  });
 }

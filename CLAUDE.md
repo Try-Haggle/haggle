@@ -298,7 +298,7 @@ MVP 결제, 배송/fulfillment, 분쟁 작업은 아래 문서를 먼저 읽고 
 | 문서 | 내용 |
 |------|------|
 | [mvp/](./docs/mvp/00_INDEX.md) | MVP 계획, 기술 부채, 운영 정책 |
-| [engine/](./docs/engine/SOT.md) | 협상 엔진 Source of Truth |
+| [engine/](./docs/engine/SOT.md) | 협상 엔진 Source of Truth. 전체 흐름은 [tag-spec-fewshot.md](./docs/engine/tag-spec-fewshot.md). 이름은 [criteria-and-issues.md](./docs/engine/criteria-and-issues.md). Decide 입력은 [decide-prompt-contract.md](./docs/engine/decide-prompt-contract.md) |
 | [contracts/](./docs/contracts/00_INDEX.md) | 스마트 컨트랙트 보안 감사 |
 | [strategy/](./docs/strategy/00_INDEX.md) | 사업 전략, 해자, 파트너 리서치 |
 | [features/](./docs/features/00_INDEX.md) | 기능 설계 (태그, 분쟁, 게이미피케이션) |

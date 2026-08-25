@@ -13,18 +13,17 @@
 
 import type {
   CoreMemory,
-  RoundFact,
-  OpponentPattern,
-  NegotiationPhase,
   EngineDecision,
-  CategoryTerm,
-} from '../types.js';
+  NegotiationPhase,
+  OpponentPattern,
+  RoundFact,
+} from "../types.js";
 
 // ─── Skill Manifest (declarative, JSON-serializable) ─────────────
 
-export type SkillType = 'knowledge' | 'advisor' | 'validator' | 'service' | 'composite';
+export type SkillType = "knowledge" | "advisor" | "validator" | "service" | "composite";
 
-export type PipelineStage = 'understand' | 'context' | 'decide' | 'validate' | 'respond';
+export type PipelineStage = "understand" | "context" | "decide" | "validate" | "respond";
 
 export interface SkillManifest {
   /** Unique skill identifier (e.g. "electronics-knowledge-v1") */
@@ -44,19 +43,19 @@ export interface SkillManifest {
 
   /** Whether parties can invoke this skill on-demand during negotiation */
   onDemand?: {
-    invocableBy: ('buyer' | 'seller' | 'referee')[];
+    invocableBy: ("buyer" | "seller" | "referee")[];
     description: string;
   };
 
   /** Pricing model */
   pricing: {
-    model: 'free' | 'per_call' | 'per_session' | 'subscription';
+    model: "free" | "per_call" | "per_session" | "subscription";
     costCents?: number;
   };
 
   /** Verification status — shown as badge to users (투명성 철학) */
   verification: {
-    status: 'unverified' | 'self_tested' | 'community_reviewed' | 'haggle_verified';
+    status: "unverified" | "self_tested" | "community_reviewed" | "haggle_verified";
     verifiedAt?: string;
     verifiedBy?: string;
     securityAudit?: boolean;
@@ -64,11 +63,11 @@ export interface SkillManifest {
 }
 
 /** Badge emoji for verification levels */
-export const VERIFICATION_BADGES: Record<SkillManifest['verification']['status'], string> = {
-  unverified: '⬜',
-  self_tested: '🟡',
-  community_reviewed: '🟢',
-  haggle_verified: '✅',
+export const VERIFICATION_BADGES: Record<SkillManifest["verification"]["status"], string> = {
+  unverified: "⬜",
+  self_tested: "🟡",
+  community_reviewed: "🟢",
+  haggle_verified: "✅",
 };
 
 /** Skill usage record included in round responses */
@@ -77,7 +76,7 @@ export interface SkillAppliedRecord {
   name: string;
   type: SkillType;
   badge: string;
-  verification_status: SkillManifest['verification']['status'];
+  verification_status: SkillManifest["verification"]["status"];
 }
 
 // ─── Hook Contexts & Results ─────────────────────────────────────
@@ -105,7 +104,7 @@ export interface UnderstandHookResult extends HookResult {
   content: {
     termHints?: Array<{
       id: string;
-      parseAs: 'number' | 'enum' | 'boolean' | 'string';
+      parseAs: "number" | "enum" | "boolean" | "string";
       range?: unknown;
       unit?: string;
     }>;
@@ -115,7 +114,7 @@ export interface UnderstandHookResult extends HookResult {
 
 export interface DecideHookResult extends HookResult {
   content: {
-    /** Category knowledge for LLM context */
+    /** Lands in Decide system prompt ## Skills → Knowledge */
     categoryBrief?: string;
     /** Valuation rules the LLM should consider */
     valuationRules?: string[];
@@ -179,7 +178,7 @@ export interface SkillStackConfig {
 
 export interface RefereeBriefing {
   /** Opponent classification based on EMA of concession rates */
-  opponentPattern: string;  // 'BOULWARE' | 'CONCEDER' | 'LINEAR' | 'UNKNOWN'
+  opponentPattern: string; // 'BOULWARE' | 'CONCEDER' | 'LINEAR' | 'UNKNOWN'
   /** Time pressure ratio (0 = just started, 1 = last round) */
   timePressure: number;
   /** Recent gap values (last N rounds) for trend visibility */

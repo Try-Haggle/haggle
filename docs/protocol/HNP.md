@@ -38,6 +38,10 @@ Those belong to UCP, A2A, or a marketplace. Haggle’s own listing UI can stay. 
 
 A third party can speak HNP without using Haggle’s model, few-shot, or floors. They can also send HNP into a Haggle endpoint and let our engine answer.
 
+The wire is HNP only. Engine MEMO (floors, targets, box, opponent pattern) is not a second protocol. A Haggle host keeps it in Postgres (`negotiation_sessions`, `negotiation_rounds`) and rebuilds it each round for *its* model. It does not go in the envelope.
+
+Human-facing flow: [`docs/engine/tag-spec-fewshot.md`](../engine/tag-spec-fewshot.md). What our Decide model reads: [`docs/engine/decide-prompt-contract.md`](../engine/decide-prompt-contract.md). Public compact rules: [`docs/engine/hnp-compact-state.md`](../engine/hnp-compact-state.md).
+
 ---
 
 ## What a message is
@@ -90,6 +94,8 @@ ACCEPT binds to `accepted_proposal_id` and preferably `accepted_proposal_hash`. 
 
 MCP offer/accept tools take an HNP envelope. There is no price-only MCP offer tool.
 
+REST still accepts `{ price_minor, sender_role, idempotency_key }` as a host convenience. The host wraps that as an unsigned envelope (`haggle.host.buyer|seller`) and runs the same ingress. It is not a second protocol.
+
 Haggle's own web auto-play speaks HNP too. Each `/auto-play/next` round is a host envelope through the same ingress.
 
 The public website spec stays in-repo until MVP ships. We publish it with MVP, not earlier.
@@ -116,6 +122,22 @@ What they cannot copy by reading the spec:
 - how well agents actually close
 
 A protocol that stays secret is a private API. A protocol that is public can become the default **negotiation socket**. Compete on the engine and the network, not on hiding the message shape.
+
+---
+
+## Skills stay in the engine
+
+Do not put skill plugins, few-shot, recommended prices, or floors on the wire.
+
+HNP already has extension points for **public facts**:
+
+- issue namespaces (`hnp.issue.*`, later `com.vendor.issue.*`)
+- listing evidence
+- `GET /.well-known/hnp` revisions, transports, and issue namespaces
+
+A verification or market API can publish a fact (IMEI clean, battery 87%, median sold). That fact may become an issue or evidence. The host engine may also feed it to a skill slot. The skill text, tactic list, and dollar hints never become envelope fields.
+
+If another host wants different knowledge, they run their own engine. They still speak the same acts and issue slots.
 
 ---
 

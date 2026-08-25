@@ -175,6 +175,38 @@ describe("Stage 3: decide", () => {
     expect(result.latency_ms).toBeGreaterThanOrEqual(0);
   });
 
+  it("encodes skill slots into the system prompt", async () => {
+    const memory = makeMemory("BARGAINING");
+    const promptAdapter = new DeepSeekAdapter();
+    const systemSpy = vi.spyOn(promptAdapter, "buildSystemPrompt");
+
+    await decide({
+      context: makeContextOutput(),
+      adapter: promptAdapter,
+      skill,
+      phase: "BARGAINING",
+      config: {
+        ...makeConfig(),
+        adapters: { UNDERSTAND: promptAdapter, DECIDE: promptAdapter, RESPOND: promptAdapter },
+      },
+      memory,
+      facts: [],
+      opponent: defaultOpponent,
+      skillSlots: {
+        knowledge: ["Category: Consumer Electronics"],
+        tactics: ["condition_trade"],
+      },
+    });
+
+    expect(systemSpy).toHaveBeenCalled();
+    const skillContext = systemSpy.mock.calls[0]?.[0] ?? "";
+    expect(skillContext).toContain("## Skills");
+    expect(skillContext).toContain("### Knowledge");
+    expect(skillContext).toContain("Category: Consumer Electronics");
+    expect(skillContext).toContain("### Tactics");
+    expect(skillContext).toContain("condition_trade");
+  });
+
   it("passes Stage 2 L5 signal lines into the LLM prompt", async () => {
     const memory = makeMemory("BARGAINING");
     const promptAdapter = new DeepSeekAdapter();

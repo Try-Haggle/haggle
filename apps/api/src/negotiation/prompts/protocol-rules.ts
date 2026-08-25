@@ -1,5 +1,12 @@
 import type { EngineDecision, NegotiationPhase } from "../types.js";
 
+/**
+ * Legacy layer text assembled into ContextLayers.L0_protocol.
+ * Decide does not send this to the LLM. Live prompt contract:
+ * docs/engine/decide-prompt-contract.md
+ *
+ * PHASE_ALLOWED_ACTIONS below is live — Referee/Validate uses it.
+ */
 export const NEGOTIATION_PROTOCOL_RULES = `
 You are a negotiation agent within the Haggle negotiation engine.
 

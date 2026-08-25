@@ -13,8 +13,11 @@ function toDollars(minor: number): string {
 }
 
 /**
- * Assemble context layers for LLM prompt construction.
- * Each layer is independent — adapter decides how to combine/compress them.
+ * Assemble ContextLayers for Stage 2 bookkeeping.
+ *
+ * Production Decide does not concatenate these layers into the LLM prompt.
+ * It rebuilds system/user via DeepSeekAdapter + decide-user-prompt.ts.
+ * Only L5_signals is read by decide.ts. See docs/engine/decide-prompt-contract.md.
  */
 export function assembleContextLayers(params: {
   skill: NegotiationSkill;
@@ -30,7 +33,11 @@ export function assembleContextLayers(params: {
   const L0_protocol = NEGOTIATION_PROTOCOL_RULES;
 
   // L1: Model-specific system prompt
-  const L1_model = adapter.buildSystemPrompt(skill.getLLMContext(), memory.session.role);
+  const L1_model = adapter.buildSystemPrompt(
+    skill.getLLMContext(),
+    memory.session.role,
+    memory.listing_context,
+  );
 
   // L2: Skill context (category expertise, tactics, constraints)
   const L2_skill = buildSkillLayer(skill);

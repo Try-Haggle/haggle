@@ -6,7 +6,7 @@
 
 공통 앞부분(역할 페르소나, BOX, B:/C:, JSON 스키마)은 이미 `DeepSeekAdapter.buildSystemPrompt`에 있다.
 아래에 붙일 것은 **이 태그 묶음에서 sellerStatedFacts / requiredCriteria를 어떻게 읽을지**다.
-질문 목록은 엔진이 이미 `## Category checks`로 넣으니 다시 나열하지 말고, stance를 인용하는 예시만 넣는다.
+질문 목록은 엔진이 이미 `## Criteria cards — this tag`로 넣으니 다시 나열하지 말고, stance를 인용하는 예시만 넣는다.
 
 캐시: (buyer|seller) × 아래 패밀리 하나가 하나의 system prefix다.
 

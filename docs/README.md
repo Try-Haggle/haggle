@@ -36,7 +36,9 @@
 | 분쟁 시스템 v2 | [features/분쟁_시스템_v2.md](./features/분쟁_시스템_v2.md) |
 | 게이미피케이션 | [features/게이미피케이션_설계.md](./features/게이미피케이션_설계.md) |
 | 협상 엔진 SOT | [engine/SOT.md](./engine/SOT.md) · 렌더뷰 [site/negotiation-engine.html](./site/negotiation-engine.html) |
-| 태그·스펙·few-shot 협상 | [engine/tag-spec-fewshot.md](./engine/tag-spec-fewshot.md) |
+| 협상 전체 흐름 (태그·스펙·few-shot) | [engine/tag-spec-fewshot.md](./engine/tag-spec-fewshot.md) |
+| Criteria vs HNP issues | [engine/criteria-and-issues.md](./engine/criteria-and-issues.md) |
+| Decide 프롬프트 계약 | [engine/decide-prompt-contract.md](./engine/decide-prompt-contract.md) |
 | HNP 공개 스펙 | [protocol/HNP.md](./protocol/HNP.md) |
 | HNP 공개 압축 상태 | [engine/hnp-compact-state.md](./engine/hnp-compact-state.md) |
 | 코드 네이밍 컨벤션 (협상 에이전트/빌더 챗) | [CODE_NAMING_CONVENTIONS.md](./CODE_NAMING_CONVENTIONS.md) |

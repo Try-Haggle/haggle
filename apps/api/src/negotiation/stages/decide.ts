@@ -8,6 +8,7 @@
 import { callLLM } from "../adapters/deepseek-client.js";
 import { shouldUseReasoning } from "../config.js";
 import type { DecideInput, DecideOutput } from "../pipeline/types.js";
+import { encodeSkillSlots } from "../prompts/skill-slots.js";
 import { buildHarnessTrace } from "../referee/harness.js";
 import { computeHarnessBox, DEFAULT_AUTONOMY } from "../referee/harness-box.js";
 import type { EngineDecision, HarnessTrace } from "../types.js";
@@ -60,8 +61,12 @@ export async function decide(input: DecideInput): Promise<DecideOutput> {
 
       reasoningMode = useReasoning;
 
-      // Build prompts
-      const systemPrompt = adapter.buildSystemPrompt(skill.getLLMContext(), memory.session.role);
+      // Live prompt path: docs/engine/decide-prompt-contract.md
+      const systemPrompt = adapter.buildSystemPrompt(
+        encodeSkillSlots(input.skillSlots ?? { knowledge: [skill.getLLMContext()] }),
+        memory.session.role,
+        memory.listing_context,
+      );
       const userPrompt = adapter.buildUserPrompt(
         memory,
         facts,
