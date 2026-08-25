@@ -164,7 +164,7 @@ export async function callLLM(
         );
 
         if (!response.ok) {
-          const err = new Error(`DeepSeek API error ${response.status}: ${text}`) as Error & {
+          const err = new Error(`DeepSeek API error ${response.status}`) as Error & {
             status: number;
             retryable: boolean;
           };

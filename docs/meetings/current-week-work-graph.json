@@ -688,6 +688,39 @@
       ],
       "dueDate": null,
       "sourceNote": "2026-08-24 정행: 연결은 열어 두되 지금은 구현하지 않는다. 할 일만 정행 아래로 넣는다. 발견은 경쟁하지 않는다."
+    },
+    {
+      "id": "W2026-08-22-08",
+      "title": "협상 세션 유출 막기",
+      "status": "in_progress",
+      "ownerId": "jeonghaeng",
+      "reviewerId": "inoh",
+      "reviewerAssignmentStatus": "proposed",
+      "reviewerReason": "인오가 세션 재생·자동협상 경로를 재현하므로, 게스트 GET과 데모 문이 다시 열리는지 독립적으로 볼 수 있다.",
+      "assignmentConfidence": "confirmed",
+      "domains": [
+        "협상 엔진",
+        "API",
+        "보안"
+      ],
+      "outcome": "링크만 가진 사람은 대사와 가격만 보고, 바닥·엔진 점수·데모 우회는 나가지 않는다.",
+      "nextAction": "게스트 GET에서 점수를 뺐고, 대사 가드·auto-play 봉인·데모 라우트 플래그를 넣었다. 인오가 게스트 재생과 스테이징 데모 404를 확인한다.",
+      "reviewBrief": "로그인 없이 세션 GET에 utility가 없는지, 대사에 바닥이 안 남는지, /negotiations/demo 가 스테이징에서 404인지 본다.",
+      "evidence": [
+        "게스트 vs 참가자 GET 페이로드",
+        "바닥 대사 템플릿 폴백",
+        "auto-play 로우에 상대 스냅샷 평문 없음"
+      ],
+      "verifiedEvidence": [
+        "2026-08-24 정행: 게스트 GET은 대사·가격만. 참가자만 utility/tactic. POST offers는 include_explainability일 때만 utility. Respond가 바닥/목표/BOX 숫자를 막음. auto-play 상대 스냅샷은 AES-GCM 봉인. negotiation-demo/intelligence-demo는 ENABLE_INSECURE_DEMO_ROUTES=true 이고 local일 때만 마운트."
+      ],
+      "remainingGaps": [
+        "DeepSeek 프롬프트의 MEMO는 제품상 필요 — 제공자 밖 유출은 구조적으로 남음",
+        "봉인 키와 DB를 같이 가진 운영자/덤프는 여전히 양쪽 전략을 열 수 있음"
+      ],
+      "dependsOn": [],
+      "dueDate": "2026-08-29",
+      "sourceNote": "2026-08-24 정행: GET 공개·대사 유출·데모 라우트·양쪽 스냅샷을 한 슬라이스로 막는다."
     }
   ]
 }

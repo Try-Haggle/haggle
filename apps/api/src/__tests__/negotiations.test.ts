@@ -593,9 +593,8 @@ describe("Negotiation API", () => {
 
   describe("GET /negotiations/sessions/:id", () => {
     it("is publicly readable (no auth required) — returns 404 for unknown without auth", async () => {
-      // GET /sessions/:id is intentionally auth-optional so unauthenticated
-      // viewers can read session pages (e.g., shared playback links).
-      // Without an existing session it still returns 404.
+      // GET /sessions/:id is auth-optional for shared playback. Unknown ids
+      // still 404. Guests do not receive engine scores.
       const res = await app.inject({ method: "GET", url: "/negotiations/sessions/sess-001" });
       expect(res.statusCode).toBe(404);
       expect(res.json().error).toBe("SESSION_NOT_FOUND");
@@ -606,7 +605,13 @@ describe("Negotiation API", () => {
       mockGetRoundsBySessionId.mockResolvedValue([mockRound]);
       const res = await app.inject({ method: "GET", url: "/negotiations/sessions/sess-001" });
       expect(res.statusCode).toBe(200);
-      expect(res.json().session.id).toBe("sess-001");
+      const body = res.json();
+      expect(body.session.id).toBe("sess-001");
+      expect(body.session.last_utility).toBeUndefined();
+      expect(body.rounds[0].utility).toBeUndefined();
+      expect(body.rounds[0].tactic_used).toBeUndefined();
+      expect(body.rounds[0].concession_rate).toBeUndefined();
+      expect(body.rounds[0].message).toBe(mockRound.message);
     });
 
     it("returns 404 for unknown session", async () => {
@@ -635,6 +640,8 @@ describe("Negotiation API", () => {
       expect(body.rounds).toHaveLength(1);
       expect(body.rounds[0].round_no).toBe(1);
       expect(body.rounds[0].decision).toBe("COUNTER");
+      expect(body.session.last_utility).toEqual(mockSession.lastUtility);
+      expect(body.rounds[0].utility).toEqual(mockRound.utility);
     });
 
     it("returns 403 when actor is not a participant", async () => {
@@ -949,17 +956,14 @@ describe("Negotiation API", () => {
         string,
         unknown
       >;
-      const ctx = persistedSnapshot.auto_play_context as {
-        buyerSnapshot: {
-          buyer_negotiation_agent_builder_memory: {
-            categoryCriteria: Array<{ checkId: string; stance?: string }>;
-          };
-        };
+      const memory = persistedSnapshot.buyer_negotiation_agent_builder_memory as {
+        categoryCriteria: Array<{ checkId: string; stance?: string }>;
       };
-      const title = ctx.buyerSnapshot.buyer_negotiation_agent_builder_memory.categoryCriteria.find(
-        (c) => c.checkId === "title_status",
-      );
+      const title = memory.categoryCriteria.find((c) => c.checkId === "title_status");
       expect(title?.stance).toBe("yes, clean title only");
+      expect(JSON.stringify(persistedSnapshot.auto_play_context)).not.toContain(
+        "yes, clean title only",
+      );
     });
 
     it("rejects a pause answer without a valid run token", async () => {
@@ -1486,7 +1490,7 @@ describe("Negotiation API", () => {
       expect(body.round_id).toBe("round-new");
       expect(body.decision).toBe("COUNTER");
       expect(body.outgoing_price).toBe(9500);
-      expect(body.utility.u_total).toBe(0.6);
+      expect(body.utility).toBeUndefined();
       expect(body.session_status).toBe("ACTIVE");
       expect(body.idempotent).toBe(false);
     });
@@ -2520,7 +2524,7 @@ describe("Negotiation API", () => {
       expect(body.current_round).toBe(1);
       expect(body.version).toBe(1);
       expect(body.last_offer_price_minor).toBe("10000");
-      expect(body.last_utility).toBeDefined();
+      expect(body.last_utility).toBeUndefined();
       // Must NOT include full session data
       expect(body.id).toBeUndefined();
       expect(body.negotiation_agent_snapshot).toBeUndefined();

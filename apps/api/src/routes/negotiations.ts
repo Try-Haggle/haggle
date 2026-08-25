@@ -75,6 +75,7 @@ import {
   updateSessionState,
 } from "../services/negotiation-session.service.js";
 import { loadUserMemoryBrief } from "../services/user-memory-card.service.js";
+import { projectLastUtility, projectRoundEngineFields } from "./session-projection.js";
 
 // ── Zod Schemas ────────────────────────────────────────────
 
@@ -318,7 +319,6 @@ export function registerNegotiationRoutes(
           status: s.status,
           current_round: s.currentRound,
           last_offer_price_minor: s.lastOfferPriceMinor,
-          last_utility: s.lastUtility,
           version: s.version,
           expires_at: s.expiresAt,
           created_at: s.createdAt,
@@ -334,11 +334,13 @@ export function registerNegotiationRoutes(
     if (!session) {
       return reply.code(404).send({ error: "SESSION_NOT_FOUND" });
     }
+    let viewer: "guest" | "participant" = "guest";
     if (request.user) {
       const access = validateSessionParticipant(request.user, session);
       if (!access.ok) {
         return reply.code(access.status).send({ error: access.error });
       }
+      viewer = "participant";
     }
 
     const [rounds, listing] = await Promise.all([
@@ -361,7 +363,7 @@ export function registerNegotiationRoutes(
         status: session.status,
         current_round: session.currentRound,
         last_offer_price_minor: session.lastOfferPriceMinor,
-        last_utility: session.lastUtility,
+        last_utility: projectLastUtility(session.lastUtility, viewer),
         version: session.version,
         expires_at: session.expiresAt,
         created_at: session.createdAt,
@@ -385,16 +387,18 @@ export function registerNegotiationRoutes(
         message_type: r.messageType,
         price_minor: r.priceminor,
         counter_price_minor: r.counterPriceMinor,
-        utility: r.utility,
         decision: r.decision,
         message: r.message,
         phase_at_round: r.phaseAtRound,
-        tactic_used: r.tacticUsed,
-        concession_rate: r.concessionRate,
         created_at: r.createdAt,
         // The buyer's reply to a mid-negotiation pause, so the transcript can show it
         // under the question that asked for it.
         pause_answers: (r.metadata as Record<string, unknown> | null)?.buyer_pause_answers ?? null,
+        ...projectRoundEngineFields(viewer, {
+          utility: r.utility,
+          tactic_used: r.tacticUsed,
+          concession_rate: r.concessionRate,
+        }),
       })),
     });
   });
@@ -505,7 +509,6 @@ export function registerNegotiationRoutes(
           round_no: result.roundNo,
           decision: result.decision,
           outgoing_price: result.outgoingPrice,
-          utility: result.utility,
           session_status: result.sessionStatus,
           escalation: result.escalation
             ? { type: result.escalation.type, context: result.escalation.context }
@@ -522,6 +525,7 @@ export function registerNegotiationRoutes(
         const includeExplainability = request.query.include_explainability === "true";
         if (includeExplainability && extended.explainability) {
           responseBody.explainability = extended.explainability;
+          responseBody.utility = result.utility;
         }
         if (offer.hnp) {
           responseBody.hnp = {
@@ -806,7 +810,6 @@ export function registerNegotiationRoutes(
         status: session.status,
         current_round: session.currentRound,
         last_offer_price_minor: session.lastOfferPriceMinor,
-        last_utility: session.lastUtility,
         version: session.version,
         updated_at: session.updatedAt,
       });

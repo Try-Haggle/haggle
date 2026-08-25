@@ -153,6 +153,20 @@ describe("Stage 5: respond", () => {
     expect(result.message).toBe("Deal — $13,400 it is. Ready to proceed to settlement.");
   });
 
+  it("drops an LLM message that names the private floor", () => {
+    const validated = makeValidateOutput("COUNTER", 86000);
+    validated.final_decision.message = "I can't go below $950 — that's my floor.";
+    const result = respond({
+      validated,
+      memory: makeMemory(),
+      adapter,
+      skill,
+      config: makeConfig(),
+    });
+    expect(result.message).not.toContain("950");
+    expect(result.message).not.toMatch(/floor/i);
+  });
+
   it("keeps an LLM message that states the correct price", () => {
     const validated = makeValidateOutput("COUNTER", 1_345_000); // $13,450
     validated.final_decision.message = "How about $13,450? That's my best.";
