@@ -3,6 +3,7 @@
 import { AlertCircle, MessageSquare } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useState } from "react";
+import { OpenConversationButton } from "@/components/messaging/open-conversation-button";
 import {
   Alert,
   BackLink,
@@ -240,7 +241,14 @@ export function NegotiationChat({
           <h1 className="mb-1 font-bold text-ink text-xl">Negotiation</h1>
           <p className="font-mono text-ink-muted text-xs">{session.id}</p>
         </div>
-        <Badge tone={status.tone}>{status.label}</Badge>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <Badge tone={status.tone}>{status.label}</Badge>
+          {/* Humans talk once the agents have something to talk about. */}
+          <OpenConversationButton
+            sessionId={session.id}
+            label={role === "BUYER" ? "Message seller" : "Message buyer"}
+          />
+        </div>
       </div>
 
       {/* Summary KPIs */}

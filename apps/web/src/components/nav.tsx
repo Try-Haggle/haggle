@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNotificationContext } from "@/app/(app)/_components/notification-provider";
 import { Avatar, Logo, NavTab, NotificationItem, Spinner } from "@/components/ui";
+import { useMessagesUnreadCount } from "@/hooks/use-messages-unread";
 import { useTheme } from "@/hooks/use-theme";
 import { type Notification, notificationApi } from "@/lib/api-client";
 import { createClient } from "@/lib/supabase/client";
@@ -174,6 +175,9 @@ export function Nav({ userEmail, userName, userAvatarUrl, modeOverride }: NavPro
             {switchLabel}
           </button>
 
+          {/* Messages */}
+          <MessagesLink />
+
           {/* Notification bell */}
           <NotificationBell />
 
@@ -297,6 +301,37 @@ export function Nav({ userEmail, userName, userAvatarUrl, modeOverride }: NavPro
 }
 
 // ─── Notification Bell ────────────────────────────────────────────────────────
+
+function MessagesLink() {
+  const unreadCount = useMessagesUnreadCount();
+
+  return (
+    <Link
+      href="/messages"
+      aria-label="Messages"
+      className="relative cursor-pointer p-1.5 text-ink-secondary transition-colors hover:text-ink"
+    >
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+      </svg>
+      {unreadCount > 0 && (
+        <span className="-top-0.5 -right-0.5 absolute flex h-4 w-4 items-center justify-center rounded-full bg-error font-bold text-[10px] text-on-accent">
+          {unreadCount > 9 ? "9+" : unreadCount}
+        </span>
+      )}
+    </Link>
+  );
+}
 
 function NotificationBell() {
   const { unreadCount, decrementCount, resetCount } = useNotificationContext();
