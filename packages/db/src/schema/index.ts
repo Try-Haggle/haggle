@@ -64,6 +64,15 @@ export {
 export { listingDrafts } from "./listing-drafts.js";
 export { listingEmbeddings } from "./listing-embeddings.js";
 export { listingsPublished } from "./listings-published.js";
+export {
+  CONVERSATION_SUBJECT_TYPES,
+  type ConversationSubjectType,
+  conversationMembers,
+  conversations,
+  MESSAGE_BODY_MAX_LENGTH,
+  MESSAGE_PREVIEW_MAX_LENGTH,
+  messages,
+} from "./messaging.js";
 export { negotiationAgents } from "./negotiation-agents.js";
 export {
   marketMicrostructure,

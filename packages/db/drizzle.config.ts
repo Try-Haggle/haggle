@@ -35,6 +35,7 @@ export default defineConfig({
     "./dist/schema/listing-drafts.js",
     "./dist/schema/listing-embeddings.js",
     "./dist/schema/listings-published.js",
+    "./dist/schema/messaging.js",
     "./dist/schema/negotiation-agents.js",
     "./dist/schema/negotiation-analytics.js",
     "./dist/schema/negotiation-moat.js",
