@@ -29,17 +29,19 @@ export function MessagesShell({ currentUserId }: MessagesShellProps) {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
   const [selected, setSelected] = useState<ConversationDetail | null>(null);
   const { connectionEpoch } = useUserEvents();
 
   const loadConversations = useCallback(() => {
+    setFailed(false);
     messagingApi
       .listConversations()
       .then((response) => {
         setConversations(response.conversations);
         setNextCursor(response.nextCursor);
       })
-      .catch(() => {})
+      .catch(() => setFailed(true))
       .finally(() => setLoading(false));
   }, []);
 
@@ -138,6 +140,8 @@ export function MessagesShell({ currentUserId }: MessagesShellProps) {
               selectedId={selectedId}
               currentUserId={currentUserId}
               loading={loading}
+              failed={failed}
+              onRetry={loadConversations}
               onSelect={select}
               hasMore={Boolean(nextCursor)}
               onLoadMore={() => {

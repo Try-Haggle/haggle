@@ -11,6 +11,9 @@ interface ConversationListProps {
   selectedId: string | null;
   currentUserId: string;
   loading: boolean;
+  /** Set when the list could not be fetched — never render this as "empty". */
+  failed?: boolean;
+  onRetry?: () => void;
   onSelect: (conversation: ConversationSummary) => void;
   onLoadMore?: () => void;
   hasMore: boolean;
@@ -21,10 +24,37 @@ export function ConversationList({
   selectedId,
   currentUserId,
   loading,
+  failed,
+  onRetry,
   onSelect,
   onLoadMore,
   hasMore,
 }: ConversationListProps) {
+  // A failed fetch is not an empty inbox; saying "no messages" there would be
+  // a lie the reader cannot recover from.
+  if (!loading && failed && conversations.length === 0) {
+    return (
+      <div className="p-4">
+        <EmptyState
+          size="sm"
+          padding="sm"
+          icon={<MessageIcon />}
+          title="Couldn't load your messages"
+          description="Check your connection and try again."
+          action={
+            <button
+              type="button"
+              onClick={onRetry}
+              className="rounded-full border border-line px-3 py-1.5 font-semibold text-ink text-xs hover:bg-surface-sunken"
+            >
+              Retry
+            </button>
+          }
+        />
+      </div>
+    );
+  }
+
   if (!loading && conversations.length === 0) {
     return (
       <div className="p-4">
@@ -83,6 +113,7 @@ function ConversationRow({
   return (
     <button
       type="button"
+      data-testid="conversation-item"
       onClick={() => onSelect(conversation)}
       aria-current={active ? "true" : undefined}
       className={cn(

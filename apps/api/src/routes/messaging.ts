@@ -156,7 +156,21 @@ export function registerMessagingRoutes(app: FastifyInstance, db: Database): voi
           ? await getListingForNegotiationSession(db, detail.subject.id)
           : null;
 
-      return reply.send({ subject: detail.subject, listing });
+      return reply.send({
+        subject: detail.subject,
+        // Same public shape the negotiation detail route exposes — the internal
+        // listing id stays server-side.
+        listing: listing
+          ? {
+              publicId: listing.publicId,
+              title: listing.title,
+              category: listing.category,
+              photoUrl: listing.photoUrl,
+              targetPrice: listing.targetPrice,
+              sellerAgentPreset: listing.sellerAgentPreset,
+            }
+          : null,
+      });
     },
   );
 

@@ -1,4 +1,4 @@
-import { api } from "./api-client";
+import { ApiError, api } from "./api-client";
 
 /** Mirrors the API's conversation subject union. */
 export type ConversationSubjectType = "listing" | "order" | "negotiation_session";
@@ -50,15 +50,38 @@ export interface SubjectListing {
   sellerAgentPreset: string | null;
 }
 
+/**
+ * Retry once when a read comes back 401.
+ *
+ * Right after sign-in (or while a token is refreshing) the Supabase client can
+ * hand out no access token for a moment, so the request goes out unauthenticated.
+ * Without this the page renders an empty inbox that never corrects itself.
+ */
+async function retryOnAuthGap<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      return run();
+    }
+    throw error;
+  }
+}
+
 export const messagingApi = {
   listConversations: (cursor?: string | null) =>
-    api.get<{ conversations: ConversationSummary[]; nextCursor: string | null }>(
-      `/api/conversations${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
+    retryOnAuthGap(() =>
+      api.get<{ conversations: ConversationSummary[]; nextCursor: string | null }>(
+        `/api/conversations${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
+      ),
     ),
 
-  unreadCount: () => api.get<{ count: number }>("/api/conversations/unread-count"),
+  unreadCount: () =>
+    retryOnAuthGap(() => api.get<{ count: number }>("/api/conversations/unread-count")),
 
-  get: (id: string) => api.get<{ conversation: ConversationDetail }>(`/api/conversations/${id}`),
+  get: (id: string) =>
+    retryOnAuthGap(() => api.get<{ conversation: ConversationDetail }>(`/api/conversations/${id}`)),
 
   /** Find-or-create. Participants come from the subject, never from the client. */
   open: (subject: ConversationSubject) =>
@@ -68,8 +91,10 @@ export const messagingApi = {
     }),
 
   messages: (id: string, before?: string | null) =>
-    api.get<{ messages: Message[]; nextCursor: string | null }>(
-      `/api/conversations/${id}/messages${before ? `?before=${encodeURIComponent(before)}` : ""}`,
+    retryOnAuthGap(() =>
+      api.get<{ messages: Message[]; nextCursor: string | null }>(
+        `/api/conversations/${id}/messages${before ? `?before=${encodeURIComponent(before)}` : ""}`,
+      ),
     ),
 
   send: (id: string, body: string, clientMessageId: string) =>

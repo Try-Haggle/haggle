@@ -97,6 +97,26 @@ describe("ConversationList", () => {
     );
   });
 
+  it("offers a retry when the list could not be loaded", () => {
+    const onRetry = vi.fn();
+    render(
+      <ConversationList
+        conversations={[]}
+        selectedId={null}
+        currentUserId={ME}
+        loading={false}
+        failed
+        onRetry={onRetry}
+        onSelect={vi.fn()}
+        hasMore={false}
+      />,
+    );
+
+    // A failed fetch must not read as "you have no messages".
+    expect(screen.getByText("Couldn't load your messages")).toBeInTheDocument();
+    expect(screen.queryByText("No messages yet")).toBeNull();
+  });
+
   it("explains the empty state instead of showing a blank rail", () => {
     renderList({ conversations: [] });
 
