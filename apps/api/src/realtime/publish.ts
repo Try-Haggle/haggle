@@ -8,7 +8,7 @@ import { publishRealtime } from "./fanout.js";
 type PublishableEvent = { type: string };
 
 /** Send a user-addressed event to every instance holding that user's sockets. */
-export function publishToUsers(userIds: string[], event: PublishableEvent): void {
+export function publishToUsers<E extends PublishableEvent>(userIds: string[], event: E): void {
   publishRealtime({
     target: { kind: "user", userIds },
     event: event as unknown as Record<string, unknown>,
@@ -16,7 +16,7 @@ export function publishToUsers(userIds: string[], event: PublishableEvent): void
 }
 
 /** Send a negotiation-room event to every instance holding that room's sockets. */
-export function publishToSession(sessionId: string, event: PublishableEvent): void {
+export function publishToSession<E extends PublishableEvent>(sessionId: string, event: E): void {
   publishRealtime({
     target: { kind: "session", sessionId },
     event: event as unknown as Record<string, unknown>,

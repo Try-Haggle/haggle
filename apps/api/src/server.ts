@@ -44,6 +44,7 @@ import { registerIntelligenceDemoRoutes } from "./routes/intelligence-demo.js";
 import { registerIntentRoutes } from "./routes/intents.js";
 import { registerInternalRoutes } from "./routes/internal.js";
 import { registerListingsRoutes } from "./routes/listings.js";
+import { registerMessagingRoutes } from "./routes/messaging.js";
 import { registerNegotiationAgentRoutes } from "./routes/negotiation-agents.js";
 import { registerDemoRoute } from "./routes/negotiation-demo.js";
 import { registerSimulateRoute } from "./routes/negotiation-simulate.js";
@@ -245,6 +246,9 @@ export async function createServer() {
   // ─── Demo / E2E Test Routes ────────────────────────────
   registerDemoE2ERoutes(app, db);
   registerPaymentTestToolRoutes(app, db);
+
+  // ─── Messaging Routes ─────────────────────────────────────
+  registerMessagingRoutes(app, db);
 
   // ─── Notification Routes ──────────────────────────────────
   registerNotificationRoutes(app, db);
