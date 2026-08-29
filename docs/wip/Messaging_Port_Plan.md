@@ -182,12 +182,36 @@ send_message (인스턴스 A)
 - [ ] `0145_kind_siren.sql` 적용 (같은 SHA의 CI 성공 이후)
 - [ ] 배포 후 기동 로그에서 `realtime_fanout_local_only` 경고가 없는지 확인
 
-## 11. 후속 작업 (이번 범위 밖)
+## 11. QA 도중 편입된 작업 — 판매자 화면 통일
+
+수동 검수 중 사용자가 발견해 **같은 브랜치에 포함하기로 결정**한 항목이다.
+"테스트하며 발견한 것을 한 덩어리로 가져간다"는 판단에 따른다.
+
+발견된 문제:
+- 같은 협상이 구매자에게는 `PlaybackArena`, 판매자에게는 옛 `NegotiationChat`으로
+  보였다. 두 개의 시각 언어가 같은 객체를 설명하고 있었다
+- 판매자 대시보드에 협상 섹션이 없어 **자기 협상에 들어갈 경로가 없었다**
+- `Utility NaN%` — API가 jsonb 객체로 주는 `last_utility`를 옛 컴포넌트가 숫자로
+  곱하고 있었다
+- KPI 타일 `Total Negotiations` / `Deals Closed`가 하드코딩 0
+
+조치:
+- 판매자 상세 = `PlaybackArena`(공유) + 판매자 액션 바. 표현은 공유하고 조작만 분리
+- `PlaybackArena` / `ResultReveal`의 구매자 전용 CTA를 prop으로 추출(기본값 유지)
+- `NegotiationChat` 삭제 — NaN 버그도 함께 사라진다
+- 판매자 대시보드 Negotiations 섹션 + 최근 활동순 정렬, KPI 실제 값
+
+**막은 회귀**: 구매자의 terminal 집합에는 `NEAR_DEAL`·`STALLED`가 포함된다.
+그대로 재사용하면 판매자가 near-deal을 수락할 수 없게 되므로
+`SELLER_CLOSED_STATUSES`를 따로 정의했다(옛 판매자 콘솔과 동일 범위).
+
+## 12. 후속 작업 (이번 범위 밖)
 
 - 대화 필터(구매/판매/안읽음) 서버 구현
 - `/inbox` 탭 통합(Messages · Notifications)
 - 첨부/이미지, 타이핑 인디케이터
 - 대화 보관/차단/신고
 - `order` subject 진입점(주문 상세)
+- 판매자 대시보드 Revenue 타일(아직 하드코딩 $0)
 - CLAUDE.md에 "실시간 이벤트는 publishRealtime을 거친다(소켓 직접 push 금지)"를
   durable rule로 추가할지 결정 (머지 이후)
