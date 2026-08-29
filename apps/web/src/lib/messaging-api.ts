@@ -1,0 +1,103 @@
+import { api } from "./api-client";
+
+/** Mirrors the API's conversation subject union. */
+export type ConversationSubjectType = "listing" | "order" | "negotiation_session";
+
+export interface ConversationSubject {
+  type: ConversationSubjectType;
+  id: string;
+}
+
+export interface UserDisplay {
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
+}
+
+export interface ConversationSummary {
+  id: string;
+  subject: ConversationSubject | null;
+  otherMember: UserDisplay | null;
+  lastMessage: { id: string; body: string; senderId: string; createdAt: string } | null;
+  unreadCount: number;
+  lastMessageAt: string;
+}
+
+export interface ConversationDetail {
+  id: string;
+  subject: ConversationSubject | null;
+  otherMember: UserDisplay | null;
+  unreadCount: number;
+  lastReadAt: string | null;
+  /** The other side's read position — drives the unread mark on sent bubbles. */
+  otherLastReadAt: string | null;
+}
+
+export interface Message {
+  id: string;
+  senderId: string;
+  body: string;
+  createdAt: string;
+  clientMessageId: string | null;
+}
+
+export interface SubjectListing {
+  publicId: string;
+  title: string | null;
+  category: string | null;
+  photoUrl: string | null;
+  targetPrice: string | null;
+  sellerAgentPreset: string | null;
+}
+
+export const messagingApi = {
+  listConversations: (cursor?: string | null) =>
+    api.get<{ conversations: ConversationSummary[]; nextCursor: string | null }>(
+      `/api/conversations${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
+    ),
+
+  unreadCount: () => api.get<{ count: number }>("/api/conversations/unread-count"),
+
+  get: (id: string) => api.get<{ conversation: ConversationDetail }>(`/api/conversations/${id}`),
+
+  /** Find-or-create. Participants come from the subject, never from the client. */
+  open: (subject: ConversationSubject) =>
+    api.post<{ conversation: ConversationDetail }>("/api/conversations", {
+      subject_type: subject.type,
+      subject_id: subject.id,
+    }),
+
+  messages: (id: string, before?: string | null) =>
+    api.get<{ messages: Message[]; nextCursor: string | null }>(
+      `/api/conversations/${id}/messages${before ? `?before=${encodeURIComponent(before)}` : ""}`,
+    ),
+
+  send: (id: string, body: string, clientMessageId: string) =>
+    api.post<{ message: Message }>(`/api/conversations/${id}/messages`, {
+      body,
+      client_message_id: clientMessageId,
+    }),
+
+  markRead: (id: string) =>
+    api.post<{ readAt: string; unreadCount: number }>(`/api/conversations/${id}/read`),
+
+  subject: (id: string) =>
+    api.get<{ subject: ConversationSubject | null; listing: SubjectListing | null }>(
+      `/api/conversations/${id}/subject`,
+    ),
+};
+
+// ─── Realtime event payloads (delivered over the shared user socket) ──────────
+
+export interface MessageNewEvent {
+  type: "message.new";
+  conversationId: string;
+  message: Message & { truncated?: boolean };
+}
+
+export interface MessageReadEvent {
+  type: "message.read";
+  conversationId: string;
+  readerId: string;
+  readAt: string;
+}

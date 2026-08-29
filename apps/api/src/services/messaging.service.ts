@@ -45,6 +45,8 @@ export interface ConversationDetail {
   otherMember: UserDisplay | null;
   unreadCount: number;
   lastReadAt: string | null;
+  /** The other side's read position — drives the "unread" mark on sent bubbles. */
+  otherLastReadAt: string | null;
 }
 
 export interface MessageItem {
@@ -386,14 +388,15 @@ export async function getConversationForUser(
     unread_count: number;
     last_read_at: Date | string | null;
     other_user_id: string | null;
+    other_last_read_at: Date | string | null;
   }>(
     await db.execute(sql`
       SELECT c.id, c.subject_type, c.subject_id, m.unread_count, m.last_read_at,
-             other.user_id AS other_user_id
+             other.user_id AS other_user_id, other.last_read_at AS other_last_read_at
       FROM conversation_members m
       JOIN conversations c ON c.id = m.conversation_id
       LEFT JOIN LATERAL (
-        SELECT om.user_id FROM conversation_members om
+        SELECT om.user_id, om.last_read_at FROM conversation_members om
         WHERE om.conversation_id = c.id AND om.user_id <> m.user_id
         ORDER BY om.created_at ASC LIMIT 1
       ) other ON true
@@ -414,6 +417,7 @@ export async function getConversationForUser(
     otherMember: row.other_user_id ? (displays?.get(row.other_user_id) ?? null) : null,
     unreadCount: Number(row.unread_count) || 0,
     lastReadAt: row.last_read_at ? iso(row.last_read_at) : null,
+    otherLastReadAt: row.other_last_read_at ? iso(row.other_last_read_at) : null,
   };
 }
 
