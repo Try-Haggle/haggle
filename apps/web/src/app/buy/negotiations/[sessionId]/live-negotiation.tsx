@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { OpenConversationButton } from "@/components/messaging/open-conversation-button";
 import { useNegotiationWs } from "@/hooks/use-negotiation-ws";
 import { ApiError, api } from "@/lib/api-client";
 import {
@@ -74,10 +75,13 @@ export function LiveNegotiation({
   initialPayload,
   checkoutHref,
   checkoutLabel,
+  canMessageSeller = false,
 }: {
   initialPayload: SessionResponse;
   checkoutHref?: string;
   checkoutLabel?: string;
+  /** Guests have no account to hold a conversation, so they get no button. */
+  canMessageSeller?: boolean;
 }) {
   const router = useRouter();
   const [payload, setPayload] = useState(initialPayload);
@@ -268,6 +272,11 @@ export function LiveNegotiation({
       liveError={liveError}
       pauseChecks={pause?.checks ?? null}
       onPauseAnswer={submitPauseAnswer}
+      headerAction={
+        canMessageSeller ? (
+          <OpenConversationButton sessionId={payload.session.id} label="Message seller" />
+        ) : undefined
+      }
       onLiveRetry={() => {
         setStalled(false);
         progressRef.current = { key: progressKey, at: Date.now() };

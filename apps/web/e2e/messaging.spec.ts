@@ -37,6 +37,39 @@ async function signIn(page: Page, user: { email: string; password: string }) {
 test.describe("Messaging", () => {
   test.skip(!ENABLED, "set RUN_MESSAGING_E2E=1 (needs seeded accounts with a negotiation)");
 
+  test("both sides open the same thread from their negotiation screen", async ({ browser }) => {
+    // This is the check that was missing when the entry point silently existed
+    // on only one side.
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const sessionId = process.env.E2E_SESSION_ID;
+    test.skip(!sessionId, "set E2E_SESSION_ID to a negotiation shared by both accounts");
+
+    try {
+      await signIn(page, SELLER);
+      await page.goto(`/sell/negotiations/${sessionId}`);
+      await page.getByRole("button", { name: /Message buyer/ }).click();
+      await page.waitForURL(/\/messages\?c=/, { timeout: 20_000 });
+      const sellerThread = new URL(page.url()).searchParams.get("c");
+
+      const buyerContext = await browser.newContext();
+      const buyerPage = await buyerContext.newPage();
+      try {
+        await signIn(buyerPage, BUYER);
+        await buyerPage.goto(`/buy/negotiations/${sessionId}`);
+        await buyerPage.getByRole("button", { name: /Message seller/ }).click();
+        await buyerPage.waitForURL(/\/messages\?c=/, { timeout: 20_000 });
+
+        // One negotiation, one thread — not one per side.
+        expect(new URL(buyerPage.url()).searchParams.get("c")).toBe(sellerThread);
+      } finally {
+        await buyerContext.close();
+      }
+    } finally {
+      await context.close();
+    }
+  });
+
   test("a message sent by the buyer reaches the seller's open thread", async ({ browser }) => {
     const buyerContext = await browser.newContext();
     const sellerContext = await browser.newContext();

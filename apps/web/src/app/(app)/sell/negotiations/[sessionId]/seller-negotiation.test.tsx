@@ -30,12 +30,20 @@ vi.mock("@/hooks/use-negotiation-ws", () => ({
 }));
 
 vi.mock("@/app/buy/negotiations/[sessionId]/playback/playback-arena", () => ({
-  PlaybackArena: (props: { backHref?: string; backLabel?: string; liveTerminal?: boolean }) => (
+  PlaybackArena: (props: {
+    backHref?: string;
+    backLabel?: string;
+    liveTerminal?: boolean;
+    headerAction?: React.ReactNode;
+  }) => (
     <div data-testid="arena" data-back={props.backHref} data-terminal={String(props.liveTerminal)}>
       {props.backLabel}
+      {props.headerAction}
     </div>
   ),
 }));
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 const SESSION_ID = "aaaaaaaa-1111-4111-8111-111111111111";
 
@@ -64,6 +72,19 @@ describe("SellerNegotiation", () => {
     const arena = screen.getByTestId("arena");
     expect(arena).toHaveAttribute("data-back", "/sell/dashboard");
     expect(arena).toHaveTextContent("Dashboard");
+  });
+
+  it("offers the human thread with the buyer from the arena header", () => {
+    render(<SellerNegotiation initialPayload={payload("ACTIVE")} />);
+
+    expect(screen.getByRole("button", { name: /Message buyer/ })).toBeInTheDocument();
+  });
+
+  it("keeps the message entry point after the negotiation ends", () => {
+    // A finished negotiation is exactly when people still need to talk.
+    render(<SellerNegotiation initialPayload={payload("ACCEPTED")} />);
+
+    expect(screen.getByRole("button", { name: /Message buyer/ })).toBeInTheDocument();
   });
 
   it("offers the seller's three moves while the negotiation is live", () => {

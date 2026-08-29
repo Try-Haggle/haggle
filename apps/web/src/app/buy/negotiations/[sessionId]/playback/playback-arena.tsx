@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertCircle, Play, Radio, RotateCcw } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { ArenaHeader } from "./arena-header";
 import { ChatTimeline } from "./chat-timeline";
 import { FactorsPanel } from "./factors-panel";
@@ -36,6 +36,11 @@ interface PlaybackArenaProps {
   backLabel?: string;
   /** Where a no-deal outcome sends this viewer. */
   noDealCta?: { href: string; label: string };
+  /**
+   * Slot in the top bar for an action that belongs to this viewer's side —
+   * today, opening the human thread with the counterparty.
+   */
+  headerAction?: ReactNode;
 }
 
 /**
@@ -59,6 +64,7 @@ export function PlaybackArena({
   backHref,
   backLabel = "Back to listing",
   noDealCta,
+  headerAction,
 }: PlaybackArenaProps) {
   const { session, rounds } = data;
   const isLive = mode === "live";
@@ -198,15 +204,18 @@ export function PlaybackArena({
             </svg>
             <span>{backLabel}</span>
           </Link>
-          {isLive && liveTerminal && (
-            <Link
-              href="?replay=1"
-              className="flex items-center gap-1.5 text-[12px] sm:text-[13px] text-ink-secondary transition-colors hover:text-ink"
-            >
-              <Play className="size-3.5" aria-hidden="true" />
-              Watch replay
-            </Link>
-          )}
+          <div className="flex items-center gap-3">
+            {headerAction}
+            {isLive && liveTerminal && (
+              <Link
+                href="?replay=1"
+                className="flex items-center gap-1.5 text-[12px] sm:text-[13px] text-ink-secondary transition-colors hover:text-ink"
+              >
+                <Play className="size-3.5" aria-hidden="true" />
+                Watch replay
+              </Link>
+            )}
+          </div>
         </div>
 
         <AnimatePresence mode="wait">

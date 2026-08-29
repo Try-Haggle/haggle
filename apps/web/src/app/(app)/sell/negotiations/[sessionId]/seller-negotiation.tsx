@@ -7,6 +7,7 @@ import {
   transformNegotiationPlayback,
 } from "@/app/buy/negotiations/[sessionId]/negotiation-session-data";
 import { PlaybackArena } from "@/app/buy/negotiations/[sessionId]/playback/playback-arena";
+import { OpenConversationButton } from "@/components/messaging/open-conversation-button";
 import { Alert, Button, Input } from "@/components/ui";
 import { useNegotiationWs } from "@/hooks/use-negotiation-ws";
 import { api } from "@/lib/api-client";
@@ -66,6 +67,7 @@ export function SellerNegotiation({ initialPayload }: { initialPayload: SessionR
         connectionLabel={connectionMode === "ws" ? "Live updates" : "Checking for updates"}
         backHref="/sell/dashboard"
         backLabel="Dashboard"
+        headerAction={<OpenConversationButton sessionId={sessionId} label="Message buyer" />}
         noDealCta={{ href: "/sell/dashboard", label: "Back to dashboard" }}
       />
       {sellerCanAct && <SellerActionBar sessionId={sessionId} onDone={reload} />}
