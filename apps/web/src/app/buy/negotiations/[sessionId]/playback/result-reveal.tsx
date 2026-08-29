@@ -15,6 +15,12 @@ interface ResultRevealProps {
   checkoutHref?: string;
   checkoutLabel?: string;
   onReplay?: () => void;
+  /**
+   * Where a viewer goes when the negotiation ended without a deal. Defaults to
+   * the buyer's next move; a seller is sent somewhere else entirely, which is
+   * why this is a prop and not a constant.
+   */
+  noDealCta?: { href: string; label: string };
 }
 
 /**
@@ -27,6 +33,7 @@ export function ResultReveal({
   checkoutHref,
   checkoutLabel = "Continue to checkout",
   onReplay: _onReplay,
+  noDealCta = { href: "/browse", label: "Browse other listings" },
 }: ResultRevealProps) {
   const { session, rounds } = data;
   const { finalStatus, finalPrice, listing } = session;
@@ -208,7 +215,7 @@ export function ResultReveal({
             </Link>
           ) : !isAccepted ? (
             <Link
-              href="/browse"
+              href={noDealCta.href}
               className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl px-5 py-3 text-[13px] sm:text-[14px] font-semibold transition-colors hover:bg-surface-overlay sm:w-auto"
               style={{
                 background: "var(--bg-sunken)",
@@ -216,7 +223,7 @@ export function ResultReveal({
                 color: "var(--text-primary)",
               }}
             >
-              Browse other listings
+              {noDealCta.label}
               <svg
                 width="14"
                 height="14"
