@@ -42,11 +42,11 @@ export async function registerNotificationWsRoute(
             socket.send(JSON.stringify({ type: "pong" }));
           } else {
             clearInterval(heartbeat);
-            unregisterUserSocket(userId);
+            unregisterUserSocket(userId, socket);
           }
         } catch {
           clearInterval(heartbeat);
-          unregisterUserSocket(userId);
+          unregisterUserSocket(userId, socket);
         }
       }, HEARTBEAT_INTERVAL_MS);
 
@@ -61,13 +61,13 @@ export async function registerNotificationWsRoute(
 
       socket.on("close", () => {
         clearInterval(heartbeat);
-        unregisterUserSocket(userId);
+        unregisterUserSocket(userId, socket);
         app.log.info({ userId }, "notification WS disconnected");
       });
 
       socket.on("error", () => {
         clearInterval(heartbeat);
-        unregisterUserSocket(userId);
+        unregisterUserSocket(userId, socket);
       });
     },
   );

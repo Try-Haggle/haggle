@@ -15,6 +15,11 @@ import { registerMcpRoutes } from "./mcp/router.js";
 import authPlugin from "./middleware/auth.js";
 import { createGlobalRateLimit } from "./middleware/rate-limit.js";
 import { createNotificationBus } from "./notification/index.js";
+import {
+  closeRealtimeFanout,
+  deliverRealtimeEnvelope,
+  initRealtimeFanout,
+} from "./realtime/index.js";
 import { registerAccountRoutes } from "./routes/account.js";
 import { registerAddressRoutes } from "./routes/addresses.js";
 import { registerAdminRoutes } from "./routes/admin.js";
@@ -250,6 +255,14 @@ export async function createServer() {
   await app.register(websocket);
   await registerWebSocketRoutes(app, db);
   await registerNotificationWsRoute(app, db);
+
+  // ─── Realtime fan-out (cross-instance) ───────────────────
+  // Sockets live in the process that accepted them, so events published here
+  // are mirrored to the other instances over Postgres LISTEN/NOTIFY.
+  await initRealtimeFanout({ db, deliver: deliverRealtimeEnvelope, log: app.log });
+  app.addHook("onClose", async () => {
+    await closeRealtimeFanout();
+  });
 
   // ─── Cron Jobs (only if ENABLE_CRON=true) ────────────
   initCronJobs(db);
