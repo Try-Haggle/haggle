@@ -1,6 +1,6 @@
 # 1:1 메시징 이식 계획 (Bridge Portal → Haggle)
 
-*Status: 구현 진행 중 · Branch: `feature/messaging-port` · Created: 2026-08-29*
+*Status: 구현 완료(로컬 검증까지) · Branch: `feature/messaging-port` · Created: 2026-08-29*
 
 Django 5 + HTMX + Django Channels로 만들어진 Bridge Portal의 1:1 메시징 기능을
 Haggle(Fastify + Next.js + Drizzle/Postgres)로 옮긴다. **UI/UX는 최대한 원본을
@@ -148,10 +148,43 @@ send_message (인스턴스 A)
 9. `web`: 협상 세션 진입점 + 네비 뱃지
 10. `web`: 테스트
 
-## 9. 후속 작업 (이번 범위 밖)
+## 9. 검증 결과 (2026-08-29, 로컬 스택)
+
+로컬 Supabase + 실제 계정 2개(testuser1/2)와 이미 존재하는 협상 세션으로 전 구간 확인.
+
+| 항목 | 결과 |
+|------|------|
+| 양쪽이 같은 스레드에 도달 | 구매자/판매자가 각각 열어도 동일한 conversation id |
+| find-or-create 멱등 | 2회차 200 + 같은 id |
+| 비참여자 차단 | 세션·대화 모두 404 (403 아님) |
+| listing subject 차단 | 400 |
+| 전송 멱등 | 같은 client_message_id 재전송 시 200 + 동일 메시지, 상대 안읽음 1 유지 |
+| GET이 읽음 처리하지 않음 | GET 후에도 안읽음 1, POST /read 후 0 |
+| 읽음 위치 전파 | 상대의 otherLastReadAt 갱신 확인 |
+| 커서 페이지네이션 | limit=2로 전 구간 순회 시 6건/중복 0/일괄 조회와 완전 일치 |
+| 본문 검증 | 공백만·4001자 모두 400 |
+| 실시간 | 티켓 인증 WebSocket으로 message.new 수신 |
+| 브라우저 e2e | 두 BrowserContext에서 구매자 전송 → 판매자 스레드에 새로고침 없이 표시 (3/3) |
+
+검증 중 발견해 고친 것: subject 응답의 내부 listing id 노출, 401 시 빈 편지함이
+굳던 문제(1회 재시도), 조회 실패를 "메시지 없음"으로 그리던 빈 상태.
+
+테스트: api 2841 + 신규 47, web 117(신규 26), Playwright 1(게이트).
+로컬 DB에 만든 검증용 대화·메시지는 삭제했다.
+
+## 10. 배포 체크리스트
+
+- [ ] staging/production에 `DATABASE_LISTEN_URL` 설정 (session 모드 5432).
+      미설정 시 기능은 동작하지만 인스턴스 간 실시간이 끊긴다
+- [ ] `0145_kind_siren.sql` 적용 (같은 SHA의 CI 성공 이후)
+- [ ] 배포 후 기동 로그에서 `realtime_fanout_local_only` 경고가 없는지 확인
+
+## 11. 후속 작업 (이번 범위 밖)
 
 - 대화 필터(구매/판매/안읽음) 서버 구현
 - `/inbox` 탭 통합(Messages · Notifications)
 - 첨부/이미지, 타이핑 인디케이터
 - 대화 보관/차단/신고
 - `order` subject 진입점(주문 상세)
+- CLAUDE.md에 "실시간 이벤트는 publishRealtime을 거친다(소켓 직접 push 금지)"를
+  durable rule로 추가할지 결정 (머지 이후)
