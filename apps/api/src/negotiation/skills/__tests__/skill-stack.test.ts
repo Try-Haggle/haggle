@@ -16,6 +16,7 @@ import { computeBriefing } from "../../referee/briefing.js";
 import type { CoreMemory, OpponentPattern, RoundFact } from "../../types.js";
 import { ElectronicsKnowledgeSkill } from "../electronics-knowledge.js";
 import { FaratinCoachingSkill } from "../faratin-coaching.js";
+import { RetailMsrpSkill } from "../retail-msrp-skill.js";
 import { clearRegistry, registerSkill, resolveItemTags, SkillStack } from "../skill-stack.js";
 import type { DecideHookResult, HookContext } from "../skill-types.js";
 
@@ -118,6 +119,21 @@ describe("Skill Registration & Resolution", () => {
     // Only faratin-coaching (*) matches, not electronics-knowledge
     expect(stack.getSkills()).toHaveLength(1);
     expect(stack.getSkills()[0]!.manifest.id).toBe("faratin-coaching-v1");
+  });
+
+  it("does not attach electronics skills to clothing or vehicles", () => {
+    registerSkill(new ElectronicsKnowledgeSkill());
+    registerSkill(new RetailMsrpSkill());
+    registerSkill(new FaratinCoachingSkill());
+
+    for (const tags of [["clothing"], ["clothing/hoodie"], ["vehicles"], ["vehicles/sedan"]]) {
+      const ids = SkillStack.fromTags(tags)
+        .getSkills()
+        .map((s) => s.manifest.id);
+      expect(ids).toContain("faratin-coaching-v1");
+      expect(ids).not.toContain("electronics-knowledge-v1");
+      expect(ids).not.toContain("retail-msrp-v1");
+    }
   });
 });
 
@@ -274,6 +290,7 @@ describe("Electronics Knowledge Skill", () => {
     expect(content.categoryBrief).toContain("Swappa");
     expect(content.valuationRules!.some((r) => r.includes("Battery"))).toBe(true);
     expect(content.valuationRules!.some((r) => r.includes("IMEI"))).toBe(true);
+    expect(content.valuationRules!.every((r) => !/\$\s*\d/.test(r))).toBe(true);
 
     // Knowledge skill should NOT provide recommendations
     expect(content.recommendedPrice).toBeUndefined();

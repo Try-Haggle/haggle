@@ -5,7 +5,7 @@
  * for the LLM negotiation engine integration.
  */
 
-import type { BuddyDNA, HumanInterventionMode, OpponentPatternType } from "./types.js";
+import type { BuddyDNA, HumanInterventionMode } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Feature Flag
@@ -58,36 +58,47 @@ export function resolveMemoEncoding(config: {
 }
 
 // ---------------------------------------------------------------------------
-// Reasoning Mode Trigger
+// Decide sampler
 // ---------------------------------------------------------------------------
 
-export interface ReasoningTriggerInput {
-  gap: number;
-  /** Ratio: gap / price range (0-1) */
-  gapRatio: number;
-  coachWarnings: string[];
-  opponentPattern: OpponentPatternType;
-  softViolationCount: number;
+/** Default DeepSeek temperature. Not reasoning. Override with DEEPSEEK_TEMPERATURE or StageConfig.temperature. */
+export const DEFAULT_DECIDE_TEMPERATURE = 0.5;
+
+function clampTemperature(value: number): number {
+  return Math.min(2, Math.max(0, value));
 }
 
-/**
- * Determine if the LLM should use reasoning mode for this round.
- * Reasoning is more expensive but better for complex judgment calls.
- */
-export function shouldUseReasoning(input: ReasoningTriggerInput): boolean {
-  // Gap < 10% of range — close to deal, judgment matters
-  if (input.gapRatio < 0.1 && input.gapRatio > 0) return true;
+/** Resolve the Decide LLM temperature. Stage config wins, then env, then 0.5. */
+export function getDecideTemperature(override?: number): number {
+  if (typeof override === "number" && Number.isFinite(override)) {
+    return clampTemperature(override);
+  }
+  const raw = process.env.DEEPSEEK_TEMPERATURE;
+  if (raw !== undefined && raw !== "") {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed)) return clampTemperature(parsed);
+  }
+  return DEFAULT_DECIDE_TEMPERATURE;
+}
 
-  // 2+ coach warnings (stagnation + time pressure, etc.)
-  if (input.coachWarnings.length >= 2) return true;
+/** Default DeepSeek deadline for one Decide call, including retries. */
+export const DEFAULT_DECIDE_TIMEOUT_MS = 120_000;
 
-  // Opponent is firm — strategic judgment needed
-  if (input.opponentPattern === "BOULWARE") return true;
+function clampTimeoutMs(value: number): number {
+  return Math.min(180_000, Math.max(10_000, Math.round(value)));
+}
 
-  // 2+ soft violations — need to rethink approach
-  if (input.softViolationCount >= 2) return true;
-
-  return false;
+/** Resolve the Decide LLM timeout. Explicit override is used as-is. Else env, then 120s. */
+export function getDecideTimeoutMs(override?: number): number {
+  if (typeof override === "number" && Number.isFinite(override) && override > 0) {
+    return Math.round(override);
+  }
+  const raw = process.env.DEEPSEEK_TIMEOUT_MS;
+  if (raw !== undefined && raw !== "") {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed > 0) return clampTimeoutMs(parsed);
+  }
+  return DEFAULT_DECIDE_TIMEOUT_MS;
 }
 
 // ---------------------------------------------------------------------------

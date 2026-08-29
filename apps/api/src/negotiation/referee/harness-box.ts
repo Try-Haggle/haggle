@@ -18,14 +18,13 @@ import { adjustAim } from "./opponent-adjust.js";
  * centered on the baseline. 0 = pure engine (box collapses to baseline),
  * 1 = full acceptable_range.
  *
- * MVP starts NARROW (0.2) on purpose: early on we don't yet trust the models,
- * so we keep decisions close to the deterministic baseline (safe, consistent)
- * while the intelligence log gathers per-model/skill data. As the log shows the
- * AI reliably beating the baseline without harmful clamps, WIDEN this over time
- * (0.2 → 0.3 → …). 0.2–0.3 is the sensible MVP band; treat this as a dial to
- * raise gradually, not a fixed constant. See SOT §11 (하네스 / autonomy 다이얼).
+ * The live dial is the full coach range (1.0). A narrow box around Faratin
+ * `recommended_price` made every SKU close at the same number even when SOFT
+ * facts (storage, battery) differed. Safety stays on the price envelope
+ * (floor / published ask / no backwards), not on a scripted aim. See
+ * decide-prompt-contract.md.
  */
-export const DEFAULT_AUTONOMY = 0.2;
+export const DEFAULT_AUTONOMY = 1;
 
 export interface HarnessBox {
   box: Box;

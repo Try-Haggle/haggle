@@ -31,7 +31,6 @@ function makeConfig(): StageConfig {
     adapters: { UNDERSTAND: adapter, DECIDE: adapter, RESPOND: adapter },
     modes: { RESPOND: "template", VALIDATE: "full" },
     memoEncoding: "codec",
-    reasoningEnabled: false,
   };
 }
 

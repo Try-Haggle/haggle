@@ -1,9 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { eq, listingDrafts, negotiationRounds } from "@haggle/db";
+import { resetLlmSpendMeter, snapshotLlmSpendMeter } from "../../../apps/api/src/lib/llm-cost.js";
 import { publishDraft } from "../../../apps/api/src/services/draft.service.js";
 import type { LabContext } from "../../src/harness.js";
 import type { NegotiationResult, RoundRecord, ScenarioCase } from "../../src/types.js";
-import { attributesToCriteria, LAB_FULFILLMENT, LAB_PARCEL, LAB_SELLER_OFFER } from "./facts.js";
+import {
+  buildBuyerBriefing,
+  buildPublishedSellerListing,
+  LAB_FULFILLMENT,
+  LAB_PARCEL,
+  LAB_SELLER_OFFER,
+} from "./facts.js";
 
 const AUTO_PLAY_SAFETY_CAP = 12;
 
@@ -11,12 +18,14 @@ async function seedListing(ctx: LabContext, c: ScenarioCase): Promise<string> {
   const { db } = ctx;
   const [draft] = await db.insert(listingDrafts).values({ status: "draft" }).returning();
   const sellerId = randomUUID();
+  const publishedListing = buildPublishedSellerListing(c.item);
   await db
     .update(listingDrafts)
     .set({
       userId: sellerId,
       title: c.item.title,
-      category: c.item.category,
+      category: publishedListing.category,
+      tags: publishedListing.tags,
       condition: c.item.condition,
       targetPrice: c.item.askPrice.toFixed(2),
       floorPrice: c.item.floorPrice.toFixed(2),
@@ -24,7 +33,7 @@ async function seedListing(ctx: LabContext, c: ScenarioCase): Promise<string> {
       negotiationAgentSnapshot: {
         preset: c.seller.agent,
         negotiationAgentBuilderMemory: {
-          categoryCriteria: attributesToCriteria(c.item.attributes),
+          categoryCriteria: publishedListing.categoryCriteria,
         },
         parcel: LAB_PARCEL,
         sellerFulfillmentOffer: LAB_SELLER_OFFER,
@@ -41,7 +50,7 @@ async function seedListing(ctx: LabContext, c: ScenarioCase): Promise<string> {
 export async function runOne(
   ctx: LabContext,
   c: ScenarioCase,
-  variant: "baseline" | "fewshot",
+  variant: string = "staging",
   repeatIndex = 0,
 ): Promise<NegotiationResult> {
   const started = Date.now();
@@ -70,6 +79,7 @@ export async function runOne(
     const publicId = await seedListing(ctx, c);
     base.publicId = publicId;
 
+    resetLlmSpendMeter();
     const startRes = await ctx.app.inject({
       method: "POST",
       url: "/negotiations/start",
@@ -79,9 +89,14 @@ export async function runOne(
         negotiation_agent_builder_memory: {
           budgetMax: c.buyer.budgetMax,
           targetPrice: c.buyer.targetPrice,
+          categoryCriteria: buildBuyerBriefing(c.item),
         },
         deadline_hours: c.buyer.deadlineHours ?? 48,
-        fulfillment: LAB_FULFILLMENT,
+        fulfillment: {
+          ...LAB_FULFILLMENT,
+          seller_offer: LAB_SELLER_OFFER,
+          parcel: LAB_PARCEL,
+        },
       },
     });
     base.startStatus = startRes.statusCode;
@@ -106,9 +121,35 @@ export async function runOne(
         url: `/negotiations/sessions/${session_id}/auto-play/next`,
         payload: { run_token },
       });
-      const body = res.json() as { complete?: boolean; session_status?: string };
+      const body = res.json() as {
+        complete?: boolean;
+        session_status?: string;
+        paused_for_buyer?: boolean;
+        pause_checks?: Array<{
+          checkId: string;
+          ask: string;
+          options?: Array<{ label: string; stance: string }>;
+        }>;
+      };
       lastStatus = body.session_status ?? lastStatus;
       complete = body.complete === true;
+      if (body.paused_for_buyer) {
+        const stances = (body.pause_checks ?? []).map((check) => ({
+          checkId: check.checkId,
+          stance: check.options?.[0]?.stance ?? "accepted",
+        }));
+        const answered = await ctx.app.inject({
+          method: "POST",
+          url: `/negotiations/sessions/${session_id}/pause/answer`,
+          payload: { run_token, stances },
+        });
+        if (answered.statusCode >= 400) {
+          lastStatus = "WAITING";
+          base.error = `pause/answer http ${answered.statusCode}: ${answered.body}`;
+          break;
+        }
+        continue;
+      }
       if (res.statusCode >= 400) {
         base.error = `auto-play http ${res.statusCode}: ${res.body}`;
         break;
@@ -145,6 +186,7 @@ export async function runOne(
   } catch (err) {
     base.error = err instanceof Error ? err.message : String(err);
   }
+  base.spend = snapshotLlmSpendMeter();
   base.durationMs = Date.now() - started;
   return base;
 }

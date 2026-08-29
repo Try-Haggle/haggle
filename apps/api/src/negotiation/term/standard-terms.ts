@@ -9,9 +9,9 @@ export const ELECTRONICS_TERMS: CategoryTerm[] = [
     value_type: "number",
     value_range: { min: 0, max: 100 },
     unit: "%",
-    typical_impact: "80% 미만 시 $50-100 감가",
+    typical_impact: "80% 미만이면 곧 교체가 필요하고 가격이 내려간다",
     evaluate_hint:
-      "Battery below 80% significantly reduces resale value. Each 10% below 80 = ~$30 deduction.",
+      "Battery below 80% usually needs replacement soon and should move price. Weaker than STRATEGY.preferences → buyer COUNTER lower. Do not use a fixed dollar per 10%.",
   },
   {
     id: "carrier_lock",
@@ -19,8 +19,9 @@ export const ELECTRONICS_TERMS: CategoryTerm[] = [
     display_name: "통신사 잠금",
     value_type: "enum",
     value_range: ["unlocked", "locked"],
-    typical_impact: "잠금 해제 시 $30-50 프리미엄",
-    evaluate_hint: "Unlocked devices command $30-50 premium over carrier-locked equivalents.",
+    typical_impact: "잠금은 사용처를 줄여 감가, 해제는 더 넓게 쓸 수 있다",
+    evaluate_hint:
+      "A locked phone only works on one carrier. Treat lock as leverage, not a safety fail unless STRATEGY requires unlocked. Do not use a fixed unlock premium.",
   },
   {
     id: "screen_condition",
@@ -28,9 +29,9 @@ export const ELECTRONICS_TERMS: CategoryTerm[] = [
     display_name: "화면 상태",
     value_type: "enum",
     value_range: ["flawless", "minor_scratches", "cracks", "replaced"],
-    typical_impact: "크랙 시 $80-150 감가, 교체 이력 시 $30-50 감가",
+    typical_impact: "크랙·비정품 교체는 크게 감가, 잔기스는 작다",
     evaluate_hint:
-      "Cracked screen: -$80~150. Replaced screen (non-OEM): -$30~50. Minor scratches: minimal impact.",
+      "Cracked or non-OEM replaced screens usually move price more than light scratches. Name the fault. Do not use a fixed dollar deduction.",
   },
   {
     id: "storage_capacity",
@@ -38,16 +39,18 @@ export const ELECTRONICS_TERMS: CategoryTerm[] = [
     display_name: "저장 용량",
     value_type: "enum",
     value_range: ["128GB", "256GB", "512GB", "1TB"],
-    typical_impact: "용량 단계당 $50-80 차이",
-    evaluate_hint: "Each storage tier adds ~$50-80 to value. 128GB is baseline.",
+    typical_impact: "용량이 클수록 보통 더 비싸다. 단계당 고정 금액은 없다",
+    evaluate_hint:
+      "More storage is usually worth more. Compare LISTING's exact size to STRATEGY.preferences and this listing's ask. Do not invent a dollar-per-tier table.",
   },
   {
     id: "original_accessories",
     parent_category: "CONDITION",
     display_name: "정품 액세서리 포함",
     value_type: "boolean",
-    typical_impact: "정품 박스+충전기 포함 시 $20-30 프리미엄",
-    evaluate_hint: "Original box and accessories add $20-30 to perceived value.",
+    typical_impact: "정품 박스·충전기는 체감 가치를 올린다",
+    evaluate_hint:
+      "Original box and accessories can raise perceived value. Judge from this listing, not a fixed add-on.",
   },
   {
     id: "find_my_status",
@@ -71,9 +74,9 @@ export const ELECTRONICS_TERMS: CategoryTerm[] = [
       "express_shipping",
       "insured_shipping",
     ],
-    typical_impact: "보험 배송 $15-25 추가, 직거래 시 무료",
+    typical_impact: "보험 배송은 비용이 늘고, 직거래는 배송비가 없다",
     evaluate_hint:
-      "Stay inside the intersection of seller-offered and buyer-accepted methods. Carrier shipping stays inside the all-in total. Local pickup, porch drop, and meetup have $0 shipping unless both sides add a carrier.",
+      "Stay inside the intersection of seller-offered and buyer-accepted methods. Carrier shipping stays inside the all-in total. Local pickup, porch drop, and meetup add no shipping unless both sides add a carrier.",
   },
   {
     id: "shipping_cost_split",
@@ -81,8 +84,9 @@ export const ELECTRONICS_TERMS: CategoryTerm[] = [
     display_name: "배송비 부담",
     value_type: "enum",
     value_range: ["buyer_pays", "seller_pays", "split_50_50"],
-    typical_impact: "배송비 $10-25 범위",
-    evaluate_hint: "Shipping cost $10-25. Who pays is a common negotiation term.",
+    typical_impact: "누가 내느냐가 협상 항이다",
+    evaluate_hint:
+      "Who pays shipping is a common term. Stay inside the all-in total. Do not assume a fixed shipping dollar amount.",
   },
   {
     id: "warranty_period",
@@ -90,8 +94,9 @@ export const ELECTRONICS_TERMS: CategoryTerm[] = [
     display_name: "보증 기간",
     value_type: "enum",
     value_range: ["none", "7_days", "14_days", "30_days"],
-    typical_impact: "30일 보증 시 $10-20 프리미엄",
-    evaluate_hint: "Buyer-side warranty period. 30-day warranty adds $10-20 to perceived value.",
+    typical_impact: "구매자 보증이 길면 체감 가치가 오른다",
+    evaluate_hint:
+      "Longer buyer-side warranty can support a higher price. Do not use a fixed warranty premium.",
   },
   {
     id: "return_policy",
@@ -99,8 +104,8 @@ export const ELECTRONICS_TERMS: CategoryTerm[] = [
     display_name: "반품 정책",
     value_type: "enum",
     value_range: ["no_returns", "defect_only", "full_refund_7d"],
-    typical_impact: "전액 환불 정책 시 $15-25 프리미엄",
-    evaluate_hint: "Full refund policy increases buyer confidence and justifies $15-25 premium.",
+    typical_impact: "전액 환불은 구매자 신뢰를 올린다",
+    evaluate_hint: "A fuller refund policy can raise buyer confidence. Do not use a fixed premium.",
   },
   {
     id: "imei_verification",
@@ -117,8 +122,8 @@ export const ELECTRONICS_TERMS: CategoryTerm[] = [
     display_name: "외관 등급",
     value_type: "enum",
     value_range: ["mint", "excellent", "good", "fair", "poor"],
-    typical_impact: "mint vs fair 차이 $50-100",
+    typical_impact: "등급이 낮을수록 감가. 단계당 고정 금액은 없다",
     evaluate_hint:
-      "Mint: like new. Excellent: minimal wear. Good: visible but minor. Fair: noticeable. Each grade ~$25-30 difference.",
+      "Mint vs fair changes value. Each grade step should change COUNTER or the line. Do not use a fixed dollar per grade.",
   },
 ];

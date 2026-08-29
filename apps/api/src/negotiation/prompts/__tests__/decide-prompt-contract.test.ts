@@ -71,6 +71,41 @@ describe("decide prompt contract", () => {
     expect(prompt).not.toMatch(/\bRM:/);
   });
 
+  it("puts a private plan on MEMO P: and never on HNP", () => {
+    const memory = makeMemory();
+    memory.private_plan = "Open lower on 128GB; hold if they do not name storage.";
+    const prompt = buildDecideUserPrompt(memory, makeFacts(2));
+    expect(prompt).toContain("P:Open lower on 128GB");
+    const hnp = prompt.slice(prompt.indexOf("HNP:"));
+    expect(hnp).not.toContain("Open lower on 128GB");
+  });
+
+  it("treats BOX as an envelope and keeps Faratin out of MEMO C:", () => {
+    const prompt = buildDecideUserPrompt(makeMemory(), makeFacts(2));
+    expect(prompt).toContain("BOX:");
+    expect(prompt).toContain("Skills → Advisor");
+    expect(prompt).toContain("C:anchoring|opp:LINEAR");
+    expect(prompt).not.toMatch(/C:rec\$/);
+    expect(prompt).not.toContain("engine's fair aim");
+  });
+
+  it("BOX treats the ask as unadjusted SOFT for every category", () => {
+    const memory = makeMemory();
+    memory.session.phase = "OPENING";
+    memory.listing_context = {
+      title: "Heavyweight hoodie",
+      category: "clothing",
+      tags: ["hoodie"],
+    };
+    const prompt = buildDecideUserPrompt(memory, makeFacts(1));
+    expect(prompt).toContain("The ask is not already adjusted for those facts");
+    expect(prompt).toContain("supply and demand, not a step table");
+    expect(prompt).toContain("LISTING SOFT facts plus the ask");
+    expect(prompt).not.toContain("storageScale");
+    expect(prompt).not.toContain("(storage, battery, grade, lock)");
+    expect(prompt).not.toMatch(/\$\d+-\d+\/step/);
+  });
+
   it("turns price facts into HNP acts when there is no spoken turn", () => {
     const facts = makeFacts(3);
     const withoutTalk = buildDecideUserPrompt(makeMemory(), facts);

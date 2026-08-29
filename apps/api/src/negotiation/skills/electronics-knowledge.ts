@@ -1,9 +1,9 @@
 /**
  * skills/electronics-knowledge.ts
  *
- * Default knowledge skill for electronics category.
- * Provides: term definitions, valuation rules, constraints, category context.
- * Pure data — no strategy recommendations, no coaching.
+ * Tag-matched knowledge skill for electronics.
+ * Clothing/vehicles get their own skill on the same interface, or empty slots.
+ * Pure data — no strategy recommendations, no coaching, no fixed $ tables.
  */
 
 import { ELECTRONICS_TERMS } from "../term/standard-terms.js";

@@ -32,6 +32,7 @@ export default defineConfig({
     "./dist/schema/hfmi-model-coefficients.js",
     "./dist/schema/hfmi-price-observations.js",
     "./dist/schema/intelligence-layer.js",
+    "./dist/schema/listing-claims.js",
     "./dist/schema/listing-drafts.js",
     "./dist/schema/listing-embeddings.js",
     "./dist/schema/listings-published.js",

@@ -108,6 +108,7 @@ export async function updateSessionState(
     coachingSnapshot: Record<string, unknown>;
     interventionMode: string;
     buddyTone: Record<string, unknown>;
+    negotiationAgentSnapshot: Record<string, unknown>;
   }>,
 ) {
   const rows = await db

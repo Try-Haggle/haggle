@@ -1,5 +1,4 @@
 import "./lock-env.js";
-import "./patch.js";
 
 import { appendFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer as createHttpServer } from "node:http";
@@ -9,7 +8,6 @@ import { estimateRun, formatDuration, USD_PER_ROUND_CALL } from "../../src/cost.
 import { closeLabContext, createLabContext } from "../../src/harness.js";
 import { expandGroups } from "../../src/scenarios.js";
 import type { NegotiationResult, ScenarioCase } from "../../src/types.js";
-import { setFewShot } from "./patch.js";
 import { runOne } from "./run-one.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -93,16 +91,9 @@ async function runCompare(job: CompareJob, cases: ScenarioCase[], repeat: number
   try {
     for (const c of cases) {
       for (let i = 0; i < repeat; i++) {
-        setFewShot("");
-        const baseline = await runOne(ctx, c, "baseline", i);
-        job.results.push(baseline);
-        appendFileSync(outPath, `${JSON.stringify(baseline)}\n`);
-
-        setFewShot(fewshot);
-        const treated = await runOne(ctx, c, "fewshot", i);
-        job.results.push(treated);
-        appendFileSync(outPath, `${JSON.stringify(treated)}\n`);
-        setFewShot("");
+        const row = await runOne(ctx, c, "staging", i);
+        job.results.push(row);
+        appendFileSync(outPath, `${JSON.stringify(row)}\n`);
       }
     }
     job.status = "done";
@@ -122,7 +113,6 @@ async function runCompare(job: CompareJob, cases: ScenarioCase[], repeat: number
     job.status = "error";
     job.error = err instanceof Error ? err.message : String(err);
   } finally {
-    setFewShot("");
     await closeLabContext(ctx);
     running = false;
   }
@@ -182,12 +172,8 @@ const server = createHttpServer(async (req, res) => {
       cases: cases.map((c) => ({ id: c.id, label: c.label, attributes: c.item.attributes })),
       estimate: {
         ...est,
-        variants: 2,
-        negotiations: est.negotiations * 2,
-        maxRoundCalls: est.maxRoundCalls * 2,
-        estUsd: est.estUsd * 2,
-        estSeconds: est.estSeconds * 2,
-        estDuration: formatDuration(est.estSeconds * 2),
+        variants: 1,
+        estDuration: formatDuration(est.estSeconds),
         usdPerRound: USD_PER_ROUND_CALL,
       },
     });
@@ -255,11 +241,7 @@ const server = createHttpServer(async (req, res) => {
       startedAt: new Date().toISOString(),
       estimate: {
         ...est,
-        variants: 2,
-        negotiations: est.negotiations * 2,
-        maxRoundCalls: est.maxRoundCalls * 2,
-        estUsd: est.estUsd * 2,
-        estSeconds: est.estSeconds * 2,
+        variants: 1,
       },
       results: [],
     };
@@ -281,7 +263,6 @@ if (!(process.env.DATABASE_URL ?? "").includes("haggle_negolab")) {
   process.exit(1);
 }
 
-setFewShot("");
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`fewshot-lab  http://127.0.0.1:${PORT}`);
   console.log("이 서버는 로컬 전용이다. git에 올리지 말 것.");

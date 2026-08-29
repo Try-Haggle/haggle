@@ -1,5 +1,6 @@
 import { buildDecideSystemPrompt } from "../prompts/decide-system-prompt.js";
 import { buildDecideUserPrompt } from "../prompts/decide-user-prompt.js";
+import { sanitizePrivatePlan } from "../prompts/private-plan.js";
 import type { ListingHint } from "../prompts/tag-family-fewshot.js";
 import type {
   ConversationContext,
@@ -80,6 +81,8 @@ export class DeepSeekAdapter implements ModelAdapter {
 
       const est = parseOpponentEstimate(parsed.opponent_estimate);
       if (est) decision.opponent_estimate = est;
+      const plan = sanitizePrivatePlan(parsed.private_plan);
+      if (plan) decision.private_plan = plan;
 
       return decision;
     } catch (err) {

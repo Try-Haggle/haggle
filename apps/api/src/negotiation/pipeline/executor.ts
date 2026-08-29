@@ -21,6 +21,7 @@ import type { DbRound, DbSession } from "../../lib/session-reconstructor.js";
 import { recordRoundConversationSignals } from "../../services/conversation-signal-sink.js";
 import { loadEvermemoBrief } from "../../services/evermemo-bridge.service.js";
 import { getL5SignalsProvider } from "../../services/l5-signals.service.js";
+import { withPrivatePlanOnActingSide } from "../../services/negotiation-auto-play.service.js";
 import {
   createRound,
   getRoundByIdempotencyKey,
@@ -48,6 +49,7 @@ import {
   readSellerCriteriaFromSnapshot,
   SELLER_CRITERIA_PAUSE_MARKER,
 } from "../phase/seller-criteria-pause.js";
+import { sanitizePrivatePlan } from "../prompts/private-plan.js";
 import { computeBriefing } from "../referee/briefing.js";
 import { computeCoachingAsync } from "../referee/coach.js";
 import { screenMessage } from "../screening/auto-screening.js";
@@ -56,6 +58,7 @@ import { DefaultEngineSkill } from "../skills/default-engine-skill.js";
 import { ElectronicsKnowledgeSkill } from "../skills/electronics-knowledge.js";
 import { FaratinCoachingSkill } from "../skills/faratin-coaching.js";
 import { HaggleEngineSkill } from "../skills/haggle-engine-skill.js";
+import { RetailMsrpSkill } from "../skills/retail-msrp-skill.js";
 import { registerSkill, resolveItemTags, SkillStack } from "../skills/skill-stack.js";
 import { understand, understandFromStructured } from "../stages/understand.js";
 import type {
@@ -74,11 +77,12 @@ import { executePipeline } from "./pipeline.js";
 
 const adapter = new DeepSeekAdapter();
 
-// Register built-in skills (once at startup)
-// HaggleEngineSkill: free default — 4D utility, Faratin curves, rule-based decisions
+// Tag-matched plugins. Clothing/cars = new skills on this interface.
+// Do not add if (category) in decide-user-prompt.
 registerSkill(new HaggleEngineSkill());
 registerSkill(new ElectronicsKnowledgeSkill());
 registerSkill(new FaratinCoachingSkill());
+registerSkill(new RetailMsrpSkill());
 
 const roundFactSink = new PgRoundFactSink();
 
@@ -100,7 +104,6 @@ function buildDefaultStageConfig(): StageConfig {
       VALIDATE: "full",
     },
     memoEncoding: "codec",
-    reasoningEnabled: true,
   };
 }
 
@@ -749,6 +752,11 @@ async function persistPipelineRound(
         : 0
       : dbSession.roundsNoConcession;
 
+  const nextSnapshot = nextSnapshotWithPlan(
+    dbSession.negotiationAgentSnapshot,
+    dbSession.role,
+    decision,
+  );
   const updated = await updateSessionState(tx, input.sessionId, dbSession.version, {
     status: dbStatus as
       | "CREATED"
@@ -774,6 +782,7 @@ async function persistPipelineRound(
       : undefined,
     phase,
     coachingSnapshot: coaching as unknown as Record<string, unknown>,
+    ...(nextSnapshot ? { negotiationAgentSnapshot: nextSnapshot } : {}),
   });
 
   if (!updated) {
@@ -828,6 +837,18 @@ async function recordSignalsForCreatedRound(
     idempotencyKey: input.idempotencyKey,
     decision: params.decision.action,
   });
+}
+
+function nextSnapshotWithPlan(
+  snapshot: Record<string, unknown> | null | undefined,
+  role: "BUYER" | "SELLER",
+  decision: EngineDecision,
+): Record<string, unknown> | undefined {
+  const plan = sanitizePrivatePlan(decision.private_plan);
+  if (!plan) return undefined;
+  const current = snapshot ?? {};
+  if (current.private_plan === plan) return undefined;
+  return withPrivatePlanOnActingSide(current, role, plan);
 }
 
 function userIdForAgentRole(dbSession: DbSession): string {

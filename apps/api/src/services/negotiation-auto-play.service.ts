@@ -60,6 +60,27 @@ export function attachNegotiationAutoPlayContext(
   };
 }
 
+/** Keep a private plan on this side through auto-play snapshot swaps. */
+export function withPrivatePlanOnActingSide(
+  liveSnapshot: Record<string, unknown>,
+  role: "BUYER" | "SELLER",
+  plan: string,
+): Record<string, unknown> {
+  const acting = { ...stripAutoPlayContext(liveSnapshot), private_plan: plan };
+  const context = getNegotiationAutoPlayContext(liveSnapshot);
+  if (!context) return acting;
+  const nextContext: NegotiationAutoPlayContext = {
+    ...context,
+    buyerSnapshot:
+      role === "BUYER" ? { ...context.buyerSnapshot, private_plan: plan } : context.buyerSnapshot,
+    sellerSnapshot:
+      role === "SELLER"
+        ? { ...context.sellerSnapshot, private_plan: plan }
+        : context.sellerSnapshot,
+  };
+  return attachNegotiationAutoPlayContext(acting, nextContext);
+}
+
 export function createNegotiationAutoPlaySetup(input: {
   buyerSnapshot: Record<string, unknown>;
   sellerSnapshot: Record<string, unknown>;

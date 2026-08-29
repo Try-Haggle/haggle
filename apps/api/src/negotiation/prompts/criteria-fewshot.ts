@@ -13,6 +13,19 @@ export interface ListingHint {
   category?: string;
 }
 
+export type DecideFewShotMode = "on" | "off";
+
+let decideFewShotMode: DecideFewShotMode = "on";
+
+/** Process-local toggle for A/B labs. Production stays on. */
+export function setDecideFewShotMode(mode: DecideFewShotMode): void {
+  decideFewShotMode = mode === "off" ? "off" : "on";
+}
+
+export function getDecideFewShotMode(): DecideFewShotMode {
+  return decideFewShotMode;
+}
+
 /** Criteria that can also appear as an HNP core issue. One fact, two layers. */
 export const CRITERIA_HNP_OVERLAP: Readonly<Record<string, string>> = {
   battery_health: "hnp.issue.condition.battery_health",
@@ -65,9 +78,9 @@ const CRITERION_LESSON: Readonly<Record<string, CriterionLesson>> = {
   },
   storage_capacity: {
     meaning:
-      "How much storage this unit has (128 / 256 / 512 / 1TB). More storage is usually worth more. This is not a safety fail.",
-    move: "Never HOLD just because capacity is smaller. Compare LISTING's exact size to STRATEGY.preferences. Smaller than wanted → buyer COUNTER lower or seller holds firmer if the unit is the larger one. The COUNTER or the message must name storage. Two units that differ only here must not get the same price and the same line.",
-    say: "Name the size once ('256GB so I can do …'). Do not invent a price table (no '256 always $X').",
+      "How much storage THIS copy has. More is usually worth more. This is not a safety fail. The published ask is one number for this copy — it is not a storage-adjusted price.",
+    move: "Never HOLD just because capacity is smaller. Read LISTING's exact size. You judge what that size is worth at THIS ask, using this product and Market if present. A smaller size at the same ask is usually a worse deal; a larger size is usually a better one. Your COUNTER must move. Compare also to STRATEGY.preferences. Do not use a universal $/GB or '256 always $X'.",
+    say: "Name the size once ('256GB so I can do …'). The number should show you noticed it.",
   },
   working_status: {
     meaning: "Does the item power on and do its job, or is a defect disclosed?",
@@ -88,8 +101,8 @@ const CRITERION_LESSON: Readonly<Record<string, CriterionLesson>> = {
   },
   mileage: {
     meaning:
-      "How far the vehicle has been driven. Higher miles usually mean more wear and a lower price.",
-    move: "Do not HOLD for miles alone. Different bands must change COUNTER or message. Compare LISTING miles to STRATEGY.preferences.",
+      "How far the vehicle has been driven. Higher miles usually mean more wear and a lower price. The published ask is not already mileage-adjusted.",
+    move: "Do not HOLD for miles alone. Different bands must change COUNTER or message. Compare LISTING miles to STRATEGY.preferences. You judge this copy at this ask — no $/1k-miles table.",
     say: "Name the miles once. Shape: 'at 80k miles I need to come in lower.'",
   },
   authenticity: {
@@ -100,8 +113,8 @@ const CRITERION_LESSON: Readonly<Record<string, CriterionLesson>> = {
   },
   size: {
     meaning:
-      "Does it fit (clothing size, frame size). Wrong size is a use problem, not a small scratch.",
-    move: "If STRATEGY named a size and LISTING is a different size, HOLD or COUNTER only if STRATEGY said a miss is acceptable. Do not ignore size.",
+      "Does it fit (clothing size, frame size). Wrong size is a use problem, not a small scratch. The published ask is not already size-adjusted.",
+    move: "If STRATEGY named a size and LISTING is a different size, HOLD or COUNTER only if STRATEGY said a miss is acceptable. Do not ignore size. When size is still in play as SOFT, the number or the line must change.",
     say: "Name both sizes if they differ. Ask whether this size still works before you ACCEPT.",
   },
 };
@@ -129,7 +142,9 @@ const CRITERIA_LEGEND = [
   "- Compare LISTING's answer to STRATEGY.preferences (or to a stronger copy of the same tag).",
   "- Weaker SOFT → buyer COUNTER lower inside BOX, or seller names the weakness and defends something else. Stronger SOFT → the opposite.",
   "- Your COUNTER price and/or message MUST change when a SOFT value changes. Same price + same line as a better copy is a miss.",
-  "- A SOFT miss alone is not HOLD and not REJECT. Do not treat 87% battery like a stolen-phone gate.",
+  "- The published ask is not already adjusted for SOFT answers (storage, battery, grade, lock, miles, size, or any other SOFT on the cards). You judge this copy at this ask. Different answers must change the number and/or the line. No $/step table and no rank placement.",
+  "- Price THIS copy from supply and demand for its SOFT answers, not from a catalog step. The ask is one seller's number, not the market-clearing price for that spec. A common or less-wanted spec should come further off the ask; a scarce and wanted spec can hold closer. Rarity alone is not value — a rare size nobody wants is still weak. You judge which this copy is. No table.",
+  "- A SOFT miss alone is not HOLD and not REJECT. Do not treat a weaker SOFT answer like a stolen-phone gate.",
   "",
   "A SOFT criterion can still sit in STRATEGY.requiredCriteria if the builder marked it required (example: 'unlocked only'). Then treat THAT answer like a HARD fail: HOLD if LISTING misses it.",
   "",
@@ -142,7 +157,7 @@ const CRITERIA_LEGEND = [
   "- MEMO B: t=your target, f=your floor. Never put those numbers in message.",
   "- BOX = legal COUNTER range. Stay inside it.",
   "",
-  'Message: 1–2 short sentences. Cite one LISTING or STRATEGY stance by name (battery 87%, 256GB, Find My still on). No script, no "256 always $480", no concession calendar. First person. Do not reveal floor, target, or BOX.',
+  'Message: 1–2 short sentences. Cite one LISTING or STRATEGY stance by name (battery 87%, 256GB, 80k miles, size M, Find My still on). No script, no "256 always $480", no concession calendar. First person. Do not reveal floor, target, or BOX.',
 ].join("\n");
 
 function listingTags(listing?: ListingHint | null): string[] {
@@ -194,6 +209,7 @@ export function encodeCriterionCard(check: NegotiationCheck): string {
  * Always attached to the Decide system prompt on every LLM call.
  */
 export function encodeCriteriaFewShot(listing?: ListingHint | null): string {
+  if (decideFewShotMode === "off") return "";
   const checks = resolveChecks(listingTags(listing));
   if (checks.length === 0) {
     return [

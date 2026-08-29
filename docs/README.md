@@ -39,11 +39,12 @@
 | 협상 전체 흐름 (태그·스펙·few-shot) | [engine/tag-spec-fewshot.md](./engine/tag-spec-fewshot.md) |
 | Criteria vs HNP issues | [engine/criteria-and-issues.md](./engine/criteria-and-issues.md) |
 | Decide 프롬프트 계약 | [engine/decide-prompt-contract.md](./engine/decide-prompt-contract.md) |
+| Decide 모델 라우팅 | [engine/decide-model-routing.md](./engine/decide-model-routing.md) |
 | HNP 공개 스펙 | [protocol/HNP.md](./protocol/HNP.md) |
 | HNP 공개 압축 상태 | [engine/hnp-compact-state.md](./engine/hnp-compact-state.md) |
 | 코드 네이밍 컨벤션 (협상 에이전트/빌더 챗) | [CODE_NAMING_CONVENTIONS.md](./CODE_NAMING_CONVENTIONS.md) |
 | 미팅 overview | [meetings/overview.html](./meetings/overview.html) |
-| 이번 주 작업·리뷰 그래프 | [meetings/WORK_GRAPH.md](./meetings/WORK_GRAPH.md) · 데이터 [current-week-work-graph.json](./meetings/current-week-work-graph.json) · [2026-08-22 회의](./meetings/2026-08-22-weekly.md) |
+| 이번 주 작업·리뷰 그래프 | [meetings/WORK_GRAPH.md](./meetings/WORK_GRAPH.md) · 데이터 [current-week-work-graph.json](./meetings/current-week-work-graph.json) · [2026-08-22 회의](./meetings/2026-08-22-weekly.md) · [2026-08-29 브랜치 브리프](./meetings/2026-08-29-branch-meeting-brief.md) |
 | 개발 참여 규칙 | [../CONTRIBUTING.md](../CONTRIBUTING.md) |
 
 ---

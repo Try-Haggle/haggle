@@ -12,7 +12,7 @@ import { AGENT_PRESETS } from "./types.js";
 // ---------------------------------------------------------------------------
 const BASE_ITEM: ItemSpec = {
   title: "iPhone 15 Pro 256GB",
-  category: "phone",
+  category: "electronics",
   condition: "good",
   askPrice: 900,
   floorPrice: 780,
@@ -68,7 +68,10 @@ function attributeSweep(group: string, attrKey: string, levels: string[]): Scena
     id: `${group}-${attrKey}-${slug(level)}`,
     group,
     label: `${attrKey}=${level}`,
-    item: cloneItem({ attributes: { [attrKey]: level } }),
+    item: cloneItem({
+      ...(attrKey === "storage" ? { title: `iPhone 15 Pro ${level}` } : {}),
+      attributes: { [attrKey]: level },
+    }),
     seller: { agent: BASE_SELLER_AGENT },
     buyer: { ...BASE_BUYER },
   }));
@@ -85,7 +88,38 @@ const groupScratches = () =>
     "cracked corner",
   ]);
 
-const groupStorage = () => attributeSweep("D", "storage", ["128GB", "256GB", "512GB", "1TB"]);
+/**
+ * Group D listings are different SKUs. The published ask already differs by
+ * storage — that is the seller's list price, not an engine SOFT table.
+ * 256GB keeps the old $900 seed. Steps follow 15 Pro launch gaps (−$100 / +$200 / +$200).
+ * Buyer envelope scales with the ask so a $880 buyer is not tested against a $1300 1TB.
+ */
+const STORAGE_LISTINGS: Record<
+  string,
+  { ask: number; floor: number; budget: number; target: number }
+> = {
+  "128GB": { ask: 800, floor: 700, budget: 780, target: 620 },
+  "256GB": { ask: 900, floor: 780, budget: 880, target: 700 },
+  "512GB": { ask: 1100, floor: 950, budget: 1075, target: 850 },
+  "1TB": { ask: 1300, floor: 1130, budget: 1270, target: 1010 },
+};
+
+const groupStorage = () =>
+  attributeSweep("D", "storage", ["128GB", "256GB", "512GB", "1TB"]).map((c) => {
+    const storage = String(c.item.attributes.storage ?? "");
+    const prices = STORAGE_LISTINGS[storage] ?? STORAGE_LISTINGS["256GB"];
+    return {
+      ...c,
+      item: cloneItem({
+        ...c.item,
+        title: `iPhone 15 Pro ${storage}`,
+        askPrice: prices.ask,
+        floorPrice: prices.floor,
+        attributes: c.item.attributes,
+      }),
+      buyer: { ...c.buyer, budgetMax: prices.budget, targetPrice: prices.target },
+    };
+  });
 
 // ---------------------------------------------------------------------------
 // Group E — buyer pressure: agents/attributes fixed, buyer budget + deadline

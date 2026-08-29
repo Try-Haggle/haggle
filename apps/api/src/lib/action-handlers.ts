@@ -7,6 +7,7 @@
 
 import { type Database, eq, negotiationSessions, settlementApprovals } from "@haggle/db";
 import { updateIntentStatus } from "../services/intent.service.js";
+import { openListingHold } from "../services/listing-claim.service.js";
 import { getSessionById } from "../services/negotiation-session.service.js";
 import { recordAgreedPrice } from "../services/price-observation-sink.js";
 import type { EventDispatcher } from "./event-dispatcher.js";
@@ -82,6 +83,14 @@ export function registerActionHandlers(dispatcher: EventDispatcher, db: Database
         },
       })
       .onConflictDoNothing({ target: settlementApprovals.id });
+
+    await openListingHold(db, {
+      listingId: session.listingId,
+      sessionId: action.sessionId,
+      buyerId: action.buyerId,
+      sellerId: action.sellerId,
+      agreedPriceMinor: action.agreedPriceMinor,
+    });
 
     // ── Record agreed price to HFMI (data moat) ──
     // Non-fatal: price recording failure never blocks settlement creation

@@ -4,6 +4,7 @@ import {
   getNegotiationAutoPlayContext,
   planNegotiationAutoPlayRound,
   validateNegotiationAutoPlayToken,
+  withPrivatePlanOnActingSide,
 } from "../services/negotiation-auto-play.service.js";
 
 describe("negotiation auto-play", () => {
@@ -118,6 +119,35 @@ describe("negotiation auto-play", () => {
     );
     expect(plan?.senderRole).toBe("BUYER");
     expect(plan?.offerPriceMinor).toBe(buyerStanding); // NOT sellerIncoming (150_000)
+  });
+
+  it("keeps a private plan on the acting side through the sealed context", () => {
+    const live = withPrivatePlanOnActingSide(
+      setup.buyerSnapshot,
+      "BUYER",
+      "Open lower on 128GB; hold if they ignore storage.",
+    );
+    expect(live.private_plan).toBe("Open lower on 128GB; hold if they ignore storage.");
+    const opened = getNegotiationAutoPlayContext(live);
+    expect(opened?.buyerSnapshot.private_plan).toBe(
+      "Open lower on 128GB; hold if they ignore storage.",
+    );
+    expect(opened?.sellerSnapshot.private_plan).toBeUndefined();
+    const next = planNegotiationAutoPlayRound(
+      { status: "ACTIVE", currentRound: 1, role: "BUYER", negotiationAgentSnapshot: live },
+      [
+        {
+          roundNo: 1,
+          senderRole: "BUYER",
+          priceminor: "111900",
+          counterPriceMinor: "135000",
+          message: "128GB so I start lower.",
+        },
+      ],
+      opened!,
+    );
+    expect(next?.responderRole).toBe("BUYER");
+    expect(next?.responderSnapshot.private_plan).toContain("128GB");
   });
 
   it("stops planning at a terminal status or round limit", () => {

@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { ElectronicsKnowledgeSkill } from "../../skills/electronics-knowledge.js";
-import { collectSkillSlots, encodeSkillSlots } from "../skill-slots.js";
+import { collectSkillSlots, encodeSkillSlots, looksLikeFixedDollarTable } from "../skill-slots.js";
 
 describe("encodeSkillSlots", () => {
   it("always opens a Skills home even when empty", () => {
     const text = encodeSkillSlots({});
     expect(text).toContain("## Skills");
-    expect(text).toContain("BOX, floor, and HARD criteria still win");
+    expect(text).toContain("The safety envelope, floor, and HARD criteria still win");
     expect(text).toContain("No skill body this round");
     expect(text).not.toContain("### Knowledge");
   });
@@ -30,7 +30,7 @@ describe("encodeSkillSlots", () => {
     expect(text).toContain("### Constraints");
     expect(text).toContain("### Tone");
     expect(text).not.toContain("### Services");
-    expect(text).toContain("Do not quote a skill dollar hint as your floor");
+    expect(text).toContain("A Market dollar may move your number");
   });
 });
 
@@ -83,6 +83,37 @@ describe("collectSkillSlots", () => {
     expect(text).toContain("SOFT BATTERY_DISCLOSURE");
     expect(text).toContain("hfmi_L2: $620");
     expect(text).toContain("Professional");
+    expect(slots.valuation?.every((line) => !looksLikeFixedDollarTable(line))).toBe(true);
+  });
+
+  it("drops category dollar tables from Valuation, including other categories", () => {
+    const slots = collectSkillSlots({
+      decide: {
+        valuationRules: [
+          "More storage is usually worth more.",
+          "Each storage tier adds ~$50-80 to value. 128GB is baseline.",
+          "Each size step adds $40.",
+          "Mileage bands: -$200 per 10k miles.",
+        ],
+      },
+    });
+    expect(slots.valuation).toEqual(["More storage is usually worth more."]);
+    expect(encodeSkillSlots(slots)).not.toMatch(/\$\s*\d/);
+  });
+
+  it("folds product retail lines into Market, not Valuation", () => {
+    const slots = collectSkillSlots({
+      decide: {
+        valuationRules: ["More storage is usually worth more."],
+        marketLines: [
+          "iPhone 15 Pro new (Apple US launch MSRP, 2023-09): 128GB $999 · 256GB $1099",
+          "This copy is 256GB — new was $1099. Advisory. Not the opening or the settlement.",
+        ],
+      },
+    });
+    expect(slots.market?.some((line) => line.includes("128GB $999"))).toBe(true);
+    expect(slots.valuation?.some((line) => line.includes("$999"))).toBe(false);
+    expect(encodeSkillSlots(slots)).toContain("### Market");
   });
 
   it("labels advisor prices as advisory dollars", () => {
@@ -98,7 +129,7 @@ describe("collectSkillSlots", () => {
       },
     });
     expect(slots.advisor).toEqual([
-      "price-advisor-v1: suggested $620.00 (advisory)",
+      "price-advisor-v1: curve pace $620.00 this round (advisory — not the deal price)",
       "price-advisor-v1: tactic nibble",
     ]);
   });

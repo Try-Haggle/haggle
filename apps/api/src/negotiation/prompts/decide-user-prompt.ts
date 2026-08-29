@@ -9,6 +9,7 @@ import { encodeHnpCompactStateForLlm, reduceHnpPublicCompactState } from "@haggl
 import { factsToHnpPublicActs, turnsToHnpPublicActs } from "../memory/conversation-memory.js";
 import { computeHarnessBox, DEFAULT_AUTONOMY } from "../referee/harness-box.js";
 import type { ConversationContext, CoreMemory, RoundFact } from "../types.js";
+import { sanitizePrivatePlan } from "./private-plan.js";
 
 function toDollars(minor: number | undefined | null): string {
   return ((minor ?? 0) / 100).toFixed(2);
@@ -66,8 +67,10 @@ export function encodePrivateMemo(m: CoreMemory): string {
   const parts = [
     `S:${s.phase}|R${s.round}/${s.max_rounds}|${s.role}|${s.intervention_mode}`,
     `B:t$${toDollars(b.my_target)}/f$${toDollars(b.my_floor)}/c$${toDollars(b.current_offer)}/o$${toDollars(b.opponent_offer)}/g$${toDollars(b.gap)}`,
-    `C:rec$${toDollars(c.recommended_price)}|${c.suggested_tactic}|opp:${c.opponent_pattern}|conv:${c.convergence_rate.toFixed(2)}|tp:${c.time_pressure.toFixed(2)}`,
+    `C:${c.suggested_tactic}|opp:${c.opponent_pattern}|conv:${c.convergence_rate.toFixed(2)}|tp:${c.time_pressure.toFixed(2)}`,
   ];
+  const plan = sanitizePrivatePlan(m.private_plan);
+  if (plan) parts.push(`P:${plan}`);
 
   if (m.terms.active.length > 0) {
     parts.push(
@@ -110,9 +113,6 @@ function encodeDelta(prev: CoreMemory, curr: CoreMemory): string {
   if (prev.boundaries.gap !== curr.boundaries.gap) {
     diffs.push(`gap:$${toDollars(curr.boundaries.gap)}`);
   }
-  if (prev.coaching.recommended_price !== curr.coaching.recommended_price) {
-    diffs.push(`rec:$${toDollars(curr.coaching.recommended_price)}`);
-  }
   if (prev.coaching.opponent_pattern !== curr.coaching.opponent_pattern) {
     diffs.push(`opp:${curr.coaching.opponent_pattern}`);
   }
@@ -130,10 +130,14 @@ function encodeDelta(prev: CoreMemory, curr: CoreMemory): string {
 function encodeBox(memory: CoreMemory): string | null {
   const hb = computeHarnessBox(memory.coaching, memory.boundaries, DEFAULT_AUTONOMY);
   if (!hb) return null;
+  const opening = memory.session.phase === "OPENING";
   return [
     "BOX:",
-    `  Propose your COUNTER between $${toDollars(hb.box.min)} and $${toDollars(hb.box.max)} (your safe range this round; a price outside is clamped).`,
-    `  baseline (engine's fair aim) = $${toDollars(hb.baseline)}. Move toward your target within the box based on your read of the opponent; the box already protects your floor.`,
+    `  Safe COUNTER range this round: $${toDollars(hb.box.min)}–$${toDollars(hb.box.max)}. Outside is clamped. This is your floor / ask / no-backwards envelope, not a fair price.`,
+    "  Faratin pace, if present, is in Skills → Advisor. It is optional. Do not copy it as the deal price.",
+    opening
+      ? "  Opening: pick the first number from LISTING SOFT facts plus the ask and your budget. The ask is not already adjusted for those facts. Two copies that differ only on SOFT must not open at the same price. Judge how common and how wanted this SOFT is — supply and demand, not a step table."
+      : "  Later counters: keep using those SOFT facts and the same supply-and-demand read. Do not walk every copy to the same interior point just because the gap shrank.",
   ].join("\n");
 }
 
@@ -248,7 +252,7 @@ function encodeClosingHint(memory: CoreMemory): string | null {
     return [
       "NEGOTIATION_HINT:",
       `  gap is $${toDollars(gap)} (${(ratio * 100).toFixed(1)}% of your target↔floor range).`,
-      "  This is essentially a deal. ACCEPT the opponent's offer — do NOT counter another dollar or two. Closing the deal now is worth more than the final $1.",
+      "  A small gap is not a reason to close. ACCEPT only if THIS copy's SOFT facts make the opponent's number fair. A weaker SOFT answer must not settle where a stronger copy would.",
     ].join("\n");
   }
 
@@ -256,7 +260,7 @@ function encodeClosingHint(memory: CoreMemory): string | null {
     return [
       "NEGOTIATION_HINT:",
       `  gap is $${toDollars(gap)} (${(ratio * 100).toFixed(1)}% of range), round ${s.round}/${s.max_rounds}, ${s.rounds_remaining} left.`,
-      "  You are running out of rounds and the gap is small. Strongly consider ACCEPT or meet them halfway in one move — do not nibble.",
+      "  Rounds are low. You may close if the number fits this copy. Do not meet in the middle just to spend the last rounds, and do not copy recommended_price.",
     ].join("\n");
   }
 

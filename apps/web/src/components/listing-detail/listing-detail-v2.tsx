@@ -199,6 +199,7 @@ export function ListingDetailV2({
   const panelSelection = panelOpen ? panelDraft : selection;
   const panel = panelOpen ? deriveView(panelDraft) : committed;
   const askingPrice = Number(listing.targetPrice ?? 0);
+  const sold = listing.holdState === "sold";
 
   function openPanel() {
     setPanelDraft(selection);
@@ -251,7 +252,7 @@ export function ListingDetailV2({
   }
 
   async function handleStart() {
-    if (!selection || !onStart) return;
+    if (sold || !selection || !onStart) return;
     if (!canStart) {
       focusSetup();
       return;
@@ -352,7 +353,11 @@ export function ListingDetailV2({
                   home for it; the rail keeps it where there is no bar. */}
               <div className="hidden lg:block">
                 <motion.div variants={riseIn}>
-                  <AskingPrice amount={askingPrice} isOwner={isOwner} />
+                  <AskingPrice
+                    amount={askingPrice}
+                    isOwner={isOwner}
+                    holdState={listing.holdState}
+                  />
                 </motion.div>
               </div>
 
@@ -541,15 +546,20 @@ export function ListingDetailV2({
                     furthest from the control they need. */}
                 <Button
                   loading={status === "starting"}
-                  onClick={!selection ? openPanel : canStart ? handleStart : focusSetup}
+                  disabled={sold}
+                  onClick={
+                    sold ? undefined : !selection ? openPanel : canStart ? handleStart : focusSetup
+                  }
                   className="shrink-0"
                 >
-                  {!selection
-                    ? "Pick an agent"
-                    : canStart
-                      ? "Start negotiation"
-                      : "Add a delivery address"}
-                  <ArrowRight className="size-4" aria-hidden="true" />
+                  {sold
+                    ? "Sold"
+                    : !selection
+                      ? "Pick an agent"
+                      : canStart
+                        ? "Start negotiation"
+                        : "Add a delivery address"}
+                  {!sold && <ArrowRight className="size-4" aria-hidden="true" />}
                 </Button>
               </div>
             </motion.div>

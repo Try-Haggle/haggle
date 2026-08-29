@@ -47,31 +47,49 @@ describe("callLLM", () => {
     expect(result.content).toBe('{"action":"COUNTER","price":45000,"reasoning":"test"}');
     expect(result.usage.prompt_tokens).toBe(100);
     expect(result.usage.completion_tokens).toBe(50);
+    expect(result.usage.prompt_cache_hit_tokens).toBe(0);
+    expect(result.usage.prompt_cache_miss_tokens).toBe(100);
     expect(result.reasoning_used).toBe(false);
     expect(result.finish_reason).toBe("stop");
   });
 
-  it("uses reasoning mode (lower temperature) when flag is set", async () => {
+  it("reads DeepSeek cache hit tokens from usage", async () => {
+    globalThis.fetch = mockFetchResponse({
+      choices: [{ message: { content: "{}" }, finish_reason: "stop" }],
+      usage: {
+        prompt_tokens: 5000,
+        completion_tokens: 200,
+        prompt_cache_hit_tokens: 4000,
+        prompt_cache_miss_tokens: 1000,
+      },
+    });
+
+    const result = await callLLM("system", "user");
+    expect(result.usage.prompt_cache_hit_tokens).toBe(4000);
+    expect(result.usage.prompt_cache_miss_tokens).toBe(1000);
+  });
+
+  it("uses an explicit temperature when passed", async () => {
     globalThis.fetch = mockFetchResponse({
       choices: [
         {
-          message: { content: '{"action":"ACCEPT","reasoning":"reasoning mode"}' },
+          message: { content: '{"action":"ACCEPT","reasoning":"explicit temp"}' },
           finish_reason: "stop",
         },
       ],
       usage: { prompt_tokens: 200, completion_tokens: 100 },
     });
 
-    const result = await callLLM("system", "user", { reasoning: true });
+    const result = await callLLM("system", "user", { temperature: 0.8 });
 
-    expect(result.reasoning_used).toBe(true);
+    expect(result.reasoning_used).toBe(false);
 
     const callArgs = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     const body = JSON.parse(callArgs[1].body as string);
-    expect(body.temperature).toBe(0.3);
+    expect(body.temperature).toBe(0.8);
   });
 
-  it("uses general mode (default temperature) by default", async () => {
+  it("uses default temperature 0.5", async () => {
     globalThis.fetch = mockFetchResponse({
       choices: [
         {
