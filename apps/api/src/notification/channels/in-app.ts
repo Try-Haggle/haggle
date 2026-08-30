@@ -1,7 +1,7 @@
-import { sql } from "drizzle-orm";
 import { type Database, notifications } from "@haggle/db";
-import { pushToUser, type WsNotificationMessage } from "../ws-registry.js";
+import { publishToUsers } from "../../realtime/publish.js";
 import type { NotificationCategory } from "../catalog.js";
+import type { WsNotificationMessage } from "../ws-registry.js";
 
 interface InAppInput {
   db: Database;
@@ -40,5 +40,7 @@ export async function sendInApp(input: InAppInput): Promise<void> {
     },
   };
 
-  pushToUser(recipientUserId, message);
+  // Fan-out (not a direct socket push): the recipient's socket may live on
+  // another API instance.
+  publishToUsers([recipientUserId], message);
 }

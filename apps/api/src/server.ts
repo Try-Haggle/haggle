@@ -15,6 +15,11 @@ import { registerMcpRoutes } from "./mcp/router.js";
 import authPlugin from "./middleware/auth.js";
 import { createGlobalRateLimit } from "./middleware/rate-limit.js";
 import { createNotificationBus } from "./notification/index.js";
+import {
+  closeRealtimeFanout,
+  deliverRealtimeEnvelope,
+  initRealtimeFanout,
+} from "./realtime/index.js";
 import { registerAccountRoutes } from "./routes/account.js";
 import { registerAddressRoutes } from "./routes/addresses.js";
 import { registerAdminRoutes } from "./routes/admin.js";
@@ -39,6 +44,7 @@ import { registerIntelligenceDemoRoutes } from "./routes/intelligence-demo.js";
 import { registerIntentRoutes } from "./routes/intents.js";
 import { registerInternalRoutes } from "./routes/internal.js";
 import { registerListingsRoutes } from "./routes/listings.js";
+import { registerMessagingRoutes } from "./routes/messaging.js";
 import { registerNegotiationAgentRoutes } from "./routes/negotiation-agents.js";
 import { registerDemoRoute } from "./routes/negotiation-demo.js";
 import { registerSimulateRoute } from "./routes/negotiation-simulate.js";
@@ -241,6 +247,9 @@ export async function createServer() {
   registerDemoE2ERoutes(app, db);
   registerPaymentTestToolRoutes(app, db);
 
+  // ─── Messaging Routes ─────────────────────────────────────
+  registerMessagingRoutes(app, db);
+
   // ─── Notification Routes ──────────────────────────────────
   registerNotificationRoutes(app, db);
   registerResendWebhookRoute(app, db);
@@ -250,6 +259,14 @@ export async function createServer() {
   await app.register(websocket);
   await registerWebSocketRoutes(app, db);
   await registerNotificationWsRoute(app, db);
+
+  // ─── Realtime fan-out (cross-instance) ───────────────────
+  // Sockets live in the process that accepted them, so events published here
+  // are mirrored to the other instances over Postgres LISTEN/NOTIFY.
+  await initRealtimeFanout({ db, deliver: deliverRealtimeEnvelope, log: app.log });
+  app.addHook("onClose", async () => {
+    await closeRealtimeFanout();
+  });
 
   // ─── Cron Jobs (only if ENABLE_CRON=true) ────────────
   initCronJobs(db);

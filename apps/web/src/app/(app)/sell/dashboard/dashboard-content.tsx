@@ -18,6 +18,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Badge,
+  type BadgeProps,
   buttonVariants,
   EmptyState,
   IconButton,
@@ -27,19 +28,37 @@ import {
 } from "@/components/ui";
 import { formatCondition, formatPrice, formatTimeAgo } from "@/lib/format";
 import { useAmplitude } from "@/providers/amplitude-provider";
-import type { DraftSummary, ListingSummary } from "./page";
+import type { DraftSummary, ListingSummary, SellerNegotiation } from "./page";
+
+/** Newest activity first — the API returns sessions unordered. */
+function byRecentActivity(a: SellerNegotiation, b: SellerNegotiation): number {
+  return Date.parse(b.updated_at) - Date.parse(a.updated_at);
+}
+
+const NEGOTIATION_STATUS_TONE: Record<string, BadgeProps["tone"]> = {
+  ACTIVE: "info",
+  NEAR_DEAL: "warning",
+  ACCEPTED: "success",
+  REJECTED: "error",
+  EXPIRED: "neutral",
+  STALLED: "warning",
+};
 
 export function DashboardContent({
   claimResult,
   listings,
   drafts = [],
+  negotiations = [],
 }: {
   claimResult: { ok: boolean; error?: string } | null;
   listings: ListingSummary[];
   drafts?: DraftSummary[];
+  negotiations?: SellerNegotiation[];
 }) {
   const { track } = useAmplitude();
   const activeCount = listings.filter((l) => l.status === "published").length;
+  // These two were hard-coded zeros while the seller had negotiations running.
+  const closedCount = negotiations.filter((n) => n.status === "ACCEPTED").length;
 
   // Claim Token Used (1회)
   const claimTracked = useRef(false);
@@ -100,13 +119,13 @@ export function DashboardContent({
         <StatTile
           icon={<MessageSquare className="size-5" />}
           iconTone="info"
-          value="0"
+          value={String(negotiations.length)}
           label="Total Negotiations"
         />
         <StatTile
           icon={<TrendingUp className="size-5" />}
           iconTone="success"
-          value="0"
+          value={String(closedCount)}
           label="Deals Closed"
         />
         <StatTile
@@ -126,6 +145,23 @@ export function DashboardContent({
               <DraftCard key={draft.id} draft={draft} />
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Negotiations Section */}
+      <h2 className="mb-4 font-bold text-ink text-lg">Negotiations</h2>
+      {negotiations.length === 0 ? (
+        <EmptyState
+          className="mb-8 bg-surface-raised/50"
+          icon={<MessageSquare className="size-6" />}
+          title="No negotiations yet"
+          description="When a buyer's agent opens a negotiation on one of your listings, it appears here."
+        />
+      ) : (
+        <div className="mb-8 space-y-3">
+          {[...negotiations].sort(byRecentActivity).map((negotiation) => (
+            <NegotiationCard key={negotiation.id} negotiation={negotiation} />
+          ))}
         </div>
       )}
 
@@ -152,6 +188,35 @@ export function DashboardContent({
         </div>
       )}
     </main>
+  );
+}
+
+function NegotiationCard({ negotiation }: { negotiation: SellerNegotiation }) {
+  const lastOffer =
+    negotiation.last_offer_price_minor === null
+      ? "—"
+      : formatPrice(negotiation.last_offer_price_minor / 100);
+
+  return (
+    <ListRow
+      href={`/sell/negotiations/${negotiation.id}`}
+      showChevron
+      leading={
+        <div className="flex size-12 items-center justify-center rounded-lg bg-surface-sunken text-action-primary">
+          <MessageSquare className="size-5" />
+        </div>
+      }
+      title={<span className="font-mono">{negotiation.id.slice(0, 8)}...</span>}
+      badges={
+        <Badge tone={NEGOTIATION_STATUS_TONE[negotiation.status] ?? "neutral"} size="sm">
+          {negotiation.status}
+        </Badge>
+      }
+      meta={`Round ${negotiation.current_round} · Last offer: ${lastOffer}`}
+      trailing={
+        <span className="text-ink-muted text-xs">{formatTimeAgo(negotiation.updated_at)}</span>
+      }
+    />
   );
 }
 

@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNotificationContext } from "@/app/(app)/_components/notification-provider";
 import { Avatar, Logo, NavTab, NotificationItem, Spinner } from "@/components/ui";
+import { useMessagesUnreadCount } from "@/hooks/use-messages-unread";
 import { useTheme } from "@/hooks/use-theme";
 import { type Notification, notificationApi } from "@/lib/api-client";
 import { createClient } from "@/lib/supabase/client";
@@ -34,6 +35,9 @@ interface NavProps {
 const SELL_TABS = [
   { label: "Orders", href: "/orders" },
   { label: "Agents", href: "/sell/agents" },
+  // Last because it is the one tab that is not mode-specific: the two before it
+  // are the selling journey, this one is the account's.
+  { label: "Messages", href: "/messages" },
   // Hidden from the nav — an internal test hub, not a place to offer people.
   // The route itself still answers at /staging for anyone who knows it.
   // { label: "Staging", href: "/staging" },
@@ -45,6 +49,7 @@ const BUY_TABS = [
   // the row and stop matching its neighbours.
   { label: "Marketplace", href: "/browse" },
   { label: "Agents", href: "/buy/agents" },
+  { label: "Messages", href: "/messages" }, // see SELL_TABS
   // { label: "Staging", href: "/staging" }, — see SELL_TABS
 ];
 
@@ -123,6 +128,7 @@ export function Nav({ userEmail, userName, userAvatarUrl, modeOverride }: NavPro
     router.push("/sign-in");
   };
 
+  const messagesUnreadCount = useMessagesUnreadCount();
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === "dark";
 
@@ -158,7 +164,15 @@ export function Nav({ userEmail, userName, userAvatarUrl, modeOverride }: NavPro
               const isActive = activeHrefFromOrigin
                 ? tab.href === activeHrefFromOrigin
                 : pathname.startsWith(tab.href);
-              return <NavTab key={tab.href} href={tab.href} label={tab.label} active={isActive} />;
+              return (
+                <NavTab
+                  key={tab.href}
+                  href={tab.href}
+                  label={tab.label}
+                  active={isActive}
+                  badge={tab.href === "/messages" && messagesUnreadCount > 0}
+                />
+              );
             })}
           </div>
         </div>

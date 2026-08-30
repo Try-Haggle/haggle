@@ -13,7 +13,14 @@ export interface NavTabProps {
   variant?: "underline" | "stacked";
   /** Icon shown above the label in the "stacked" variant. */
   icon?: ReactNode;
-  /** Show an unread dot on the icon corner (stacked). */
+  /**
+   * Unread dot — both variants.
+   *
+   * Not a count: a number beside a word reads as "how many items are in this
+   * view" (GitHub's `Issues 23`), and in red it reads as an error. A tab's job
+   * here is only to say that something is waiting; the list itself carries the
+   * numbers.
+   */
   badge?: boolean;
   onClick?: () => void;
   className?: string;
@@ -54,7 +61,18 @@ export function NavTab({
       onClick={onClick}
       className={cn("relative px-3 py-1 font-medium text-ink text-sm transition-colors", className)}
     >
-      {label}
+      {/* The dot hangs off the label's top-right corner, the same way it hangs
+          off the icon in the stacked variant. In the text flow it read as a
+          bullet, and it moved the tab's neighbours every time it appeared. */}
+      <span className="relative">
+        {label}
+        {badge && (
+          <span
+            className="-top-0.5 -right-1.5 absolute size-[5px] rounded-full bg-error"
+            aria-hidden="true"
+          />
+        )}
+      </span>
       {active && (
         <span className="absolute right-3 bottom-0 left-3 h-0.5 rounded-full bg-action-primary" />
       )}

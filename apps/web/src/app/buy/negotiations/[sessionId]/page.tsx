@@ -76,6 +76,7 @@ export default async function BuyerNegotiationPage({
         initialPayload={payload}
         checkoutHref={checkoutCta?.href}
         checkoutLabel={checkoutCta?.label}
+        canMessageSeller={!isGuest}
       />
     </>
   );

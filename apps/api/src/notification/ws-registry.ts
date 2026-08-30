@@ -18,23 +18,67 @@ export interface WsNotificationMessage {
   };
 }
 
-// userId → WebSocket (1 connection per user — last one wins on reconnect)
-const registry = new Map<string, WebSocket>();
+/** Anything user-addressed that rides the per-user socket (notifications, messaging). */
+export type WsUserMessage = WsNotificationMessage | { type: string; [key: string]: unknown };
+
+/**
+ * userId → open sockets.
+ *
+ * A Set, not a single socket: a user with two tabs open holds two sockets, and
+ * keeping only the newest silently stopped delivering to the older tab.
+ */
+const registry = new Map<string, Set<WebSocket>>();
 
 export function registerUserSocket(userId: string, ws: WebSocket): void {
-  registry.set(userId, ws);
-}
-
-export function unregisterUserSocket(userId: string): void {
-  registry.delete(userId);
-}
-
-export function pushToUser(userId: string, message: WsNotificationMessage): void {
-  const ws = registry.get(userId);
-  if (!ws || ws.readyState !== ws.OPEN) return;
-  try {
-    ws.send(JSON.stringify(message));
-  } catch {
-    // Connection dropped — will be cleaned up on close event
+  const sockets = registry.get(userId);
+  if (sockets) {
+    sockets.add(ws);
+    return;
   }
+  registry.set(userId, new Set([ws]));
+}
+
+export function unregisterUserSocket(userId: string, ws?: WebSocket): void {
+  const sockets = registry.get(userId);
+  if (!sockets) return;
+  // No socket given → drop every socket for the user (legacy call shape).
+  if (!ws) {
+    registry.delete(userId);
+    return;
+  }
+  sockets.delete(ws);
+  if (sockets.size === 0) registry.delete(userId);
+}
+
+/** Sockets this process holds for a user. Used by tests and metrics. */
+export function countUserSockets(userId: string): number {
+  return registry.get(userId)?.size ?? 0;
+}
+
+/**
+ * Send to the user's sockets **on this instance only**. Cross-instance delivery
+ * is the fan-out layer's job — domain code should call publishToUser instead.
+ */
+export function pushToUser(userId: string, message: WsUserMessage): void {
+  const sockets = registry.get(userId);
+  if (!sockets || sockets.size === 0) return;
+
+  const data = JSON.stringify(message);
+  for (const ws of sockets) {
+    if (ws.readyState !== ws.OPEN) {
+      sockets.delete(ws);
+      continue;
+    }
+    try {
+      ws.send(data);
+    } catch {
+      // Connection dropped — cleaned up on its close event.
+    }
+  }
+  if (sockets.size === 0) registry.delete(userId);
+}
+
+/** Test seam. */
+export function __clearUserSocketsForTests(): void {
+  registry.clear();
 }

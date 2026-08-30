@@ -17,6 +17,7 @@
 import type { Database } from "@haggle/db";
 import type { FastifyInstance } from "fastify";
 import { createWebSocketTicketPreValidation } from "../middleware/websocket-ticket-auth.js";
+import { publishToSession } from "../realtime/publish.js";
 
 // Minimal WebSocket interface matching ws package (avoids module resolution issues in pnpm)
 interface WebSocket {
@@ -77,8 +78,12 @@ function removeFromChannel(sessionId: string, ws: WebSocket): void {
   }
 }
 
-/** Broadcast a message to all clients in a session channel. */
-export function broadcastToSession(sessionId: string, message: WsServerMessage): void {
+/**
+ * Send to the session's clients **on this instance only**. Called by the
+ * realtime fan-out layer after an event arrives from another instance; domain
+ * code should call broadcastToSession instead.
+ */
+export function sendToSessionChannel(sessionId: string, message: Record<string, unknown>): void {
   const channel = channels.get(sessionId);
   if (!channel || channel.size === 0) return;
 
@@ -88,6 +93,11 @@ export function broadcastToSession(sessionId: string, message: WsServerMessage):
       ws.send(data);
     }
   }
+}
+
+/** Broadcast a message to all clients in a session channel, on every instance. */
+export function broadcastToSession(sessionId: string, message: WsServerMessage): void {
+  publishToSession(sessionId, message);
 }
 
 /** Get connected client count for a session. */

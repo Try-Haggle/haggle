@@ -1,9 +1,15 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import type { SessionResponse } from "@/app/buy/negotiations/[sessionId]/negotiation-session-data";
 import { serverApi } from "@/lib/api-server";
-import { NegotiationChat } from "@/app/buy/negotiations/[sessionId]/negotiation-chat";
-import type { SessionDetailData } from "@/app/buy/negotiations/[sessionId]/negotiation-chat";
+import { createClient } from "@/lib/supabase/server";
+import { SellerNegotiation } from "./seller-negotiation";
 
+/**
+ * Seller-side negotiation page.
+ *
+ * Renders the same arena as the buyer's page (one negotiation, one visual
+ * language) with the seller's controls instead of the buyer's agent loop.
+ */
 export default async function SellerNegotiationPage({
   params,
 }: {
@@ -14,35 +20,18 @@ export default async function SellerNegotiationPage({
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    redirect("/claim");
-  }
+  if (!user) redirect("/claim");
 
   const { sessionId } = await params;
 
-  let data: SessionDetailData | null = null;
+  let payload: SessionResponse | null = null;
   try {
-    data = await serverApi.get<SessionDetailData>(
-      `/negotiations/sessions/${sessionId}`,
-    );
+    payload = await serverApi.get<SessionResponse>(`/negotiations/sessions/${sessionId}`);
   } catch {
     redirect("/sell/dashboard");
   }
+  if (!payload) redirect("/sell/dashboard");
 
-  if (!data) {
-    redirect("/sell/dashboard");
-  }
-
-  // Note: Ownership verification is handled server-side by the API
-  // (requireAuth + session query filtered by user). If the API returns
-  // data, the user has access to this session.
-
-  return (
-    <NegotiationChat
-      initialSession={data.session}
-      initialRounds={data.rounds}
-      userId={user.id}
-      role="SELLER"
-    />
-  );
+  // Participation is enforced server-side by the API; reaching here means access.
+  return <SellerNegotiation initialPayload={payload} />;
 }

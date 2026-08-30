@@ -56,6 +56,11 @@ const offersLimiter = new SlidingWindowRateLimiter(10, 60_000);
 // Tier 3 — Payments: 20 req/min per user (POST /payments/*)
 const paymentsLimiter = new SlidingWindowRateLimiter(20, 60_000);
 
+// Tier 4 — Messages: 30 req/min per user (POST /api/conversations/:id/messages).
+// Comfortable for a fast typist, low enough that a runaway client cannot flood
+// a thread.
+const messagesLimiter = new SlidingWindowRateLimiter(30, 60_000);
+
 export function resetRateLimitsForTests(): void {
   if (process.env.NODE_ENV !== "test") {
     throw new Error("rate limit reset is test-only");
@@ -63,6 +68,7 @@ export function resetRateLimitsForTests(): void {
   globalLimiter.clear();
   offersLimiter.clear();
   paymentsLimiter.clear();
+  messagesLimiter.clear();
 }
 
 function getIp(request: FastifyRequest): string {
@@ -142,6 +148,20 @@ export async function paymentsRateLimit(
 ): Promise<void> {
   const key = getUserKey(request);
   const result = paymentsLimiter.isAllowed(key);
+  if (!result.allowed) {
+    reply
+      .code(429)
+      .header("Retry-After", String(result.retryAfter))
+      .send({ error: "TOO_MANY_REQUESTS", retryAfter: result.retryAfter });
+  }
+}
+
+export async function messagesRateLimit(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<void> {
+  const key = getUserKey(request);
+  const result = messagesLimiter.isAllowed(key);
   if (!result.allowed) {
     reply
       .code(429)

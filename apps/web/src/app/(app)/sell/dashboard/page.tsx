@@ -29,6 +29,16 @@ export interface DraftSummary {
   updatedAt: string;
 }
 
+export interface SellerNegotiation {
+  id: string;
+  listing_id: string;
+  status: string;
+  current_round: number;
+  last_offer_price_minor: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -75,5 +85,24 @@ export default async function DashboardPage({
     // Listings/drafts will be empty — dashboard still renders
   }
 
-  return <DashboardContent claimResult={claimResult} listings={listings} drafts={drafts} />;
+  // The seller had no way into their own negotiations before this — the detail
+  // page existed but nothing linked to it.
+  let negotiations: SellerNegotiation[] = [];
+  try {
+    const data = await serverApi.get<{ sessions: SellerNegotiation[] }>(
+      `/negotiations/sessions?user_id=${user.id}&role=SELLER`,
+    );
+    negotiations = data.sessions ?? [];
+  } catch {
+    // API down — the dashboard still renders without this section.
+  }
+
+  return (
+    <DashboardContent
+      claimResult={claimResult}
+      listings={listings}
+      drafts={drafts}
+      negotiations={negotiations}
+    />
+  );
 }
