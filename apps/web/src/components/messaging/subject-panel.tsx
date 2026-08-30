@@ -15,8 +15,8 @@ import { buttonVariants } from "@/components/ui/button";
 import { Drawer } from "@/components/ui/drawer";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/cn";
-import { formatTimeAgo } from "@/lib/format";
-import { messagingApi, type SubjectListing } from "@/lib/messaging-api";
+import { formatPrice, formatTimeAgo } from "@/lib/format";
+import { type ConversationOutcome, messagingApi, type SubjectListing } from "@/lib/messaging-api";
 
 interface SubjectPanelProps {
   conversationId: string;
@@ -25,6 +25,12 @@ interface SubjectPanelProps {
   onClose: () => void;
   /** Desktop renders the panel inline; mobile gets a bottom sheet. */
   variant: "panel" | "sheet";
+  /**
+   * Already loaded with the conversation, so it is passed down rather than
+   * fetched again. The strip above the thread carries the result; this is the
+   * detail behind it — how long the negotiation ran and when it stopped.
+   */
+  outcome: ConversationOutcome | null;
 }
 
 /**
@@ -41,6 +47,7 @@ export function SubjectPanel({
   open,
   onClose,
   variant,
+  outcome,
 }: SubjectPanelProps) {
   const [listing, setListing] = useState<SubjectListing | null>(null);
   const [sellerId, setSellerId] = useState<string | null>(null);
@@ -125,6 +132,13 @@ export function SubjectPanel({
             </div>
           </header>
 
+          {outcome && (
+            <>
+              <Divider />
+              <NegotiationSummary outcome={outcome} />
+            </>
+          )}
+
           {askingPrice !== null && Number.isFinite(askingPrice) && (
             <>
               <Divider />
@@ -187,7 +201,7 @@ export function SubjectPanel({
   if (!open) return null;
 
   return (
-    <aside className="hidden h-full w-[360px] shrink-0 flex-col overflow-hidden border-line border-l md:flex lg:w-[420px]">
+    <aside className="hidden h-full w-[320px] shrink-0 flex-col overflow-hidden border-line border-l md:flex min-[1240px]:w-[380px]">
       {/* Same h-14 rail as the chat header, so the two headers sit on one line. */}
       <div className="flex h-14 shrink-0 items-center justify-between border-line border-b px-5">
         <h3 className="font-semibold text-ink">Listing details</h3>
@@ -226,3 +240,41 @@ export function SubjectPanel({
 function Divider() {
   return <div className="h-px w-full bg-line-subtle" aria-hidden="true" />;
 }
+
+/**
+ * How the negotiation went, in the detail the pinned strip has no room for.
+ * The strip answers "what was the result"; this answers "how did it get there".
+ */
+function NegotiationSummary({ outcome }: { outcome: ConversationOutcome }) {
+  const settled = outcome.settledAt
+    ? new Date(outcome.settledAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    : null;
+
+  return (
+    <section>
+      <h4 className="font-semibold text-[11px] text-ink-muted uppercase tracking-wider">
+        Negotiation
+      </h4>
+      <div className="mt-1.5 flex items-baseline gap-2">
+        <span className="font-semibold text-ink text-sm">{OUTCOME_LABELS[outcome.status]}</span>
+        {outcome.priceMinor !== null && (
+          <span className="font-bold text-ink text-lg tabular-nums">
+            {formatPrice(outcome.priceMinor, { minor: true })}
+          </span>
+        )}
+      </div>
+      <p className="mt-0.5 text-[12px] text-ink-muted">
+        {outcome.rounds > 0 && `${outcome.rounds} round${outcome.rounds === 1 ? "" : "s"}`}
+        {outcome.rounds > 0 && settled && " · "}
+        {settled && `ended ${settled}`}
+      </p>
+    </section>
+  );
+}
+
+const OUTCOME_LABELS: Record<ConversationOutcome["status"], string> = {
+  DEAL: "Deal",
+  NEAR_DEAL: "Near deal",
+  NO_DEAL: "No deal",
+  EXPIRED: "Expired",
+};

@@ -10,6 +10,7 @@ import { Composer } from "./composer";
 import { mergeMessages } from "./message-grouping";
 import { MessageIcon } from "./message-icon";
 import { MessageThread } from "./message-thread";
+import { OutcomeStrip } from "./outcome-strip";
 import { SubjectPanel } from "./subject-panel";
 
 interface ChatPanelProps {
@@ -18,13 +19,26 @@ interface ChatPanelProps {
   /** Mobile: closes the full-screen overlay. */
   onBack: () => void;
   onRead: (conversationId: string) => void;
+  /**
+   * Owned by the shell: on a narrow desktop the open panel also decides whether
+   * the conversation list stays on screen, and that is not this component's to
+   * know about.
+   */
+  detailsOpen: boolean;
+  onDetailsOpenChange: (open: boolean) => void;
 }
 
-export function ChatPanel({ conversation, currentUserId, onBack, onRead }: ChatPanelProps) {
+export function ChatPanel({
+  conversation,
+  currentUserId,
+  onBack,
+  onRead,
+  detailsOpen,
+  onDetailsOpenChange,
+}: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(false);
   const [otherReadAt, setOtherReadAt] = useState<string | null>(conversation.otherLastReadAt);
   const { connectionEpoch } = useUserEvents();
   // The sheet portals to <body>, so a CSS-hidden wrapper would not hide it —
@@ -144,7 +158,10 @@ export function ChatPanel({ conversation, currentUserId, onBack, onRead }: ChatP
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-row overflow-hidden">
-      <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+      <div
+        data-testid="thread-column"
+        className="flex h-full min-w-0 flex-1 flex-col overflow-hidden"
+      >
         {/* h-14 is the shared header rail: the listing panel's header uses the
             same height so the two columns line up across the divider. */}
         <header className="flex h-14 shrink-0 items-center gap-2 border-line border-b px-3 md:px-5">
@@ -171,14 +188,29 @@ export function ChatPanel({ conversation, currentUserId, onBack, onRead }: ChatP
           {conversation.subject?.type === "negotiation_session" && !detailsOpen && (
             <button
               type="button"
-              onClick={() => setDetailsOpen(true)}
+              onClick={() => onDetailsOpenChange(true)}
               className="shrink-0 rounded-full bg-surface-sunken px-3 py-1.5 font-semibold text-ink text-xs hover:bg-surface-raised md:px-4 md:text-sm"
             >
-              <span className="hidden md:inline">Show details</span>
-              <span className="md:hidden">Details</span>
+              {/* A verb, and named for what it opens: "Show details" said
+                  nothing about which details, next to a strip that is also
+                  details. It shares "View" with the strip's link below, and
+                  the arrow there is what separates the two — this one opens a
+                  panel and stays on the page. */}
+              <span className="hidden md:inline">View listing</span>
+              <span className="md:hidden">Listing</span>
             </button>
           )}
         </header>
+
+        {conversation.outcome && (
+          <OutcomeStrip
+            outcome={conversation.outcome}
+            side={conversation.side}
+            sessionId={
+              conversation.subject?.type === "negotiation_session" ? conversation.subject.id : null
+            }
+          />
+        )}
 
         {messages.length === 0 ? (
           <div className="flex flex-1 items-center justify-center p-6">
@@ -213,8 +245,9 @@ export function ChatPanel({ conversation, currentUserId, onBack, onRead }: ChatP
         conversationId={conversationId}
         currentUserId={currentUserId}
         open={detailsOpen}
-        onClose={() => setDetailsOpen(false)}
+        onClose={() => onDetailsOpenChange(false)}
         variant={isCompact ? "sheet" : "panel"}
+        outcome={conversation.outcome}
       />
     </div>
   );

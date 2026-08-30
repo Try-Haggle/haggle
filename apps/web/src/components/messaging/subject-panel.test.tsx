@@ -47,6 +47,7 @@ function renderPanel(props: Partial<React.ComponentProps<typeof SubjectPanel>> =
       open={props.open ?? true}
       onClose={vi.fn()}
       variant="panel"
+      outcome={props.outcome ?? null}
     />,
   );
 }
