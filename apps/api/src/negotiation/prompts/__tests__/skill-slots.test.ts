@@ -77,10 +77,9 @@ describe("collectSkillSlots", () => {
     });
 
     const text = encodeSkillSlots(slots);
-    expect(text).toContain("Consumer Electronics");
+    expect(text).toContain("consumer electronics");
     expect(text).toContain("condition_trade");
-    expect(text).toContain("HARD IMEI_REQUIRED");
-    expect(text).toContain("SOFT BATTERY_DISCLOSURE");
+    expect(text).toContain("Do not invent phone gates");
     expect(text).toContain("hfmi_L2: $620");
     expect(text).toContain("Professional");
     expect(slots.valuation?.every((line) => !looksLikeFixedDollarTable(line))).toBe(true);

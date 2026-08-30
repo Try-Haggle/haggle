@@ -97,6 +97,12 @@ vi.mock("@haggle/db", () => ({
   isNull: vi.fn(),
   inArray: vi.fn(),
   settlementApprovals: {},
+  conversations: { id: "id", participantKey: "participantKey" },
+  conversationMembers: { conversationId: "conversationId", userId: "userId" },
+  messages: {},
+  MESSAGE_BODY_MAX_LENGTH: 4000,
+  MESSAGE_PREVIEW_MAX_LENGTH: 120,
+  CONVERSATION_SUBJECT_TYPES: ["listing", "order", "negotiation_session"],
   negotiationSessions: {},
   listingClaims: {
     id: "id",
