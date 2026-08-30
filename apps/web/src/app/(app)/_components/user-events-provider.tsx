@@ -18,8 +18,10 @@ type Listener = (event: UserEvent) => void;
 interface UserEventsContextValue {
   subscribe: (listener: Listener) => () => void;
   /**
-   * Increments on every successful (re)connect. Consumers refetch when it
-   * changes, because anything published while the socket was down was missed.
+   * Counts *re*connects, not the first connect. Consumers already fetch on
+   * mount; bumping this on the initial connection made every one of them fetch
+   * twice for nothing. It changes only when the socket came back, which is the
+   * moment there is a gap to fill.
    */
   connectionEpoch: number;
   connected: boolean;
@@ -64,6 +66,8 @@ export function UserEventsProvider({ children }: { children: React.ReactNode }) 
   const reconnectDelayRef = useRef(INITIAL_RECONNECT_DELAY_MS);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closedByUnmountRef = useRef(false);
+  const hasConnectedRef = useRef(false);
+  const connectingRef = useRef(false);
   const [connectionEpoch, setConnectionEpoch] = useState(0);
   const [connected, setConnected] = useState(false);
 
@@ -76,67 +80,104 @@ export function UserEventsProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   const connect = useCallback(async () => {
-    if (closedByUnmountRef.current) return;
-
-    const supabase = createClient();
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session?.access_token) return;
-
-    let ticketProtocol: string | undefined;
+    // Connecting is async — a ticket fetch, then a socket. Without this guard a
+    // second call landing mid-flight (React re-running the effect in dev, a
+    // reconnect timer firing) opens a whole second connection, and each one
+    // costs a ticket request.
+    if (closedByUnmountRef.current || connectingRef.current) return;
+    connectingRef.current = true;
     try {
-      const response = await fetch(`${API_URL}/auth/websocket-tickets`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ channel: "notification" }),
-        cache: "no-store",
-      });
-      if (!response.ok) throw new Error(`ticket ${response.status}`);
-      ticketProtocol = ((await response.json()) as { ticket_protocol?: string }).ticket_protocol;
-    } catch {
-      scheduleReconnect();
-      return;
-    }
-    if (!ticketProtocol) {
-      scheduleReconnect();
-      return;
+      await openSocket();
+    } finally {
+      connectingRef.current = false;
     }
 
-    const ws = new WebSocket(`${WS_URL}/ws/notifications`, [ticketProtocol]);
-    wsRef.current = ws;
+    async function openSocket() {
+      const supabase = createClient();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
 
-    ws.onopen = () => {
-      reconnectDelayRef.current = INITIAL_RECONNECT_DELAY_MS;
-      setConnected(true);
-      setConnectionEpoch((epoch) => epoch + 1);
-    };
-
-    ws.onmessage = (event) => {
-      let parsed: UserEvent;
+      let ticketProtocol: string | undefined;
       try {
-        parsed = JSON.parse(event.data);
+        const response = await fetch(`${API_URL}/auth/websocket-tickets`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ channel: "notification" }),
+          cache: "no-store",
+        });
+        if (response.status === 429) {
+          // Retrying into a rate limit just deepens it. Wait out the window the
+          // server asked for (its budget is per-minute) before trying again.
+          const retryAfter = Number(response.headers.get("Retry-After"));
+          scheduleReconnect(
+            Number.isFinite(retryAfter) && retryAfter > 0
+              ? retryAfter * 1000
+              : MAX_RECONNECT_DELAY_MS,
+          );
+          return;
+        }
+        if (!response.ok) throw new Error(`ticket ${response.status}`);
+        ticketProtocol = ((await response.json()) as { ticket_protocol?: string }).ticket_protocol;
       } catch {
+        scheduleReconnect();
         return;
       }
-      if (!parsed || typeof parsed.type !== "string" || parsed.type === "pong") return;
-      for (const listener of listenersRef.current) listener(parsed);
-    };
+      if (!ticketProtocol) {
+        scheduleReconnect();
+        return;
+      }
 
-    ws.onclose = () => {
-      setConnected(false);
-      scheduleReconnect();
-    };
+      const ws = new WebSocket(`${WS_URL}/ws/notifications`, [ticketProtocol]);
+      wsRef.current = ws;
 
-    ws.onerror = () => ws.close();
+      // The provider went away while the ticket was in flight.
+      if (closedByUnmountRef.current) {
+        ws.close();
+        return;
+      }
 
-    function scheduleReconnect() {
+      ws.onopen = () => {
+        reconnectDelayRef.current = INITIAL_RECONNECT_DELAY_MS;
+        setConnected(true);
+        if (hasConnectedRef.current) {
+          // A gap just closed — tell consumers to refill what they missed.
+          setConnectionEpoch((epoch) => epoch + 1);
+        }
+        hasConnectedRef.current = true;
+      };
+
+      ws.onmessage = (event) => {
+        let parsed: UserEvent;
+        try {
+          parsed = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+        if (!parsed || typeof parsed.type !== "string" || parsed.type === "pong") return;
+        for (const listener of listenersRef.current) listener(parsed);
+      };
+
+      ws.onclose = () => {
+        // A socket we already replaced (React re-running the effect in dev, or a
+        // manual reconnect) must not schedule work for the one that took over —
+        // that is how one connection turns into three.
+        if (wsRef.current !== ws) return;
+        setConnected(false);
+        scheduleReconnect();
+      };
+
+      ws.onerror = () => ws.close();
+    }
+
+    function scheduleReconnect(overrideDelayMs?: number) {
       if (closedByUnmountRef.current) return;
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-      const delay = reconnectDelayRef.current;
+      const delay = overrideDelayMs ?? reconnectDelayRef.current;
       // Backoff, not a give-up count: a chat that silently stops updating after
       // three failed attempts is worse than one that keeps trying slowly.
       reconnectDelayRef.current = Math.min(delay * 2, MAX_RECONNECT_DELAY_MS);
