@@ -12,6 +12,7 @@ import {
   TypingIndicator,
 } from "@/components/ui";
 import { api } from "@/lib/api-client";
+import { isSubmitEnter } from "@/lib/keyboard";
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -216,7 +217,7 @@ export function AdvisorChat({
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (isSubmitEnter(e)) {
       e.preventDefault();
       handleSend();
     }

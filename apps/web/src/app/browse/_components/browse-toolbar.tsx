@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Popover } from "@/components/ui/popover";
 import { RangeSlider } from "@/components/ui/slider";
 import { cn } from "@/lib/cn";
+import { isImeComposing } from "@/lib/keyboard";
 import type { BrowseFilters, BrowseSort } from "../page";
 import {
   CONDITION_LABELS,
@@ -207,7 +208,7 @@ function PriceFilter({
               onChange={(e) => setMinInput(e.target.value)}
               onBlur={commitFromInputs}
               onKeyDown={(e) => {
-                if (e.key === "Enter") {
+                if (e.key === "Enter" && !isImeComposing(e)) {
                   e.preventDefault();
                   commitFromInputs();
                 }
@@ -226,7 +227,7 @@ function PriceFilter({
               onChange={(e) => setMaxInput(e.target.value)}
               onBlur={commitFromInputs}
               onKeyDown={(e) => {
-                if (e.key === "Enter") {
+                if (e.key === "Enter" && !isImeComposing(e)) {
                   e.preventDefault();
                   commitFromInputs();
                 }
