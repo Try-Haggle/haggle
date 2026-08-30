@@ -4,6 +4,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useNotificationContext } from "@/app/(app)/_components/notification-provider";
 import { NavTab } from "@/components/ui";
+import { useMessagesUnreadCount } from "@/hooks/use-messages-unread";
 
 type Mode = "selling" | "buying";
 
@@ -54,8 +55,10 @@ const SELL_TABS = [
     ),
   },
   {
+    // Lands on messages: notifications also arrive as toasts and email, while a
+    // message is waiting for a reply. Notifications are one tap further.
     label: "Inbox",
-    href: "/notifications",
+    href: "/messages",
     icon: (
       <svg
         viewBox="0 0 24 24"
@@ -162,8 +165,10 @@ const BUY_TABS = [
     ),
   },
   {
+    // Lands on messages: notifications also arrive as toasts and email, while a
+    // message is waiting for a reply. Notifications are one tap further.
     label: "Inbox",
-    href: "/notifications",
+    href: "/messages",
     icon: (
       <svg
         viewBox="0 0 24 24"
@@ -207,6 +212,8 @@ export function BottomNav() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { unreadCount } = useNotificationContext();
+  // One tab covers both halves, so its dot has to cover both too.
+  const messagesUnread = useMessagesUnreadCount();
 
   // Derive mode from path
   const pathMode: Mode | null = pathname.startsWith("/buy")
@@ -245,7 +252,10 @@ export function BottomNav() {
           const isActive =
             tab.href === "/profile"
               ? pathname.startsWith("/profile") || pathname.startsWith("/settings")
-              : pathname.startsWith(tab.href);
+              : tab.label === "Inbox"
+                ? // Both halves of the inbox light the same tab.
+                  pathname.startsWith("/messages") || pathname.startsWith("/notifications")
+                : pathname.startsWith(tab.href);
 
           return (
             <NavTab
@@ -255,7 +265,7 @@ export function BottomNav() {
               variant="stacked"
               icon={tab.icon}
               active={isActive}
-              badge={tab.label === "Inbox" && unreadCount > 0}
+              badge={tab.label === "Inbox" && (unreadCount > 0 || messagesUnread > 0)}
             />
           );
         })}

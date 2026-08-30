@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { InboxTabs } from "@/app/(app)/_components/inbox-tabs";
 import { useUserEvent, useUserEvents } from "@/app/(app)/_components/user-events-provider";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Spinner } from "@/components/ui/spinner";
@@ -148,8 +149,12 @@ export function MessagesShell({ currentUserId }: MessagesShellProps) {
         >
           {/* Same h-14 rail as the chat and listing headers — one line across
               all three columns. */}
-          <div className="flex h-14 shrink-0 items-center border-line border-b px-4">
-            <h1 className="font-semibold text-ink">Messages</h1>
+          <div className="flex h-14 shrink-0 items-center border-line border-b px-2 md:px-4">
+            {/* On a phone this rail is the whole screen's header, and the one
+                thing worth putting there is the way out to notifications. The
+                title would only repeat the tab that got you here. */}
+            <InboxTabs className="md:hidden" />
+            <h1 className="hidden font-semibold text-ink md:block">Messages</h1>
           </div>
           <div className="flex-1 overflow-y-auto">
             <ConversationList

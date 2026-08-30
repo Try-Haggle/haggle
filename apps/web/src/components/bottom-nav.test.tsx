@@ -18,13 +18,22 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => query,
 }));
 
+let notificationsUnread = 0;
+let messagesUnread = 0;
+
 vi.mock("@/app/(app)/_components/notification-provider", () => ({
-  useNotificationContext: () => ({ unreadCount: 0 }),
+  useNotificationContext: () => ({ unreadCount: notificationsUnread }),
+}));
+
+vi.mock("@/hooks/use-messages-unread", () => ({
+  useMessagesUnreadCount: () => messagesUnread,
 }));
 
 beforeEach(() => {
   pathname = "/messages";
   query = new URLSearchParams();
+  notificationsUnread = 0;
+  messagesUnread = 0;
 });
 
 describe("BottomNav", () => {
@@ -54,5 +63,50 @@ describe("BottomNav", () => {
     render(<BottomNav />);
 
     expect(screen.queryByRole("navigation")).toBeNull();
+  });
+});
+
+describe("Inbox tab", () => {
+  function inboxLink() {
+    return screen.getByRole("link", { name: /Inbox/ });
+  }
+
+  it("leads to messages — notifications are one tap further", () => {
+    pathname = "/browse";
+    render(<BottomNav />);
+
+    expect(inboxLink()).toHaveAttribute("href", "/messages");
+  });
+
+  it("stays lit on both halves of the inbox", () => {
+    for (const path of ["/messages", "/notifications"]) {
+      pathname = path;
+      const { unmount } = render(<BottomNav />);
+      expect(inboxLink().className).toContain("text-action-primary");
+      unmount();
+    }
+  });
+
+  it("marks unread messages, not just notifications", () => {
+    pathname = "/browse";
+    messagesUnread = 2;
+    const { container } = render(<BottomNav />);
+
+    expect(container.querySelector(".bg-error")).not.toBeNull();
+  });
+
+  it("marks unread notifications too", () => {
+    pathname = "/browse";
+    notificationsUnread = 1;
+    const { container } = render(<BottomNav />);
+
+    expect(container.querySelector(".bg-error")).not.toBeNull();
+  });
+
+  it("shows no dot when both are clear", () => {
+    pathname = "/browse";
+    const { container } = render(<BottomNav />);
+
+    expect(container.querySelector(".bg-error")).toBeNull();
   });
 });
