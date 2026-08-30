@@ -9,6 +9,8 @@ import {
 } from "@haggle/commerce-core";
 import { type Database, eq, listingClaims, sql } from "@haggle/db";
 
+type ListingClaimTx = Parameters<Parameters<Database["transaction"]>[0]>[0];
+
 export class ListingClaimError extends Error {
   readonly code: ListingClaimErrorCode;
 
@@ -63,7 +65,10 @@ function isUniqueViolation(error: unknown): boolean {
   return candidate.code === "23505" || candidate.cause?.code === "23505";
 }
 
-async function lockActiveClaim(tx: Database, listingId: string): Promise<ListingClaimRow | null> {
+async function lockActiveClaim(
+  tx: ListingClaimTx,
+  listingId: string,
+): Promise<ListingClaimRow | null> {
   await tx.execute(sql`
     SELECT id FROM listing_claims
      WHERE listing_id = ${listingId}
@@ -81,7 +86,7 @@ async function lockActiveClaim(tx: Database, listingId: string): Promise<Listing
 }
 
 async function persistSnapshot(
-  tx: Database,
+  tx: ListingClaimTx,
   row: ListingClaimRow,
   next: ListingClaimSnapshot,
   extras: Partial<typeof listingClaims.$inferInsert>,

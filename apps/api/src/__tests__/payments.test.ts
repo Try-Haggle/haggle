@@ -3178,9 +3178,7 @@ describe("Payment routes", () => {
     const now = new Date().toISOString();
     mockGetSettlementApprovalById.mockResolvedValueOnce({
       id: "00000000-0000-4000-a000-000000000099",
-      listing_id: "00000000-0000-4000-a000-000000000011",
       approval_state: "APPROVED",
-      seller_approval_mode: "AUTO_WITHIN_POLICY",
       seller_policy: {
         mode: "AUTO_WITHIN_POLICY",
         fulfillment_sla: { shipment_input_due_days: 3 },
