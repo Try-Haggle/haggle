@@ -149,12 +149,12 @@ export function MessagesShell({ currentUserId }: MessagesShellProps) {
         >
           {/* Same h-14 rail as the chat and listing headers — one line across
               all three columns. */}
-          <div className="flex h-14 shrink-0 items-center border-line border-b px-2 md:px-4">
-            {/* On a phone this rail is the whole screen's header, and the one
-                thing worth putting there is the way out to notifications. The
-                title would only repeat the tab that got you here. */}
-            <InboxTabs className="md:hidden" />
-            <h1 className="hidden font-semibold text-ink md:block">Messages</h1>
+          {/* On a phone the tabs are the header: the title would only repeat the
+              tab that got you here, and the way back to notifications is the
+              one thing this rail is for. */}
+          <InboxTabs className="md:hidden" />
+          <div className="hidden h-14 shrink-0 items-center border-line border-b px-4 md:flex">
+            <h1 className="font-semibold text-ink">Messages</h1>
           </div>
           <div className="flex-1 overflow-y-auto">
             <ConversationList
