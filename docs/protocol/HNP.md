@@ -1,6 +1,6 @@
 # HNP — Haggle Negotiation Protocol
 
-**Status:** public core spec (draft). Implementation lives in `@haggle/engine-session`.  
+**Status:** public core spec (draft). Implementation lives in `@haggle/engine-session`.
 **Revision:** `2026-03-09` · compact state `hnp.compact.v1`
 
 HNP is a **negotiation-only** protocol. It does not search, rank, or recommend products.
@@ -67,7 +67,7 @@ Every message is an `HnpEnvelope`. Types in `packages/engine-session/src/protoco
 }
 ```
 
-Required envelope fields: `spec_version`, `capability`, `session_id`, `message_id`, `idempotency_key`, `sequence`, `sent_at_ms`, `expires_at_ms`, `sender_agent_id`, `sender_role`, `type`, `payload`.  
+Required envelope fields: `spec_version`, `capability`, `session_id`, `message_id`, `idempotency_key`, `sequence`, `sent_at_ms`, `expires_at_ms`, `sender_agent_id`, `sender_role`, `type`, `payload`.
 Optional: `correlation_id`, `detached_signature`.
 
 Message types: `HELLO`, `CAPABILITIES`, `OFFER`, `COUNTER`, `ACCEPT`, `REJECT`, `ESCALATE`, `CANCEL`, `ACK`, `ERROR`.

@@ -1,6 +1,6 @@
 # HNP 공개 압축 상태
 
-**상태:** 2026-08-24 설계·프로토콜 모듈 추가.  
+**상태:** 2026-08-24 설계·프로토콜 모듈 추가.
 **코드:** `packages/engine-session/src/protocol/compact-state.ts`
 
 ---
