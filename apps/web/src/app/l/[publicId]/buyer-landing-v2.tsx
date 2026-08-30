@@ -120,7 +120,7 @@ export function BuyerLandingV2({ listing, user, isOwner, from, footerSlot }: Buy
   const [fulfillment, setFulfillment] = useState<PreNegotiationFulfillmentValue>(() =>
     emptyFulfillmentValue(sellerOffer, !!user),
   );
-  const canStart = canStartWithFulfillment(fulfillment);
+  const canStart = canStartWithFulfillment(fulfillment) && listing.holdState !== "sold";
 
   // Guests have no saved agents; skipping the call also avoids a guaranteed 401.
   useEffect(() => {

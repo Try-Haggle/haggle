@@ -197,7 +197,12 @@ describe("Stage 3: decide", () => {
   it("does not fill Faratin when LLM returns an unusable COUNTER", async () => {
     vi.mocked(callLLM).mockResolvedValueOnce({
       content: '{"action":"COUNTER"}',
-      usage: { prompt_tokens: 1, completion_tokens: 1 },
+      usage: {
+        prompt_tokens: 1,
+        completion_tokens: 1,
+        prompt_cache_hit_tokens: 0,
+        prompt_cache_miss_tokens: 1,
+      },
       reasoning_used: false,
     });
     const memory = makeMemory("BARGAINING");
