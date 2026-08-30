@@ -1,9 +1,6 @@
-import {
-  encodeHnpCompactStateForLlm,
-  reduceHnpPublicCompactState,
-} from "@haggle/engine-session";
-import { turnsToHnpPublicActs } from "../memory/conversation-memory.js";
+import { encodeHnpCompactStateForLlm, reduceHnpPublicCompactState } from "@haggle/engine-session";
 import { encodeMemo } from "../memo/memo-codec.js";
+import { turnsToHnpPublicActs } from "../memory/conversation-memory.js";
 import { computeHarnessBox, DEFAULT_AUTONOMY } from "../referee/harness-box.js";
 import type {
   ConversationContext,

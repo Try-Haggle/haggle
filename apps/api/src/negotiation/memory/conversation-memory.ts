@@ -29,7 +29,9 @@ function toPriceMinor(round: PersistedTalkRound): number | undefined {
  *
  * Generated `message` is the responder's line — the side opposite `senderRole`.
  */
-export function collectConversationTurns(rounds: readonly PersistedTalkRound[]): ConversationTurn[] {
+export function collectConversationTurns(
+  rounds: readonly PersistedTalkRound[],
+): ConversationTurn[] {
   const turns: ConversationTurn[] = [];
   for (const round of rounds) {
     const text = typeof round.message === "string" ? round.message.trim() : "";

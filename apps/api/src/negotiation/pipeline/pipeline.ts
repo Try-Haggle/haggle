@@ -249,12 +249,7 @@ export async function executePipeline(
   });
 
   // ─── Stage 6: Persist ───
-  const memoSnapshot = createSnapshot(
-    deps.memory,
-    deps.round,
-    resolvedEncoding,
-    deps.facts,
-  );
+  const memoSnapshot = createSnapshot(deps.memory, deps.round, resolvedEncoding, deps.facts);
 
   const persistInput: PersistInput = {
     session_id: deps.memory.session.session_id,

@@ -1,8 +1,4 @@
-import {
-  A2A_HNP_SKILL,
-  createHnpProfile,
-  UCP_HNP_EXTENSION_ID,
-} from "@haggle/engine-session";
+import { A2A_HNP_SKILL, createHnpProfile, UCP_HNP_EXTENSION_ID } from "@haggle/engine-session";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { defaultAttemptControlPolicy } from "../services/attempt-control.service.js";
 

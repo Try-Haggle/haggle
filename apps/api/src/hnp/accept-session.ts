@@ -9,9 +9,9 @@ import {
   summarizeHnpTransactionHandoffChain,
   validateHnpTransactionHandoff,
 } from "@haggle/engine-session";
+import { validateHnpIngress } from "../services/hnp-ingress.service.js";
 import { createRound, getRoundsBySessionId } from "../services/negotiation-round.service.js";
 import { updateSessionState } from "../services/negotiation-session.service.js";
-import { validateHnpIngress } from "../services/hnp-ingress.service.js";
 import type { HnpAcceptEnvelope } from "./envelope-schema.js";
 
 export interface HnpTransactionSignals {

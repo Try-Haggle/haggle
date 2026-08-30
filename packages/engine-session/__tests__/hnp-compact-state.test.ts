@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
+import type { HnpPublicAct } from "../src/protocol/compact-state.js";
 import {
   encodeHnpCompactStateForLlm,
   reduceHnpPublicCompactState,
   sanitizeHnpPublicClaim,
 } from "../src/protocol/compact-state.js";
-import type { HnpPublicAct } from "../src/protocol/compact-state.js";
 
 function act(partial: HnpPublicAct): HnpPublicAct {
   return partial;

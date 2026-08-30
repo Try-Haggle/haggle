@@ -13,6 +13,15 @@ import {
 } from "@haggle/shared";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import {
+  applyHnpAccept,
+  getAcceptedEventPriceMinor,
+  normalizeAcceptRequest,
+} from "../hnp/accept-session.js";
+import { hnpAcceptEnvelopeSchema, hnpOfferEnvelopeSchema } from "../hnp/envelope-schema.js";
+import { buildHostHnpOfferEnvelope } from "../hnp/host-envelope.js";
+import { normalizeSubmitOffer } from "../hnp/normalize-offer.js";
+import { submitHnpOffer } from "../hnp/submit-offer.js";
 import type { EventDispatcher } from "../lib/event-dispatcher.js";
 import { getExecutor } from "../lib/executor-factory.js";
 import { executeGroupOrchestration, executeGroupTerminal } from "../lib/group-executor.js";
@@ -43,15 +52,6 @@ import {
   getListingPlaybackSummaryByInternalId,
   getPublishedListingByPublicId,
 } from "../services/draft.service.js";
-import {
-  applyHnpAccept,
-  getAcceptedEventPriceMinor,
-  normalizeAcceptRequest,
-} from "../hnp/accept-session.js";
-import { hnpAcceptEnvelopeSchema, hnpOfferEnvelopeSchema } from "../hnp/envelope-schema.js";
-import { buildHostHnpOfferEnvelope } from "../hnp/host-envelope.js";
-import { normalizeSubmitOffer } from "../hnp/normalize-offer.js";
-import { submitHnpOffer } from "../hnp/submit-offer.js";
 import { validateHnpIngress } from "../services/hnp-ingress.service.js";
 import { loadListingStrategyContext } from "../services/listing-strategy.service.js";
 import {
@@ -183,7 +183,6 @@ const submitOfferSchema = z
   });
 
 type CreateSessionBody = z.infer<typeof createSessionSchema>;
-type SubmitOfferBody = z.infer<typeof submitOfferSchema>;
 type AgentDelegation = z.infer<typeof agentDelegationSchema>;
 
 interface SessionAccessView {

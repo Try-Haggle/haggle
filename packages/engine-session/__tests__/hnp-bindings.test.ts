@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { a2aTaskPartToHnpEnvelope, A2A_HNP_SKILL, hnpEnvelopeToA2ATaskPart } from "../src/protocol/bindings/a2a.js";
-import { hnpAgreementToUcpCheckoutBridge, UCP_HNP_EXTENSION_ID } from "../src/protocol/bindings/ucp.js";
+import {
+  A2A_HNP_SKILL,
+  a2aTaskPartToHnpEnvelope,
+  hnpEnvelopeToA2ATaskPart,
+} from "../src/protocol/bindings/a2a.js";
+import {
+  hnpAgreementToUcpCheckoutBridge,
+  UCP_HNP_EXTENSION_ID,
+} from "../src/protocol/bindings/ucp.js";
 import type { HnpEnvelope, HnpProposalPayload } from "../src/protocol/core.js";
 
 describe("HNP commerce bindings", () => {
