@@ -59,13 +59,20 @@ export function NavTab({
     <Link
       href={href}
       onClick={onClick}
-      className={cn(
-        "relative flex items-center gap-1.5 px-3 py-1 font-medium text-ink text-sm transition-colors",
-        className,
-      )}
+      className={cn("relative px-3 py-1 font-medium text-ink text-sm transition-colors", className)}
     >
-      {label}
-      {badge && <span className="size-1.5 shrink-0 rounded-full bg-error" aria-hidden="true" />}
+      {/* The dot hangs off the label's top-right corner, the same way it hangs
+          off the icon in the stacked variant. In the text flow it read as a
+          bullet, and it moved the tab's neighbours every time it appeared. */}
+      <span className="relative">
+        {label}
+        {badge && (
+          <span
+            className="-top-1 -right-2.5 absolute size-1.5 rounded-full bg-error"
+            aria-hidden="true"
+          />
+        )}
+      </span>
       {active && (
         <span className="absolute right-3 bottom-0 left-3 h-0.5 rounded-full bg-action-primary" />
       )}
