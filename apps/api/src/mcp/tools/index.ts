@@ -2,8 +2,15 @@ import type { Database } from "@haggle/db";
 import { registerAppTool } from "@modelcontextprotocol/ext-apps/server";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import {
+  applyHnpAccept,
+  getAcceptedEventPriceMinor,
+  normalizeAcceptRequest,
+} from "../../hnp/accept-session.js";
+import { hnpAcceptEnvelopeSchema, hnpOfferEnvelopeSchema } from "../../hnp/envelope-schema.js";
+import { submitHnpOffer } from "../../hnp/submit-offer.js";
 import type { EventDispatcher } from "../../lib/event-dispatcher.js";
-import { getExecutor } from "../../lib/executor-factory.js";
+import { executeGroupTerminal } from "../../lib/group-executor.js";
 import { uploadListingPhoto } from "../../lib/supabase-storage.js";
 import {
   claimListing,
@@ -868,7 +875,7 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
                 },
                 expires_at: expiresAt.toISOString(),
                 message:
-                  "Negotiation session created. Use haggle_submit_offer to send your first offer.",
+                  "Negotiation session created. Submit the next move with hnp_submit_offer using an HNP envelope.",
               }),
             },
           ],
@@ -889,23 +896,17 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
     },
   );
 
-  // ─── haggle_submit_offer ───────────────────────────────────
-  // 구매자 AI 에이전트가 오퍼 제출. 엔진이 판매자측 카운터/수락/거절 결정.
+  // ─── hnp_submit_offer ────────────────────────────────────
+  // Protocol path: full HNP envelope, same ingress as REST.
   server.tool(
-    "haggle_submit_offer",
-    "Submit a price offer in an active negotiation session. The engine evaluates and returns a counter-offer, acceptance, or rejection. Include the session_id and your offer price in cents.",
+    "hnp_submit_offer",
+    "Submit an HNP OFFER or COUNTER envelope. Same protocol ingress as REST.",
     {
-      session_id: z.string().uuid().describe("The negotiation session ID"),
-      price_minor: z
-        .number()
-        .int()
-        .positive()
-        .describe("Your offer price in cents (e.g. 5000 = $50.00)"),
-      idempotency_key: z.string().min(1).describe("Unique key to prevent duplicate submissions"),
+      envelope: hnpOfferEnvelopeSchema,
     },
-    async ({ session_id, price_minor, idempotency_key }) => {
+    async ({ envelope }) => {
       try {
-        const session = await getSessionById(db, session_id);
+        const session = await getSessionById(db, envelope.session_id);
         if (!session) {
           return {
             isError: true,
@@ -915,42 +916,32 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
           };
         }
 
-        const result = await getExecutor()(
-          db,
-          {
-            sessionId: session_id,
-            offerPriceMinor: price_minor,
-            senderRole: "BUYER",
-            idempotencyKey: idempotency_key,
-            roundData: {},
-            nowMs: Date.now(),
-          },
-          eventDispatcher,
-        );
+        const result = await submitHnpOffer(db, envelope, { eventDispatcher });
+        if (!result.ok) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({ ...result.body, status: result.status }),
+              },
+            ],
+          };
+        }
 
         return {
           content: [
             {
               type: "text" as const,
               text: JSON.stringify({
+                protocol: "hnp",
                 round_id: result.roundId,
                 round_no: result.roundNo,
                 decision: result.decision,
-                counter_price: result.outgoingPrice,
-                utility: result.utility,
+                counter_price: result.counterPrice,
                 session_status: result.sessionStatus,
                 idempotent: result.idempotent,
-                escalation: result.escalation
-                  ? { type: result.escalation.type, context: result.escalation.context }
-                  : undefined,
-                message:
-                  result.decision === "ACCEPT"
-                    ? "Offer accepted! The deal is done."
-                    : result.decision === "REJECT"
-                      ? "Offer rejected. The negotiation has ended."
-                      : result.decision === "NEAR_DEAL"
-                        ? `Close to a deal! Counter-offer: ${result.outgoingPrice} cents. Consider accepting.`
-                        : `Counter-offer: ${result.outgoingPrice} cents. Submit a new offer to continue negotiating.`,
+                proposal_hash: result.proposalHash,
               }),
             },
           ],
@@ -964,6 +955,109 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
               type: "text" as const,
               text: JSON.stringify({
                 error: message.startsWith("SESSION_") ? message : "ROUND_EXECUTION_FAILED",
+                detail: message,
+              }),
+            },
+          ],
+        };
+      }
+    },
+  );
+
+  // ─── hnp_accept ──────────────────────────────────────────
+  server.tool(
+    "hnp_accept",
+    "Accept a bound HNP proposal with an ACCEPT envelope. Same ingress and agreement path as REST PATCH /negotiations/sessions/:id/accept.",
+    {
+      envelope: hnpAcceptEnvelopeSchema,
+    },
+    async ({ envelope }) => {
+      try {
+        const session = await getSessionById(db, envelope.session_id);
+        if (!session) {
+          return {
+            isError: true,
+            content: [
+              { type: "text" as const, text: JSON.stringify({ error: "SESSION_NOT_FOUND" }) },
+            ],
+          };
+        }
+
+        const accepted = normalizeAcceptRequest({ hnp: envelope }, envelope.session_id, Date.now());
+        if (!accepted.ok) {
+          return {
+            isError: true,
+            content: [{ type: "text" as const, text: JSON.stringify(accepted.body) }],
+          };
+        }
+
+        const applied = await applyHnpAccept(db, session, accepted);
+        if (!applied.ok) {
+          return {
+            isError: true,
+            content: [{ type: "text" as const, text: JSON.stringify(applied.body) }],
+          };
+        }
+
+        if (applied.updated && eventDispatcher) {
+          await eventDispatcher
+            .dispatch({
+              domain: "negotiation",
+              type: "negotiation.agreed",
+              payload: {
+                session_id: session.id,
+                agreed_price_minor: getAcceptedEventPriceMinor({
+                  agreement: applied.agreement,
+                  session,
+                }),
+                buyer_id: session.buyerId,
+                seller_id: session.sellerId,
+              },
+              idempotency_key: `neg_agreed_${session.id}`,
+              timestamp: Date.now(),
+            })
+            .catch((err) => {
+              console.error("[mcp] negotiation.agreed error:", err);
+            });
+
+          if (session.groupId) {
+            await executeGroupTerminal(
+              db,
+              session.groupId,
+              session.id,
+              "ACCEPTED",
+              eventDispatcher,
+            ).catch((err) => {
+              console.error("[mcp] group terminal error:", err);
+            });
+          }
+        }
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                protocol: "hnp",
+                updated: applied.updated,
+                idempotent: applied.idempotent ?? false,
+                session_status: applied.session_status,
+                agreement: applied.agreement,
+                transaction_handoff: applied.transaction_handoff,
+                transaction_handoff_summary: applied.transaction_handoff_summary,
+              }),
+            },
+          ],
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                error: "HNP_ACCEPT_FAILED",
                 detail: message,
               }),
             },

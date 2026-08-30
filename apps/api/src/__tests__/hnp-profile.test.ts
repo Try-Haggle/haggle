@@ -43,6 +43,12 @@ describe("HNP discovery profile", () => {
       versions: ["1.0.0"],
       required: true,
     });
+    expect(body.hnp.capabilities["hnp.core.compact_state"]).toMatchObject({
+      versions: ["1.0.0"],
+      required: false,
+    });
+    expect(body.hnp.attachments.ucp.owns_discovery).toBe(false);
+    expect(body.hnp.attachments.a2a.mime_type).toBe("application/hnp+json");
     expect(body.hnp.capabilities["ai.haggle.policy.attempt-control"].versions).toEqual(["1.0.0"]);
     expect(body.hnp.issue_namespaces).toEqual(["hnp.issue", "com.haggle.issue"]);
     expect(body.hnp.signature_algorithms).toEqual([]);

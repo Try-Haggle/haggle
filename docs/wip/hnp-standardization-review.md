@@ -138,7 +138,7 @@ HNP is broad and neutral enough as a core envelope, but not yet complete enough 
 
 8. Keep engine policy outside HNP core
 
-   Strategy, memory, scoring thresholds, buddy tone, HIL, and marketplace policy remain application/engine concerns. HNP should carry negotiated terms and protocol metadata, not Haggle's private reasoning state.
+   Strategy, scoring thresholds, buddy tone, HIL, and marketplace policy remain application/engine concerns. Public compact state (`hnp.compact.v1`) is protocol: speech acts, prices, and issue slots only. Private floors/targets stay in the engine. See `docs/engine/hnp-compact-state.md`.
 
 9. Add listing evidence binding
 
@@ -165,3 +165,7 @@ HNP is broad and neutral enough as a core envelope, but not yet complete enough 
    Accepted issue safety: when an `ACCEPT` payload repeats `accepted_issues`, those issues must match the stored proposal issue snapshot if one exists. Example: accepting the hash for `USD 480 / 128GB` while repeating `USD 450 / 128GB` returns `INVALID_PROPOSAL_ISSUES` instead of producing an inconsistent agreement.
 
    Offer hash safety: when an `OFFER` payload omits `proposal_hash`, the API computes one before the engine persists the round. Example: `iPhone 15 / 128GB / USD 480 / escrow_authorized` becomes a stable `sha256:...` proposal hash, so a later accept can bind to those exact terms instead of relying only on a human-readable proposal id. If two agents send `escrow_authorized` and `tracked_shipping_required` in different orders, or one repeats a precondition, the hash remains the same as long as the actual terms are the same. If an agent sends a hash that was computed for different terms, the route returns `HNP_PROPOSAL_HASH_MISMATCH`.
+
+12. Keep discovery out of HNP; attach UCP/A2A
+
+    Status: started. Public spec is `docs/protocol/HNP.md`. UCP/A2A bindings map an accepted deal or envelope; they do not search or rank. MCP `hnp_submit_offer` / `hnp_accept` speak the envelope. `/.well-known/hnp` advertises `hnp.core.compact_state` and attachment points. Live UCP catalog/A2A host adapters are not in this slice.

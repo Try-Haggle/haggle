@@ -145,11 +145,11 @@ pnpm --filter @haggle/engine-session test
 
 ## 핵심 규칙 (Development Principles)
 
-1. **Protocol-First**: 모든 기능은 HNP 프로토콜 위에 구축
+1. **Protocol-First**: 모든 기능은 HNP 프로토콜 위에 구축. HNP는 **협상만** 표준화한다. 검색·랭킹·카탈로그는 UCP/A2A/마켓플레이스 영역이고, 우리는 그걸 소유하지 않는다. 지금은 자체 리스팅을 열고, 나중에는 다른 호스트가 리스팅만 넘기면 HNP에 붙을 수 있어야 한다. 공개 스펙: [docs/protocol/HNP.md](./docs/protocol/HNP.md)
 2. **Cost-Aware**: Codec 압축 + DeepSeek V4 Pro를 사용하고 토큰·비용 telemetry로 LLM 비용을 관리
 3. **Stateless Engine**: 수평 확장 가능한 설계
 4. **Event-Driven**: 모듈 간 직접 의존 금지, 이벤트로 통신
-5. **Open Protocol, Closed Engine**: HNP 스펙은 공개, 엔진 로직은 비공개
+5. **Open Protocol, Closed Engine**: HNP 스펙은 공개, 엔진 로직은 비공개. 공개하면 메시지 모양은 복제된다. 해자는 엔진 품질, 유동성, 신뢰, 체결이다.
 6. **MVP-First**: main 브랜치는 MVP 전용. 협상 + 결제 + 배송 + 분쟁 + 스마트 컨트랙트 포함
 7. **Non-Custodial**: Haggle 은 사용자 자금에 대한 키를 절대 보유하지 않는다
 8. **Governance-Safe**: 컨트랙트 업그레이드 권한과 자금 접근 권한은 완전히 분리. Timelock(48h+) + Multisig 필수
@@ -302,10 +302,11 @@ MVP 결제, 배송/fulfillment, 분쟁 작업은 아래 문서를 먼저 읽고 
 | [contracts/](./docs/contracts/00_INDEX.md) | 스마트 컨트랙트 보안 감사 |
 | [strategy/](./docs/strategy/00_INDEX.md) | 사업 전략, 해자, 파트너 리서치 |
 | [features/](./docs/features/00_INDEX.md) | 기능 설계 (태그, 분쟁, 게이미피케이션) |
+| [protocol/](./docs/protocol/HNP.md) | HNP 공개 스펙 (협상 전용) |
 
 **문서 관리 규칙:** 구현 완료 → `docs/archive/` 이동. 임시 작업 → `docs/wip/` (완료 시 삭제).
 
 ---
 
-*Last Updated: 2026-08-12*
+*Last Updated: 2026-08-24*
 *Version: 2.4*

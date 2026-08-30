@@ -31,6 +31,8 @@ export type HnpIngressResult =
 export interface HnpIngressInput {
   envelope?: HnpSignedEnvelope;
   protocol?: HnpProtocolIdentity;
+  /** Override. Host auto-play mints unsigned envelopes after our own run-token gate. */
+  requireSignature?: boolean;
 }
 
 /**
@@ -46,22 +48,26 @@ export async function validateHnpIngress(
   input: HnpIngressInput,
 ): Promise<HnpIngressResult> {
   if (input.envelope) {
-    const signatureGuard = validateHnpDetachedSignature(input.envelope);
-    if (!signatureGuard.ok) {
-      return {
-        ok: false,
-        status: signatureGuard.status,
-        body: {
-          error: signatureGuard.error,
-          retryable: false,
-          related_message_id: signatureGuard.relatedMessageId,
-        },
-      };
+    const requireSignature = input.requireSignature ?? isHnpSignatureRequired();
+    const hasSignature = typeof input.envelope.detached_signature === "string";
+    if (requireSignature || hasSignature) {
+      const signatureGuard = validateHnpDetachedSignature(input.envelope);
+      if (!signatureGuard.ok) {
+        return {
+          ok: false,
+          status: signatureGuard.status,
+          body: {
+            error: signatureGuard.error,
+            retryable: false,
+            related_message_id: signatureGuard.relatedMessageId,
+          },
+        };
+      }
     }
 
     const conformance = validateHnpEnvelopeConformance(input.envelope as Partial<HnpEnvelope>, {
       supportedIssueNamespaces: supportedIssueNamespaces(),
-      requireSignature: isHnpSignatureRequired(),
+      requireSignature,
     });
     if (!conformance.ok) {
       return {

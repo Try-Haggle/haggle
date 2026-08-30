@@ -30,6 +30,7 @@ import { getSessionById, updateSessionState } from "../../services/negotiation-s
 import { loadUserMemoryBrief } from "../../services/user-memory-card.service.js";
 import { DeepSeekAdapter } from "../adapters/deepseek-adapter.js";
 import { DEFAULT_BUDDY_DNA } from "../config.js";
+import { buildConversationContext } from "../memory/conversation-memory.js";
 import {
   type DbRoundForMemory,
   inferPhaseFromStatus,
@@ -59,7 +60,6 @@ import { registerSkill, resolveItemTags, SkillStack } from "../skills/skill-stac
 import { understand, understandFromStructured } from "../stages/understand.js";
 import type {
   ConversationContext,
-  ConversationTurn,
   CoreMemory,
   EngineDecision,
   NegotiationPhase,
@@ -506,7 +506,7 @@ export async function executeStagedNegotiationRound(
     skillStack: ctx.skillStack,
     config: ctx.stageConfig,
     memory: ctx.updatedMemory,
-    facts: ctx.facts.slice(-5),
+    facts: ctx.facts,
     opponent: ctx.opponentPattern ?? {
       aggression: 0.5,
       concession_rate: 0,
@@ -1028,62 +1028,6 @@ function extractNum(obj: Record<string, unknown>, key: string): number | null {
     return Number.isNaN(n) ? null : n;
   }
   return null;
-}
-
-/**
- * Build the conversation thread the LLM sees this round.
- *
- * - `opponent_message` is the message we are responding to right now (from
- *   `input.messageText` if the API caller supplied one, else a short price
- *   placeholder so the LLM still has *something* to react to).
- * - `recent_turns` is the last few persisted rounds rendered as buyer/seller
- *   chat turns. We use the column whose author actually generated the text
- *   (see the sender-semantics note in page.tsx: when a row has a generated
- *   `message`, the responder is the side OPPOSITE `sender_role`).
- */
-function buildConversationContext(
-  dbRounds: DbRound[],
-  incomingMessage: string | undefined,
-  incomingSenderRole: "BUYER" | "SELLER",
-  incomingPriceMinor: number,
-): ConversationContext {
-  const turns: ConversationTurn[] = [];
-  for (const r of dbRounds) {
-    const raw = r as unknown as Record<string, unknown>;
-    const text = typeof raw.message === "string" ? raw.message.trim() : "";
-    if (!text) continue;
-    // Generated message → speaker is the responder, i.e. opposite of sender_role.
-    const speaker: "BUYER" | "SELLER" = r.senderRole === "BUYER" ? "SELLER" : "BUYER";
-    const priceStr = r.counterPriceMinor ?? r.priceminor;
-    const price = priceStr != null ? Number(priceStr) : undefined;
-    turns.push({
-      round: r.roundNo,
-      sender: speaker,
-      text,
-      price_minor: Number.isFinite(price) ? price : undefined,
-    });
-  }
-
-  // Cap to the last 6 turns so the prompt stays compact.
-  const recent_turns = turns.slice(-6);
-
-  const opponent_message =
-    typeof incomingMessage === "string" && incomingMessage.trim().length > 0
-      ? incomingMessage.trim()
-      : undefined;
-
-  // Always append the incoming offer as the most recent turn so the LLM sees
-  // exactly what it's responding to. If no text, leave it implicit via memory.
-  if (opponent_message) {
-    recent_turns.push({
-      round: (dbRounds[dbRounds.length - 1]?.roundNo ?? 0) + 1,
-      sender: incomingSenderRole,
-      text: opponent_message,
-      price_minor: incomingPriceMinor,
-    });
-  }
-
-  return { opponent_message, recent_turns };
 }
 
 function extractPreviousMoves(dbRounds: DbRound[]): EngineDecision[] {

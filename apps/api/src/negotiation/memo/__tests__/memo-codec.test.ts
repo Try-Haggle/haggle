@@ -92,6 +92,17 @@ describe("memo-codec", () => {
       expect(result).toContain("R2:");
     });
 
+    it("keeps every RM round instead of the last five", () => {
+      const manyFacts: RoundFact[] = Array.from({ length: 8 }, (_, i) => ({
+        ...sampleFacts[0]!,
+        round: i + 1,
+        buyer_offer: 80000 + i * 100,
+      }));
+      const result = encodeCompressed(makeMemory(), manyFacts);
+      expect(result).toContain("R1:");
+      expect(result).toContain("R8:");
+    });
+
     it("includes private layer with SS: and OM:", () => {
       const result = encodeCompressed(makeMemory());
       expect(result).toContain("---");

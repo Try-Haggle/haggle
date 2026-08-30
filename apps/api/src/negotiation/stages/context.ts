@@ -51,13 +51,13 @@ export function assembleStageContext(
     skill,
     adapter,
     memory,
-    recentFacts: facts.slice(-5),
+    recentFacts: facts,
     coaching: memory.coaching,
     signals: signalStrings,
   });
 
-  // 5. Encode memo snapshot
-  const memoSnapshot = encodeMemo(memory, memoEncoding, facts.slice(-5));
+  // 5. Encode memo snapshot — every round, not a 5-round window
+  const memoSnapshot = encodeMemo(memory, memoEncoding, facts);
 
   return {
     layers,

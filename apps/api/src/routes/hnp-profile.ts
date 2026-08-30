@@ -1,4 +1,4 @@
-import { createHnpProfile } from "@haggle/engine-session";
+import { A2A_HNP_SKILL, createHnpProfile, UCP_HNP_EXTENSION_ID } from "@haggle/engine-session";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { defaultAttemptControlPolicy } from "../services/attempt-control.service.js";
 
@@ -55,6 +55,18 @@ export function registerHnpProfileRoutes(app: FastifyInstance) {
             cooldown_seconds: policy.cooldownSeconds,
             max_rounds_per_session: policy.maxRoundsPerSession,
             marketplace_daily_attempts: policy.marketplaceDailyAttempts,
+          },
+        },
+        attachments: {
+          ucp: {
+            extension_id: UCP_HNP_EXTENSION_ID,
+            owns_discovery: false,
+            role: "checkout_handoff_after_accept",
+          },
+          a2a: {
+            skill: A2A_HNP_SKILL,
+            mime_type: "application/hnp+json",
+            role: "carry_hnp_envelope",
           },
         },
       },
