@@ -163,13 +163,6 @@ export function ChatPanel({ conversation, currentUserId, onBack, onRead }: ChatP
 
           <div className="min-w-0 flex-1">
             <div className="truncate font-semibold text-ink text-sm">{otherName}</div>
-            {conversation.subject && (
-              <div className="truncate text-[0.6875rem] text-ink-muted">
-                {conversation.subject.type === "negotiation_session"
-                  ? "From a negotiation"
-                  : "From an order"}
-              </div>
-            )}
           </div>
 
           {conversation.subject?.type === "negotiation_session" && !detailsOpen && (
