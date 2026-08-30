@@ -20,7 +20,7 @@ const getConversationForUser = vi.fn();
 const listMessages = vi.fn();
 const sendMessage = vi.fn();
 const markConversationRead = vi.fn();
-const getTotalUnreadCount = vi.fn();
+const getUnreadSummary = vi.fn();
 const resolveSubjectParticipants = vi.fn();
 const findOrCreateConversation = vi.fn();
 
@@ -33,7 +33,7 @@ vi.mock("../services/messaging.service.js", async (importOriginal) => {
     listMessages: (...args: unknown[]) => listMessages(...args),
     sendMessage: (...args: unknown[]) => sendMessage(...args),
     markConversationRead: (...args: unknown[]) => markConversationRead(...args),
-    getTotalUnreadCount: (...args: unknown[]) => getTotalUnreadCount(...args),
+    getUnreadSummary: (...args: unknown[]) => getUnreadSummary(...args),
     resolveSubjectParticipants: (...args: unknown[]) => resolveSubjectParticipants(...args),
     findOrCreateConversation: (...args: unknown[]) => findOrCreateConversation(...args),
   };
@@ -68,7 +68,7 @@ beforeEach(() => {
   getConversationForUser.mockResolvedValue(membership);
   listConversations.mockResolvedValue({ items: [], nextCursor: null });
   listMessages.mockResolvedValue({ messages: [], nextCursor: null });
-  getTotalUnreadCount.mockResolvedValue(0);
+  getUnreadSummary.mockResolvedValue({ total: 0, buying: 0, selling: 0 });
 });
 
 describe("auth", () => {
@@ -102,7 +102,50 @@ describe("GET /api/conversations", () => {
         id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       },
       limit: 50,
+      filter: "all",
     });
+  });
+
+  it("narrows to one side when asked", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/conversations?filter=selling",
+      headers: AUTH_HEADERS,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(listConversations).toHaveBeenCalledWith(
+      expect.anything(),
+      TEST_USER_ID,
+      expect.objectContaining({ filter: "selling" }),
+    );
+  });
+
+  it("shows everything when the filter is unrecognised — narrowing is never a guess", async () => {
+    await app.inject({
+      method: "GET",
+      url: "/api/conversations?filter=sideways",
+      headers: AUTH_HEADERS,
+    });
+
+    expect(listConversations).toHaveBeenCalledWith(
+      expect.anything(),
+      TEST_USER_ID,
+      expect.objectContaining({ filter: "all" }),
+    );
+  });
+
+  it("reports unread whole and by side, so a hidden side can still announce itself", async () => {
+    getUnreadSummary.mockResolvedValue({ total: 5, buying: 2, selling: 3 });
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/conversations/unread-count",
+      headers: AUTH_HEADERS,
+    });
+
+    // `count` is the whole number: the nav badge must not follow the page filter.
+    expect(res.json()).toEqual({ count: 5, total: 5, buying: 2, selling: 3 });
   });
 
   it("ignores a malformed cursor instead of failing the request", async () => {

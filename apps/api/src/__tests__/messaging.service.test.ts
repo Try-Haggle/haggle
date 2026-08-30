@@ -10,7 +10,9 @@ import {
   clampLimit,
   decodeCursor,
   encodeCursor,
+  getConversationOutcome,
   getUserDisplays,
+  parseConversationFilter,
   resolveSubjectParticipants,
   truncatePreview,
 } from "../services/messaging.service.js";
@@ -86,6 +88,21 @@ describe("clampLimit", () => {
     expect(clampLimit("10")).toBe(10);
     expect(clampLimit("9999")).toBe(50);
     expect(clampLimit(undefined, 50)).toBe(50);
+  });
+});
+
+describe("parseConversationFilter", () => {
+  it("accepts the three sides", () => {
+    expect(parseConversationFilter("all")).toBe("all");
+    expect(parseConversationFilter("buying")).toBe("buying");
+    expect(parseConversationFilter("selling")).toBe("selling");
+  });
+
+  it("falls back to showing everything", () => {
+    // Narrowing is a choice the user makes; a bad value must not hide messages.
+    expect(parseConversationFilter(undefined)).toBe("all");
+    expect(parseConversationFilter("")).toBe("all");
+    expect(parseConversationFilter("sideways")).toBe("all");
   });
 });
 
@@ -180,5 +197,69 @@ describe("getUserDisplays SQL", () => {
 
     await expect(getUserDisplays(db, ["not-a-uuid", ""])).resolves.toEqual(new Map());
     expect(execute).not.toHaveBeenCalled();
+  });
+});
+
+describe("getConversationOutcome", () => {
+  function sessionRow(overrides: Record<string, unknown> = {}) {
+    return {
+      status: "ACCEPTED",
+      current_round: 6,
+      last_offer_price_minor: "890000",
+      updated_at: "2026-08-29T12:00:00.000Z",
+      ...overrides,
+    };
+  }
+
+  const subject = { type: "negotiation_session" as const, id: SUBJECT_ID };
+
+  it("reports the settled price, round count and when it ended", async () => {
+    const db = dbReturning([sessionRow()]) as never;
+    await expect(getConversationOutcome(db, subject)).resolves.toEqual({
+      status: "DEAL",
+      priceMinor: 890000,
+      rounds: 6,
+      settledAt: "2026-08-29T12:00:00.000Z",
+    });
+  });
+
+  it.each([
+    ["ACCEPTED", "DEAL"],
+    ["NEAR_DEAL", "NEAR_DEAL"],
+    ["STALLED", "NEAR_DEAL"],
+    ["REJECTED", "NO_DEAL"],
+    ["EXPIRED", "EXPIRED"],
+    ["SUPERSEDED", "EXPIRED"],
+  ])("collapses session status %s to %s", async (status, expected) => {
+    const db = dbReturning([sessionRow({ status })]) as never;
+    const outcome = await getConversationOutcome(db, subject);
+    expect(outcome?.status).toBe(expected);
+  });
+
+  it.each([
+    "CREATED",
+    "ACTIVE",
+    "WAITING",
+    "NEGOTIATING_VERSION",
+  ])("has no outcome while the negotiation is still running (%s)", async (status) => {
+    const db = dbReturning([sessionRow({ status })]) as never;
+    await expect(getConversationOutcome(db, subject)).resolves.toBeNull();
+  });
+
+  it("has no outcome for a subject that is not a negotiation", async () => {
+    const db = dbReturning([sessionRow()]) as never;
+    await expect(getConversationOutcome(db, { type: "order", id: SUBJECT_ID })).resolves.toBeNull();
+    await expect(getConversationOutcome(db, null)).resolves.toBeNull();
+  });
+
+  it("survives a session that never settled on a price", async () => {
+    const db = dbReturning([sessionRow({ last_offer_price_minor: null })]) as never;
+    const outcome = await getConversationOutcome(db, subject);
+    expect(outcome).toMatchObject({ status: "DEAL", priceMinor: null });
+  });
+
+  it("returns null when the session is gone", async () => {
+    const db = dbReturning([]) as never;
+    await expect(getConversationOutcome(db, subject)).resolves.toBeNull();
   });
 });

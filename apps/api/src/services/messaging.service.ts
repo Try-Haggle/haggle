@@ -30,9 +30,29 @@ export interface UserDisplay {
   avatarUrl: string | null;
 }
 
+/**
+ * Which side of the subject this viewer is on.
+ *
+ * Derived from the subject rather than stored on the membership: the seller of
+ * a negotiation is a fact that already exists, and copying it here would be one
+ * more thing that can drift.
+ */
+export type ConversationSide = "buying" | "selling";
+
+export const CONVERSATION_FILTERS = ["all", "buying", "selling"] as const;
+export type ConversationFilter = (typeof CONVERSATION_FILTERS)[number];
+
+export function parseConversationFilter(raw: string | undefined): ConversationFilter {
+  return CONVERSATION_FILTERS.includes(raw as ConversationFilter)
+    ? (raw as ConversationFilter)
+    : "all";
+}
+
 export interface ConversationListItem {
   id: string;
   subject: ConversationSubject | null;
+  /** Null when the subject is gone or has no sides. */
+  side: ConversationSide | null;
   otherMember: UserDisplay | null;
   lastMessage: { id: string; body: string; senderId: string; createdAt: string } | null;
   unreadCount: number;
@@ -42,6 +62,8 @@ export interface ConversationListItem {
 export interface ConversationDetail {
   id: string;
   subject: ConversationSubject | null;
+  /** Which side of the subject the viewer is on. Null when the subject is gone. */
+  side: ConversationSide | null;
   otherMember: UserDisplay | null;
   unreadCount: number;
   lastReadAt: string | null;
@@ -296,6 +318,26 @@ export async function findOrCreateConversation(
 
 // ─── Reads ────────────────────────────────────────────────────────────────────
 
+/**
+ * The subject's two sides, joined in so a conversation can be filtered by the
+ * role the viewer plays in it. Both joins are primary-key lookups and only one
+ * of them ever matches, so the cost is a row fetch per conversation on the page.
+ */
+const SUBJECT_JOINS = sql`
+  LEFT JOIN negotiation_sessions ns
+    ON c.subject_type = 'negotiation_session' AND ns.id = c.subject_id
+  LEFT JOIN commerce_orders co
+    ON c.subject_type = 'order' AND co.id = c.subject_id
+`;
+
+function SIDE_EXPRESSION(userId: string) {
+  return sql`CASE
+    WHEN COALESCE(ns.seller_id, co.seller_id) = ${userId}::uuid THEN 'selling'
+    WHEN COALESCE(ns.buyer_id, co.buyer_id) = ${userId}::uuid THEN 'buying'
+    ELSE NULL
+  END`;
+}
+
 interface ConversationRow {
   id: string;
   subject_type: ConversationSubjectType | null;
@@ -308,15 +350,17 @@ interface ConversationRow {
   last_message_body: string | null;
   last_message_sender_id: string | null;
   last_message_created_at: Date | string | null;
+  side: ConversationSide | null;
 }
 
 export async function listConversations(
   db: Database,
   userId: string,
-  options: { cursor?: Cursor | null; limit?: number } = {},
+  options: { cursor?: Cursor | null; limit?: number; filter?: ConversationFilter } = {},
 ): Promise<{ items: ConversationListItem[]; nextCursor: string | null }> {
   const limit = options.limit ?? DEFAULT_PAGE_SIZE;
   const cursor = options.cursor ?? null;
+  const filter = options.filter ?? "all";
 
   const rows = rowsOf<ConversationRow>(
     await db.execute(sql`
@@ -330,9 +374,11 @@ export async function listConversations(
              lm.id AS last_message_id,
              lm.body AS last_message_body,
              lm.sender_id AS last_message_sender_id,
-             lm.created_at AS last_message_created_at
+             lm.created_at AS last_message_created_at,
+             ${SIDE_EXPRESSION(userId)} AS side
       FROM conversation_members m
       JOIN conversations c ON c.id = m.conversation_id
+      ${SUBJECT_JOINS}
       LEFT JOIN LATERAL (
         SELECT om.user_id
         FROM conversation_members om
@@ -342,6 +388,13 @@ export async function listConversations(
       ) other ON true
       LEFT JOIN messages lm ON lm.id = c.last_message_id
       WHERE m.user_id = ${userId}::uuid
+        ${
+          filter === "all"
+            ? sql``
+            : // Filtered in SQL, before the page is cut. The original filtered
+              // in memory after slicing by limit, which silently shrank pages.
+              sql`AND ${SIDE_EXPRESSION(userId)} = ${filter === "selling" ? "selling" : "buying"}`
+        }
         ${
           cursor
             ? sql`AND (m.last_message_at, m.conversation_id) < (${cursor.createdAt}::timestamptz, ${cursor.id}::uuid)`
@@ -362,6 +415,7 @@ export async function listConversations(
     id: row.id,
     subject:
       row.subject_type && row.subject_id ? { type: row.subject_type, id: row.subject_id } : null,
+    side: row.side ?? null,
     otherMember: row.other_user_id ? (displays.get(row.other_user_id) ?? null) : null,
     lastMessage:
       row.last_message_id && row.last_message_body !== null && row.last_message_created_at
@@ -394,6 +448,7 @@ export async function getConversationForUser(
     id: string;
     subject_type: ConversationSubjectType | null;
     subject_id: string | null;
+    side: ConversationSide | null;
     unread_count: number;
     last_read_at: Date | string | null;
     other_user_id: string | null;
@@ -401,9 +456,11 @@ export async function getConversationForUser(
   }>(
     await db.execute(sql`
       SELECT c.id, c.subject_type, c.subject_id, m.unread_count, m.last_read_at,
+             ${SIDE_EXPRESSION(userId)} AS side,
              other.user_id AS other_user_id, other.last_read_at AS other_last_read_at
       FROM conversation_members m
       JOIN conversations c ON c.id = m.conversation_id
+      ${SUBJECT_JOINS}
       LEFT JOIN LATERAL (
         SELECT om.user_id, om.last_read_at FROM conversation_members om
         WHERE om.conversation_id = c.id AND om.user_id <> m.user_id
@@ -423,6 +480,7 @@ export async function getConversationForUser(
     id: row.id,
     subject:
       row.subject_type && row.subject_id ? { type: row.subject_type, id: row.subject_id } : null,
+    side: row.side ?? null,
     otherMember: row.other_user_id ? (displays?.get(row.other_user_id) ?? null) : null,
     unreadCount: Number(row.unread_count) || 0,
     lastReadAt: row.last_read_at ? iso(row.last_read_at) : null,
@@ -480,15 +538,43 @@ export async function listMessages(
   return { messages, nextCursor };
 }
 
-export async function getTotalUnreadCount(db: Database, userId: string): Promise<number> {
-  const rows = rowsOf<{ total: string | number }>(
+export interface UnreadSummary {
+  /** Everything, whatever side it is on. */
+  total: number;
+  buying: number;
+  selling: number;
+}
+
+/**
+ * Unread, whole and by side.
+ *
+ * The total is what the navigation shows: a filter defaulting to one side must
+ * never be able to hide the fact that something is waiting. The per-side counts
+ * let the filter itself say which side that is.
+ */
+export async function getUnreadSummary(db: Database, userId: string): Promise<UnreadSummary> {
+  const rows = rowsOf<{
+    total: string | number;
+    buying: string | number;
+    selling: string | number;
+  }>(
     await db.execute(sql`
-      SELECT COALESCE(SUM(unread_count), 0) AS total
-      FROM conversation_members
-      WHERE user_id = ${userId}::uuid
+      SELECT
+        COALESCE(SUM(m.unread_count), 0) AS total,
+        COALESCE(SUM(m.unread_count) FILTER (WHERE ${SIDE_EXPRESSION(userId)} = 'buying'), 0) AS buying,
+        COALESCE(SUM(m.unread_count) FILTER (WHERE ${SIDE_EXPRESSION(userId)} = 'selling'), 0) AS selling
+      FROM conversation_members m
+      JOIN conversations c ON c.id = m.conversation_id
+      ${SUBJECT_JOINS}
+      WHERE m.user_id = ${userId}::uuid
     `),
   );
-  return Number(rows[0]?.total ?? 0);
+  const row = rows[0];
+  return {
+    total: Number(row?.total ?? 0),
+    buying: Number(row?.buying ?? 0),
+    selling: Number(row?.selling ?? 0),
+  };
 }
 
 // ─── Writes ───────────────────────────────────────────────────────────────────
@@ -631,4 +717,79 @@ export async function markConversationRead(
   const row = rows[0];
   if (!row) return null;
   return { readAt: iso(row.last_read_at), unreadCount: Number(row.unread_count) || 0 };
+}
+
+// ─── Negotiation outcome ──────────────────────────────────────────────────────
+
+/**
+ * The session's own status vocabulary is eleven values wide and most of it is
+ * mid-flight state. What a reader of the thread needs is the result, so the
+ * statuses that end a negotiation are collapsed to four and everything else
+ * yields no outcome at all.
+ */
+export type ConversationOutcomeStatus = "DEAL" | "NEAR_DEAL" | "NO_DEAL" | "EXPIRED";
+
+const OUTCOME_BY_SESSION_STATUS: Record<string, ConversationOutcomeStatus> = {
+  ACCEPTED: "DEAL",
+  NEAR_DEAL: "NEAR_DEAL",
+  STALLED: "NEAR_DEAL",
+  REJECTED: "NO_DEAL",
+  EXPIRED: "EXPIRED",
+  SUPERSEDED: "EXPIRED",
+};
+
+export interface ConversationOutcome {
+  status: ConversationOutcomeStatus;
+  /** Settled price on a deal, the last price on the table otherwise. Minor units. */
+  priceMinor: number | null;
+  rounds: number;
+  /** When the negotiation stopped moving. */
+  settledAt: string | null;
+}
+
+function toMinor(value: string | number | null): number | null {
+  if (value === null || value === undefined) return null;
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? Math.round(parsed) : null;
+}
+
+/**
+ * The negotiation result behind a conversation, or null when there isn't one:
+ * an unsupported subject, or a session that is still running.
+ *
+ * Read on the conversation-detail endpoint only. Membership is checked by the
+ * caller, which is why this takes a subject rather than a conversation.
+ */
+export async function getConversationOutcome(
+  db: Database,
+  subject: ConversationSubject | null,
+): Promise<ConversationOutcome | null> {
+  if (subject?.type !== "negotiation_session") return null;
+
+  const rows = rowsOf<{
+    status: string;
+    current_round: number;
+    last_offer_price_minor: string | number | null;
+    updated_at: Date | string | null;
+  }>(
+    await db.execute(sql`
+      SELECT ns.status, ns.current_round, ns.last_offer_price_minor, ns.updated_at
+      FROM negotiation_sessions ns
+      WHERE ns.id = ${subject.id}::uuid
+      LIMIT 1
+    `),
+  );
+
+  const row = rows[0];
+  if (!row) return null;
+
+  const status = OUTCOME_BY_SESSION_STATUS[row.status];
+  if (!status) return null;
+
+  return {
+    status,
+    priceMinor: toMinor(row.last_offer_price_minor),
+    rounds: Number(row.current_round) || 0,
+    settledAt: row.updated_at ? iso(row.updated_at) : null,
+  };
 }
