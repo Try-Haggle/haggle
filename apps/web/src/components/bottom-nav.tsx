@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useNotificationContext } from "@/app/(app)/_components/notification-provider";
 import { NavTab } from "@/components/ui";
@@ -205,6 +205,7 @@ const BUY_TABS = [
 
 export function BottomNav() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { unreadCount } = useNotificationContext();
 
   // Derive mode from path
@@ -227,6 +228,13 @@ export function BottomNav() {
   const tabs = mode === "buying" ? BUY_TABS : SELL_TABS;
 
   if (pathname.startsWith("/sell/listings/new")) {
+    return null;
+  }
+
+  // An open conversation is a full-screen surface on a phone: the composer sits
+  // where this bar would be, and a fixed bar over it hides the very control the
+  // screen exists for.
+  if (pathname === "/messages" && searchParams.get("c")) {
     return null;
   }
 

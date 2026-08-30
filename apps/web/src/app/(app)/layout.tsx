@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import { BottomNav } from "@/components/bottom-nav";
 import { Nav } from "@/components/nav";
 import { createClient } from "@/lib/supabase/server";
@@ -31,7 +32,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <NotificationProvider>
         <Nav userEmail={user.email ?? ""} userName={userName} userAvatarUrl={userAvatarUrl} />
         <div className="pb-16 md:pt-16 md:pb-0">{children}</div>
-        <BottomNav />
+        {/* BottomNav reads the query string to know when a conversation is
+            open, which Next requires a boundary for. */}
+        <Suspense fallback={null}>
+          <BottomNav />
+        </Suspense>
       </NotificationProvider>
     </UserEventsProvider>
   );

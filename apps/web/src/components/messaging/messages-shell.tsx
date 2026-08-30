@@ -124,8 +124,21 @@ export function MessagesShell({ currentUserId }: MessagesShellProps) {
   });
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-0 py-0 md:px-6 md:py-6">
-      <div className="flex h-[100dvh] overflow-hidden border-line bg-surface md:h-[calc(100dvh-8rem)] md:rounded-2xl md:border md:shadow-sm">
+    <div
+      className={cn(
+        "mx-auto w-full max-w-7xl md:px-6 md:py-6",
+        // The app layout reserves 4rem at the bottom for the nav bar. With a
+        // thread open that bar is gone, so the reservation has to go too —
+        // otherwise the composer sits below the fold.
+        selectedId && "-mb-16 md:mb-0",
+      )}
+    >
+      <div
+        className={cn(
+          "flex overflow-hidden border-line bg-surface md:h-[calc(100dvh-8rem)] md:rounded-2xl md:border md:shadow-sm",
+          selectedId ? "h-[100dvh]" : "h-[calc(100dvh-4rem)]",
+        )}
+      >
         {/* Sidebar: full width on mobile, fixed rail on desktop. */}
         <aside
           className={cn(
