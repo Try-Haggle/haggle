@@ -1,4 +1,11 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+  timingSafeEqual,
+} from "node:crypto";
+import { isProductionRuntime } from "../config/runtime.js";
 
 const CONTEXT_KEY = "auto_play_context";
 const TERMINAL_STATUSES = new Set([
@@ -11,7 +18,7 @@ const TERMINAL_STATUSES = new Set([
 ]);
 
 export interface NegotiationAutoPlayContext {
-  version: 1;
+  version: 1 | 2;
   runTokenHash: string;
   buyerTargetMinor: number;
   maxRounds: number;
@@ -47,7 +54,10 @@ export function attachNegotiationAutoPlayContext(
   snapshot: Record<string, unknown>,
   context: NegotiationAutoPlayContext,
 ): Record<string, unknown> {
-  return { ...snapshot, [CONTEXT_KEY]: context };
+  return {
+    ...stripAutoPlayContext(snapshot),
+    [CONTEXT_KEY]: sealAutoPlayContext(context),
+  };
 }
 
 export function createNegotiationAutoPlaySetup(input: {
@@ -62,12 +72,12 @@ export function createNegotiationAutoPlaySetup(input: {
 } {
   const runToken = randomBytes(32).toString("base64url");
   const context: NegotiationAutoPlayContext = {
-    version: 1,
+    version: 2,
     runTokenHash: hashRunToken(runToken),
     buyerTargetMinor: input.buyerTargetMinor,
     maxRounds: input.maxRounds,
-    buyerSnapshot: input.buyerSnapshot,
-    sellerSnapshot: input.sellerSnapshot,
+    buyerSnapshot: stripAutoPlayContext(input.buyerSnapshot),
+    sellerSnapshot: stripAutoPlayContext(input.sellerSnapshot),
   };
 
   return {
@@ -84,14 +94,37 @@ export function getNegotiationAutoPlayContext(
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const context = value as Partial<NegotiationAutoPlayContext>;
   if (
-    context.version !== 1 ||
+    (context.version !== 1 && context.version !== 2) ||
     typeof context.runTokenHash !== "string" ||
     !/^[a-f0-9]{64}$/.test(context.runTokenHash) ||
     !Number.isInteger(context.buyerTargetMinor) ||
     (context.buyerTargetMinor ?? 0) <= 0 ||
     !Number.isInteger(context.maxRounds) ||
     (context.maxRounds ?? 0) <= 0 ||
-    (context.maxRounds ?? 0) > 32 ||
+    (context.maxRounds ?? 0) > 32
+  ) {
+    return null;
+  }
+
+  if (context.version === 2) {
+    const stored = value as Partial<SealedAutoPlayContext>;
+    if (
+      typeof stored.sealedBuyerSnapshot !== "string" ||
+      typeof stored.sealedSellerSnapshot !== "string"
+    ) {
+      return null;
+    }
+    return openSealedAutoPlayContext({
+      version: 2,
+      runTokenHash: context.runTokenHash,
+      buyerTargetMinor: context.buyerTargetMinor as number,
+      maxRounds: context.maxRounds as number,
+      sealedBuyerSnapshot: stored.sealedBuyerSnapshot,
+      sealedSellerSnapshot: stored.sealedSellerSnapshot,
+    });
+  }
+
+  if (
     !context.buyerSnapshot ||
     typeof context.buyerSnapshot !== "object" ||
     Array.isArray(context.buyerSnapshot) ||
@@ -164,4 +197,85 @@ export function planNegotiationAutoPlayRound(
 
 function hashRunToken(token: string): string {
   return createHash("sha256").update(token, "utf8").digest("hex");
+}
+
+interface SealedAutoPlayContext {
+  version: 2;
+  runTokenHash: string;
+  buyerTargetMinor: number;
+  maxRounds: number;
+  sealedBuyerSnapshot: string;
+  sealedSellerSnapshot: string;
+}
+
+function stripAutoPlayContext(snapshot: Record<string, unknown>): Record<string, unknown> {
+  const { [CONTEXT_KEY]: _dropped, ...rest } = snapshot;
+  return rest;
+}
+
+function sealAutoPlayContext(context: NegotiationAutoPlayContext): SealedAutoPlayContext {
+  return {
+    version: 2,
+    runTokenHash: context.runTokenHash,
+    buyerTargetMinor: context.buyerTargetMinor,
+    maxRounds: context.maxRounds,
+    sealedBuyerSnapshot: sealJson(stripAutoPlayContext(context.buyerSnapshot)),
+    sealedSellerSnapshot: sealJson(stripAutoPlayContext(context.sellerSnapshot)),
+  };
+}
+
+function openSealedAutoPlayContext(
+  stored: SealedAutoPlayContext,
+): NegotiationAutoPlayContext | null {
+  const buyerSnapshot = openJson(stored.sealedBuyerSnapshot);
+  const sellerSnapshot = openJson(stored.sealedSellerSnapshot);
+  if (!buyerSnapshot || !sellerSnapshot) return null;
+  return {
+    version: 2,
+    runTokenHash: stored.runTokenHash,
+    buyerTargetMinor: stored.buyerTargetMinor,
+    maxRounds: stored.maxRounds,
+    buyerSnapshot,
+    sellerSnapshot,
+  };
+}
+
+function sealKey(): Buffer {
+  const secret =
+    process.env.AUTO_PLAY_SEAL_SECRET?.trim() || process.env.SUPABASE_JWT_SECRET?.trim();
+  if (secret) {
+    return createHash("sha256").update(`haggle.autoplay.seal.v2:${secret}`).digest();
+  }
+  if (isProductionRuntime()) {
+    throw new Error("AUTO_PLAY_SEAL_SECRET is required in production");
+  }
+  return createHash("sha256").update("haggle.autoplay.seal.dev").digest();
+}
+
+function sealJson(value: Record<string, unknown>): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", sealKey(), iv);
+  const plaintext = Buffer.from(JSON.stringify(value), "utf8");
+  const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return Buffer.concat([iv, tag, encrypted]).toString("base64url");
+}
+
+function openJson(sealed: string): Record<string, unknown> | null {
+  if (typeof sealed !== "string" || sealed.length === 0) return null;
+  try {
+    const buf = Buffer.from(sealed, "base64url");
+    if (buf.length < 29) return null;
+    const iv = buf.subarray(0, 12);
+    const tag = buf.subarray(12, 28);
+    const encrypted = buf.subarray(28);
+    const decipher = createDecipheriv("aes-256-gcm", sealKey(), iv);
+    decipher.setAuthTag(tag);
+    const plaintext = Buffer.concat([decipher.update(encrypted), decipher.final()]);
+    const parsed: unknown = JSON.parse(plaintext.toString("utf8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
 }
