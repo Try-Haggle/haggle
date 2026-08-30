@@ -2,8 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { registerActionHandlers } from "../lib/action-handlers.js";
 import type { EventDispatcher } from "../lib/event-dispatcher.js";
 import { createEventDispatcher } from "../lib/event-dispatcher.js";
+import { openListingHold } from "../services/listing-claim.service.js";
 import { getSessionById } from "../services/negotiation-session.service.js";
 import { recordAgreedPrice } from "../services/price-observation-sink.js";
+
+vi.mock("../services/listing-claim.service.js", () => ({
+  openListingHold: vi.fn().mockResolvedValue({ status: "OPEN", lockKind: "OPEN_HOLD" }),
+}));
 
 vi.mock("../services/negotiation-session.service.js", () => ({
   getSessionById: vi.fn(),
@@ -18,6 +23,7 @@ vi.mock("../services/intent.service.js", () => ({
 }));
 
 const mockGetSessionById = vi.mocked(getSessionById);
+const mockOpenListingHold = vi.mocked(openListingHold);
 const mockRecordAgreedPrice = vi.mocked(recordAgreedPrice);
 
 function buildDispatcher() {
@@ -104,6 +110,16 @@ describe("registerActionHandlers", () => {
       }),
     );
     expect(db.onConflictDoNothing).toHaveBeenCalled();
+    expect(mockOpenListingHold).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        listingId,
+        sessionId,
+        buyerId,
+        sellerId,
+        agreedPriceMinor: 50_000,
+      }),
+    );
     expect(mockRecordAgreedPrice).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({

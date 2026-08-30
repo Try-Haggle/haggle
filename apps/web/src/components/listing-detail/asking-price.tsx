@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { ArrowLeftRight } from "lucide-react";
 import { formatPrice } from "@/lib/format";
+import { listingHoldHint } from "@/lib/listing-hold";
 import { DURATION, EASE } from "./motion";
 
 /**
@@ -27,6 +28,8 @@ interface AskingPriceProps {
   currency?: string;
   /** Owner viewing their own listing — "not what you pay" is not their read. */
   isOwner?: boolean;
+  /** Public hold badge state. Never includes the agreed amount. */
+  holdState?: "held" | "funding" | "sold" | null;
   className?: string;
 }
 
@@ -34,6 +37,7 @@ export function AskingPrice({
   amount,
   currency = "$",
   isOwner = false,
+  holdState,
   className,
 }: AskingPriceProps) {
   return (
@@ -71,9 +75,10 @@ export function AskingPrice({
         transition={{ duration: DURATION.base, delay: 0.45 }}
         className="mt-2 text-[12.5px] text-ink-secondary leading-relaxed"
       >
-        {isOwner
-          ? "Where your agent opens. Buyers negotiate down from here."
-          : "Where the seller starts, not what you pay. Your agent negotiates from here."}
+        {listingHoldHint(holdState) ??
+          (isOwner
+            ? "Where your agent opens. Buyers negotiate down from here."
+            : "Where the seller starts, not what you pay. Your agent negotiates from here.")}
       </motion.p>
     </div>
   );

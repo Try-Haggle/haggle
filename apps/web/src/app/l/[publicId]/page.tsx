@@ -16,6 +16,7 @@ interface ListingData {
   photoUrl: string | null;
   targetPrice: string | null;
   tags: string[] | null;
+  holdState?: "held" | "funding" | "sold" | null;
   sellerAgentPreset: string | null;
   sellingDeadline: string | null;
   sellerRequiredCriteria: Array<{ checkId: string; ask: string }> | null;

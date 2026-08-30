@@ -104,6 +104,11 @@ vi.mock("@haggle/db", () => ({
   MESSAGE_PREVIEW_MAX_LENGTH: 120,
   CONVERSATION_SUBJECT_TYPES: ["listing", "order", "negotiation_session"],
   negotiationSessions: {},
+  listingClaims: {
+    id: "id",
+    listingId: "listingId",
+    status: "status",
+  },
   negotiationCheckpoints: {},
   negotiationRoundFacts: {},
   llmTelemetry: {},

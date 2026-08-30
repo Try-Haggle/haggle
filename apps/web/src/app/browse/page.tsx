@@ -1,6 +1,7 @@
 import { ITEM_CONDITIONS, LISTING_CATEGORIES } from "@haggle/shared";
 import type { Metadata } from "next";
 import { serverApi } from "@/lib/api-server";
+import type { PublicListingHoldState } from "@/lib/listing-hold";
 import { BrowseToolbar } from "./_components/browse-toolbar";
 import { ListingGrid } from "./_components/listing-grid";
 import { StickyToolbar } from "./_components/sticky-toolbar";
@@ -20,6 +21,7 @@ export interface BrowseListing {
   photoUrl: string | null;
   targetPrice: string | null;
   tags: string[] | null;
+  holdState?: PublicListingHoldState | null;
 }
 
 export type BrowseSort = "newest" | "price_asc" | "price_desc";

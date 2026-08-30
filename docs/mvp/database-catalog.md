@@ -77,6 +77,7 @@ flowchart LR
 | 테이블 | 한 줄 설명 | 주요 연결 키 | 상태 변경 소유자 |
 |---|---|---|---|
 | `settlement_approvals` | 협상에서 양측이 최종 승인한 가격, 결제 rail, 배송 조건의 스냅샷 | `id`, `buyer_id`, `seller_id` | negotiation/settlement approval API |
+| `listing_claims` | 매물당 판매 슬롯 하나. ACCEPT면 열린 홀드, 먼저 펀딩한 구매자가 가져감. 독점 잠금 컬럼은 나중 상품용 | `listing_id`(활성 unique), `status` | listing-claim service, payment prepare/fund |
 | `commerce_orders` | 결제·배송·분쟁을 묶는 거래의 상위 장부 | `id=order_id`, `settlement_approval_id` | payment record/order service |
 | `order_addresses` | 주문 시점의 발송지·수령지 스냅샷 | `order_id` | shipment address flow |
 | `payment_intents` | 결제를 시도하는 금액, rail, legacy/canonical 상태와 provider context | `id=payment_intent_id`, `order_id` | payment service, payment expiry job |

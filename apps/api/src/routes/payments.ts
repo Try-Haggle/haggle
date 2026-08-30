@@ -53,8 +53,8 @@ import { createOwnershipMiddleware } from "../middleware/ownership.js";
 import { requireAdmin, requireAuth } from "../middleware/require-auth.js";
 import { X402FacilitatorClient } from "../payments/facilitator-client.js";
 import {
-  calculateFeeMinor,
   calculateSellerFeeSplit,
+  calculateStripeOnrampFeeMinor,
   readFeeBpsFromEnv,
   readHaggleFeeBpsFromEnv,
 } from "../payments/fee-policy.js";
@@ -90,6 +90,14 @@ import {
   evaluateConditionalSettlementFinality,
 } from "../services/conditional-settlement-finality.service.js";
 import { getDepositById, updateDepositStatus } from "../services/dispute-deposit.service.js";
+import {
+  assertListingPayableForPrepare,
+  beginListingFunding,
+  confirmListingFunded,
+  LISTING_CLAIM_HTTP,
+  ListingClaimError,
+  releaseListingFunding,
+} from "../services/listing-claim.service.js";
 import {
   completePaymentOperationIdempotencyRecord,
   createAgentPaymentGrantRecord,
@@ -454,7 +462,8 @@ function buildPaymentQuoteConfirmation(
   const defaultSplit = calculateSellerFeeSplit(grossMinor, haggleFeeBps);
   const haggleFeeMinor =
     minorFromMetadata(metadata, "haggle_fee_minor") ?? defaultSplit.feeAmountMinor;
-  const stripeFeeMinor = stripeFeeBps > 0 ? calculateFeeMinor(grossMinor, stripeFeeBps) : 0;
+  const stripeFeeMinor =
+    stripeFeeBps > 0 ? calculateStripeOnrampFeeMinor(grossMinor, stripeFeeBps) : 0;
   const sellerAmountMinor =
     minorFromMetadata(metadata, "seller_amount_minor") ?? defaultSplit.sellerAmountMinor;
   const feeItems: PaymentQuoteConfirmation["fees"]["items"] = [];
@@ -2270,6 +2279,14 @@ async function prepareFulfillmentForSecuredPayment(db: Database, intent: Payment
   const settlementRelease = await ensureSettlementReleaseForPayment(db, intent);
 
   const order = await getCommerceOrderByOrderId(db, intent.order_id);
+  if (order?.listingId) {
+    await confirmListingFunded(db, {
+      listingId: order.listingId,
+      buyerId: intent.buyer_id,
+      sessionId: order.settlementApprovalId,
+      paymentIntentId: intent.id,
+    });
+  }
   const orderStatus = order?.status;
   const fulfillmentType = resolveOrderFulfillmentType(order);
   const canAdvanceToFulfillment =
@@ -2302,6 +2319,66 @@ async function prepareFulfillmentForSecuredPayment(db: Database, intent: Payment
 
 async function finalizeSettledPayment(db: Database, intent: PaymentIntent) {
   return prepareFulfillmentForSecuredPayment(db, intent);
+}
+
+function sendListingClaimError(reply: FastifyReply, error: unknown): boolean {
+  if (!(error instanceof ListingClaimError)) return false;
+  const mapped = LISTING_CLAIM_HTTP[error.code];
+  void reply.code(mapped.status).send({
+    error: mapped.error,
+    message: error.code,
+  });
+  return true;
+}
+
+async function resolveListingClaimContext(db: Database, intent: PaymentIntent) {
+  const order = await getCommerceOrderByOrderId(db, intent.order_id);
+  const row = await getPaymentIntentRowById(db, intent.id);
+  const providerContext =
+    row?.providerContext &&
+    typeof row.providerContext === "object" &&
+    !Array.isArray(row.providerContext)
+      ? row.providerContext
+      : {};
+  const listingId =
+    order?.listingId ??
+    (typeof providerContext.listing_id === "string" ? providerContext.listing_id : null);
+  const settlementApprovalId =
+    order?.settlementApprovalId ??
+    (typeof providerContext.settlement_approval_id === "string"
+      ? providerContext.settlement_approval_id
+      : null);
+  return {
+    listingId,
+    sellerId: intent.seller_id,
+    sessionId: settlementApprovalId,
+    settlementApprovalId,
+  };
+}
+
+async function claimListingForFunding(db: Database, intent: PaymentIntent): Promise<void> {
+  const claim = await resolveListingClaimContext(db, intent);
+  if (!claim.listingId || !claim.settlementApprovalId) {
+    throw new ListingClaimError("LISTING_NOT_HELD");
+  }
+  await beginListingFunding(db, {
+    listingId: claim.listingId,
+    buyerId: intent.buyer_id,
+    sellerId: claim.sellerId,
+    sessionId: claim.sessionId ?? claim.settlementApprovalId,
+    settlementApprovalId: claim.settlementApprovalId,
+    paymentIntentId: intent.id,
+    amountMinor: intent.amount.amount_minor,
+  });
+}
+
+async function releaseListingFundingForIntent(db: Database, intent: PaymentIntent): Promise<void> {
+  const claim = await resolveListingClaimContext(db, intent);
+  if (!claim.listingId) return;
+  await releaseListingFunding(db, {
+    listingId: claim.listingId,
+    buyerId: intent.buyer_id,
+  });
 }
 
 async function finalizeStripeDepositFulfillment(
@@ -2443,6 +2520,18 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     const railError = getProductionPaymentRailError(ready.selected_rail);
     if (railError) {
       return reply.code(503).send(railError);
+    }
+
+    try {
+      await assertListingPayableForPrepare(
+        db,
+        ready.listing_id,
+        ready.buyer_id,
+        settlementApproval.terms.final_amount_minor,
+      );
+    } catch (error) {
+      if (sendListingClaimError(reply, error)) return;
+      throw error;
     }
 
     const fulfillmentType = normalizeFulfillmentType(settlementApproval.terms.fulfillment_type);
@@ -3065,6 +3154,13 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         intent.id,
       );
       if (idempotency.replayed) return;
+
+      try {
+        await claimListingForFunding(db, intent);
+      } catch (error) {
+        if (sendListingClaimError(reply, error)) return;
+        throw error;
+      }
 
       const conditionalSettlementContext = {
         ...getConditionalSettlementContext(providerContext),
@@ -4403,7 +4499,10 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         intent.id,
       );
       if (idempotency.replayed) return;
+      let claimedListing = false;
       try {
+        await claimListingForFunding(db, intent);
+        claimedListing = true;
         const previousStatus = intent.status;
         const result = await service.authorizeIntent(intent);
         await updateStoredPaymentIntent(db, result.intent, result.metadata);
@@ -4435,6 +4534,10 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         );
         return reply.send(result);
       } catch (error) {
+        if (claimedListing && !(error instanceof ListingClaimError)) {
+          await releaseListingFundingForIntent(db, intent).catch(() => undefined);
+        }
+        if (sendListingClaimError(reply, error)) return;
         return sendAndRecordPaymentOperationFailure(
           db,
           reply,
@@ -4678,6 +4781,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
           200,
           result as unknown as Record<string, unknown>,
         );
+        await releaseListingFundingForIntent(db, intent);
         return reply.send(result);
       } catch (error) {
         return sendAndRecordPaymentOperationFailure(
@@ -4745,6 +4849,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
           200,
           result as unknown as Record<string, unknown>,
         );
+        await releaseListingFundingForIntent(db, intent);
         return reply.send(result);
       } catch (error) {
         return sendAndRecordPaymentOperationFailure(
