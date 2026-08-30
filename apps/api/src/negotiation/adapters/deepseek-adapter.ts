@@ -1,11 +1,7 @@
-import { encodeHnpCompactStateForLlm, reduceHnpPublicCompactState } from "@haggle/engine-session";
-import { encodeMemo } from "../memo/memo-codec.js";
-import { turnsToHnpPublicActs } from "../memory/conversation-memory.js";
 import { buildDecideSystemPrompt } from "../prompts/decide-system-prompt.js";
 import { buildDecideUserPrompt } from "../prompts/decide-user-prompt.js";
 import { sanitizePrivatePlan } from "../prompts/private-plan.js";
 import type { ListingHint } from "../prompts/tag-family-fewshot.js";
-import { computeHarnessBox, DEFAULT_AUTONOMY } from "../referee/harness-box.js";
 import type {
   ConversationContext,
   CoreMemory,

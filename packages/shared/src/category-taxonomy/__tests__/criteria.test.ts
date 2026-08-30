@@ -6,8 +6,8 @@ import {
   type CategoryCriterion,
   criterionAnswered,
   requiredCriteria,
-  unansweredHardCriteria,
   resolveBuyerChoiceOption,
+  unansweredHardCriteria,
   unresolvedSellerRequirements,
 } from "../criteria.js";
 
