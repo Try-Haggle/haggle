@@ -4,6 +4,7 @@ export * from "./approval-state-machine.js";
 export * from "./envelope.js";
 export * from "./hold-expiration.js";
 export * from "./market-pressure.js";
+export * from "./negotiation-credit-policy.js";
 export * from "./order-lifecycle.js";
 export * from "./pipeline-events.js";
 export * from "./pipeline-router.js";
