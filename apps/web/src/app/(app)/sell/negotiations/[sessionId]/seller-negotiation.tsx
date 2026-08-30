@@ -67,7 +67,17 @@ export function SellerNegotiation({ initialPayload }: { initialPayload: SessionR
         connectionLabel={connectionMode === "ws" ? "Live updates" : "Checking for updates"}
         backHref="/sell/dashboard"
         backLabel="Dashboard"
-        headerAction={<OpenConversationButton sessionId={sessionId} label="Message buyer" />}
+        headerAction={
+          // Same rule as the buyer's side: the thread opens once the rounds
+          // have stopped, not while the agents are mid-negotiation.
+          isSettled ? (
+            <OpenConversationButton
+              sessionId={sessionId}
+              label="Message buyer"
+              className="animate-rise-in"
+            />
+          ) : undefined
+        }
         noDealCta={{ href: "/sell/dashboard", label: "Back to dashboard" }}
       />
       {sellerCanAct && <SellerActionBar sessionId={sessionId} onDone={reload} />}

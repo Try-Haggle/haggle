@@ -273,8 +273,15 @@ export function LiveNegotiation({
       pauseChecks={pause?.checks ?? null}
       onPauseAnswer={submitPauseAnswer}
       headerAction={
-        canMessageSeller ? (
-          <OpenConversationButton sessionId={payload.session.id} label="Message seller" />
+        // Only once the agents are done. While rounds are still running, an
+        // invitation to message the other side asks the buyer to intervene in
+        // the middle of the thing they delegated.
+        canMessageSeller && isTerminal ? (
+          <OpenConversationButton
+            sessionId={payload.session.id}
+            label="Message seller"
+            className="animate-rise-in"
+          />
         ) : undefined
       }
       onLiveRetry={() => {
