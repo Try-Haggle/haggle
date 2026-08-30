@@ -1,5 +1,7 @@
 "use client";
 
+import { ArrowRight } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
   AskingPrice,
@@ -9,8 +11,10 @@ import {
   OpponentCard,
   RequiredQuestions,
 } from "@/components/listing-detail";
+import { buttonVariants } from "@/components/ui/button";
 import { Drawer } from "@/components/ui/drawer";
 import { Spinner } from "@/components/ui/spinner";
+import { cn } from "@/lib/cn";
 import { formatTimeAgo } from "@/lib/format";
 import { messagingApi, type SubjectListing } from "@/lib/messaging-api";
 
@@ -155,14 +159,21 @@ export function SubjectPanel({
 
   // Pinned, not scrolled to: opening the listing is the panel's one action, and
   // a short listing must not leave it floating in the middle of empty space.
+  // Full-width and filled, so it reads as the action it is — a bare link at this
+  // size looked like leftover text. Navy rather than the accent: the gold send
+  // button sits on the same line in the next column, and two golds would make
+  // the eye pick between them.
   const footer = listing ? (
-    <a
+    <Link
       href={`/l/${listing.publicId}`}
-      className="inline-flex items-center gap-1.5 font-semibold text-action-primary text-sm transition-opacity hover:opacity-80"
+      className={cn(buttonVariants({ variant: "ink", fullWidth: true }), "group gap-2")}
     >
       View full listing
-      <span aria-hidden="true">→</span>
-    </a>
+      <ArrowRight
+        className="size-4 transition-transform duration-200 group-hover:translate-x-0.5"
+        aria-hidden="true"
+      />
+    </Link>
   ) : null;
 
   if (variant === "sheet") {
@@ -203,7 +214,7 @@ export function SubjectPanel({
       <div className="flex-1 overflow-y-auto p-5">{body}</div>
       {footer && (
         // Matches the composer's rail on the other side of the divider.
-        <div className="flex min-h-16 shrink-0 items-center border-line border-t px-5 md:min-h-18">
+        <div className="flex min-h-16 shrink-0 items-center border-line border-t px-4 md:min-h-18 md:px-5">
           {footer}
         </div>
       )}
