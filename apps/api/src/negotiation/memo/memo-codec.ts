@@ -3,7 +3,8 @@
  *
  * Living Memo Compressed Codec (Doc 26 §3).
  * Independent module used by Stage 2 (Context) in the 6-Stage pipeline.
- * Does NOT touch the existing DeepSeekAdapter S:|B:|C: encoding.
+ * Decide also puts this string in the user prompt as MEMO so the model
+ * sees the living session state, not only the latest window.
  */
 
 import type { CoreMemory, RoundFact } from "../types.js";
@@ -102,10 +103,10 @@ function encodeSharedLayer(memory: CoreMemory, recentFacts?: RoundFact[]): strin
     `CL:rec:$${toDollars(coaching.recommended_price)}|tactic:${coaching.suggested_tactic}|opp:${coaching.opponent_pattern}|conv:${coaching.convergence_rate.toFixed(2)}`,
   );
 
-  // RM: Round Memory (recent facts, last 5, USD)
+  // RM: every persisted price round (USD). Do not window this — early
+  // concessions are part of the living memo.
   if (recentFacts && recentFacts.length > 0) {
-    const recent = recentFacts.slice(-5);
-    const rmEntries = recent.map((f) => {
+    const rmEntries = recentFacts.map((f) => {
       const tactic = f.buyer_tactic || f.seller_tactic || "";
       return `R${f.round}:$${toDollars(f.buyer_offer)}→$${toDollars(f.seller_offer)}${tactic ? "|t:" + tactic : ""}`;
     });

@@ -128,6 +128,7 @@ describe('HNP Conformance', () => {
       expect(profile.hnp.transports).toHaveLength(1);
       expect(profile.hnp.capabilities['hnp.core.negotiation']).toBeDefined();
       expect(profile.hnp.capabilities['hnp.core.negotiation'].required).toBe(true);
+      expect(profile.hnp.capabilities['hnp.core.compact_state']?.required).toBe(false);
     });
 
     it('accepts custom capabilities and auth', () => {

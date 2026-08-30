@@ -792,6 +792,12 @@ describe("Negotiation API", () => {
         senderRole: "BUYER",
         offerPriceMinor: 9_000,
         idempotencyKey: "auto-sess-001-r1",
+        protocol: expect.objectContaining({
+          capability: "hnp.core.negotiation",
+          messageId: "auto-sess-001-r1",
+          sequence: 1,
+          senderAgentId: "haggle.autoplay.buyer",
+        }),
       });
     });
   });

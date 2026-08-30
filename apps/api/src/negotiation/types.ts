@@ -589,7 +589,10 @@ export interface ConversationTurn {
 export interface ConversationContext {
   /** The opponent's most recent message — what they just said this round. */
   opponent_message?: string;
-  /** Recent conversation turns in order (oldest first). */
+  /**
+   * Every spoken turn so far, oldest first. Not a sliding window — Decide
+   * must see the whole flow (early arguments included).
+   */
   recent_turns?: ConversationTurn[];
 }
 

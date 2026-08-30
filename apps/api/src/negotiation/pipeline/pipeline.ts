@@ -253,7 +253,7 @@ export async function executePipeline(
     deps.memory,
     deps.round,
     resolvedEncoding,
-    deps.facts.slice(-5),
+    deps.facts,
   );
 
   const persistInput: PersistInput = {

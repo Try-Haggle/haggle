@@ -2,7 +2,7 @@
  * executor-factory.ts
  *
  * Real negotiation entrypoints (POST /negotiations/start,
- * POST /negotiations/sessions/:id/offers, MCP haggle_submit_offer) MUST go
+ * POST /negotiations/sessions/:id/offers, MCP hnp_submit_offer) MUST go
  * through this factory. It always returns the staged LLM executor — rule-based
  * and legacy LLM executors are intentionally NOT reachable from real flows.
  *

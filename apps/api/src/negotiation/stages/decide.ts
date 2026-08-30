@@ -64,7 +64,7 @@ export async function decide(input: DecideInput): Promise<DecideOutput> {
       const systemPrompt = adapter.buildSystemPrompt(skill.getLLMContext(), memory.session.role);
       const userPrompt = adapter.buildUserPrompt(
         memory,
-        facts.slice(-5),
+        facts,
         signalLinesFromContext(context),
         undefined,
         conversation,
