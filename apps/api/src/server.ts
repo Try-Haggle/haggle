@@ -9,6 +9,7 @@ import { registerActionHandlers } from "./lib/action-handlers.js";
 import { resolveApiRateLimitConfigFromEnv } from "./lib/api-rate-limit.js";
 import { createEventDispatcher } from "./lib/event-dispatcher.js";
 import { configuredJsonBodyLimit } from "./lib/input-limits.js";
+import { insecureDemoRoutesEnabled } from "./lib/insecure-demo-routes.js";
 import { setTelemetryDb } from "./lib/llm-telemetry.js";
 import { configuredTrustedProxyCidrs } from "./lib/trusted-proxy.js";
 import { registerMcpRoutes } from "./mcp/router.js";
@@ -207,10 +208,12 @@ export async function createServer() {
 
   // ─── Negotiation Session & Group Routes ─────────────────
   registerNegotiationRoutes(app, db, eventDispatcher, notificationBus);
-  registerStageRoutes(app, db);
   registerGroupRoutes(app, db, eventDispatcher);
-  registerSimulateRoute(app);
-  registerDemoRoute(app, db);
+  if (insecureDemoRoutesEnabled()) {
+    registerStageRoutes(app, db);
+    registerSimulateRoute(app);
+    registerDemoRoute(app, db);
+  }
 
   // ─── Admin Ops Routes ────────────────────────────────────
   registerAdminRoutes(app, db);
@@ -224,7 +227,9 @@ export async function createServer() {
   // ─── HFMI Routes ────────────────────────────────────────
   registerHfmiRoutes(app, db);
   registerIntelligenceRoutes(app, db);
-  registerIntelligenceDemoRoutes(app, db);
+  if (insecureDemoRoutesEnabled()) {
+    registerIntelligenceDemoRoutes(app, db);
+  }
 
   // ─── Negotiation Agent Builder (production) ───────────
   registerNegotiationAgentRoutes(app, db);

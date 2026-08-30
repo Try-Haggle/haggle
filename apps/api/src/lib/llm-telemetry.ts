@@ -127,6 +127,13 @@ async function emitToDb(
 /**
  * Classify an error into a coarse bucket. Exported for testability.
  */
+/** Keep telemetry free of prompt/MEMO text that an upstream error might echo. */
+export function redactLlmErrorMessage(message: string): string {
+  const compact = message.replace(/\s+/g, " ").trim();
+  if (compact.length <= 180) return compact;
+  return `${compact.slice(0, 177)}…`;
+}
+
 export function classifyLLMError(err: unknown): {
   errorType: string;
   errorMessage: string;
@@ -164,7 +171,7 @@ export function classifyLLMError(err: unknown): {
     errorType = "server_error";
   }
 
-  return { errorType, errorMessage: message };
+  return { errorType, errorMessage: redactLlmErrorMessage(message) };
 }
 
 /**

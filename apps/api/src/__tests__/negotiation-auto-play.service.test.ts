@@ -22,6 +22,25 @@ describe("negotiation auto-play", () => {
     expect(validateNegotiationAutoPlayToken(context, "wrong-token")).toBe(false);
   });
 
+  it("does not persist the counterpart snapshot in plaintext", () => {
+    const sealed = createNegotiationAutoPlaySetup({
+      buyerSnapshot: { side: "buyer", floor: 40_000 },
+      sellerSnapshot: { side: "seller", floor: 70_000 },
+      buyerTargetMinor: 111_900,
+      maxRounds: 8,
+    });
+    const sellerRow = JSON.stringify(sealed.sellerSnapshot);
+    const buyerRow = JSON.stringify(sealed.buyerSnapshot);
+    expect(sellerRow).not.toContain('"floor":40000');
+    expect(sellerRow).not.toContain('"side":"buyer"');
+    expect(buyerRow).not.toContain('"floor":70000');
+    expect(buyerRow).not.toContain('"side":"seller"');
+    expect(getNegotiationAutoPlayContext(sealed.sellerSnapshot)?.buyerSnapshot).toEqual({
+      side: "buyer",
+      floor: 40_000,
+    });
+  });
+
   it("plans the buyer opening against the seller", () => {
     const plan = planNegotiationAutoPlayRound(
       {

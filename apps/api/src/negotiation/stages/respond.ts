@@ -9,6 +9,7 @@ import type { RespondInput, RespondOutput } from "../pipeline/types.js";
 import { detectLanguage, type SupportedLocale } from "../rendering/language-detect.js";
 import { TemplateMessageRenderer } from "../rendering/message-renderer.js";
 import { isDealClosingAction } from "../types.js";
+import { messageLeaksPrivateState } from "./public-message-guard.js";
 
 const templateRenderer = new TemplateMessageRenderer();
 
@@ -75,7 +76,7 @@ function respondWithTemplate(input: RespondInput): RespondOutput {
   // `final_decision.price` to the offer being accepted before this stage runs, and the
   // template renders that same value, so the fallback states the real number. Anything
   // more aggressive is the referee's job.
-  const llmMessage = pickValidLLMMessage(final_decision);
+  const llmMessage = pickValidLLMMessage(final_decision, memory);
   const message =
     llmMessage ??
     templateRenderer.render(final_decision, {
@@ -126,7 +127,10 @@ const INJECTION_PATTERNS = [
  * carries a price) a message that does not state that exact price — which prevents
  * the LLM from confirming a deal at a number that isn't the agreed one.
  */
-function pickValidLLMMessage(decision: import("../types.js").EngineDecision): string | null {
+function pickValidLLMMessage(
+  decision: import("../types.js").EngineDecision,
+  memory: import("../types.js").CoreMemory,
+): string | null {
   const raw = decision.message;
   if (typeof raw !== "string") return null;
   const text = raw.trim();
@@ -134,6 +138,9 @@ function pickValidLLMMessage(decision: import("../types.js").EngineDecision): st
   if (text.length > MAX_LLM_MESSAGE_CHARS) return null;
   for (const pat of INJECTION_PATTERNS) {
     if (pat.test(text)) return null;
+  }
+  if (messageLeaksPrivateState(text, memory, decision.price)) {
+    return null;
   }
   // Only enforce the price echo when the deal is closing — a confirmation must state
   // the agreed number, and this is where the LLM tends to echo its own last offer
