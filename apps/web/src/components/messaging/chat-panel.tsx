@@ -206,6 +206,7 @@ export function ChatPanel({ conversation, currentUserId, onBack, onRead }: ChatP
       {/* Same content either way: an inline panel on desktop, a sheet on mobile. */}
       <SubjectPanel
         conversationId={conversationId}
+        currentUserId={currentUserId}
         open={detailsOpen}
         onClose={() => setDetailsOpen(false)}
         variant={isCompact ? "sheet" : "panel"}

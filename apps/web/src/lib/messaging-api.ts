@@ -1,3 +1,4 @@
+import type { ListingDetail } from "@/components/listing-detail/types";
 import { ApiError, api } from "./api-client";
 
 /** Mirrors the API's conversation subject union. */
@@ -41,14 +42,11 @@ export interface Message {
   clientMessageId: string | null;
 }
 
-export interface SubjectListing {
-  publicId: string;
-  title: string | null;
-  category: string | null;
-  photoUrl: string | null;
-  targetPrice: string | null;
-  sellerAgentPreset: string | null;
-}
+/**
+ * The panel renders the listing page's own components, so it takes the listing
+ * page's own type — the API hands back the identical buyer-safe payload.
+ */
+export type SubjectListing = ListingDetail;
 
 /**
  * Retry once when a read comes back 401.
@@ -107,9 +105,11 @@ export const messagingApi = {
     api.post<{ readAt: string; unreadCount: number }>(`/api/conversations/${id}/read`),
 
   subject: (id: string) =>
-    api.get<{ subject: ConversationSubject | null; listing: SubjectListing | null }>(
-      `/api/conversations/${id}/subject`,
-    ),
+    api.get<{
+      subject: ConversationSubject | null;
+      listing: SubjectListing | null;
+      sellerId: string | null;
+    }>(`/api/conversations/${id}/subject`),
 };
 
 // ─── Realtime event payloads (delivered over the shared user socket) ──────────

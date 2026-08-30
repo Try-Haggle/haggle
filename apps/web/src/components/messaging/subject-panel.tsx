@@ -1,79 +1,154 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  AskingPrice,
+  Countdown,
+  ItemFacts,
+  ItemPhoto,
+  OpponentCard,
+  RequiredQuestions,
+} from "@/components/listing-detail";
 import { Drawer } from "@/components/ui/drawer";
+import { Spinner } from "@/components/ui/spinner";
+import { formatTimeAgo } from "@/lib/format";
 import { messagingApi, type SubjectListing } from "@/lib/messaging-api";
 
 interface SubjectPanelProps {
   conversationId: string;
+  currentUserId: string;
   open: boolean;
   onClose: () => void;
   /** Desktop renders the panel inline; mobile gets a bottom sheet. */
   variant: "panel" | "sheet";
 }
 
-/** Context card for the thread's subject — today, the negotiated listing. */
-export function SubjectPanel({ conversationId, open, onClose, variant }: SubjectPanelProps) {
+/**
+ * What the two of you are talking about.
+ *
+ * Built from the listing page's own components against the same buyer-safe
+ * payload, so the panel says exactly what the listing says — including the
+ * seller's agent, the checks they require, and the facts they published. A
+ * second, thinner description of the same listing would drift within a week.
+ */
+export function SubjectPanel({
+  conversationId,
+  currentUserId,
+  open,
+  onClose,
+  variant,
+}: SubjectPanelProps) {
   const [listing, setListing] = useState<SubjectListing | null>(null);
-  const [loaded, setLoaded] = useState(false);
+  const [sellerId, setSellerId] = useState<string | null>(null);
+  const [state, setState] = useState<"idle" | "loading" | "ready" | "failed">("idle");
 
   useEffect(() => {
-    // Lazy: the panel's data is only worth fetching once someone opens it.
-    if (!open || loaded) return;
+    // Lazy: only worth fetching once someone opens the panel.
+    if (!open || state !== "idle") return;
     let cancelled = false;
+    setState("loading");
     messagingApi
       .subject(conversationId)
       .then((response) => {
-        if (!cancelled) {
-          setListing(response.listing);
-          setLoaded(true);
-        }
+        if (cancelled) return;
+        setListing(response.listing);
+        setSellerId(response.sellerId);
+        setState("ready");
       })
       .catch(() => {
-        if (!cancelled) setLoaded(true);
+        if (!cancelled) setState("failed");
       });
     return () => {
       cancelled = true;
     };
-  }, [open, loaded, conversationId]);
+  }, [open, state, conversationId]);
 
+  // A different conversation means a different listing.
   useEffect(() => {
-    setLoaded(false);
+    setState("idle");
     setListing(null);
+    setSellerId(null);
   }, []);
 
+  const isOwner = Boolean(sellerId && sellerId === currentUserId);
+  const askingPrice = listing?.targetPrice === null ? null : Number(listing?.targetPrice);
+
   const body = (
-    <div className="flex flex-col gap-4">
-      {listing?.photoUrl && (
-        // biome-ignore lint/performance/noImgElement: matches repo convention for remote listing photos
-        <img
-          src={listing.photoUrl}
-          alt={listing.title ?? "Listing"}
-          className="h-48 w-full rounded-xl object-cover"
-        />
-      )}
-
-      <div>
-        <h3 className="font-semibold text-ink text-lg leading-snug">
-          {listing?.title ?? (loaded ? "Listing unavailable" : "Loading…")}
-        </h3>
-        {listing?.category && <p className="mt-1 text-ink-muted text-sm">{listing.category}</p>}
-      </div>
-
-      {listing?.targetPrice && (
-        <div className="flex flex-col gap-1 rounded-xl bg-surface-sunken p-4">
-          <span className="text-ink-muted text-sm">Asking price</span>
-          <span className="font-semibold text-ink text-xl">{formatPrice(listing.targetPrice)}</span>
+    <div className="flex flex-col gap-5">
+      {state === "loading" && (
+        <div className="flex justify-center py-10 text-action-primary">
+          <Spinner />
         </div>
       )}
 
-      {listing?.publicId && (
-        <a
-          href={`/l/${listing.publicId}`}
-          className="font-semibold text-action-primary text-sm hover:opacity-80"
-        >
-          View listing →
-        </a>
+      {state === "failed" && (
+        <p className="py-10 text-center text-ink-muted text-sm">
+          Couldn't load the listing. Close and reopen to try again.
+        </p>
+      )}
+
+      {state === "ready" && !listing && (
+        <p className="py-10 text-center text-ink-muted text-sm">
+          This listing is no longer available.
+        </p>
+      )}
+
+      {listing && (
+        <>
+          <ItemPhoto listing={listing} />
+
+          <header>
+            <h3 className="font-bold text-ink text-lg leading-snug tracking-tight">
+              {listing.title}
+            </h3>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-ink-muted">
+              <span>Listed {formatTimeAgo(listing.publishedAt)}</span>
+              {listing.sellingDeadline && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <Countdown deadline={listing.sellingDeadline} />
+                </>
+              )}
+            </div>
+          </header>
+
+          {askingPrice !== null && Number.isFinite(askingPrice) && (
+            <>
+              <Divider />
+              <AskingPrice amount={askingPrice} isOwner={isOwner} />
+            </>
+          )}
+
+          {/* Condition, category, tags, published specs, and the seller's note. */}
+          <Divider />
+          <ItemFacts listing={listing} />
+
+          {listing.sellerAgentPreset && (
+            <>
+              <Divider />
+              <OpponentCard presetId={listing.sellerAgentPreset} isOwner={isOwner} />
+            </>
+          )}
+
+          {(listing.sellerRequiredCriteria?.length ?? 0) > 0 && (
+            <>
+              <Divider />
+              <RequiredQuestions
+                criteria={listing.sellerRequiredCriteria ?? []}
+                isOwner={isOwner}
+              />
+            </>
+          )}
+
+          <Divider />
+          <a
+            href={`/l/${listing.publicId}`}
+            className="inline-flex items-center gap-1.5 font-semibold text-action-primary text-sm transition-opacity hover:opacity-80"
+          >
+            View full listing
+            <span aria-hidden="true">→</span>
+          </a>
+        </>
       )}
     </div>
   );
@@ -96,7 +171,7 @@ export function SubjectPanel({ conversationId, open, onClose, variant }: Subject
           type="button"
           onClick={onClose}
           aria-label="Close details"
-          className="flex size-9 items-center justify-center rounded-full text-ink-muted hover:bg-surface-sunken"
+          className="flex size-9 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-surface-sunken"
         >
           <svg
             viewBox="0 0 24 24"
@@ -117,12 +192,7 @@ export function SubjectPanel({ conversationId, open, onClose, variant }: Subject
   );
 }
 
-function formatPrice(value: string): string {
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return value;
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(amount);
+/** Matches the rail dividers on the listing page. */
+function Divider() {
+  return <div className="h-px w-full bg-line-subtle" aria-hidden="true" />;
 }

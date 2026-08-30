@@ -1,7 +1,6 @@
 import type { Database } from "@haggle/db";
 import { ITEM_CONDITIONS, LISTING_CATEGORIES } from "@haggle/shared";
 import type { FastifyInstance } from "fastify";
-import { parseListingParcel, parseSellerFulfillmentOffer } from "../lib/negotiation-fulfillment.js";
 import {
   getPublishedListingByPublicId,
   getPublishedPriceBuckets,
@@ -9,10 +8,7 @@ import {
   type ListPublishedSort,
   listPublishedListings,
 } from "../services/draft.service.js";
-import {
-  extractSellerProductFacts,
-  extractSellerRequiredCriteria,
-} from "../services/listing-strategy.service.js";
+import { toPublicListingView } from "../services/public-listing-view.js";
 
 const SORT_VALUES = ["newest", "price_asc", "price_desc"] as const;
 
@@ -233,37 +229,14 @@ export function registerPublicListingRoutes(app: FastifyInstance, db: Database) 
       });
     }
 
-    // Don't expose floorPrice, sellerId, or internal strategy details to buyers
-    const { negotiationAgentSnapshot, sellerId, ...publicFields } = listing;
-    const cfg = (negotiationAgentSnapshot as Record<string, unknown> | null) ?? {};
-
-    // Only expose the seller's agent preset name (not thresholds)
-    const sellerAgentPreset = cfg.preset ?? null;
-    // Phase G Flow 2: the seller's REQUIRED category criteria, buyer-safe (check id
-    // + ask only — no stance/leverage/floor). Lets the buyer builder surface "the
-    // seller requires X" so the buyer mirrors it, and seeds the pause resolved-set.
-    const sellerRequiredCriteria = extractSellerRequiredCriteria(cfg);
-    const sellerFulfillmentOffer = parseSellerFulfillmentOffer(cfg.sellerFulfillmentOffer) ?? null;
-    const parcel = parseListingParcel(cfg.parcel) ?? null;
-    // Product facts the seller answered during the builder chat, published as
-    // spec cards. Category-agnostic: any taxonomy check the seller answered
-    // publishes, so a laptop or a bike gets specs the same way a phone does.
-    // This is now the only spec path — the phone-only `subtype`/`attributes`
-    // pair it used to sit beside was removed with the phone question flow.
-    const specs = extractSellerProductFacts(cfg);
+    // Shared with the messaging detail panel so both show the same redacted view.
+    const view = toPublicListingView(listing);
 
     return reply.send({
       ok: true,
-      listing: {
-        ...publicFields,
-        sellerAgentPreset,
-        specs,
-        sellerRequiredCriteria,
-        sellerFulfillmentOffer,
-        parcel,
-      },
+      listing: view.listing,
       // Included for ownership check — not sensitive (just a UUID)
-      sellerId,
+      sellerId: view.sellerId,
     });
   });
 }

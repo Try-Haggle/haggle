@@ -17,7 +17,7 @@ import { z } from "zod";
 import { messagesRateLimit } from "../middleware/rate-limit.js";
 import { requireAuth } from "../middleware/require-auth.js";
 import { publishToUsers } from "../realtime/publish.js";
-import { getListingPlaybackSummaryByInternalId } from "../services/draft.service.js";
+import { getPublishedListingByInternalId } from "../services/draft.service.js";
 import {
   clampLimit,
   decodeCursor,
@@ -32,6 +32,7 @@ import {
   resolveSubjectParticipants,
   sendMessage,
 } from "../services/messaging.service.js";
+import { toPublicListingView } from "../services/public-listing-view.js";
 
 /**
  * Bodies above this size are announced without their text so the cross-instance
@@ -151,25 +152,17 @@ export function registerMessagingRoutes(app: FastifyInstance, db: Database): voi
       if (!detail) return reply.code(404).send({ error: "CONVERSATION_NOT_FOUND" });
       if (!detail.subject) return reply.send({ subject: null, listing: null });
 
-      const listing =
+      const view =
         detail.subject.type === "negotiation_session"
-          ? await getListingForNegotiationSession(db, detail.subject.id)
+          ? await getListingViewForNegotiationSession(db, detail.subject.id)
           : null;
 
       return reply.send({
         subject: detail.subject,
-        // Same public shape the negotiation detail route exposes — the internal
-        // listing id stays server-side.
-        listing: listing
-          ? {
-              publicId: listing.publicId,
-              title: listing.title,
-              category: listing.category,
-              photoUrl: listing.photoUrl,
-              targetPrice: listing.targetPrice,
-              sellerAgentPreset: listing.sellerAgentPreset,
-            }
-          : null,
+        // The same buyer-safe payload the listing page renders, so the panel
+        // shows what the listing shows without a second definition of "safe".
+        listing: view?.listing ?? null,
+        sellerId: view?.sellerId ?? null,
       });
     },
   );
@@ -255,8 +248,8 @@ export function registerMessagingRoutes(app: FastifyInstance, db: Database): voi
   );
 }
 
-/** Listing card shown in the conversation's detail panel. */
-async function getListingForNegotiationSession(db: Database, sessionId: string) {
+/** The listing behind a negotiation, in its buyer-safe form. */
+async function getListingViewForNegotiationSession(db: Database, sessionId: string) {
   const rows = (await db.query.negotiationSessions.findMany({
     columns: { listingId: true },
     where: (fields, ops) => ops.eq(fields.id, sessionId),
@@ -265,5 +258,7 @@ async function getListingForNegotiationSession(db: Database, sessionId: string) 
 
   const listingId = rows[0]?.listingId;
   if (!listingId) return null;
-  return getListingPlaybackSummaryByInternalId(db, listingId);
+
+  const row = await getPublishedListingByInternalId(db, listingId);
+  return row ? toPublicListingView(row) : null;
 }

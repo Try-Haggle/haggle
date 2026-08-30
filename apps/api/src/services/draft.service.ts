@@ -430,6 +430,36 @@ export async function getPublishedListingByPublicId(db: Database, publicId: stri
 }
 
 /**
+ * Full published listing by the internal listing_id a negotiation session
+ * carries. Same columns as the public-id lookup, so both feed
+ * `toPublicListingView` and cannot drift apart.
+ */
+export async function getPublishedListingByInternalId(db: Database, listingId: string) {
+  const rows = await db
+    .select({
+      id: listingsPublished.id,
+      publicId: listingsPublished.publicId,
+      publishedAt: listingsPublished.publishedAt,
+      sellerId: listingDrafts.userId,
+      title: listingDrafts.title,
+      description: listingDrafts.description,
+      category: listingDrafts.category,
+      condition: listingDrafts.condition,
+      photoUrl: listingDrafts.photoUrl,
+      targetPrice: listingDrafts.targetPrice,
+      tags: listingDrafts.tags,
+      negotiationAgentSnapshot: listingDrafts.negotiationAgentSnapshot,
+      sellingDeadline: listingDrafts.sellingDeadline,
+    })
+    .from(listingsPublished)
+    .innerJoin(listingDrafts, eq(listingDrafts.id, listingsPublished.draftId))
+    .where(eq(listingsPublished.id, listingId))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
+/**
  * Lookup minimal listing summary by the internal listing_id stored on a
  * negotiation session. Returns the publicId + display fields needed by the
  * buyer-side playback view; deliberately omits floorPrice/negotiationAgentSnapshot.
