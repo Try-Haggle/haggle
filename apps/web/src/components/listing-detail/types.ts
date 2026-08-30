@@ -17,6 +17,8 @@ export interface ListingDetail {
   photoUrl: string | null;
   targetPrice: string | null;
   tags: string[] | null;
+  /** Public hold badge. Never includes the agreed amount. */
+  holdState?: "held" | "funding" | "sold" | null;
   sellerAgentPreset: string | null;
   sellingDeadline: string | null;
   /** The seller's REQUIRED category criteria (buyer-safe: id + ask). */

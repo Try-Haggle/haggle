@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Expand, ImageOff, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { ListingHoldBadge } from "@/components/listing-hold-badge";
 import { Badge } from "@/components/ui";
 import { formatCondition } from "@/lib/format";
 import { DURATION, EASE, riseIn, staggerGroup } from "./motion";
@@ -47,8 +48,9 @@ export function ItemPhoto({ listing, className }: { listing: ListingDetail; clas
   if (!listing.photoUrl) {
     return (
       <div
-        className={`flex aspect-[4/3] w-full flex-col items-center justify-center gap-2 rounded-2xl border border-line border-dashed bg-surface-sunken text-ink-muted ${className ?? ""}`}
+        className={`relative flex aspect-[4/3] w-full flex-col items-center justify-center gap-2 rounded-2xl border border-line border-dashed bg-surface-sunken text-ink-muted ${className ?? ""}`}
       >
+        <ListingHoldBadge holdState={listing.holdState} className="absolute top-3 left-3" />
         <ImageOff className="size-7" aria-hidden="true" />
         <span className="text-[12px]">No photo provided</span>
       </div>
@@ -84,6 +86,10 @@ export function ItemPhoto({ listing, className }: { listing: ListingDetail; clas
             className="aspect-[4/3] max-h-[520px] w-full object-cover"
           />
         </motion.span>
+        <ListingHoldBadge
+          holdState={listing.holdState}
+          className="pointer-events-none absolute top-3 left-3 shadow-sm"
+        />
         <span className="pointer-events-none absolute right-3 bottom-3 flex items-center gap-1.5 rounded-lg bg-surface-overlay/85 px-2.5 py-1.5 font-medium text-[11px] text-ink opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
           <Expand className="size-3" aria-hidden="true" />
           Expand

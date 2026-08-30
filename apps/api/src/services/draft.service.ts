@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { type ListingClaimStatus, toPublicListingHoldState } from "@haggle/commerce-core";
 import {
   and,
   asc,
@@ -10,6 +11,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  listingClaims,
   listingDrafts,
   listingsPublished,
   lt,
@@ -421,12 +423,27 @@ export async function getPublishedListingByPublicId(db: Database, publicId: stri
       tags: listingDrafts.tags,
       negotiationAgentSnapshot: listingDrafts.negotiationAgentSnapshot,
       sellingDeadline: listingDrafts.sellingDeadline,
+      claimStatus: listingClaims.status,
     })
     .from(listingsPublished)
     .innerJoin(listingDrafts, eq(listingDrafts.id, listingsPublished.draftId))
+    .leftJoin(listingClaims, activeListingClaimJoin())
     .where(eq(listingsPublished.publicId, publicId));
 
-  return rows[0] ?? null;
+  const row = rows[0];
+  if (!row) return null;
+  const { claimStatus, ...listing } = row;
+  return {
+    ...listing,
+    holdState: toPublicListingHoldState(claimStatus as ListingClaimStatus | null),
+  };
+}
+
+function activeListingClaimJoin() {
+  return and(
+    eq(listingClaims.listingId, listingsPublished.id),
+    inArray(listingClaims.status, ["OPEN", "EXCLUSIVE", "FUNDING", "FUNDED"]),
+  );
 }
 
 /**
@@ -608,14 +625,19 @@ export async function listPublishedListings(
       photoUrl: listingDrafts.photoUrl,
       targetPrice: listingDrafts.targetPrice,
       tags: listingDrafts.tags,
+      claimStatus: listingClaims.status,
     })
     .from(listingsPublished)
     .innerJoin(listingDrafts, eq(listingDrafts.id, listingsPublished.draftId))
+    .leftJoin(listingClaims, activeListingClaimJoin())
     .where(and(...where))
     .orderBy(...orderBy)
     .limit(limit);
 
-  return rows;
+  return rows.map(({ claimStatus, ...listing }) => ({
+    ...listing,
+    holdState: toPublicListingHoldState(claimStatus as ListingClaimStatus | null),
+  }));
 }
 
 // Log-spaced "nice" boundaries used both for the price-range query and

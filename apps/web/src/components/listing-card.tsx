@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { ListingHoldBadge } from "@/components/listing-hold-badge";
 import { Badge } from "@/components/ui/badge";
 import { Price } from "@/components/ui/price";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCondition, formatTimeAgo } from "@/lib/format";
+import type { PublicListingHoldState } from "@/lib/listing-hold";
 
 export interface ListingCardListing {
   publicId: string;
@@ -12,6 +14,7 @@ export interface ListingCardListing {
   photoUrl: string | null;
   targetPrice: string | null;
   publishedAt?: string;
+  holdState?: PublicListingHoldState | null;
 }
 
 export function ListingCard({
@@ -43,7 +46,11 @@ export function ListingCard({
       className={`group overflow-hidden rounded-xl border border-line bg-surface-raised transition-colors hover:border-line-strong hover:bg-surface-sunken ${className}`}
       style={style}
     >
-      <div className={`${aspectClass} w-full overflow-hidden bg-surface-sunken`}>
+      <div className={`relative ${aspectClass} w-full overflow-hidden bg-surface-sunken`}>
+        <ListingHoldBadge
+          holdState={listing.holdState}
+          className="absolute top-2 left-2 z-10 shadow-sm"
+        />
         {listing.photoUrl ? (
           // biome-ignore lint/performance/noImgElement: remote listing photo
           <img

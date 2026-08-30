@@ -15,6 +15,13 @@ export function readHaggleFeeBpsFromEnv(): number {
   return readFeeBpsFromEnv(HAGGLE_X402_FEE_BPS_ENV, DEFAULT_HAGGLE_FEE_BPS);
 }
 
+/** Card/onramp is percent-only. Do not add a Stripe-style $0.30. */
+export const STRIPE_ONRAMP_FIXED_FEE_MINOR = 0;
+
+export function calculateStripeOnrampFeeMinor(amountMinor: number, feeBps: number): number {
+  return calculateFeeMinor(amountMinor, feeBps) + STRIPE_ONRAMP_FIXED_FEE_MINOR;
+}
+
 export function calculateFeeMinor(amountMinor: number, feeBps: number): number {
   if (!Number.isInteger(amountMinor) || amountMinor < 0) {
     throw new Error(`amount_minor must be a non-negative integer, got ${amountMinor}`);

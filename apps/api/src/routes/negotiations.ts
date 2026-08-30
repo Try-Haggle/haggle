@@ -53,6 +53,11 @@ import {
   getPublishedListingByPublicId,
 } from "../services/draft.service.js";
 import { validateHnpIngress } from "../services/hnp-ingress.service.js";
+import {
+  assertListingAcceptsNewSession,
+  LISTING_CLAIM_HTTP,
+  ListingClaimError,
+} from "../services/listing-claim.service.js";
 import { loadListingStrategyContext } from "../services/listing-strategy.service.js";
 import {
   attachNegotiationAutoPlayContext,
@@ -265,6 +270,18 @@ export function registerNegotiationRoutes(
       data.negotiation_agent_snapshot,
       roundLimit,
     );
+    try {
+      await assertListingAcceptsNewSession(db, data.listing_id);
+    } catch (error) {
+      if (error instanceof ListingClaimError) {
+        const mapped = LISTING_CLAIM_HTTP[error.code];
+        return reply.code(mapped.status).send({
+          error: mapped.error,
+          message: error.code,
+        });
+      }
+      throw error;
+    }
     const session = await createSession(db, {
       listingId: data.listing_id,
       strategyId: data.strategy_id,
@@ -1102,6 +1119,18 @@ export function registerNegotiationRoutes(
     });
 
     // Session starts in SELLER POV — round 1 is the buyer's opening offer.
+    try {
+      await assertListingAcceptsNewSession(db, listing.id);
+    } catch (error) {
+      if (error instanceof ListingClaimError) {
+        const mapped = LISTING_CLAIM_HTTP[error.code];
+        return reply.code(mapped.status).send({
+          error: mapped.error,
+          message: error.code,
+        });
+      }
+      throw error;
+    }
     const session = await createSession(db, {
       listingId: listing.id,
       strategyId,

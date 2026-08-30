@@ -4,6 +4,10 @@ import jwt from "jsonwebtoken";
 import { createPublicClient, decodeEventLog } from "viem";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
+  assertListingPayableForPrepare,
+  ListingClaimError,
+} from "../services/listing-claim.service.js";
+import {
   completePaymentOperationIdempotencyRecord,
   createAgentPaymentGrantRecord,
   createPaymentDisclosureRecord,
@@ -83,6 +87,28 @@ vi.mock("../services/trust-ledger.service.js", () => ({
 
 vi.mock("../services/admin-action-log.service.js", () => ({
   writeAuditLog: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../services/listing-claim.service.js", () => ({
+  LISTING_CLAIM_HTTP: {
+    LISTING_SOLD: { status: 409, error: "LISTING_SOLD" },
+    LISTING_FUNDING_IN_PROGRESS: { status: 409, error: "LISTING_FUNDING_IN_PROGRESS" },
+    LISTING_EXCLUSIVE_LOCK: { status: 409, error: "LISTING_EXCLUSIVE_LOCK" },
+    LISTING_CLAIM_CONFLICT: { status: 409, error: "LISTING_CLAIM_CONFLICT" },
+    LISTING_NOT_HELD: { status: 409, error: "LISTING_NOT_HELD" },
+  },
+  ListingClaimError: class ListingClaimError extends Error {
+    code: string;
+    constructor(code: string) {
+      super(code);
+      this.name = "ListingClaimError";
+      this.code = code;
+    }
+  },
+  assertListingPayableForPrepare: vi.fn().mockResolvedValue(undefined),
+  beginListingFunding: vi.fn().mockResolvedValue({ status: "FUNDING" }),
+  confirmListingFunded: vi.fn().mockResolvedValue({ status: "FUNDED" }),
+  releaseListingFunding: vi.fn().mockResolvedValue({ status: "OPEN" }),
 }));
 
 vi.mock("../services/webhook-event-claim.service.js", () => ({
@@ -197,6 +223,7 @@ const mockDecodeEventLog = vi.mocked(decodeEventLog);
 const mockClaimWebhookEvent = vi.mocked(claimWebhookEvent);
 const mockCompleteWebhookEvent = vi.mocked(completeWebhookEvent);
 const mockFailWebhookEvent = vi.mocked(failWebhookEvent);
+const mockAssertListingPayableForPrepare = vi.mocked(assertListingPayableForPrepare);
 
 describe("Payment routes", () => {
   let app: FastifyInstance;
@@ -3144,6 +3171,62 @@ describe("Payment routes", () => {
       },
       shipping_execution_mode: "integration_manual",
     });
+  });
+
+  it("POST /payments/prepare returns 409 when the listing is already sold", async () => {
+    mockEnsureCommerceOrderForApproval.mockClear();
+    const now = new Date().toISOString();
+    mockGetSettlementApprovalById.mockResolvedValueOnce({
+      id: "00000000-0000-4000-a000-000000000099",
+      listing_id: "00000000-0000-4000-a000-000000000011",
+      approval_state: "APPROVED",
+      seller_approval_mode: "AUTO_WITHIN_POLICY",
+      seller_policy: {
+        mode: "AUTO_WITHIN_POLICY",
+        fulfillment_sla: { shipment_input_due_days: 3 },
+        responsiveness: {
+          median_response_minutes: 30,
+          p95_response_minutes: 120,
+          reliable_fast_responder: true,
+        },
+      },
+      terms: {
+        listing_id: "00000000-0000-4000-a000-000000000011",
+        seller_id: "00000000-0000-4000-a000-000000000033",
+        buyer_id: "test-user-001",
+        final_amount_minor: 50_000,
+        currency: "USD",
+        selected_payment_rail: "x402",
+      },
+      buyer_approved_at: now,
+      seller_approved_at: now,
+      created_at: now,
+      updated_at: now,
+    });
+    mockAssertListingPayableForPrepare.mockRejectedValueOnce(new ListingClaimError("LISTING_SOLD"));
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/prepare",
+      headers: AUTH_HEADERS,
+      payload: {
+        settlement_approval_id: "00000000-0000-4000-a000-000000000099",
+        payment_disclosure_ack: {
+          version: PAYMENT_DISCLOSURE_VERSION,
+          text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
+          accepted_at: now,
+          no_custody: true,
+          buyer_approved_rules: true,
+          stripe_fallback: true,
+          stablecoin_not_investment: true,
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe("LISTING_SOLD");
+    expect(mockEnsureCommerceOrderForApproval).not.toHaveBeenCalled();
+    mockAssertListingPayableForPrepare.mockResolvedValue(undefined);
   });
 
   it("POST /payments/prepare fails closed when physical shipping is not operationally ready", async () => {
