@@ -8,6 +8,7 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { type ConversationDetail, type Message, messagingApi } from "@/lib/messaging-api";
 import { Composer } from "./composer";
 import { mergeMessages } from "./message-grouping";
+import { MessageIcon } from "./message-icon";
 import { MessageThread } from "./message-thread";
 import { SubjectPanel } from "./subject-panel";
 
@@ -183,7 +184,7 @@ export function ChatPanel({ conversation, currentUserId, onBack, onRead }: ChatP
           <div className="flex flex-1 items-center justify-center p-6">
             <EmptyState
               bordered={false}
-              icon={<span aria-hidden="true">💬</span>}
+              icon={<MessageIcon />}
               title="Start the conversation"
               description={`Send ${otherName} a message about this negotiation.`}
             />

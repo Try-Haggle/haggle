@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useUserEvent, useUserEvents } from "@/app/(app)/_components/user-events-provider";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/cn";
 import {
   type ConversationDetail,
@@ -12,6 +13,7 @@ import {
 } from "@/lib/messaging-api";
 import { ChatPanel } from "./chat-panel";
 import { ConversationList } from "./conversation-list";
+import { MessageIcon } from "./message-icon";
 
 interface MessagesShellProps {
   currentUserId: string;
@@ -171,14 +173,21 @@ export function MessagesShell({ currentUserId }: MessagesShellProps) {
             />
           ) : (
             <div className="flex flex-1 items-center justify-center p-8">
-              <EmptyState
-                bordered={false}
-                icon={<span aria-hidden="true">💬</span>}
-                title={selectedId ? "Loading conversation…" : "Select a conversation"}
-                description={
-                  selectedId ? undefined : "Choose a conversation from the list to start messaging."
-                }
-              />
+              {selectedId ? (
+                // Work in progress, not an empty state: a spinner says "wait",
+                // while an icon in a circle says "there is nothing here".
+                <div className="flex items-center gap-2.5 text-ink-muted">
+                  <Spinner size="sm" />
+                  <span className="text-sm">Loading conversation…</span>
+                </div>
+              ) : (
+                <EmptyState
+                  bordered={false}
+                  icon={<MessageIcon />}
+                  title="Select a conversation"
+                  description="Choose a conversation from the list to start messaging."
+                />
+              )}
             </div>
           )}
         </div>
