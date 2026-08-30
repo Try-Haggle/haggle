@@ -148,23 +148,26 @@ export function SubjectPanel({
               />
             </>
           )}
-
-          <Divider />
-          <a
-            href={`/l/${listing.publicId}`}
-            className="inline-flex items-center gap-1.5 font-semibold text-action-primary text-sm transition-opacity hover:opacity-80"
-          >
-            View full listing
-            <span aria-hidden="true">→</span>
-          </a>
         </>
       )}
     </div>
   );
 
+  // Pinned, not scrolled to: opening the listing is the panel's one action, and
+  // a short listing must not leave it floating in the middle of empty space.
+  const footer = listing ? (
+    <a
+      href={`/l/${listing.publicId}`}
+      className="inline-flex items-center gap-1.5 font-semibold text-action-primary text-sm transition-opacity hover:opacity-80"
+    >
+      View full listing
+      <span aria-hidden="true">→</span>
+    </a>
+  ) : null;
+
   if (variant === "sheet") {
     return (
-      <Drawer open={open} onClose={onClose} side="bottom" title="Listing details">
+      <Drawer open={open} onClose={onClose} side="bottom" title="Listing details" footer={footer}>
         {body}
       </Drawer>
     );
@@ -174,13 +177,14 @@ export function SubjectPanel({
 
   return (
     <aside className="hidden h-full w-[360px] shrink-0 flex-col overflow-hidden border-line border-l md:flex lg:w-[420px]">
-      <div className="flex shrink-0 items-center justify-between border-line border-b px-5 py-4">
+      {/* Same h-14 rail as the chat header, so the two headers sit on one line. */}
+      <div className="flex h-14 shrink-0 items-center justify-between border-line border-b px-5">
         <h3 className="font-semibold text-ink">Listing details</h3>
         <button
           type="button"
           onClick={onClose}
           aria-label="Close details"
-          className="flex size-9 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-surface-sunken"
+          className="flex size-8 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-surface-sunken"
         >
           <svg
             viewBox="0 0 24 24"
@@ -197,6 +201,12 @@ export function SubjectPanel({
         </button>
       </div>
       <div className="flex-1 overflow-y-auto p-5">{body}</div>
+      {footer && (
+        // Matches the composer's rail on the other side of the divider.
+        <div className="flex min-h-16 shrink-0 items-center border-line border-t px-5 md:min-h-18">
+          {footer}
+        </div>
+      )}
     </aside>
   );
 }

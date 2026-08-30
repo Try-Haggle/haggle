@@ -144,7 +144,9 @@ export function ChatPanel({ conversation, currentUserId, onBack, onRead }: ChatP
   return (
     <div className="flex h-full min-w-0 flex-1 flex-row overflow-hidden">
       <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="flex shrink-0 items-center gap-2 border-line border-b px-3 py-3 md:px-5">
+        {/* h-14 is the shared header rail: the listing panel's header uses the
+            same height so the two columns line up across the divider. */}
+        <header className="flex h-14 shrink-0 items-center gap-2 border-line border-b px-3 md:px-5">
           <button
             type="button"
             onClick={onBack}
@@ -198,8 +200,10 @@ export function ChatPanel({ conversation, currentUserId, onBack, onRead }: ChatP
           />
         )}
 
-        <div className="shrink-0 border-line border-t">
-          <Composer onSend={handleSend} />
+        {/* min-h-18 matches the listing panel's footer rail — the composer line
+            and the "View full listing" line are the same line. */}
+        <div className="flex min-h-16 shrink-0 items-center border-line border-t md:min-h-18">
+          <Composer onSend={handleSend} className="w-full" />
         </div>
       </div>
 

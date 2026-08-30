@@ -131,8 +131,10 @@ export function MessagesShell({ currentUserId }: MessagesShellProps) {
             selectedId && "hidden md:flex",
           )}
         >
-          <div className="shrink-0 px-4 py-4">
-            <h1 className="font-semibold text-ink text-lg">Messages</h1>
+          {/* Same h-14 rail as the chat and listing headers — one line across
+              all three columns. */}
+          <div className="flex h-14 shrink-0 items-center border-line border-b px-4">
+            <h1 className="font-semibold text-ink">Messages</h1>
           </div>
           <div className="flex-1 overflow-y-auto">
             <ConversationList
