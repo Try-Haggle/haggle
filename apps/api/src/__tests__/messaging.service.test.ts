@@ -3,12 +3,14 @@
  * the subject → participant resolution that decides who may open a thread.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { sql } from "@haggle/db";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   buildParticipantKey,
   clampLimit,
   decodeCursor,
   encodeCursor,
+  getUserDisplays,
   resolveSubjectParticipants,
   truncatePreview,
 } from "../services/messaging.service.js";
@@ -141,5 +143,42 @@ describe("resolveSubjectParticipants", () => {
     await expect(
       resolveSubjectParticipants(db, { type: "negotiation_session", id: SUBJECT_ID }, BUYER),
     ).resolves.toEqual({ ok: false, reason: "UNSUPPORTED_SUBJECT" });
+  });
+});
+
+describe("getUserDisplays SQL", () => {
+  // The query runs against auth.users, so the DB is mocked here; what this pins
+  // is the key precedence, which is where the avatar went missing: a photo
+  // uploaded in settings is stored as custom_avatar_url, not avatar_url.
+  // The shared test setup stubs `sql` to a no-op; make it return the template
+  // text so the query itself can be asserted on.
+  beforeAll(() => {
+    (sql as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      (strings: TemplateStringsArray) => strings.join("?"),
+    );
+  });
+  afterAll(() => {
+    (sql as unknown as ReturnType<typeof vi.fn>).mockReturnValue("");
+  });
+
+  it("reads the same metadata keys the app displays", async () => {
+    const execute = vi.fn().mockResolvedValue([]);
+    const db = { execute } as unknown as Parameters<typeof getUserDisplays>[0];
+
+    await getUserDisplays(db, [BUYER]);
+
+    const query = JSON.stringify(execute.mock.calls[0][0]);
+    expect(query).toContain("custom_avatar_url");
+    expect(query).toContain("avatar_url");
+    expect(query).toContain("display_name");
+    expect(query).toContain("full_name");
+  });
+
+  it("skips the query when no id is a uuid", async () => {
+    const execute = vi.fn().mockResolvedValue([]);
+    const db = { execute } as unknown as Parameters<typeof getUserDisplays>[0];
+
+    await expect(getUserDisplays(db, ["not-a-uuid", ""])).resolves.toEqual(new Map());
+    expect(execute).not.toHaveBeenCalled();
   });
 });

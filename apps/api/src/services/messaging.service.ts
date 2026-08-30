@@ -196,16 +196,25 @@ export async function getUserDisplays(
   const result = new Map<string, UserDisplay>();
   if (unique.length === 0) return result;
 
+  // Key order mirrors what the app itself displays (see the (app) layout):
+  // a photo uploaded in settings lands in custom_avatar_url, an OAuth picture in
+  // avatar_url, and the name the user typed in display_name. Reading only the
+  // OAuth keys showed the initial-letter fallback next to a person who had set
+  // a photo.
   const rows = rowsOf<{ id: string; display_name: string; avatar_url: string | null }>(
     await db.execute(sql`
       SELECT id,
         COALESCE(
+          NULLIF(raw_user_meta_data->>'display_name', ''),
           NULLIF(raw_user_meta_data->>'full_name', ''),
           NULLIF(raw_user_meta_data->>'name', ''),
           split_part(email, '@', 1),
           'Haggle user'
         ) AS display_name,
-        NULLIF(raw_user_meta_data->>'avatar_url', '') AS avatar_url
+        COALESCE(
+          NULLIF(raw_user_meta_data->>'custom_avatar_url', ''),
+          NULLIF(raw_user_meta_data->>'avatar_url', '')
+        ) AS avatar_url
       FROM auth.users
       WHERE id IN (
         SELECT value::uuid FROM jsonb_array_elements_text(${JSON.stringify(unique)}::jsonb) AS value
