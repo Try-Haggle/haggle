@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildConversationContext,
   collectConversationTurns,
+  factsToHnpPublicActs,
   turnsToHnpPublicActs,
 } from "../conversation-memory.js";
 
@@ -49,5 +50,27 @@ describe("conversation-memory", () => {
     expect(acts[1]?.type).toBe("COUNTER");
     expect(acts[0]?.total_price?.units_minor).toBe(37000);
     expect(JSON.stringify(acts)).not.toContain("floor");
+  });
+
+  it("maps price facts to HNP public acts without synthesizing claims", () => {
+    const acts = factsToHnpPublicActs([
+      {
+        round: 1,
+        phase: "BARGAINING",
+        buyer_offer: 37000,
+        seller_offer: 48000,
+        gap: 11000,
+        conditions_changed: {},
+        coaching_given: { recommended: 40000, tactic: "reciprocal_concession" },
+        coaching_followed: true,
+        human_intervened: false,
+        timestamp: 1,
+      },
+    ]);
+    expect(acts).toHaveLength(2);
+    expect(acts[0]).toMatchObject({ role: "BUYER", type: "OFFER" });
+    expect(acts[1]).toMatchObject({ role: "SELLER", type: "COUNTER" });
+    expect(acts[0]?.total_price?.units_minor).toBe(37000);
+    expect(acts[0]?.claim).toBeUndefined();
   });
 });

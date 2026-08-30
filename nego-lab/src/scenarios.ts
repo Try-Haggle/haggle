@@ -12,7 +12,7 @@ import { AGENT_PRESETS } from "./types.js";
 // ---------------------------------------------------------------------------
 const BASE_ITEM: ItemSpec = {
   title: "iPhone 15 Pro 256GB",
-  category: "phone",
+  category: "electronics",
   condition: "good",
   askPrice: 900,
   floorPrice: 780,
@@ -68,7 +68,10 @@ function attributeSweep(group: string, attrKey: string, levels: string[]): Scena
     id: `${group}-${attrKey}-${slug(level)}`,
     group,
     label: `${attrKey}=${level}`,
-    item: cloneItem({ attributes: { [attrKey]: level } }),
+    item: cloneItem({
+      ...(attrKey === "storage" ? { title: `iPhone 15 Pro ${level}` } : {}),
+      attributes: { [attrKey]: level },
+    }),
     seller: { agent: BASE_SELLER_AGENT },
     buyer: { ...BASE_BUYER },
   }));
@@ -85,7 +88,38 @@ const groupScratches = () =>
     "cracked corner",
   ]);
 
-const groupStorage = () => attributeSweep("D", "storage", ["128GB", "256GB", "512GB", "1TB"]);
+/**
+ * Group D listings are different SKUs. The published ask already differs by
+ * storage — that is the seller's list price, not an engine SOFT table.
+ * 256GB keeps the old $900 seed. Steps follow 15 Pro launch gaps (−$100 / +$200 / +$200).
+ * Buyer envelope scales with the ask so a $880 buyer is not tested against a $1300 1TB.
+ */
+const STORAGE_LISTINGS: Record<
+  string,
+  { ask: number; floor: number; budget: number; target: number }
+> = {
+  "128GB": { ask: 800, floor: 700, budget: 780, target: 620 },
+  "256GB": { ask: 900, floor: 780, budget: 880, target: 700 },
+  "512GB": { ask: 1100, floor: 950, budget: 1075, target: 850 },
+  "1TB": { ask: 1300, floor: 1130, budget: 1270, target: 1010 },
+};
+
+const groupStorage = () =>
+  attributeSweep("D", "storage", ["128GB", "256GB", "512GB", "1TB"]).map((c) => {
+    const storage = String(c.item.attributes.storage ?? "");
+    const prices = STORAGE_LISTINGS[storage] ?? STORAGE_LISTINGS["256GB"];
+    return {
+      ...c,
+      item: cloneItem({
+        ...c.item,
+        title: `iPhone 15 Pro ${storage}`,
+        askPrice: prices.ask,
+        floorPrice: prices.floor,
+        attributes: c.item.attributes,
+      }),
+      buyer: { ...c.buyer, budgetMax: prices.budget, targetPrice: prices.target },
+    };
+  });
 
 // ---------------------------------------------------------------------------
 // Group E — buyer pressure: agents/attributes fixed, buyer budget + deadline
@@ -121,12 +155,70 @@ export interface GroupDef {
   build: () => ScenarioCase[];
 }
 
+/**
+ * Group F — cheap asks that route to Flash (< $100). Same HARD fill as D.
+ * Answers "does a $20–$80 listing still close, or only discount the ask?".
+ */
+function groupCheapFlash(): ScenarioCase[] {
+  const items: Array<{
+    title: string;
+    ask: number;
+    floor: number;
+    budget: number;
+    target: number;
+    attributes: ItemSpec["attributes"];
+  }> = [
+    {
+      title: "AirPods Pro 2 used",
+      ask: 80,
+      floor: 52,
+      budget: 75,
+      target: 48,
+      attributes: { condition: "good", scratches: "none" },
+    },
+    {
+      title: "Anker 20W USB-C charger",
+      ask: 22,
+      floor: 12,
+      budget: 20,
+      target: 10,
+      attributes: { condition: "good" },
+    },
+    {
+      title: "Kindle Paperwhite 11th gen",
+      ask: 55,
+      floor: 35,
+      budget: 50,
+      target: 30,
+      attributes: { condition: "good", scratches: "none" },
+    },
+  ];
+  return items.map((it, i) => ({
+    id: `F-cheap-${i}-${slug(it.title)}`,
+    group: "F",
+    label: `${it.title} $${it.ask}`,
+    item: {
+      ...cloneItem({
+        title: it.title,
+        category: "electronics",
+        askPrice: it.ask,
+        floorPrice: it.floor,
+      }),
+      // Do not inherit iPhone storage/battery/lock onto a charger or Kindle.
+      attributes: it.attributes,
+    },
+    seller: { agent: BASE_SELLER_AGENT },
+    buyer: { ...BASE_BUYER, budgetMax: it.budget, targetPrice: it.target },
+  }));
+}
+
 export const GROUPS: GroupDef[] = [
   { key: "A", title: "Agent matrix (seller × buyer, 4×4)", build: groupAgentMatrix },
   { key: "B", title: "Battery health sweep", build: groupBattery },
   { key: "C", title: "Scratches sweep", build: groupScratches },
   { key: "D", title: "Storage sweep", build: groupStorage },
   { key: "E", title: "Buyer pressure sweep", build: groupPressure },
+  { key: "F", title: "Cheap Flash listings (< $100 ask)", build: groupCheapFlash },
 ];
 
 /** Expand one group ("A") or "all" into a flat case list. Throws on unknown key. */

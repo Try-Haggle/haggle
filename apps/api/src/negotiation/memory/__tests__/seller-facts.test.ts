@@ -106,6 +106,13 @@ describe("extractListingContextMemory passes seller_facts through", () => {
     const out = extractListingContextMemory({ listing_context: { title: "iPhone 15 Pro" } });
     expect(out?.seller_facts).toBeUndefined();
   });
+
+  it("keeps the published ask for Decide model routing", () => {
+    const out = extractListingContextMemory({
+      listing_context: { title: "Vintage hoodie", published_ask_minor: 4500 },
+    });
+    expect(out?.published_ask_minor).toBe(4500);
+  });
 });
 
 describe("the seller's facts reach the DECIDE prompt", () => {

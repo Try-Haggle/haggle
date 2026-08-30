@@ -9,7 +9,7 @@ export const AGENT_PRESETS: AgentPreset[] = ["hunter", "closer", "verifier", "ba
 /** The item being sold. Prices are in whole dollars. */
 export interface ItemSpec {
   title: string;
-  category: string; // MVP: "phone" — attributes land in negotiationAgentSnapshot.phoneAnswers
+  category: string; // staging listing category, e.g. "electronics"
   condition: string; // e.g. "like-new" | "good" | "fair"
   askPrice: number; // seller ask (dollars)
   floorPrice: number; // seller walk-away floor (dollars)
@@ -76,4 +76,15 @@ export interface NegotiationResult {
   publicId?: string;
   durationMs: number;
   error?: string;
+  /** DeepSeek usage + estimated USD for this case (cache-aware). */
+  spend?: {
+    calls: number;
+    promptTokens: number;
+    completionTokens: number;
+    cacheHitTokens: number;
+    cacheMissTokens: number;
+    usd: number;
+    peakCalls: number;
+    model: string;
+  };
 }

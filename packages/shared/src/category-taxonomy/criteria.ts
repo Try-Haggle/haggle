@@ -72,6 +72,21 @@ export function criterionAnswered(criterion: CategoryCriterion): boolean {
   return typeof criterion.stance === "string" && criterion.stance.trim().length > 0;
 }
 
+/**
+ * Taxonomy HARD checks for these tags that the party has not answered yet.
+ * IMEI is only in this list when the tags actually open the phone node —
+ * AirPods / chargers do not inherit phone gates.
+ */
+export function unansweredHardCriteria(
+  tags: readonly string[],
+  criteria: readonly CategoryCriterion[] | undefined,
+): CategoryCriterion[] {
+  const answered = new Set((criteria ?? []).filter(criterionAnswered).map((c) => c.checkId));
+  return buildCategoryCriteriaScaffold(tags).filter(
+    (c) => c.enforcement === "hard" && !answered.has(c.checkId),
+  );
+}
+
 /** One published product fact: a taxonomy check the seller answered with a
  *  canonical option, rendered as a spec card on the listing page. */
 export interface SellerProductFact {

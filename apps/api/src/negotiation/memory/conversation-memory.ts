@@ -7,7 +7,7 @@
  */
 
 import type { HnpPublicAct } from "@haggle/engine-session";
-import type { ConversationContext, ConversationTurn } from "../types.js";
+import type { ConversationContext, ConversationTurn, RoundFact } from "../types.js";
 
 export type PersistedTalkRound = {
   roundNo: number;
@@ -86,4 +86,34 @@ export function turnsToHnpPublicActs(turns: readonly ConversationTurn[]): HnpPub
         : undefined,
     claim: turn.text,
   }));
+}
+
+/**
+ * When stored turns have no spoken text, still emit public price acts.
+ * Facts are not a second protocol — they become HNP acts the reducer already knows.
+ */
+export function factsToHnpPublicActs(facts: readonly RoundFact[]): HnpPublicAct[] {
+  const acts: HnpPublicAct[] = [];
+  let sequence = 0;
+  for (const fact of facts) {
+    if (typeof fact.buyer_offer === "number") {
+      sequence += 1;
+      acts.push({
+        sequence,
+        role: "BUYER",
+        type: sequence === 1 ? "OFFER" : "COUNTER",
+        total_price: { currency: "USD", units_minor: fact.buyer_offer },
+      });
+    }
+    if (typeof fact.seller_offer === "number") {
+      sequence += 1;
+      acts.push({
+        sequence,
+        role: "SELLER",
+        type: sequence === 1 ? "OFFER" : "COUNTER",
+        total_price: { currency: "USD", units_minor: fact.seller_offer },
+      });
+    }
+  }
+  return acts;
 }

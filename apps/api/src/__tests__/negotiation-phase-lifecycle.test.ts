@@ -753,7 +753,7 @@ describe("Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)", () => {
 
       expect(mockCallLLM).toHaveBeenCalledOnce();
       const opts = mockCallLLM.mock.calls[0][2];
-      expect(typeof opts.reasoning).toBe("boolean");
+      expect(opts.reasoning).toBeUndefined();
     });
   });
 

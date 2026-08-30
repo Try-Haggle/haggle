@@ -24,7 +24,7 @@ import type { Database } from "@haggle/db";
 import { DeepSeekAdapter } from "../negotiation/adapters/deepseek-adapter.js";
 // LLM client
 import { callLLM } from "../negotiation/adapters/deepseek-client.js";
-import { DEFAULT_BUDDY_DNA, shouldUseReasoning } from "../negotiation/config.js";
+import { DEFAULT_BUDDY_DNA, getDecideTemperature } from "../negotiation/config.js";
 // Memory + Config
 import {
   type DbRoundForMemory,
@@ -36,10 +36,12 @@ import {
 } from "../negotiation/memory/memory-reconstructor.js";
 import { checkIntervention } from "../negotiation/phase/human-intervention.js";
 import { detectPhaseEvent, tryTransition } from "../negotiation/phase/phase-machine.js";
+import { encodeSkillSlots } from "../negotiation/prompts/skill-slots.js";
 import { computeCoaching } from "../negotiation/referee/coach.js";
 import { RefereeService } from "../negotiation/referee/referee-service.js";
 import { screenMessage } from "../negotiation/screening/auto-screening.js";
 import { DefaultEngineSkill } from "../negotiation/skills/default-engine-skill.js";
+import { holdLastOfferOrPause } from "../negotiation/stages/decide.js";
 // Step 56 imports
 import type {
   CoreMemory,
@@ -240,7 +242,7 @@ export async function executeLLMNegotiationRound(
     // 8. Decision
     let decision: ProtocolDecision;
     let llmTokensUsed = 0;
-    let reasoningUsed = false;
+    const reasoningUsed = false;
 
     // 8a. Skill evaluateOffer (rule-based baseline, LLM augments)
     decision = await skill.evaluateOffer(
@@ -253,29 +255,17 @@ export async function executeLLMNegotiationRound(
     // 8b. BARGAINING + COUNTER → LLM augmentation
     if (currentPhase === "BARGAINING" && decision.action === "COUNTER") {
       try {
-        // Determine reasoning mode
-        const useReasoning = shouldUseReasoning({
-          gap: updatedMemory.boundaries.gap,
-          gapRatio:
-            updatedMemory.boundaries.gap /
-            Math.abs(updatedMemory.boundaries.my_target - updatedMemory.boundaries.my_floor || 1),
-          coachWarnings: coaching.warnings,
-          opponentPattern: coaching.opponent_pattern,
-          softViolationCount: 0, // Will be computed after first validation
-        });
-
-        reasoningUsed = useReasoning;
-
         // Build prompts
         const systemPrompt = adapter.buildSystemPrompt(
-          skill.getLLMContext(),
+          encodeSkillSlots({ knowledge: [skill.getLLMContext()] }),
           updatedMemory.session.role,
+          updatedMemory.listing_context,
         );
         const userPrompt = adapter.buildUserPrompt(updatedMemory, facts.slice(-5));
 
         // Call LLM
         const llmResponse = await callLLM(systemPrompt, userPrompt, {
-          reasoning: useReasoning,
+          temperature: getDecideTemperature(),
           correlationId: input.sessionId,
         });
 
@@ -289,15 +279,15 @@ export async function executeLLMNegotiationRound(
           decision = llmDecision;
         } else if (["ACCEPT", "REJECT", "HOLD"].includes(llmDecision.action)) {
           decision = llmDecision;
+        } else {
+          decision = holdLastOfferOrPause(updatedMemory);
         }
-        // Otherwise, keep skill decision as fallback
       } catch (err) {
-        // LLM failure → graceful fallback to skill decision
         console.warn(
-          `[llm-negotiation-executor] LLM call failed for session ${input.sessionId}, falling back to rule-based:`,
+          `[llm-negotiation-executor] LLM call failed for session ${input.sessionId}, holding last offer:`,
           err instanceof Error ? err.message : err,
         );
-        // decision already set from skill.evaluateOffer()
+        decision = holdLastOfferOrPause(updatedMemory);
       }
     }
 

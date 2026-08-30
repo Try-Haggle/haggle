@@ -13,6 +13,7 @@ export {
   requiredCriteria,
   resolveBuyerChoiceOption,
   sellerProductFacts,
+  unansweredHardCriteria,
   unresolvedSellerRequirements,
 } from "./criteria.js";
 export type {

@@ -20,7 +20,7 @@ import { VERIFICATION_BADGES } from "../skills/skill-types.js";
  *
  * 1. Compute briefing (referee facts-only observations)
  * 2. Assemble L0-L5 context layers
- * 3. Encode memo snapshot for LLM consumption
+ * 3. Encode memo snapshot for persist hash (not the Decide prompt)
  */
 export function assembleStageContext(
   input: ContextInput,

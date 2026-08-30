@@ -6,18 +6,51 @@
  */
 
 import { callLLM } from "../adapters/deepseek-client.js";
-import { shouldUseReasoning } from "../config.js";
+import { getDecideTemperature } from "../config.js";
+import { resolveDecideModel } from "../decide-model.js";
 import type { DecideInput, DecideOutput } from "../pipeline/types.js";
+import { encodeSkillSlots } from "../prompts/skill-slots.js";
 import { buildHarnessTrace } from "../referee/harness.js";
 import { computeHarnessBox, DEFAULT_AUTONOMY } from "../referee/harness-box.js";
-import type { EngineDecision, HarnessTrace } from "../types.js";
+import type { CoreMemory, EngineDecision, HarnessTrace } from "../types.js";
+
+/**
+ * LLM miss: repeat the last standing offer. Do not emit Faratin.
+ * Faratin lives in Skills → Advisor only.
+ */
+export function holdLastOfferOrPause(memory: CoreMemory): EngineDecision {
+  const last = memory.boundaries.my_last_offer;
+  const standing =
+    typeof last === "number" && last > 0
+      ? last
+      : memory.session.phase !== "OPENING" &&
+          typeof memory.boundaries.current_offer === "number" &&
+          memory.boundaries.current_offer > 0
+        ? memory.boundaries.current_offer
+        : undefined;
+
+  if (standing !== undefined) {
+    return {
+      action: "COUNTER",
+      price: standing,
+      reasoning: "LLM unavailable — repeating last offer. Faratin is a skill, not a fill.",
+      tactic_used: "hold_last",
+    };
+  }
+
+  return {
+    action: "HOLD",
+    reasoning: "LLM unavailable — no last offer to repeat. Faratin is a skill, not a fill.",
+  };
+}
 
 /**
  * Make a negotiation decision.
  *
  * Decision routing:
- * - BARGAINING + COUNTER → LLM augmentation (with skill fallback)
- * - All other cases → Skill rule-based (fallback when LLM unavailable)
+ * - OPENING/BARGAINING + COUNTER → LLM (timeout/invalid → last offer or HOLD)
+ * - All other cases → Skill rule-based
+ * Faratin is an Advisor skill, not a timeout success path.
  */
 export async function decide(input: DecideInput): Promise<DecideOutput> {
   const { context, adapter, skill, phase, config, memory, facts, conversation } = input;
@@ -32,9 +65,9 @@ export async function decide(input: DecideInput): Promise<DecideOutput> {
     phase,
   );
   let source: DecideOutput["source"] = "skill";
-  let reasoningMode = false;
   let llmRaw: string | undefined;
   let tokens: DecideOutput["tokens"];
+  let routedModel: string | undefined;
 
   // Step 2: LLM augmentation.
   // We let the LLM craft the actual move in OPENING and BARGAINING when the
@@ -45,23 +78,12 @@ export async function decide(input: DecideInput): Promise<DecideOutput> {
     (phase === "OPENING" || phase === "BARGAINING") && decision.action === "COUNTER";
   if (llmEligible) {
     try {
-      const useReasoning =
-        config.reasoningEnabled &&
-        shouldUseReasoning({
-          gap: memory.boundaries.gap,
-          gapRatio:
-            memory.boundaries.gap /
-            Math.abs(memory.boundaries.my_target - memory.boundaries.my_floor || 1),
-          coachWarnings: context.briefing.warnings,
-          opponentPattern: context.briefing
-            .opponentPattern as import("../types.js").OpponentPatternType,
-          softViolationCount: 0,
-        });
-
-      reasoningMode = useReasoning;
-
-      // Build prompts
-      const systemPrompt = adapter.buildSystemPrompt(skill.getLLMContext(), memory.session.role);
+      // Live prompt path: docs/engine/decide-prompt-contract.md
+      const systemPrompt = adapter.buildSystemPrompt(
+        encodeSkillSlots(input.skillSlots ?? { knowledge: [skill.getLLMContext()] }),
+        memory.session.role,
+        memory.listing_context,
+      );
       const userPrompt = adapter.buildUserPrompt(
         memory,
         facts,
@@ -70,10 +92,18 @@ export async function decide(input: DecideInput): Promise<DecideOutput> {
         conversation,
       );
 
-      // Call LLM
+      const route = resolveDecideModel({
+        publishedAskMinor: memory.listing_context?.published_ask_minor,
+        sellerAskMinor: memory.session.role === "seller" ? memory.boundaries.my_target : undefined,
+        allowedModelId: memory.session.allowed_model,
+        proCredit: memory.session.pro_model_credit === true,
+      });
+      routedModel = route.model;
+
       const llmResponse = await callLLM(systemPrompt, userPrompt, {
-        reasoning: useReasoning,
+        temperature: getDecideTemperature(config.temperature),
         correlationId: memory.session.session_id,
+        model: route.model,
       });
 
       llmRaw = llmResponse.content;
@@ -85,27 +115,25 @@ export async function decide(input: DecideInput): Promise<DecideOutput> {
       // Parse response
       const llmDecision = adapter.parseResponse(llmResponse.content);
 
-      // Use LLM decision if it has a valid price for COUNTER
       if (llmDecision.action === "COUNTER" && llmDecision.price && llmDecision.price > 0) {
         decision = llmDecision;
         source = "llm";
       } else if (["ACCEPT", "REJECT", "HOLD"].includes(llmDecision.action)) {
         decision = llmDecision;
         source = "llm";
+      } else {
+        decision = holdLastOfferOrPause(memory);
+        source = "skill";
       }
-      // Otherwise, keep skill decision as fallback
     } catch (err) {
-      // LLM failure → graceful fallback to skill decision
       console.warn("[decide] LLM fallback:", (err as Error).message);
-      // decision already set from skill.evaluateOffer()
+      decision = holdLastOfferOrPause(memory);
+      source = "skill";
     }
   }
 
-  // Harness rail: bound the chosen price to the engine's box (SOT §11).
-  // The engine already produced box (coaching.acceptable_range) + baseline
-  // (recommended_price); until now the LLM price wasn't bound to it. Clamp a
-  // priced COUNTER into the box and record the trace. No-op when there's no
-  // usable box (facts-only path) or the action carries no price.
+  // Harness rail: bound the chosen price to the safety envelope (autonomy 1).
+  // recommended_price is logged as baseline but is not the clamp center.
   // The harness is a best-effort add-on: it must NEVER break a round. Any error
   // here (missing coaching, bad box, etc.) is swallowed so the negotiation still
   // completes with the un-clamped decision.
@@ -122,7 +150,7 @@ export async function decide(input: DecideInput): Promise<DecideOutput> {
         aim: hb.aim,
         ...(estimate ? { opponent_estimate: estimate } : {}),
         ai: { price: decision.price, tactic: decision.tactic_used, source },
-        model_id: adapter.modelId,
+        model_id: routedModel ?? adapter.modelId,
       });
       const clampedPrice = harness.ai_choice.price;
       if (typeof clampedPrice === "number" && clampedPrice !== decision.price) {
@@ -138,7 +166,7 @@ export async function decide(input: DecideInput): Promise<DecideOutput> {
   return {
     decision,
     source,
-    reasoning_mode: reasoningMode,
+    reasoning_mode: false,
     llm_raw: llmRaw,
     tokens,
     latency_ms: latencyMs,

@@ -186,6 +186,34 @@ describe("reconstructCoreMemory", () => {
     expect(memory.listing_context?.parcel?.weight_oz).toBe(16);
   });
 
+  it("hydrates published ask and pro-model credit for Decide routing", () => {
+    const session = makeDbSession({
+      negotiationAgentSnapshot: {
+        p_target: 45000,
+        p_limit: 60000,
+        max_rounds: 15,
+        pro_model_credit: true,
+        listing_context: { title: "Vintage hoodie", published_ask_minor: 4500 },
+      },
+    });
+    const memory = reconstructCoreMemory(session, session.negotiationAgentSnapshot, makeCoaching());
+    expect(memory.listing_context?.published_ask_minor).toBe(4500);
+    expect(memory.session.pro_model_credit).toBe(true);
+  });
+
+  it("hydrates a server-set allowed_model id", () => {
+    const session = makeDbSession({
+      negotiationAgentSnapshot: {
+        p_target: 45000,
+        p_limit: 60000,
+        allowed_model: "deepseek-v4-pro",
+        listing_context: { title: "Vintage hoodie", published_ask_minor: 4500 },
+      },
+    });
+    const memory = reconstructCoreMemory(session, session.negotiationAgentSnapshot, makeCoaching());
+    expect(memory.session.allowed_model).toBe("deepseek-v4-pro");
+  });
+
   it("infers phase from status when phase column is null", () => {
     const session = makeDbSession({ phase: null, status: "NEAR_DEAL" });
     const memory = reconstructCoreMemory(session, session.negotiationAgentSnapshot, makeCoaching());

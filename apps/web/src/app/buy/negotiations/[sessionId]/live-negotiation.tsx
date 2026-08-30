@@ -20,17 +20,13 @@ import { PlaybackArena } from "./playback/playback-arena";
 /**
  * How long a live negotiation may show no new round before we call it stuck.
  *
- * A single DeepSeek call is capped server-side at 45s and a round can make more than
- * one, so this sits well clear of a legitimately slow round. The point is not to be
- * precise — it is that the UI must never sit on an animated "thinking" indicator
- * forever. Whatever went wrong on the server, the user gets told and gets a Retry.
+ * A single Decide call is capped server-side at 180s (DEEPSEEK_TIMEOUT_MS, max 300s).
+ * The UI must never sit on "thinking" forever, but it must not abort before the
+ * server deadline. Retry is the last resort.
  */
-const STALL_AFTER_MS = 120_000;
+const STALL_AFTER_MS = 210_000;
 const STALL_CHECK_INTERVAL_MS = 5_000;
-// The server bounds an individual DeepSeek decision at 45s. Leave room for DB
-// preparation/persistence, but do not let a wedged API request keep the live screen
-// on round zero forever.
-const ROUND_REQUEST_TIMEOUT_MS = 75_000;
+const ROUND_REQUEST_TIMEOUT_MS = 200_000;
 
 interface AutoPlayNextResponse {
   complete: boolean;
@@ -273,9 +269,6 @@ export function LiveNegotiation({
       pauseChecks={pause?.checks ?? null}
       onPauseAnswer={submitPauseAnswer}
       headerAction={
-        // Only once the agents are done. While rounds are still running, an
-        // invitation to message the other side asks the buyer to intervene in
-        // the middle of the thing they delegated.
         canMessageSeller && isTerminal ? (
           <OpenConversationButton
             sessionId={payload.session.id}

@@ -22,9 +22,9 @@
 | 📄 | 설계만 존재 — 코드 없음 |
 | ❓ | 미확인 — 코드 대조 필요 |
 
-**문서 메타:** 현재 저장소 코드 대조 2026-08-22 (fulfillment_context가 CoreMemory에 합류. 배송 달러 견적은 아직 Decide 입력이 아님) · 최초 통합 2026-07 · 통합 출처 `docs/engine/legacy/01~31_*.md` (v1.0.0~v1.1.0 혼재 원본 28개, 1차 백업 보존)
+**문서 메타:** 현재 저장소 코드 대조 2026-08-24 (Decide 시스템=프로토콜 범례+criteria 카드. 공개 이력은 HNP, 비공개는 S/B/C MEMO. memo-codec은 persist 해시) · 최초 통합 2026-07 · 통합 출처 `docs/engine/legacy/01~31_*.md` (v1.0.0~v1.1.0 혼재 원본 28개, 1차 백업 보존)
 
-**폴더 구조:** `SOT.md`(이 문서, 유일 SOT) · `legacy/`(원본 28개 백업) · `reference/`(SOT에 담기엔 방대한 현재-엔진 심화, 필요 시)
+**폴더 구조:** `SOT.md`(이 문서, 엔진 이상형+현황) · [`tag-spec-fewshot.md`](./tag-spec-fewshot.md)(사람·에이전트 전체 흐름) · [`criteria-and-issues.md`](./criteria-and-issues.md)(criteria vs HNP issues) · [`decide-prompt-contract.md`](./decide-prompt-contract.md)(Decide 입력) · [`decide-model-routing.md`](./decide-model-routing.md)(Decide 모델 카탈로그·정책) · [`hnp-compact-state.md`](./hnp-compact-state.md)(공개 압축) · `legacy/` · `reference/`
 
 ---
 
@@ -273,25 +273,28 @@ coach.ts:101 / :115          params?.anchor_ratio / params?.beta
 
 ### 5.3 현황 — Coach vs Briefing 🚧 `referee/coach.ts · briefing.ts`
 executor는 매 라운드 **coach와 briefing을 둘 다** 호출하며, 역할이 다릅니다:
-- **coach (`@deprecated` 딱지지만 여전히 LIVE)** → `memory.coaching`으로 들어가 **LLM 프롬프트의 `recommended_price` 앵커를 공급**(`decide.ts` → `deepseek-adapter.ts:205`). 즉 실제 가격 추천의 원천. **"briefing이 coach를 대체" 설계는 미완성** — `@deprecated`는 오해를 부르는 상태.
-  - ✅ phase별 recommended_price: OPENING `target×(1±margin)`(margin=anchor_ratio 기반) · BARGAINING Faratin(`p_start:target,p_limit:floor,t=time_pressure||round/max,beta`) · CLOSING 확정가.
-- **briefing (facts-only)** → `context.briefing`으로 들어가 **(a) reasoning 모드 판단**(`shouldUseReasoning`, `decide.ts:47`) **(b) Validate 스테이지**에만 쓰임. 가격 앵커 아님.
+- **coach (`@deprecated` 딱지지만 여전히 LIVE)** → `memory.coaching`으로 들어가 하네스 baseline·로그에 쓰인다. **Decide 유저 프롬프트의 `C:`에는 `rec$`를 넣지 않는다.** Faratin 숫자는 `FaratinCoachingSkill` → `## Skills → Advisor`로만 보인다. **"briefing이 coach를 대체" 설계는 미완성** — `@deprecated`는 오해를 부르는 상태.
+  - ✅ phase별 recommended_price(코치/스킬 계산): OPENING `target×(1±margin)` · BARGAINING Faratin · CLOSING 확정가. 라이브 타결 경로가 아니다.
+- **briefing (facts-only)** → `context.briefing`으로 들어가 **Validate 스테이지**에 쓰임. 가격 앵커 아님. temperature 분기에 쓰이지 않음.
 - ⚠️ **utility_snapshot이 두 곳에서 서로 다른 하드코딩 가중치로 중복 계산** — coach(`0.5/0.2/0.15/0.15`, `coach.ts:163`)·briefing(`0.5/0.2/0.3`, `briefing.ts:63`). 둘 다 사용자 weights 무시. coach만 trust score를 u_risk로 반영, briefing은 u_risk=0.5 고정.
 
 ### 5.4 현황 — LLM Decide & 프롬프트 🚧 `stages/decide.ts · adapters/deepseek-adapter.ts`
-- ✅ executor는 **`DeepSeekAdapter`를 고정 사용**(`executor.ts:70`). 클라이언트는 OpenAI-compatible DeepSeek 엔드포인트(`api.deepseek.com/v1`)와 `DEEPSEEK_API_KEY`, `process.env.DEEPSEEK_MODEL ?? 'deepseek-v4-pro'`를 사용(`deepseek-client.ts:49-62`).
-- ✅ 프로덕션 프롬프트 `C:` 라인은 `rec$..|tactic|opp|conv|tp`만 실음 — **`recommended_price`만 하드 앵커, utility_snapshot/weights는 미도달**(`deepseek-adapter.ts:205`).
-- ✅ decide 흐름: `skill.evaluateOffer`(룰 baseline) → **OPENING/BARGAINING의 COUNTER**면 LLM 증강. LLM이 유효 COUNTER 가격(또는 ACCEPT/REJECT/HOLD) 반환 시 대체, 실패 시 룰 결정 fallback(`decide.ts:84-96`).
-- 🎯 **ACCEPT를 유도하는 실제 gap 휴리스틱 = `encodeClosingHint`**(`deepseek-adapter.ts:317`): 서버가 gap 비율을 계산해 **gap<5% 또는 <$5 → "이건 사실상 딜, ACCEPT하라"**, gap<10%+종반 → "ACCEPT 강하게 고려"를 프롬프트에 직접 주입. 시스템 프롬프트의 추상 규칙을 서버가 숫자로 못박음.
+- ✅ executor는 **`DeepSeekAdapter`를 고정 사용**(`executor.ts:70`). 클라이언트는 OpenAI-compatible DeepSeek 엔드포인트(`api.deepseek.com/v1`)와 `DEEPSEEK_API_KEY`를 사용(`deepseek-client.ts`). Decide는 턴마다 모델 id를 골라 `callLLM` body에 넣는다. 카테고리·구매자 목표가 아니라 **공개 호가 + 서버가 허용한 모델**. 카탈로그·정책은 [`decide-model-routing.md`](./decide-model-routing.md). Phase 0 카탈로그는 Flash와 Pro 두 칸. `pro_model_credit`는 임시 boolean — 클라이언트를 믿지 않는다. 라우터 `decide-model.ts`.
+- ✅ 프로덕션 프롬프트 `C:` 라인은 `tactic|opp|conv|tp`만 실음. Faratin 달러는 Advisor 칸. utility_snapshot/weights는 미도달(`decide-user-prompt.ts`).
+- ✅ decide 흐름: `skill.evaluateOffer`(룰 baseline) → **OPENING/BARGAINING의 COUNTER**면 LLM. LLM이 유효 COUNTER 가격(또는 ACCEPT/REJECT/HOLD) 반환 시 대체. 타임아웃·파싱 실패 시 **직전 호가 반복 또는 HOLD**. Faratin 공식으로 숫자를 채우지 않는다(`decide.ts`).
+- 🎯 **`encodeClosingHint`**: 갭이 작아도 ACCEPT를 강제하지 않는다. 이 매물 SOFT에 맞을 때만 닫으라고 한다. 추천가를 타결가로 쓰지 말라고 한다.
 - 🔎 프롬프트 STRATEGY 블록 = persona + **빌더챗 메모리만**(숫자 파라미터 미도달, §4.2). `encodeDelta`(차등 컨텍스트)는 decide 경로에서 **죽은 코드**(`prevMemory=undefined`로 호출 → 항상 full).
-- 📄 **태그·스펙·few-shot 역할과 주고받는 흐름** — 설계 [`tag-spec-fewshot.md`](./tag-spec-fewshot.md). 프로덕션 시스템 프롬프트에는 아직 민감도 few-shot이 없다.
-- ✅ **Decide 기억** — 공개 흐름은 HNP compact state(`HNP:` 블록, DST/합의 추적). 비공개는 엔진 `MEMO`. 최근 창으로 앞 대화를 버리지 않는다. 설계 [`hnp-compact-state.md`](./hnp-compact-state.md).
+- ✅ **태그·스펙·few-shot** — 설계 [`tag-spec-fewshot.md`](./tag-spec-fewshot.md) · 이름 [`criteria-and-issues.md`](./criteria-and-issues.md). 시스템 프롬프트는 criteria 범례와 **이번 태그가 연 카드**를 매 Decide 호출에 넣는다 (`criteria-fewshot.ts`). 이번 매물 칸 값은 유저 프롬프트 LISTING / STRATEGY.
+- ✅ **Decide가 보는 입력** — 산 경로·블록·넣지 않는 것: [`decide-prompt-contract.md`](./decide-prompt-contract.md). 공개 이력은 `HNP:` 하나. 비공개 숫자는 `MEMO:`의 `S:`/`B:`/`C:`. 말한 턴이 없으면 가격 fact를 HNP act로 바꾼다. `HIST`는 내지 않는다. `memo-codec`(`NS:`/`RM:`)은 persist 해시.
+- ✅ **스킬 칸** — 파이프라인이 decide/validate/respond 훅을 모아 `encodeSkillSlots`로 시스템 프롬프트 `## Skills`(Knowledge/Valuation/Tactics/Advisor/Market/Constraints/Tone/Services)에 넣는다. L2/L3 덤프는 Decide가 안 읽음. 스킬은 조언, BOX·바닥·HARD가 이김. HNP 와이어에 스킬 본문 없음.
+- ✅ **공통 엔진 vs 스킬** — 엔진은 사실·HARD 게이트·SOFT 민감도(호가는 미조정, 수요·공급으로 이 카피를 읽음)·클립만. 품목 지식·시세는 태그로 붙는 스킬. `if (category)` 분기는 엔진에 없음. 경계 표 [`decide-prompt-contract.md`](./decide-prompt-contract.md) 「공통 엔진 vs 카테고리 스킬」.
+- ✅ **Decide 기억** — 공개 흐름은 HNP compact state. 최근 창으로 앞 대화를 버리지 않는다. 설계 [`hnp-compact-state.md`](./hnp-compact-state.md).
 
 ### 5.5 현황 — Referee / Validate 🚧 `referee/validator.ts` → 상세 [`reference/referee.md`](./reference/referee.md)
 - ✅ 7규칙 실제 가동. V1~V3 HARD(V1 가격 floor 초과→floor / V2 phase 미허용 action→allowed[0] / V3 라운드소진 COUNTER→REJECT), V4~V7 SOFT(역전·정체·일방양보·양보폭과다, auto-fix 없음).
 - ⚠️ **HARD도 실제로는 차단 안 됨** — auto-fix `MAX_RETRY=2` 후 위반 남아도 그대로 통과. `'BLOCK'`은 감사 라벨일 뿐 실행 미차단.
 - ⚠️ **"가격 lock" 없음** — `respond.ts`에 clamp/lock 전무. 코드의 유일한 가격 개입은 V1 위반 시 floor 덮어쓰기(soft, 2회). 최종가는 결국 LLM/skill `decision.price`.
-- 💀 `ViolationTracker`(세션 위반 누적·lite 모드 전환) 미사용 → 항상 `full`. 🚧 Stage 4.5 skill validate hook은 로깅만("Future: merge").
+- 💀 `ViolationTracker`(세션 위반 누적·lite 모드 전환) 미사용 → 항상 `full`. 🚧 Stage 4.5 skill validate hook의 **코드 병합**은 아직 로깅만. 같은 규칙 텍스트는 Decide 전 peek로 `## Skills → Constraints`에 들어간다.
 
 ---
 
@@ -354,7 +357,7 @@ P(t) = P_start + (P_limit − P_start) × (t/T)^(1/β)      t/T는 [0,1] clamp
 ```
 전술 엔진(설계): 미러링, 상대패턴×단계 매트릭스.
 
-**현황:** 🚧 위 규칙은 engine-core `makeDecision`(비활성 경로)에 있음. **프로덕션 ACCEPT/REJECT는 LLM**이 내리되, **gap 휴리스틱은 서버가 `encodeClosingHint`로 프롬프트에 주입**(gap<5%/<$5→"ACCEPT하라", §5.4)해 유도. `u_total` 기반 임계 게이트는 실제로 안 돎(u_threshold/u_aspiration 미소비). 코치가 `suggested_tactic`(nibble/anchoring/reciprocal_concession 등)을 파생해 프롬프트로 전달하나 강제력 없음. 전술 매트릭스·미러링 미구현. 시스템 프롬프트에 역할별 강제 규칙(구매자는 자기 이전 제안보다 낮게 못 부름, 판매자는 floor 밑 금지)이 있음.
+**현황:** 🚧 위 규칙은 engine-core `makeDecision`(비활성 경로)에 있음. **프로덕션 ACCEPT/REJECT는 LLM**이 내린다. `encodeClosingHint`는 작은 갭만 알리고 ACCEPT를 숫자로 못 박지 않는다. `u_total` 기반 임계 게이트는 실제로 안 돎(u_threshold/u_aspiration 미소비). 코치가 `suggested_tactic`을 파생해 프롬프트로 전달하나 강제력 없음. 전술 매트릭스·미러링 미구현. 시스템 프롬프트에 역할별 강제 규칙(구매자는 자기 이전 제안보다 낮게 못 부름, 판매자는 floor 밑 금지)이 있음.
 
 ---
 
@@ -363,8 +366,8 @@ P(t) = P_start + (P_limit − P_start) × (t/T)^(1/β)      t/T는 [0,1] clamp
 **이상형:** 필요한 단계에만 LLM을 호출하고 Codec 압축으로 토큰을 최소화한다. 비용은 고정값이 아니라 provider usage와 적용 단가로 측정한다.
 **현황:**
 - 💀 **"라운드당 2회"는 틀림 → 실제 1회(Decide만).** Understand·Validate는 규칙, **Respond는 템플릿**(`executor.ts:104` `RESPOND:"template"`)이라 LLM 미호출. pipeline의 respond 토큰 합산은 항상 0(죽은 코드).
-- ✅ DeepSeek V4 Pro 기본 모델. 일반 모드는 30초/temperature 0.5, reasoning 요청 모드는 45초/temperature 0.3이다. ⚠️ 현재 reasoning은 별도 provider reasoning parameter가 아니라 이 timeout/temperature 정책과 `reasoning_used` 표시다(`deepseek-client.ts:54-55,121-130`).
-- ✅ 프롬프트용 `S:/B:/C:` 압축은 `deepseek-adapter.ts:205`의 `encodeCoreMemoCompact`. (별개로 `memo-codec.ts`의 `NS:/PT:…`는 **해시 전용**이고 프롬프트에 안 쓰임 — `context.ts`의 `memo_snapshot`은 dead field.)
+- ✅ Decide 모델은 카탈로그에서 id를 고른다(`decide-model.ts`). Flash/Pro는 지금 칸이 둘인 것뿐이다. 표는 [`decide-model-routing.md`](./decide-model-routing.md). 타임아웃 기본 180초(`DEEPSEEK_TIMEOUT_MS`, 10–300초). temperature 기본 0.5 — 샘플러일 뿐 추론 스위치가 아니다. `DEEPSEEK_TEMPERATURE` 또는 `StageConfig.temperature`로 바꾼다(`0`–`2`). DB `reasoning_used`는 호환용으로 false.
+- ✅ 프롬프트용 `S:/B:/C:`는 `decide-user-prompt.ts`가 `MEMO:` 아래로 넣는다. `memo-codec.ts`의 `NS:/PT:/RM:`는 persist 해시 전용이다. `context.ts`의 `memo_snapshot`은 해시 입력이지 Decide 프롬프트가 아니다. 계약 [`decide-prompt-contract.md`](./decide-prompt-contract.md).
 - ✅ 토큰은 DeepSeek API 실측(`usage.prompt_tokens/completion_tokens`) → 라운드별 `negotiation_rounds.llm_tokens_used` 저장. latency와 token usage는 telemetry에도 수집된다.
 - 🚧 **정확한 USD 비용은 단가 설정이 필요** — `LLM_PRICE_DEEPSEEK_V4_PRO_INPUT_PER_1M_USD`와 `LLM_PRICE_DEEPSEEK_V4_PRO_OUTPUT_PER_1M_USD`(또는 global 가격 env)가 모두 있어야 telemetry cost가 계산된다. 미설정 시 null이다. pipeline의 `tokens/1000 × 0.0007`은 입출력 미분리 러프 추정이며 DB에 저장되지 않는다.
 - 🚧 **세션당 정확 비용 집계 없음** — `LLM_TELEMETRY=db`에서 호출별 row는 저장하지만 세션 합계 read model이 없다. DB telemetry의 `reasoningUsed`도 현재 false로 고정되어 실제 요청 모드와 어긋날 수 있다.
@@ -374,7 +377,10 @@ P(t) = P_start + (P_limit − P_start) × (t/T)^(1/β)      t/T는 [0,1] clamp
 ## 9. 토폴로지 & 크로스프레셔 (1:N)
 
 **이상형:** 1:N(구매자1·판매자N) 병렬 협상. `batchEvaluate`로 Top N 세션 선정, 나머지 WAITING. 한 세션 ACCEPTED 시 나머지 SUPERSEDED. 크로스프레셔로 BATNA만 주입(허위 금지, 세션당 최대 2회, 차이<5%면 미주입). Anti-Sniping(N:1).
-**현황 — 완성돼 있으나 실전 흐름에서 도달 불가 (dormant):**
+**현황 — 열린 홀드(선결제) ✅ / 순위 승계 💀 / 그룹 오케스트레이션 dormant:**
+- ✅ `ACCEPTED` → `listing_claims` OPEN_HOLD. 여러 세션이 합의할 수 있고, **먼저 펀딩한 구매자**가 매물을 가져간다. 펀딩 성공 시에만 나머지 세션 SUPERSEDED. 독점 24시간 잠금(`acquire_exclusive`)은 전이만 있고 라이브 호출 없음.
+- 💀 순위 기한 후 다음 사람 승계는 `W2026-08-08-02`로 미뤄 둠. 지금 모델은 순위가 아니라 선결제다.
+**현황 — 그룹 오케스트레이션은 완성돼 있으나 실전 흐름에서 도달 불가 (dormant):**
 1:N 서브시스템(엔진·DB·전용 라우트)은 배선돼 있으나, **프로덕션 진입점 `POST /negotiations/start`가 그룹을 생성하지 않습니다**(`createSession`을 `groupId` 없이 호출, `negotiations.ts:1079`). 그룹은 수동 `POST /negotiations/groups`(`routes/groups.ts:49`)로만 생성되며 웹앱은 이를 호출 안 함.
 - 💀 `batchEvaluate` — Top N 일괄평가. 프로덕션 호출자 **0건**(테스트뿐). `engine-core/batch/evaluator.ts`.
 - 💀 **크로스프레셔/BATNA dead branch** — 소비 코드는 있으나(coach·adapter·utility) **`memory.competition`이 절대 채워지지 않음**(memory-reconstructor 미설정, L5 provider가 competition 미반환 `"Not implemented in Phase 0"`). `adjustVpForCompetition`도 항상 no-op.
@@ -387,6 +393,7 @@ P(t) = P_start + (P_limit − P_start) × (t/T)^(1/β)      t/T는 [0,1] clamp
 ## 10. 데이터 영속화
 
 **현황 ✅** `db/schema/negotiation-sessions.ts`
+사람 기준 흐름은 [`tag-spec-fewshot.md`](./tag-spec-fewshot.md) §6. 와이어는 HNP만. MEMO는 세션 스냅샷·해시로 남고 봉투에 안 탄다.
 - `negotiation_sessions` — 세션 상태 + 스냅샷 + 데이터모트 컬럼(outcome·priceTrajectory·opponentModel·coreMemorySnapshot·memoHash·sessionFactChainHash…)
 - `negotiation_rounds` — append-only 라운드 로그 (utility·coaching·validation·referee_violations·coach_recommended·deviation…)
 - `negotiation_groups` — 1:N 컨테이너
@@ -418,7 +425,7 @@ P(t) = P_start + (P_limit − P_start) × (t/T)^(1/β)      t/T는 [0,1] clamp
 - **바보 모델 → baseline만 따름**(현 엔진 수준, 일관 보장). **똑똑한 모델 → baseline을 넘어섬**(추가 가치). ⇒ **품질은 모델 성능에 단조증가, 하한은 보장.** 두 걱정(불공정 / 순수수학)이 동시에 빠진다.
 - **하네스 기법 매핑:** 엔진=하네스(규칙·범위·도구 제공), AI=에이전트(범위 안 추론), 스킬=지식/도구 플러그인. 하네스가 안전을 보장하므로 **스킬을 마켓에서 사고팔아도 내 플로어를 못 뚫는다** → 마켓·모델선택이 이 위에 안전하게 얹힌다.
 
-**Autonomy 다이얼(MVP 핵심):** box **폭**을 조절하는 파라미터 `autonomy ∈ [0,1]`. `0`=box 폭 0=순수 엔진(완전 결정적), `1`=하드 플로어까지=AI 최대 자유. **MVP는 좁게 시작(≈0.2) → 데이터 보며 넓힘.** 일관성↔AI가치 트레이드오프를 실험적으로 튜닝.
+**Autonomy 다이얼:** box **폭**을 조절하는 파라미터 `autonomy ∈ [0,1]`. `0`=순수 엔진, `1`=안전 봉투 전체. **현재 라이브는 1.0** — 좁은 박스(≈0.2)가 용량이 다른 매물을 같은 타결가에 붙였다. 안전은 바닥·호가·후퇴 금지 봉투가 지킨다.
 
 **레버리지 — 인프라가 이미 있다(재작업 아님, 배선):**
 - **box** = `RefereeCoaching.acceptable_range {min,max}` (coach.ts:129–144, 이미 계산됨)

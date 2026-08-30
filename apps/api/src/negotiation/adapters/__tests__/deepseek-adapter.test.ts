@@ -59,6 +59,28 @@ describe("DeepSeekAdapter", () => {
     const prompt = adapter.buildSystemPrompt("Electronics skill context");
     expect(prompt).toContain("Electronics skill context");
     expect(prompt).toContain("JSON");
+    expect(prompt).toContain("You speak HNP");
+    expect(prompt).toContain("MEMO");
+    expect(prompt).toContain("Criteria — what you are looking at");
+  });
+
+  it("sends per-criterion few-shot cards for this listing on every system prompt", () => {
+    const phone = adapter.buildSystemPrompt("Electronics skill context", "buyer", {
+      tags: ["iphone-17-pro"],
+      category: "electronics",
+    });
+    const clothing = adapter.buildSystemPrompt("Electronics skill context", "buyer", {
+      tags: ["hoodie"],
+      category: "clothing",
+    });
+    expect(phone).toContain("LISTING.sellerStatedFacts");
+    expect(phone).toContain("STRATEGY.requiredCriteria");
+    expect(phone).toContain("HARD find_my_status");
+    expect(phone).toContain("SOFT battery_health");
+    expect(clothing).not.toContain("find_my_status");
+    expect(phone).not.toBe(clothing);
+    expect(phone).not.toContain("electronics/phones/iphone");
+    expect(phone).not.toContain("HIST:");
   });
 
   it("should build compact user prompt", () => {
@@ -83,8 +105,10 @@ describe("DeepSeekAdapter", () => {
       },
     ];
     const prompt = adapter.buildUserPrompt(makeMemory(), facts);
-    expect(prompt).toContain("HIST:");
-    expect(prompt).toContain("R3");
+    expect(prompt).toContain("HNP:");
+    expect(prompt).toContain("ACTS:");
+    expect(prompt).toContain("1 BUYER OFFER");
+    expect(prompt).not.toContain("HIST:");
   });
 
   it("should build differential context", () => {
@@ -103,6 +127,15 @@ describe("DeepSeekAdapter", () => {
     expect(decision.price).toBe(54000);
     expect(decision.reasoning).toBe("Faratin curve");
     expect(decision.tactic_used).toBe("anchoring");
+  });
+
+  it("parses a private plan and does not require it", () => {
+    const withPlan = adapter.parseResponse(
+      '{"action":"COUNTER","price":540,"reasoning":"open","message":"128GB so I start lower","private_plan":"Open below ask on 128GB; update if they concede fast."}',
+    );
+    expect(withPlan.private_plan).toContain("Open below ask on 128GB");
+    const without = adapter.parseResponse('{"action":"COUNTER","price":540,"reasoning":"open"}');
+    expect(without.private_plan).toBeUndefined();
   });
 
   it("should parse response with markdown code blocks", () => {
@@ -157,11 +190,14 @@ describe("DeepSeekAdapter", () => {
     expect(prompt).toContain("battery is at 92%");
     expect(prompt).toContain("HNP:");
     expect(prompt).toContain("MEMO:");
+    expect(prompt).toContain("S:BARGAINING");
     expect(prompt).toContain("ACTS:");
     expect(prompt).toContain("PRICE:");
+    expect(prompt).not.toContain("HIST:");
+    expect(prompt).not.toMatch(/\bRM:/);
   });
 
-  it("keeps early HNP acts and HIST rounds instead of a last-N window", () => {
+  it("keeps early HNP acts instead of a last-N window", () => {
     const facts: RoundFact[] = Array.from({ length: 8 }, (_, i) => ({
       round: i + 1,
       phase: "BARGAINING" as const,
@@ -184,11 +220,10 @@ describe("DeepSeekAdapter", () => {
       opponent_message: "round 8 argued storage and battery",
       recent_turns: turns,
     });
-    expect(prompt).toContain("R1:");
-    expect(prompt).toContain("R8:");
     expect(prompt).toContain("1 BUYER OFFER");
     expect(prompt).toContain("8 SELLER COUNTER");
-    expect(prompt).toContain("RM:R1:");
+    expect(prompt).not.toContain("HIST:");
+    expect(prompt).not.toMatch(/\bRM:/);
   });
 
   it("should embed seller persona language in system prompt", () => {
@@ -209,7 +244,8 @@ describe("DeepSeekAdapter", () => {
     };
     const prompt = adapter.buildUserPrompt(memory, []);
     expect(prompt).toContain("NEGOTIATION_HINT:");
-    expect(prompt).toMatch(/ACCEPT/);
+    expect(prompt).not.toMatch(/ACCEPT the opponent's offer/i);
+    expect(prompt).toContain("not a reason to close");
   });
 
   it("should NOT emit NEGOTIATION_HINT when gap is still wide", () => {

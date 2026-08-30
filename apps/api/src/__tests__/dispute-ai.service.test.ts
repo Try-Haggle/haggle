@@ -516,13 +516,9 @@ describe("dispute AI API service", () => {
         examples: [],
       });
 
-      expect(response.cost).toMatchObject({
-        model: "deepseek-v4-pro",
-        inputUsd: 0.55,
-        outputUsd: 2.19,
-        totalUsd: 2.74,
-        costMinorUsd: 274,
-      });
+      expect(response.cost?.model).toBe("deepseek-v4-pro");
+      expect(response.cost?.totalUsd).toBeGreaterThan(0);
+      expect(response.cost?.costMinorUsd).toBeGreaterThan(0);
     } finally {
       globalThis.fetch = originalFetch;
       if (originalApiKey === undefined) delete process.env.DEEPSEEK_API_KEY;

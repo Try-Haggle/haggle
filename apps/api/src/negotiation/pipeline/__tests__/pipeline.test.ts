@@ -14,7 +14,6 @@ function makeConfig(): StageConfig {
     adapters: { UNDERSTAND: adapter, DECIDE: adapter, RESPOND: adapter },
     modes: { RESPOND: "template", VALIDATE: "full" },
     memoEncoding: "codec",
-    reasoningEnabled: false, // Disable LLM for unit tests
   };
 }
 
@@ -113,7 +112,7 @@ describe("6-Stage Pipeline E2E", () => {
     expect(result.cost.latency_ms).toBeGreaterThanOrEqual(0);
   });
 
-  it("handles OPENING phase with skill-only decision", async () => {
+  it("holds OPENING when LLM is unavailable and there is no last offer", async () => {
     const result = await executePipeline(
       "Initial offer",
       90000,
@@ -124,7 +123,7 @@ describe("6-Stage Pipeline E2E", () => {
     );
 
     expect(result.stages.decide.source).toBe("skill");
-    expect(result.stages.decide.decision.action).toBe("COUNTER");
+    expect(result.stages.decide.decision.action).toBe("HOLD");
     expect(result.stages.respond.message).toBeTruthy();
   });
 

@@ -8,6 +8,7 @@
  */
 
 import { DEFAULT_BUDDY_DNA, DEFAULT_INTERVENTION_MODE, DEFAULT_MAX_ROUNDS } from "../config.js";
+import { sanitizePrivatePlan } from "../prompts/private-plan.js";
 import {
   buildFulfillmentActiveTerms,
   summarizeFulfillmentTerms,
@@ -203,6 +204,7 @@ export function reconstructCoreMemory(
   const fulfillmentContext = extractFulfillmentContextMemory(strategy);
   const strategyContext = extractStrategyContextMemory(strategy, role);
   const strategyParams = extractStrategyParams(strategy);
+  const privatePlan = sanitizePrivatePlan(strategy.private_plan);
 
   return {
     session: {
@@ -213,6 +215,10 @@ export function reconstructCoreMemory(
       role,
       max_rounds: maxRounds,
       intervention_mode: interventionMode,
+      ...(typeof strategy.allowed_model === "string" && strategy.allowed_model.trim().length > 0
+        ? { allowed_model: strategy.allowed_model.trim() }
+        : {}),
+      ...(strategy.pro_model_credit === true ? { pro_model_credit: true } : {}),
       created_at_ms:
         extractTimeValueMillis(strategy, "listed_at_ms") ?? dbSession.createdAt.getTime(),
       deadline_at_ms: extractTimeValueMillis(strategy, "deadline_at_ms"),
@@ -245,6 +251,7 @@ export function reconstructCoreMemory(
     ...(fulfillmentContext ? { fulfillment_context: fulfillmentContext } : {}),
     ...(strategyContext ? { strategy_context: strategyContext } : {}),
     ...(strategyParams ? { strategy_params: strategyParams } : {}),
+    ...(privatePlan ? { private_plan: privatePlan } : {}),
   };
 }
 
@@ -335,6 +342,13 @@ export function extractListingContextMemory(
   }
   const parcel = extractParcelMemory(src.parcel);
   if (parcel) out.parcel = parcel;
+  if (
+    typeof src.published_ask_minor === "number" &&
+    Number.isFinite(src.published_ask_minor) &&
+    src.published_ask_minor > 0
+  ) {
+    out.published_ask_minor = Math.round(src.published_ask_minor);
+  }
   return Object.keys(out).length > 0 ? out : undefined;
 }
 

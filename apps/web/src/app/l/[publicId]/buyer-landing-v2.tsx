@@ -170,6 +170,18 @@ export function BuyerLandingV2({ listing, user, isOwner, from, footerSlot }: Buy
   async function handleStart(selection: AgentSelection, strategy: StrategyOverride | null) {
     const presetId = selection.kind === "preset" ? selection.id : selection.presetId;
     const savedId = selection.kind === "saved" ? selection.id : null;
+    const memory = briefMemory ?? (savedId ? savedMemory[savedId] : undefined);
+    const answered = new Set(
+      (memory?.categoryCriteria ?? [])
+        .filter((c) => typeof c.stance === "string" && c.stance.trim().length > 0)
+        .map((c) => c.checkId),
+    );
+    const missingHard = (listing.sellerRequiredCriteria ?? []).filter(
+      (c) => !answered.has(c.checkId),
+    );
+    if (missingHard.length > 0) {
+      throw new Error("Answer every required question before starting.");
+    }
 
     const res = await startNegotiation({
       listing_public_id: listing.publicId,
@@ -181,8 +193,7 @@ export function BuyerLandingV2({ listing, user, isOwner, from, footerSlot }: Buy
       agent_overrides: strategy ? { ...strategy } : undefined,
       // This visit's briefing wins; otherwise the memory saved on the reused
       // agent, so picking "My iPhone hunter" still carries its deal-breakers.
-      negotiation_agent_builder_memory:
-        briefMemory ?? (savedId ? savedMemory[savedId] : undefined) ?? undefined,
+      negotiation_agent_builder_memory: memory ?? undefined,
       fulfillment: {
         methods: fulfillment.methods,
         preferred: fulfillment.preferred,

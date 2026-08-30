@@ -11,6 +11,7 @@ import {
   type NegotiationAgentPresetId,
   resolveChecks,
   resolveEffectivePreset,
+  unansweredHardCriteria,
 } from "@haggle/shared";
 import { ChevronLeft, ChevronRight, Link2, Sparkles, X } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -545,7 +546,13 @@ export function NewListingWizard({
             isCompleteListingParcel(parcel))
         );
       case 5:
-        return !!agentValue;
+        return (
+          !!agentValue &&
+          unansweredHardCriteria(
+            [category, ...tags].filter(Boolean),
+            negotiationAgentBuilderMemory?.categoryCriteria,
+          ).length === 0
+        );
       default:
         return false;
     }
@@ -573,6 +580,14 @@ export function NewListingWizard({
         break;
       case 5:
         if (!agentValue) return "Please select an agent";
+        if (
+          unansweredHardCriteria(
+            [category, ...tags].filter(Boolean),
+            negotiationAgentBuilderMemory?.categoryCriteria,
+          ).length > 0
+        ) {
+          return "Answer every required safety question before publishing";
+        }
         break;
     }
     return null;

@@ -9,6 +9,8 @@ DeepSeek 기반 **실제 협상**을 UI 없이 대량으로 돌려서, 협상 �
   (배터리·스크래치·용량 등) 변화가 가격에 주는 영향.
 - **비용:** DeepSeek는 유료다. 그래서 **온디맨드로만** 돌리고, 실행 전 항상
   예상 비용을 보여준 뒤 승인받는다. (라운드당 실측 ≈ **$0.01**)
+- **few-shot 비교 대시보드:** [local-fewshot/README.md](./local-fewshot/README.md)
+  (`http://127.0.0.1:4177`). baseline과 `fewshot.md`를 같은 시나리오에 두 번 돌린다.
 
 ---
 

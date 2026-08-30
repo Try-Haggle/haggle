@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { DeepSeekAdapter } from "../../adapters/deepseek-adapter.js";
+import { callLLM } from "../../adapters/deepseek-client.js";
 import { DEFAULT_BUDDY_DNA } from "../../config.js";
 import type { ContextOutput } from "../../pipeline/types.js";
 import { DefaultEngineSkill } from "../../skills/default-engine-skill.js";
@@ -59,7 +60,6 @@ function makeConfig(): StageConfig {
     adapters: { UNDERSTAND: adapter, DECIDE: adapter, RESPOND: adapter },
     modes: { RESPOND: "template", VALIDATE: "full" },
     memoEncoding: "codec",
-    reasoningEnabled: true,
   };
 }
 
@@ -102,7 +102,7 @@ const defaultOpponent: OpponentPattern = {
 };
 
 describe("Stage 3: decide", () => {
-  it("uses skill for non-BARGAINING phases", async () => {
+  it("holds without a Faratin fill when OPENING LLM misses and there is no last offer", async () => {
     const memory = makeMemory("OPENING");
     const result = await decide({
       context: makeContextOutput(),
@@ -116,7 +116,8 @@ describe("Stage 3: decide", () => {
     });
 
     expect(result.source).toBe("skill");
-    expect(result.decision.action).toBe("COUNTER");
+    expect(result.decision.action).toBe("HOLD");
+    expect(result.decision.price).toBeUndefined();
     expect(result.reasoning_mode).toBe(false);
   });
 
@@ -154,9 +155,7 @@ describe("Stage 3: decide", () => {
     expect(result.decision.action).toBe("CONFIRM");
   });
 
-  it("falls back to skill when LLM fails in BARGAINING", async () => {
-    // Mock callLLM to fail by using a mock module
-    // Since we can't mock callLLM without full mock setup, test the skill fallback path
+  it("repeats the standing offer when BARGAINING LLM fails", async () => {
     const memory = makeMemory("BARGAINING");
     const result = await decide({
       context: makeContextOutput(),
@@ -169,10 +168,92 @@ describe("Stage 3: decide", () => {
       opponent: defaultOpponent,
     });
 
-    // Without a real LLM, it should fall back to skill
     expect(result.source).toBe("skill");
-    expect(result.decision).toBeDefined();
+    expect(result.decision.action).toBe("COUNTER");
+    expect(result.decision.price).toBe(85000);
+    expect(result.decision.tactic_used).toBe("hold_last");
     expect(result.latency_ms).toBeGreaterThanOrEqual(0);
+  });
+
+  it("prefers my_last_offer over current_offer when LLM fails", async () => {
+    const memory = makeMemory("BARGAINING");
+    memory.boundaries.my_last_offer = 84000;
+    const result = await decide({
+      context: makeContextOutput(),
+      adapter,
+      skill,
+      phase: "BARGAINING",
+      config: makeConfig(),
+      memory,
+      facts: [],
+      opponent: defaultOpponent,
+    });
+
+    expect(result.decision.action).toBe("COUNTER");
+    expect(result.decision.price).toBe(84000);
+    expect(result.decision.tactic_used).toBe("hold_last");
+  });
+
+  it("does not fill Faratin when LLM returns an unusable COUNTER", async () => {
+    vi.mocked(callLLM).mockResolvedValueOnce({
+      content: '{"action":"COUNTER"}',
+      usage: {
+        prompt_tokens: 1,
+        completion_tokens: 1,
+        prompt_cache_hit_tokens: 0,
+        prompt_cache_miss_tokens: 1,
+      },
+      reasoning_used: false,
+    });
+    const memory = makeMemory("BARGAINING");
+    memory.boundaries.my_last_offer = 84000;
+    const result = await decide({
+      context: makeContextOutput(),
+      adapter,
+      skill,
+      phase: "BARGAINING",
+      config: makeConfig(),
+      memory,
+      facts: [],
+      opponent: defaultOpponent,
+    });
+
+    expect(result.source).toBe("skill");
+    expect(result.decision.action).toBe("COUNTER");
+    expect(result.decision.price).toBe(84000);
+    expect(result.decision.tactic_used).toBe("hold_last");
+  });
+
+  it("encodes skill slots into the system prompt", async () => {
+    const memory = makeMemory("BARGAINING");
+    const promptAdapter = new DeepSeekAdapter();
+    const systemSpy = vi.spyOn(promptAdapter, "buildSystemPrompt");
+
+    await decide({
+      context: makeContextOutput(),
+      adapter: promptAdapter,
+      skill,
+      phase: "BARGAINING",
+      config: {
+        ...makeConfig(),
+        adapters: { UNDERSTAND: promptAdapter, DECIDE: promptAdapter, RESPOND: promptAdapter },
+      },
+      memory,
+      facts: [],
+      opponent: defaultOpponent,
+      skillSlots: {
+        knowledge: ["Category: Consumer Electronics"],
+        tactics: ["condition_trade"],
+      },
+    });
+
+    expect(systemSpy).toHaveBeenCalled();
+    const skillContext = systemSpy.mock.calls[0]?.[0] ?? "";
+    expect(skillContext).toContain("## Skills");
+    expect(skillContext).toContain("### Knowledge");
+    expect(skillContext).toContain("Category: Consumer Electronics");
+    expect(skillContext).toContain("### Tactics");
+    expect(skillContext).toContain("condition_trade");
   });
 
   it("passes Stage 2 L5 signal lines into the LLM prompt", async () => {
@@ -204,6 +285,115 @@ describe("Stage 3: decide", () => {
       "USER_MEMORY_HINTS:non_authoritative",
       "MEM:pricing:ceiling_70000|strength:0.65",
     ]);
+  });
+
+  it("routes a cheap published ask to Flash", async () => {
+    vi.mocked(callLLM).mockClear();
+    vi.mocked(callLLM).mockResolvedValueOnce({
+      content: '{"action":"COUNTER","price":40}',
+      usage: {
+        prompt_tokens: 1,
+        completion_tokens: 1,
+        prompt_cache_hit_tokens: 0,
+        prompt_cache_miss_tokens: 1,
+      },
+      reasoning_used: false,
+    });
+    const memory = makeMemory("BARGAINING");
+    memory.listing_context = { published_ask_minor: 4500 };
+    await decide({
+      context: makeContextOutput(),
+      adapter,
+      skill,
+      phase: "BARGAINING",
+      config: makeConfig(),
+      memory,
+      facts: [],
+      opponent: defaultOpponent,
+    });
+    expect(vi.mocked(callLLM).mock.calls[0]?.[2]).toMatchObject({ model: "deepseek-v4-flash" });
+  });
+
+  it("uses the server-set allowed_model on a cheap ask", async () => {
+    vi.mocked(callLLM).mockClear();
+    vi.mocked(callLLM).mockResolvedValueOnce({
+      content: '{"action":"COUNTER","price":40}',
+      usage: {
+        prompt_tokens: 1,
+        completion_tokens: 1,
+        prompt_cache_hit_tokens: 0,
+        prompt_cache_miss_tokens: 1,
+      },
+      reasoning_used: false,
+    });
+    const memory = makeMemory("BARGAINING");
+    memory.listing_context = { published_ask_minor: 4500 };
+    memory.session.allowed_model = "deepseek-v4-pro";
+    await decide({
+      context: makeContextOutput(),
+      adapter,
+      skill,
+      phase: "BARGAINING",
+      config: makeConfig(),
+      memory,
+      facts: [],
+      opponent: defaultOpponent,
+    });
+    expect(vi.mocked(callLLM).mock.calls[0]?.[2]).toMatchObject({ model: "deepseek-v4-pro" });
+  });
+
+  it("keeps Pro on a cheap ask when pro credit is on", async () => {
+    vi.mocked(callLLM).mockClear();
+    vi.mocked(callLLM).mockResolvedValueOnce({
+      content: '{"action":"COUNTER","price":40}',
+      usage: {
+        prompt_tokens: 1,
+        completion_tokens: 1,
+        prompt_cache_hit_tokens: 0,
+        prompt_cache_miss_tokens: 1,
+      },
+      reasoning_used: false,
+    });
+    const memory = makeMemory("BARGAINING");
+    memory.listing_context = { published_ask_minor: 4500 };
+    memory.session.pro_model_credit = true;
+    await decide({
+      context: makeContextOutput(),
+      adapter,
+      skill,
+      phase: "BARGAINING",
+      config: makeConfig(),
+      memory,
+      facts: [],
+      opponent: defaultOpponent,
+    });
+    expect(vi.mocked(callLLM).mock.calls[0]?.[2]).toMatchObject({ model: "deepseek-v4-pro" });
+  });
+
+  it("keeps Pro when the published ask is missing", async () => {
+    vi.mocked(callLLM).mockClear();
+    vi.mocked(callLLM).mockResolvedValueOnce({
+      content: '{"action":"COUNTER","price":850}',
+      usage: {
+        prompt_tokens: 1,
+        completion_tokens: 1,
+        prompt_cache_hit_tokens: 0,
+        prompt_cache_miss_tokens: 1,
+      },
+      reasoning_used: false,
+    });
+    const memory = makeMemory("BARGAINING");
+    await decide({
+      context: makeContextOutput(),
+      adapter,
+      skill,
+      phase: "BARGAINING",
+      config: makeConfig(),
+      memory,
+      facts: [],
+      opponent: defaultOpponent,
+    });
+    expect(vi.mocked(callLLM).mock.calls[0]?.[2]).toMatchObject({ model: "deepseek-v4-pro" });
   });
 
   it("returns latency_ms", async () => {

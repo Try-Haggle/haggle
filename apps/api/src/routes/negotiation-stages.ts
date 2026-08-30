@@ -421,7 +421,6 @@ export function registerStageRoutes(app: FastifyInstance, _db: Database) {
           },
           modes: { RESPOND: "template", VALIDATE: "full" },
           memoEncoding: "codec",
-          reasoningEnabled: true,
         },
       });
 

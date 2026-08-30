@@ -52,6 +52,11 @@ export interface EngineDecision {
    * configured goal (target/floor); it only helps reach it within the box.
    */
   opponent_estimate?: OpponentEstimate;
+  /**
+   * This side's private plan for the rest of the session. Written on the first
+   * Decide, stored on the acting snapshot, re-injected via MEMO. Never HNP.
+   */
+  private_plan?: string;
 }
 
 /**
@@ -134,7 +139,9 @@ export interface CategoryTerm {
   value_type: "number" | "enum" | "boolean" | "text";
   value_range?: { min?: number; max?: number } | string[];
   unit?: string;
+  /** How this slot usually moves value. No category-wide dollar table. */
   typical_impact: string;
+  /** How Decide should treat the slot. No "$X per tier" bands. */
   evaluate_hint: string;
 }
 
@@ -179,6 +186,15 @@ export interface CoreMemory {
     max_duration_ms?: number;
     /** @deprecated Use created_at_ms/deadline_at_ms plus concession beta instead of urgency labels. */
     urgency?: "low" | "normal" | "high" | "urgent";
+    /**
+     * Server-set catalog id for this side. Not a client payment bit.
+     */
+    allowed_model?: string;
+    /**
+     * Legacy alias for "this session may use Pro". Prefer `allowed_model`.
+     * Do not copy from a client request.
+     */
+    pro_model_credit?: boolean;
   };
   boundaries: {
     my_target: number;
@@ -236,6 +252,11 @@ export interface CoreMemory {
    * the sensor lands.
    */
   extracted_features?: ExtractedFeature[];
+  /**
+   * This side's private plan (direction, not a dollar schedule). Snapshot only.
+   * Decide sees it as MEMO `P:`. Never HNP or the public message.
+   */
+  private_plan?: string;
 }
 
 /**
@@ -271,6 +292,11 @@ export interface ListingContextMemory {
    * sessions.
    */
   seller_facts?: Array<{ checkId: string; question?: string; stance: string }>;
+  /**
+   * Published listing ask in minor units. Decide model routing reads this, not
+   * the buyer target. Absent on pre-threshold snapshots — missing ask → Pro.
+   */
+  published_ask_minor?: number;
   /** Seller-stated box used for carrier quotes and pickup feasibility. */
   parcel?: {
     weight_oz: number;
@@ -565,7 +591,8 @@ export interface StageConfig {
     VALIDATE: "full" | "lite";
   };
   memoEncoding: "auto" | "codec" | "raw";
-  reasoningEnabled: boolean;
+  /** Sampler temperature for Decide. Omit to use DEEPSEEK_TEMPERATURE or 0.5. */
+  temperature?: number;
 }
 
 // =========================================
@@ -602,7 +629,11 @@ export interface ModelAdapter {
   readonly location: "remote" | "local";
   readonly capabilities: readonly ("parse" | "reason" | "generate")[];
 
-  buildSystemPrompt(skillContext: string, role?: "buyer" | "seller"): string;
+  buildSystemPrompt(
+    skillContext: string,
+    role?: "buyer" | "seller",
+    listing?: { tags?: string[]; category?: string } | null,
+  ): string;
   buildUserPrompt(
     memory: CoreMemory,
     recentFacts: RoundFact[],

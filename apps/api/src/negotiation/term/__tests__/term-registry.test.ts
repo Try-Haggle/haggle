@@ -28,6 +28,13 @@ describe("TermRegistry", () => {
     }
   });
 
+  it("does not keep a category-wide dollar table on standard terms", () => {
+    for (const t of ELECTRONICS_TERMS) {
+      expect(t.evaluate_hint).not.toMatch(/\$\s*\d/);
+      expect(t.typical_impact).not.toMatch(/\$\s*\d/);
+    }
+  });
+
   it("should register and resolve skill terms", () => {
     const declaration: SkillTermDeclaration = {
       supported_terms: ["custom_test_term"],

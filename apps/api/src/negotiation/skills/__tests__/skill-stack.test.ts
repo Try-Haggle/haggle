@@ -16,12 +16,14 @@ import { computeBriefing } from "../../referee/briefing.js";
 import type { CoreMemory, OpponentPattern, RoundFact } from "../../types.js";
 import { ElectronicsKnowledgeSkill } from "../electronics-knowledge.js";
 import { FaratinCoachingSkill } from "../faratin-coaching.js";
+import { RetailMsrpSkill } from "../retail-msrp-skill.js";
 import { clearRegistry, registerSkill, resolveItemTags, SkillStack } from "../skill-stack.js";
 import type { DecideHookResult, HookContext } from "../skill-types.js";
 
 // ─── Test Fixtures ──────────────────────────────────────────────
 
 function makeMemory(overrides?: Partial<CoreMemory>): CoreMemory {
+  const { session, boundaries, ...rest } = overrides ?? {};
   return {
     session: {
       phase: "BARGAINING",
@@ -29,7 +31,7 @@ function makeMemory(overrides?: Partial<CoreMemory>): CoreMemory {
       max_rounds: 15,
       rounds_remaining: 12,
       role: "buyer",
-      ...(overrides?.session ?? {}),
+      ...(session ?? {}),
     },
     boundaries: {
       my_target: 80000, // $800
@@ -37,8 +39,9 @@ function makeMemory(overrides?: Partial<CoreMemory>): CoreMemory {
       current_offer: 84000, // $840
       opponent_offer: 86000, // $860
       gap: 2000, // $20
-      ...(overrides?.boundaries ?? {}),
+      ...(boundaries ?? {}),
     },
+    ...rest,
   } as CoreMemory;
 }
 
@@ -118,6 +121,21 @@ describe("Skill Registration & Resolution", () => {
     // Only faratin-coaching (*) matches, not electronics-knowledge
     expect(stack.getSkills()).toHaveLength(1);
     expect(stack.getSkills()[0]!.manifest.id).toBe("faratin-coaching-v1");
+  });
+
+  it("does not attach electronics skills to clothing or vehicles", () => {
+    registerSkill(new ElectronicsKnowledgeSkill());
+    registerSkill(new RetailMsrpSkill());
+    registerSkill(new FaratinCoachingSkill());
+
+    for (const tags of [["clothing"], ["clothing/hoodie"], ["vehicles"], ["vehicles/sedan"]]) {
+      const ids = SkillStack.fromTags(tags)
+        .getSkills()
+        .map((s) => s.manifest.id);
+      expect(ids).toContain("faratin-coaching-v1");
+      expect(ids).not.toContain("electronics-knowledge-v1");
+      expect(ids).not.toContain("retail-msrp-v1");
+    }
   });
 });
 
@@ -209,7 +227,7 @@ describe("Hook Dispatch & Merging", () => {
 
     // Merged decide content
     expect(result.decide).toBeDefined();
-    expect(result.decide!.categoryBrief).toContain("Electronics");
+    expect(result.decide!.categoryBrief).toContain("electronics");
     expect(result.decide!.valuationRules.length).toBeGreaterThan(0);
     expect(result.decide!.tactics.length).toBeGreaterThan(0);
 
@@ -230,8 +248,7 @@ describe("Hook Dispatch & Merging", () => {
     // Only knowledge skill has validate hook
     expect(Object.keys(result.bySkill)).toHaveLength(1);
     expect(result.validate).toBeDefined();
-    expect(result.validate!.hardRules.length).toBeGreaterThan(0);
-    expect(result.validate!.hardRules.some((r) => r.rule === "IMEI_REQUIRED")).toBe(true);
+    expect(result.validate!.hardRules.some((r) => r.rule === "IMEI_REQUIRED")).toBe(false);
   });
 
   it("filters skills by stage", () => {
@@ -261,19 +278,18 @@ describe("Electronics Knowledge Skill", () => {
 
     expect(hints).toBeDefined();
     expect(hints.length).toBeGreaterThan(5);
-    expect(hints.some((h) => h.id === "battery_health")).toBe(true);
-    expect(hints.some((h) => h.id === "carrier_lock")).toBe(true);
-    expect(hints.some((h) => h.id === "imei_verification")).toBe(true);
+    expect(hints.some((h) => h.id === "imei_verification")).toBe(false);
+    expect(hints.some((h) => h.id === "carrier_lock")).toBe(false);
   });
 
   it("provides valuation rules for decide stage", async () => {
     const result = await skill.onHook(makeHookContext("decide"));
     const content = result.content as DecideHookResult["content"];
 
-    expect(content.categoryBrief).toContain("Electronics");
-    expect(content.categoryBrief).toContain("Swappa");
-    expect(content.valuationRules!.some((r) => r.includes("Battery"))).toBe(true);
-    expect(content.valuationRules!.some((r) => r.includes("IMEI"))).toBe(true);
+    expect(content.categoryBrief).toContain("electronics");
+    expect(content.categoryBrief).toContain("Do not invent phone gates");
+    expect(content.valuationRules!.some((r) => r.includes("IMEI"))).toBe(false);
+    expect(content.valuationRules!.every((r) => !/\$\s*\d/.test(r))).toBe(true);
 
     // Knowledge skill should NOT provide recommendations
     expect(content.recommendedPrice).toBeUndefined();
@@ -285,8 +301,32 @@ describe("Electronics Knowledge Skill", () => {
     const result = await skill.onHook(makeHookContext("validate"));
     const content = result.content as { hardRules: unknown[]; softRules: unknown[] };
 
-    expect(content.hardRules).toHaveLength(2); // IMEI, Find My
-    expect(content.softRules).toHaveLength(2); // Battery, Cosmetic
+    expect(content.hardRules).toHaveLength(0);
+    expect(content.softRules).toHaveLength(0);
+  });
+
+  it("opens IMEI only for phones, not AirPods", async () => {
+    const phone = await skill.onHook(
+      makeHookContext("validate", {
+        memory: makeMemory({
+          listing_context: { category: "electronics", tags: ["iphone-15-pro"] },
+        }),
+      }),
+    );
+    const airpods = await skill.onHook(
+      makeHookContext("validate", {
+        memory: makeMemory({
+          listing_context: { category: "electronics", tags: ["airpods"] },
+        }),
+      }),
+    );
+    const phoneRules = (phone.content.hardRules as Array<{ rule: string }>).map((r) => r.rule);
+    const airpodRules = (airpods.content.hardRules as Array<{ rule: string }>).map((r) => r.rule);
+    expect(phoneRules).toContain("IMEI_VERIFICATION");
+    expect(airpodRules).not.toContain("IMEI_VERIFICATION");
+    expect(airpodRules).toEqual(
+      expect.arrayContaining(["COUNTERFEIT_AUTHENTICITY", "FIND_MY_UNPAIRED"]),
+    );
   });
 
   it("provides respond guidance", async () => {
@@ -493,7 +533,7 @@ describe("Coaching is Advisory (Integration)", () => {
     const result = await stack.dispatchHook(ctx);
 
     // Still has knowledge
-    expect(result.decide!.categoryBrief).toContain("Electronics");
+    expect(result.decide!.categoryBrief).toContain("electronics");
     expect(result.decide!.valuationRules.length).toBeGreaterThan(0);
 
     // No advisories

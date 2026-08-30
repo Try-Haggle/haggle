@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>fewshot-lab · 로컬 비교</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #171a21;
+      --line: #2a2f3a;
+      --fg: #e6e8ec;
+      --mut: #9aa4b2;
+      --accent: #5b9dff;
+      --ok: #3ecf8e;
+      --warn: #f5a524;
+      --bad: #f07178;
+      --base: #7aa2f7;
+      --shot: #c3e88d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    header {
+      padding: 18px 24px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    header p { margin: 4px 0 0; color: var(--mut); font-size: 12px; }
+    h1 { margin: 0; font-size: 18px; }
+    main { display: grid; grid-template-columns: 360px 1fr; min-height: calc(100vh - 72px); }
+    aside { padding: 20px 20px 32px; border-right: 1px solid var(--line); }
+    section { padding: 20px 24px 40px; }
+    label { display: block; color: var(--mut); font-size: 12px; margin: 14px 0 6px; }
+    select, input[type="number"], textarea, button {
+      width: 100%;
+      background: var(--panel);
+      color: var(--fg);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font: inherit;
+    }
+    textarea { min-height: 220px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    button { cursor: pointer; font-weight: 600; }
+    button.primary { background: var(--accent); color: #081018; border-color: transparent; margin-top: 12px; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; margin-right: 6px; }
+    .ok { background: #163527; color: var(--ok); }
+    .bad { background: #3a1a1d; color: var(--bad); }
+    .warn { background: #3a2a10; color: var(--warn); }
+    .est { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-top: 12px; font-variant-numeric: tabular-nums; }
+    .cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 12px 0 20px; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+    .card b { display: block; font-size: 20px; }
+    .card span { color: var(--mut); font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid var(--line); padding: 7px 8px; text-align: left; font-variant-numeric: tabular-nums; }
+    th { color: var(--mut); font-size: 12px; }
+    tr { cursor: pointer; }
+    tr.active { outline: 1px solid var(--accent); }
+    .base { color: var(--base); }
+    .shot { color: var(--shot); }
+    .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+    .msg { background: #12151c; border-radius: 8px; padding: 8px 10px; margin: 6px 0; font-size: 12px; }
+    .msg small { color: var(--mut); }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>fewshot-lab</h1>
+    <p>스테이징과 같은 경로입니다: publishDraft → POST /negotiations/start → auto-play/next. <b>있음</b>은 스테이징 Decide(카드 on). <b>없음</b>은 카드만 끕니다.</p>
+  </header>
+  <main>
+    <aside>
+      <div id="status"></div>
+      <label>실험 그룹</label>
+      <select id="group">
+        <option value="D" selected>D · 저장용량 (128/256/512/1TB)</option>
+        <option value="B">B · 배터리</option>
+        <option value="C">C · 스크래치</option>
+        <option value="E">E · 구매자 압박</option>
+      </select>
+      <label>각 케이스 반복</label>
+      <input id="repeat" type="number" min="1" max="5" value="1">
+      <button type="button" id="estimate">비용 미리보기</button>
+      <div id="est" class="est hidden"></div>
+      <button type="button" class="primary" id="run" disabled>비용 확인 후 실행</button>
+      <p style="color:var(--mut);font-size:12px;margin-top:14px">실행은 확인을 누른 뒤에만 DeepSeek를 부릅니다. 결과는 nego-lab/local-fewshot/results 에만 쌓입니다.</p>
+    </aside>
+    <section>
+      <div id="summary" class="cards"></div>
+      <table>
+        <thead>
+          <tr>
+            <th>케이스</th>
+            <th>속성</th>
+            <th class="base">퓨샷 없음</th>
+            <th class="shot">퓨샷 있음</th>
+            <th>차이</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div id="detail" class="pair"></div>
+    </section>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let confirmed = false;
+    let poll = null;
+    let currentJob = null;
+
+    async function loadStatus() {
+      const s = await (await fetch("/api/status")).json();
+      $("status").innerHTML = s.ok
+        ? '<span class="pill ok">로컬 DB · 키 확인</span>'
+        : `<span class="pill bad">${s.dbOk ? "" : "DB URL 아님 "} ${s.keyOk ? "" : "DEEPSEEK 키 없음"}</span>`;
+    }
+
+    $("estimate").onclick = async () => {
+      confirmed = false;
+      $("run").disabled = true;
+      const data = await (await fetch("/api/estimate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ group: $("group").value, repeat: Number($("repeat").value) }),
+      })).json();
+      const e = data.estimate;
+      $("est").classList.remove("hidden");
+      $("est").innerHTML =
+        `케이스 ${data.cases.length} × 반복 ${$("repeat").value} × (퓨샷 없음 + 있음) = <b>${e.negotiations} 협상</b><br>` +
+        `상한 약 $${e.estUsd.toFixed(2)} · ${e.estDuration}<br>` +
+        data.cases.map((c) => c.label).join(" · ");
+      $("run").disabled = false;
+      confirmed = true;
+    };
+
+    $("run").onclick = async () => {
+      if (!confirmed) return;
+      $("run").disabled = true;
+      const res = await fetch("/api/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          group: $("group").value,
+          repeat: Number($("repeat").value),
+          confirm: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        $("est").textContent = data.error || "실행 실패";
+        $("run").disabled = false;
+        return;
+      }
+      currentJob = data.id;
+      poll = setInterval(refreshJob, 2000);
+      refreshJob();
+    };
+
+    function money(v) {
+      return v == null ? "—" : `$${Number(v).toFixed(2)}`;
+    }
+
+    function pairRows(results) {
+      const map = new Map();
+      for (const r of results) {
+        const key = `${r.group}|${JSON.stringify(r.attributes.storage ?? r.attributes.batteryHealth ?? r.attributes.scratches ?? r.label)}|${r.repeatIndex}`;
+        const row = map.get(key) ?? { key, label: r.label, attrs: r.attributes, baseline: null, fewshot: null };
+        if (r.attributes.variant === "baseline") row.baseline = r;
+        if (r.attributes.variant === "fewshot") row.fewshot = r;
+        map.set(key, row);
+      }
+      return [...map.values()];
+    }
+
+    function render(job) {
+      const s = job.summary || {};
+      $("summary").innerHTML = `
+        <div class="card"><span>퓨샷 없음 타결</span><b>${s.baselineAccepts ?? 0}/${s.baselineTotal ?? 0}</b></div>
+        <div class="card"><span>퓨샷 있음 타결</span><b>${s.fewshotAccepts ?? 0}/${s.fewshotTotal ?? 0}</b></div>
+        <div class="card"><span>없음 가격 폭</span><b>${money(s.baselinePriceSpan)}</b></div>
+        <div class="card"><span>있음 가격 폭</span><b>${money(s.fewshotPriceSpan)}</b></div>
+      `;
+      const rows = pairRows(job.results || []);
+      $("rows").innerHTML = rows.map((row, i) => {
+        const b = row.baseline?.finalPrice;
+        const f = row.fewshot?.finalPrice;
+        const delta = b != null && f != null ? f - b : null;
+        const attr = row.attrs.storage || row.attrs.batteryHealth || row.attrs.scratches || "";
+        return `<tr data-i="${i}">
+          <td>${(row.baseline || row.fewshot)?.caseId?.split(":")[0] || ""}</td>
+          <td>${attr}</td>
+          <td class="base">${money(b)} <small>${row.baseline?.outcome || ""}</small></td>
+          <td class="shot">${money(f)} <small>${row.fewshot?.outcome || ""}</small></td>
+          <td>${delta == null ? "—" : `${delta >= 0 ? "+" : "-"}$${Math.abs(delta).toFixed(2)}`}</td>
+        </tr>`;
+      }).join("");
+      $("rows").querySelectorAll("tr").forEach((tr) => {
+        tr.onclick = () => showDetail(rows[Number(tr.dataset.i)]);
+      });
+    }
+
+    function showDetail(row) {
+      const block = (title, r, cls) => {
+        if (!r) return `<div><h3 class="${cls}">${title}</h3><p>아직 없음</p></div>`;
+        const msgs = (r.transcript || []).map((t) =>
+          `<div class="msg"><small>R${t.roundNo} ${t.senderRole} · ${t.decision || t.messageType}</small><div>${t.message || ""}</div></div>`
+        ).join("");
+        return `<div><h3 class="${cls}">${title} · ${money(r.finalPrice)} · ${r.outcome}</h3>${msgs || "<p>대사 없음</p>"}</div>`;
+      };
+      $("detail").innerHTML = block("퓨샷 없음", row.baseline, "base") + block("퓨샷 있음", row.fewshot, "shot");
+    }
+
+    async function refreshJob() {
+      if (!currentJob) return;
+      const job = await (await fetch(`/api/jobs/${currentJob}`)).json();
+      render(job);
+      if (job.status !== "running") {
+        clearInterval(poll);
+        $("run").disabled = false;
+      }
+    }
+
+    loadStatus();
+  </script>
+</body>
+</html>

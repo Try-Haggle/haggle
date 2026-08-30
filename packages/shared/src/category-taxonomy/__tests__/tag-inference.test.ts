@@ -228,6 +228,13 @@ describe("coverage gaps found by the real-path probe (must stay closed)", () => 
 });
 
 describe("multi-family brands only decide when nothing more specific matched", () => {
+  it("AirPods open authenticity + Find My unpaired, not IMEI", () => {
+    const { tags } = enrichTagsWithTaxonomy(["electronics"], "AirPods Pro 2 used");
+    const gates = hardGates(tags);
+    expect(gates).not.toContain("imei_verification");
+    expect(gates).toEqual(expect.arrayContaining(["counterfeit_authenticity", "find_my_unpaired"]));
+  });
+
   it("a Samsung TV resolves the TV node, not the phone node's IMEI gates", () => {
     const inferred = inferTaxonomyTags("Samsung 65 inch 4K QLED TV");
     expect(inferred).not.toContain("samsung");

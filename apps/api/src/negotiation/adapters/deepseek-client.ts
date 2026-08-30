@@ -6,15 +6,17 @@
  * Retry with backoff, timeout, telemetry integration.
  */
 
+import { recordLlmSpend } from "../../lib/llm-cost.js";
 import { withLLMTelemetry } from "../../lib/llm-telemetry.js";
+import { getDecideTemperature, getDecideTimeoutMs } from "../config.js";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export interface DeepSeekCallOptions {
-  /** Enable reasoning mode (longer timeout, lower temperature) */
-  reasoning?: boolean;
+  /** Sampler temperature. Default 0.5 or DEEPSEEK_TEMPERATURE. Not a reasoning switch. */
+  temperature?: number;
   /** Override max_tokens */
   maxTokens?: number;
   /** Correlation ID for telemetry */
@@ -35,6 +37,8 @@ export interface DeepSeekResponse {
   usage: {
     prompt_tokens: number;
     completion_tokens: number;
+    prompt_cache_hit_tokens: number;
+    prompt_cache_miss_tokens: number;
   };
   reasoning_used: boolean;
 }
@@ -48,6 +52,9 @@ interface DeepSeekChatCompletion {
     prompt_tokens?: number;
     completion_tokens?: number;
     total_tokens?: number;
+    prompt_cache_hit_tokens?: number;
+    prompt_cache_miss_tokens?: number;
+    prompt_tokens_details?: { cached_tokens?: number };
   };
 }
 
@@ -57,8 +64,6 @@ interface DeepSeekChatCompletion {
 
 const DEEPSEEK_API_BASE = "https://api.deepseek.com/v1";
 const RETRY_DELAYS = [1000, 3000]; // 2 retries: 1s, 3s
-const GENERAL_TIMEOUT_MS = 30_000;
-const REASONING_TIMEOUT_MS = 45_000;
 
 function getApiKey(): string {
   const key = process.env.DEEPSEEK_API_KEY;
@@ -113,18 +118,18 @@ async function fetchTextWithTimeout(
 
 /**
  * Call DeepSeek API with structured JSON output.
- * Supports dual mode: general (fast, temp=0.5) and reasoning (deeper, temp=0.3,
- * longer timeout). Retries up to 2 times on transient failures.
+ * Temperature is a sampler knob (default 0.5). Timeout default 180s. Retries twice.
  */
 export async function callLLM(
   systemPrompt: string,
   userPrompt: string,
   options: DeepSeekCallOptions = {},
 ): Promise<DeepSeekResponse> {
-  const { reasoning = false, maxTokens, correlationId } = options;
+  const { maxTokens, correlationId } = options;
   const model = options.model ?? getModel();
   const apiKey = getApiKey();
-  const timeoutMs = options.timeoutMs ?? (reasoning ? REASONING_TIMEOUT_MS : GENERAL_TIMEOUT_MS);
+  const timeoutMs = getDecideTimeoutMs(options.timeoutMs);
+  const temperature = getDecideTemperature(options.temperature);
 
   const body: Record<string, unknown> = {
     model,
@@ -133,7 +138,7 @@ export async function callLLM(
       { role: "user", content: userPrompt },
     ],
     response_format: { type: "json_object" },
-    temperature: reasoning ? 0.3 : 0.5,
+    temperature,
     ...(maxTokens && { max_tokens: maxTokens }),
   };
 
@@ -181,15 +186,33 @@ export async function callLLM(
 
         const data = JSON.parse(text) as DeepSeekChatCompletion;
         const content = data.choices?.[0]?.message?.content ?? "";
+        const promptTokens = data.usage?.prompt_tokens ?? 0;
+        const completionTokens = data.usage?.completion_tokens ?? 0;
+        const cacheHit =
+          data.usage?.prompt_cache_hit_tokens ??
+          data.usage?.prompt_tokens_details?.cached_tokens ??
+          0;
+        const cacheMiss =
+          data.usage?.prompt_cache_miss_tokens ?? Math.max(0, promptTokens - cacheHit);
+        const usage = {
+          prompt_tokens: promptTokens,
+          completion_tokens: completionTokens,
+          prompt_cache_hit_tokens: cacheHit,
+          prompt_cache_miss_tokens: cacheMiss,
+        };
+        recordLlmSpend(model, {
+          promptTokens,
+          completionTokens,
+          totalTokens: promptTokens + completionTokens,
+          cacheHitTokens: cacheHit,
+          cacheMissTokens: cacheMiss,
+        });
 
         return {
           content,
           finish_reason: data.choices?.[0]?.finish_reason ?? null,
-          usage: {
-            prompt_tokens: data.usage?.prompt_tokens ?? 0,
-            completion_tokens: data.usage?.completion_tokens ?? 0,
-          },
-          reasoning_used: reasoning,
+          usage,
+          reasoning_used: false,
         };
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
@@ -233,6 +256,8 @@ export async function callLLM(
         promptTokens: result.usage.prompt_tokens,
         completionTokens: result.usage.completion_tokens,
         totalTokens: result.usage.prompt_tokens + result.usage.completion_tokens,
+        cacheHitTokens: result.usage.prompt_cache_hit_tokens,
+        cacheMissTokens: result.usage.prompt_cache_miss_tokens,
       }),
     },
   );
