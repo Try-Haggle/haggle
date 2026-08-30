@@ -97,7 +97,6 @@ vi.mock("@haggle/db", () => ({
   isNull: vi.fn(),
   inArray: vi.fn(),
   settlementApprovals: {},
-  listingClaims: { id: "id", listingId: "listingId", status: "status" },
   negotiationSessions: {},
   listingClaims: {
     id: "id",
