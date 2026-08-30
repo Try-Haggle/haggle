@@ -112,14 +112,17 @@ send_message (인스턴스 A)
   └─ 이벤트 수신 → 자기 프로세스가 들고 있는 해당 userId 소켓에만 push
 ```
 
-**배포 제약 (중요)**: `LISTEN`은 세션에 묶이므로 Supabase **transaction 풀러
-(6543)에서 동작하지 않는다.** `.env.example`의 기본 연결이 6543이다.
+**배포 제약**: `LISTEN`은 세션에 묶이므로 Supabase **transaction 풀러(6543)에서
+아무것도 받지 못한다.** `.env.example`의 기본 연결이 6543이다.
 
 - `NOTIFY`(발행)는 트랜잭션 내부 실행이라 기존 풀 연결로 충분하다.
-- `LISTEN`(구독)에만 **session 모드(5432)** 연결이 필요 → `DATABASE_LISTEN_URL` 신설.
-- 미설정 시 경고 로그 + 단일 인스턴스 인메모리 모드로 자동 폴백(기능은 동작,
-  다중 인스턴스만 미보장). 로컬(54322 직결)은 그대로 동작한다.
-- **staging/production 환경변수 추가가 배포 체크리스트 항목이다.**
+- `LISTEN`(구독)만 **session 모드(5432)** 연결이 필요하다.
+- **환경변수 추가는 필요 없다.** Supabase의 두 풀러는 호스트·계정이 같고 포트만
+  다르므로, `resolveListenUrl`이 `DATABASE_URL`의 6543을 5432로 바꿔 유도한다.
+  직결(로컬 54322, `db.<ref>.supabase.co:5432`)은 그대로 쓴다.
+- `DATABASE_LISTEN_URL`은 다른 호스트를 가리켜야 할 때만 쓰는 재정의 수단이다.
+- 유도에 실패하거나 연결이 거부되면 경고 로그 + 로컬 전용으로 폴백한다(기능은
+  동작, 다중 인스턴스만 미보장).
 
 기존 알림/협상 WS 브로드캐스트도 같은 어댑터를 경유하도록 이번 브랜치에서 전환한다.
 
@@ -177,8 +180,8 @@ send_message (인스턴스 A)
 
 ## 10. 배포 체크리스트
 
-- [ ] staging/production에 `DATABASE_LISTEN_URL` 설정 (session 모드 5432).
-      미설정 시 기능은 동작하지만 인스턴스 간 실시간이 끊긴다
+- [ ] 별도 환경변수 설정 없음 — listen URL은 DATABASE_URL에서 유도된다.
+      다른 호스트를 써야 할 때만 `DATABASE_LISTEN_URL`로 재정의한다
 - [ ] `0145_kind_siren.sql` 적용 (같은 SHA의 CI 성공 이후)
 - [ ] 배포 후 기동 로그에서 `realtime_fanout_local_only` 경고가 없는지 확인
 

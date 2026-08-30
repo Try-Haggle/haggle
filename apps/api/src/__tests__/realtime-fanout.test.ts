@@ -17,6 +17,7 @@ import {
   NOTIFY_PAYLOAD_MAX_BYTES,
   publishRealtime,
   type RealtimeEnvelope,
+  resolveListenUrl,
 } from "../realtime/fanout.js";
 
 const listenMock = vi.fn();
@@ -222,5 +223,49 @@ describe("publishRealtime", () => {
       expect.objectContaining({ event: "realtime_fanout_notify_failed" }),
       expect.any(String),
     );
+  });
+});
+
+describe("resolveListenUrl", () => {
+  const POOLER = "postgresql://postgres.abc:pw@aws-0-us-east-1.pooler.supabase.com";
+
+  it("prefers an explicit setting", () => {
+    expect(
+      resolveListenUrl({
+        DATABASE_LISTEN_URL: "postgresql://explicit:5432/db",
+        DATABASE_URL: `${POOLER}:6543/postgres`,
+      } as NodeJS.ProcessEnv),
+    ).toBe("postgresql://explicit:5432/db");
+  });
+
+  it("moves the transaction pooler to its session port", () => {
+    // LISTEN receives nothing on 6543, and the two poolers differ only by port.
+    const resolved = resolveListenUrl({
+      DATABASE_URL: `${POOLER}:6543/postgres`,
+    } as NodeJS.ProcessEnv);
+
+    expect(resolved).toContain("pooler.supabase.com:5432");
+    expect(resolved).toContain("postgres.abc:pw@");
+  });
+
+  it("leaves a direct connection alone — LISTEN already works there", () => {
+    const local = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+    expect(resolveListenUrl({ DATABASE_URL: local } as NodeJS.ProcessEnv)).toBe(local);
+
+    const direct = "postgresql://postgres:pw@db.abc.supabase.co:5432/postgres";
+    expect(resolveListenUrl({ DATABASE_URL: direct } as NodeJS.ProcessEnv)).toBe(direct);
+  });
+
+  it("leaves a session pooler alone", () => {
+    const session = `${POOLER}:5432/postgres`;
+    expect(resolveListenUrl({ DATABASE_URL: session } as NodeJS.ProcessEnv)).toBe(session);
+  });
+
+  it("has nothing to return without a database url", () => {
+    expect(resolveListenUrl({} as NodeJS.ProcessEnv)).toBeUndefined();
+  });
+
+  it("passes an unparseable url through rather than dropping realtime", () => {
+    expect(resolveListenUrl({ DATABASE_URL: "not a url" } as NodeJS.ProcessEnv)).toBe("not a url");
   });
 });

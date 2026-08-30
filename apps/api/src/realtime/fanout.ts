@@ -103,11 +103,48 @@ export function decodeEnvelope(
 
 // ─── Lifecycle ────────────────────────────────────────────────────────────────
 
+/**
+ * Where the listener should connect.
+ *
+ * Supabase's session and transaction poolers differ only by port — same host,
+ * same credentials — so the session URL can be derived rather than configured.
+ * That matters because the failure it prevents is invisible: `LISTEN` on the
+ * transaction pooler (6543) receives nothing at all, and an environment that
+ * forgot the variable would look healthy while cross-instance realtime was
+ * silently dead.
+ *
+ * Anything that is not a 6543 pooler is used as-is: direct connections (local
+ * development, `db.<ref>.supabase.co:5432`) support LISTEN already.
+ */
+export function resolveListenUrl(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const explicit = env.DATABASE_LISTEN_URL?.trim();
+  if (explicit) return explicit;
+
+  const primary = env.DATABASE_URL?.trim();
+  if (!primary) return undefined;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(primary);
+  } catch {
+    return primary;
+  }
+
+  if (parsed.hostname.endsWith("pooler.supabase.com") && parsed.port === "6543") {
+    parsed.port = "5432";
+    return parsed.toString();
+  }
+  return primary;
+}
+
 export interface InitRealtimeFanoutOptions {
   db: Database;
   /** Delivers an envelope to sockets held by this process. */
   deliver: RealtimeDeliverer;
-  /** Session-mode connection string. Defaults to DATABASE_LISTEN_URL. */
+  /**
+   * Session-mode connection string. Defaults to DATABASE_LISTEN_URL, or the
+   * session-port form of DATABASE_URL — see resolveListenUrl.
+   */
   listenUrl?: string | undefined;
   log?: { warn: (obj: unknown, msg: string) => void };
 }
@@ -118,12 +155,11 @@ export async function initRealtimeFanout(options: InitRealtimeFanoutOptions): Pr
   logger = options.log ?? null;
   oversizedDropped = 0;
 
-  const url = options.listenUrl ?? process.env.DATABASE_LISTEN_URL;
+  const url = "listenUrl" in options ? options.listenUrl : resolveListenUrl();
   if (!url) {
     logger?.warn(
       { event: "realtime_fanout_local_only", instanceId: INSTANCE_ID },
-      "DATABASE_LISTEN_URL is not set — realtime events reach this instance's sockets only. " +
-        "Set it to a session-mode (port 5432) connection string before running more than one API instance.",
+      "No database URL to listen on — realtime events reach this instance's sockets only.",
     );
     return;
   }
