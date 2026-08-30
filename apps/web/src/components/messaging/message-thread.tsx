@@ -21,6 +21,11 @@ interface MessageThreadProps {
  * The scrolling thread: oldest at the top, newest at the bottom, older pages
  * pulled in as you scroll up.
  */
+/** Survives the optimistic → stored swap; see the key comment below. */
+function stableKey(message: Message): string {
+  return message.clientMessageId ? `c:${message.clientMessageId}` : message.id;
+}
+
 export function MessageThread({
   messages,
   currentUserId,
@@ -31,6 +36,8 @@ export function MessageThread({
   onLoadMore,
 }: MessageThreadProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const mountedRef = useRef(false);
+  const previousLastKeyRef = useRef<string | null>(null);
   const topSentinelRef = useRef<HTMLDivElement>(null);
   const pinnedToBottomRef = useRef(true);
   const previousHeightRef = useRef(0);
@@ -82,6 +89,22 @@ export function MessageThread({
     return () => observer.disconnect();
   }, [hasMore, loadingMore, onLoadMore]);
 
+  // Only messages that land while the thread is on screen animate. The history
+  // is already there when you open a conversation, and older pages arrive above
+  // the fold — animating either would be motion for its own sake.
+  const previousLastKey = previousLastKeyRef.current;
+  const previousLastIndex = previousLastKey
+    ? messages.findIndex((message) => stableKey(message) === previousLastKey)
+    : -1;
+  const firstArrivingIndex =
+    mountedRef.current && previousLastIndex >= 0 ? previousLastIndex + 1 : messages.length;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const last = messages[messages.length - 1];
+    previousLastKeyRef.current = last ? stableKey(last) : null;
+  });
+
   const grouped = groupMessages(messages);
   const otherReadTime = otherReadAt ? Date.parse(otherReadAt) : null;
 
@@ -97,7 +120,7 @@ export function MessageThread({
         </div>
       )}
 
-      {grouped.map(({ message, showDate, dateLabel, showTimestamp, startsRun }) => {
+      {grouped.map(({ message, showDate, dateLabel, showTimestamp, startsRun }, index) => {
         const mine = message.senderId === currentUserId;
         // KakaoTalk-style: the count next to your own bubble is how many people
         // have not read it yet (1 in a 1:1 thread, gone once they read it).
@@ -106,10 +129,19 @@ export function MessageThread({
         const unseen = mine && otherReadTime === null;
 
         return (
-          <div key={message.id}>
+          // Keyed by the client id when there is one, so the optimistic bubble
+          // and the stored message that replaces it are the same element — a
+          // fresh key would unmount it and play the arrival animation twice.
+          <div key={stableKey(message)}>
             {showDate && <div className="py-3 text-center text-ink-muted text-xs">{dateLabel}</div>}
 
-            <div className={cn("flex flex-col", mine ? "items-end" : "items-start")}>
+            <div
+              className={cn(
+                "flex flex-col",
+                mine ? "items-end" : "items-start",
+                index >= firstArrivingIndex && "animate-message-in",
+              )}
+            >
               {showTimestamp && (
                 <div className="mb-1 text-[0.625rem] text-ink-muted">
                   {!mine && startsRun && (

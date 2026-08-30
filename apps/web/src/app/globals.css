@@ -107,6 +107,35 @@
   --motion-deliberate: 800ms;
 }
 
+/* ----------------------------------------------------------------
+   MOTION · a message arriving
+   A bubble that appears with no transition reads as a jump cut. This
+   is the settle the system asks for: a short rise that decelerates,
+   no overshoot. Applied only to messages that arrive after the thread
+   is on screen — animating the whole history on open would turn
+   opening a conversation into a performance.
+   ---------------------------------------------------------------- */
+@keyframes message-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-message-in {
+  animation: message-in var(--motion-quick) var(--ease-decelerate) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-message-in {
+    animation: none;
+  }
+}
+
 /* Users who ask for less motion still get state changes — just not
    travel through space. Blanket brake; components additionally swap
    to opacity-only variants via framer-motion's useReducedMotion. */

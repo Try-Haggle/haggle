@@ -110,3 +110,96 @@ describe("MessageThread", () => {
     expect(screen.getAllByText("Counterparty")).toHaveLength(2);
   });
 });
+
+describe("arrival animation", () => {
+  function bubbleFor(text: string): HTMLElement | null {
+    return screen.getByText(text).closest(".flex.flex-col");
+  }
+
+  it("does not animate the history that is already there when a thread opens", () => {
+    renderThread({
+      messages: [
+        message({ id: "1", body: "first", createdAt: at(2026, 8, 29, 10, 0) }),
+        message({ id: "2", body: "second", createdAt: at(2026, 8, 29, 10, 1) }),
+      ],
+    });
+
+    expect(bubbleFor("first")).not.toHaveClass("animate-message-in");
+    expect(bubbleFor("second")).not.toHaveClass("animate-message-in");
+  });
+
+  it("animates a message that arrives while the thread is open", () => {
+    const { rerender } = renderThread({
+      messages: [message({ id: "1", body: "first", createdAt: at(2026, 8, 29, 10, 0) })],
+    });
+
+    rerender(
+      <MessageThread
+        messages={[
+          message({ id: "1", body: "first", createdAt: at(2026, 8, 29, 10, 0) }),
+          message({ id: "2", body: "arrived", createdAt: at(2026, 8, 29, 10, 1) }),
+        ]}
+        currentUserId={ME}
+        otherMemberName="Counterparty"
+        otherReadAt={null}
+        hasMore={false}
+        loadingMore={false}
+        onLoadMore={() => {}}
+      />,
+    );
+
+    expect(bubbleFor("arrived")).toHaveClass("animate-message-in");
+    // The one that was already on screen stays put.
+    expect(bubbleFor("first")).not.toHaveClass("animate-message-in");
+  });
+
+  it("does not animate older messages pulled in above the fold", () => {
+    const { rerender } = renderThread({
+      messages: [message({ id: "2", body: "newer", createdAt: at(2026, 8, 29, 10, 1) })],
+    });
+
+    rerender(
+      <MessageThread
+        messages={[
+          message({ id: "1", body: "older", createdAt: at(2026, 8, 29, 9, 0) }),
+          message({ id: "2", body: "newer", createdAt: at(2026, 8, 29, 10, 1) }),
+        ]}
+        currentUserId={ME}
+        otherMemberName="Counterparty"
+        otherReadAt={null}
+        hasMore={false}
+        loadingMore={false}
+        onLoadMore={() => {}}
+      />,
+    );
+
+    expect(bubbleFor("older")).not.toHaveClass("animate-message-in");
+  });
+
+  it("keeps one element when the optimistic bubble becomes the stored message", () => {
+    const optimistic = message({
+      id: "pending-c1",
+      clientMessageId: "c1",
+      body: "sending",
+      createdAt: at(2026, 8, 29, 10, 0),
+    });
+    const { rerender } = renderThread({ messages: [optimistic] });
+    const before = bubbleFor("sending");
+
+    rerender(
+      <MessageThread
+        messages={[{ ...optimistic, id: "stored-id" }]}
+        currentUserId={ME}
+        otherMemberName="Counterparty"
+        otherReadAt={null}
+        hasMore={false}
+        loadingMore={false}
+        onLoadMore={() => {}}
+      />,
+    );
+
+    // Same DOM node: the id changed but the client id kept the key stable, so
+    // the bubble does not unmount and replay its arrival.
+    expect(bubbleFor("sending")).toBe(before);
+  });
+});
