@@ -70,7 +70,9 @@ export default function NotificationsPage() {
   }
 
   return (
-    <main className="min-h-screen px-4 py-6 max-w-2xl mx-auto">
+    // Same frame as every other page in the app (browse, dashboards, orders):
+    // this one was centred at max-w-2xl, which read as a different product.
+    <main className="mx-auto min-h-[calc(100vh-4rem)] max-w-7xl px-4 py-6 sm:p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold text-ink">Notifications</h1>
         {notifications.some((n) => !n.readAt) && (
