@@ -51,13 +51,27 @@ function renderPanel(props: Partial<React.ComponentProps<typeof SubjectPanel>> =
   );
 }
 
+/**
+ * Resolve on a later task, the way a network call does.
+ *
+ * An immediately-resolved mock hid a real bug: the fetch effect listed its own
+ * state in its dependencies, so it cancelled its in-flight request as soon as
+ * it set "loading" — and the panel span forever in the browser while the test
+ * passed on microtask timing.
+ */
+function afterATick<T>(value: T): Promise<T> {
+  return new Promise((resolve) => setTimeout(() => resolve(value), 10));
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
-  subject.mockResolvedValue({
-    subject: { type: "negotiation_session", id: "session-1" },
-    listing: listing(),
-    sellerId: SELLER_ID,
-  });
+  subject.mockImplementation(() =>
+    afterATick({
+      subject: { type: "negotiation_session", id: "session-1" },
+      listing: listing(),
+      sellerId: SELLER_ID,
+    }),
+  );
 });
 
 describe("SubjectPanel", () => {
@@ -65,6 +79,14 @@ describe("SubjectPanel", () => {
     renderPanel({ open: false });
 
     expect(subject).not.toHaveBeenCalled();
+  });
+
+  it("shows a spinner first and then the listing, without cancelling itself", async () => {
+    renderPanel();
+
+    expect(screen.getByRole("status", { name: /loading/i })).toBeInTheDocument();
+    expect(await screen.findByText("2019 Honda Civic EX")).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: /loading/i })).toBeNull();
   });
 
   it("shows the listing the way the listing page does", async () => {
@@ -97,14 +119,16 @@ describe("SubjectPanel", () => {
   });
 
   it("says so when the listing is gone instead of rendering an empty panel", async () => {
-    subject.mockResolvedValue({ subject: null, listing: null, sellerId: null });
+    subject.mockImplementation(() => afterATick({ subject: null, listing: null, sellerId: null }));
     renderPanel();
 
     expect(await screen.findByText(/no longer available/)).toBeInTheDocument();
   });
 
   it("reports a failed load", async () => {
-    subject.mockRejectedValue(new Error("offline"));
+    subject.mockImplementation(
+      () => new Promise((_, reject) => setTimeout(() => reject(new Error("offline")), 10)),
+    );
     renderPanel();
 
     expect(await screen.findByText(/Couldn't load the listing/)).toBeInTheDocument();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AskingPrice,
   Countdown,
@@ -41,10 +41,26 @@ export function SubjectPanel({
   const [listing, setListing] = useState<SubjectListing | null>(null);
   const [sellerId, setSellerId] = useState<string | null>(null);
   const [state, setState] = useState<"idle" | "loading" | "ready" | "failed">("idle");
+  const fetchedForRef = useRef<string | null>(null);
+
+  // A different conversation means a different listing. Declared first so the
+  // reset lands before the fetch effect below re-runs for the new id.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: conversationId is the reset trigger — the effect only writes
+  useEffect(() => {
+    fetchedForRef.current = null;
+    setState("idle");
+    setListing(null);
+    setSellerId(null);
+  }, [conversationId]);
 
   useEffect(() => {
-    // Lazy: only worth fetching once someone opens the panel.
-    if (!open || state !== "idle") return;
+    // Lazy: only worth fetching once someone opens the panel, and only once per
+    // conversation. The "already fetched" mark is a ref, not state: keeping it
+    // in the dependency list made the effect cancel its own in-flight request
+    // the moment it set "loading", and the panel span forever.
+    if (!open || fetchedForRef.current === conversationId) return;
+    fetchedForRef.current = conversationId;
+
     let cancelled = false;
     setState("loading");
     messagingApi
@@ -61,14 +77,7 @@ export function SubjectPanel({
     return () => {
       cancelled = true;
     };
-  }, [open, state, conversationId]);
-
-  // A different conversation means a different listing.
-  useEffect(() => {
-    setState("idle");
-    setListing(null);
-    setSellerId(null);
-  }, []);
+  }, [open, conversationId]);
 
   const isOwner = Boolean(sellerId && sellerId === currentUserId);
   const askingPrice = listing?.targetPrice === null ? null : Number(listing?.targetPrice);
