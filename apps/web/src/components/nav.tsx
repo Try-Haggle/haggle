@@ -35,6 +35,9 @@ interface NavProps {
 const SELL_TABS = [
   { label: "Orders", href: "/orders" },
   { label: "Agents", href: "/sell/agents" },
+  // Last because it is the one tab that is not mode-specific: the two before it
+  // are the selling journey, this one is the account's.
+  { label: "Messages", href: "/messages" },
   // Hidden from the nav — an internal test hub, not a place to offer people.
   // The route itself still answers at /staging for anyone who knows it.
   // { label: "Staging", href: "/staging" },
@@ -46,6 +49,7 @@ const BUY_TABS = [
   // the row and stop matching its neighbours.
   { label: "Marketplace", href: "/browse" },
   { label: "Agents", href: "/buy/agents" },
+  { label: "Messages", href: "/messages" }, // see SELL_TABS
   // { label: "Staging", href: "/staging" }, — see SELL_TABS
 ];
 
@@ -124,6 +128,7 @@ export function Nav({ userEmail, userName, userAvatarUrl, modeOverride }: NavPro
     router.push("/sign-in");
   };
 
+  const messagesUnreadCount = useMessagesUnreadCount();
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === "dark";
 
@@ -159,7 +164,15 @@ export function Nav({ userEmail, userName, userAvatarUrl, modeOverride }: NavPro
               const isActive = activeHrefFromOrigin
                 ? tab.href === activeHrefFromOrigin
                 : pathname.startsWith(tab.href);
-              return <NavTab key={tab.href} href={tab.href} label={tab.label} active={isActive} />;
+              return (
+                <NavTab
+                  key={tab.href}
+                  href={tab.href}
+                  label={tab.label}
+                  active={isActive}
+                  badge={tab.href === "/messages" ? messagesUnreadCount : undefined}
+                />
+              );
             })}
           </div>
         </div>
@@ -174,9 +187,6 @@ export function Nav({ userEmail, userName, userAvatarUrl, modeOverride }: NavPro
           >
             {switchLabel}
           </button>
-
-          {/* Messages */}
-          <MessagesLink />
 
           {/* Notification bell */}
           <NotificationBell />
@@ -301,37 +311,6 @@ export function Nav({ userEmail, userName, userAvatarUrl, modeOverride }: NavPro
 }
 
 // ─── Notification Bell ────────────────────────────────────────────────────────
-
-function MessagesLink() {
-  const unreadCount = useMessagesUnreadCount();
-
-  return (
-    <Link
-      href="/messages"
-      aria-label="Messages"
-      className="relative cursor-pointer p-1.5 text-ink-secondary transition-colors hover:text-ink"
-    >
-      <svg
-        width="18"
-        height="18"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-      </svg>
-      {unreadCount > 0 && (
-        <span className="-top-0.5 -right-0.5 absolute flex h-4 w-4 items-center justify-center rounded-full bg-error font-bold text-[10px] text-on-accent">
-          {unreadCount > 9 ? "9+" : unreadCount}
-        </span>
-      )}
-    </Link>
-  );
-}
 
 function NotificationBell() {
   const { unreadCount, decrementCount, resetCount } = useNotificationContext();
