@@ -2,6 +2,7 @@
 
 주간 회의에서 정한 `사람 → 담당 작업 → 단일 리뷰 → 의존 작업`을 한 곳에서 관리한다.
 현재 주의 실제 데이터는 [current-week-work-graph.json](./current-week-work-graph.json)이다.
+2026-08-29 회의 메모는 [2026-08-29-weekly.md](./2026-08-29-weekly.md)다.
 2026-08-22 회의 메모는 [2026-08-22-weekly.md](./2026-08-22-weekly.md)다.
 모든 기여자의 시작·구현·리뷰·완료 절차는 [Haggle 개발 참여 규칙](../../CONTRIBUTING.md)을 따른다.
 
