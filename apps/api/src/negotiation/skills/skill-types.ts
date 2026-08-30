@@ -128,6 +128,8 @@ export interface DecideHookResult extends HookResult {
     suggestedTactic?: string;
     /** Market data */
     marketData?: { price: number; source: string; updatedAt?: string };
+    /** Product-matched market facts (new-retail ladder, etc.). Advisory. */
+    marketLines?: string[];
     /** Free-form observations */
     observations?: string[];
   };

@@ -149,7 +149,7 @@ export class FaratinCoachingSkill implements SkillRuntime {
     const suggestedTactic = deriveTactic(phase, timePressure, opponentAgg, this.style);
 
     // ── Observations (facts, not instructions) ──
-    const observations: string[] = [];
+    const observations: string[] = ["Concession pace only — not the opening or settlement."];
     if (timePressure > 0.7)
       observations.push(`Time pressure high (${(timePressure * 100).toFixed(0)}%).`);
     if (opponentPattern && opponentPattern.aggression > 0.7) {

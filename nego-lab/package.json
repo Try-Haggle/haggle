@@ -11,10 +11,12 @@
     "report": "tsx src/report.ts",
     "catalog": "tsx src/catalog.ts",
     "preflight": "tsx src/doctor.ts",
-    "clean": "tsx src/clean.ts"
+    "clean": "tsx src/clean.ts",
+    "compare-fewshot": "tsx local-fewshot/src/compare.ts"
   },
   "dependencies": {
-    "@haggle/db": "workspace:*"
+    "@haggle/db": "workspace:*",
+    "@haggle/shared": "workspace:*"
   },
   "devDependencies": {
     "tsx": "^4.21.0"

@@ -3,8 +3,10 @@
  *
  * SkillStack — session-level skill composition and pipeline integration.
  *
- * Resolves which skills apply to a session based on item tags,
- * dispatches hook calls to all relevant skills, and merges results.
+ * Category knowledge and comps live in tag-matched skills. The Decide encoder
+ * never branches on category. Clothing/cars register the same SkillRuntime
+ * interface; fromTags selects them. No match → empty skill body, engine four
+ * rules (facts / HARD / SOFT unadjusted ask / clips) still run.
  */
 
 import type {
@@ -67,7 +69,7 @@ export class SkillStack {
     this.skills = skills;
   }
 
-  /** Resolve skills for a session based on item tag paths */
+  /** Tag match only. Do not add category if-branches in decide-user-prompt. */
   static fromTags(tagPaths: string[]): SkillStack {
     const matched = globalRegistry.filter((skill) =>
       skill.manifest.categoryTags.some(
@@ -140,6 +142,8 @@ export interface MergedHookResult {
     }>;
     /** Market data (from service skills) */
     marketData?: Array<{ skillId: string; price: number; source: string }>;
+    /** Product-matched market facts (new-retail ladder). Advisory. */
+    marketLines?: string[];
   };
 
   /** Merged validate-stage content */
@@ -168,6 +172,7 @@ function mergeHookResults(
       ? never
       : NonNullable<MergedHookResult["decide"]>["advisories"] = [];
     const marketData: Array<{ skillId: string; price: number; source: string }> = [];
+    const marketLines: string[] = [];
 
     for (const { skillId, result } of results) {
       const c = result.content as DecideHookResult["content"];
@@ -186,6 +191,7 @@ function mergeHookResults(
       if (c.marketData) {
         marketData.push({ skillId, price: c.marketData.price, source: c.marketData.source });
       }
+      if (c.marketLines) marketLines.push(...c.marketLines);
     }
 
     merged.decide = {
@@ -194,6 +200,7 @@ function mergeHookResults(
       tactics: Array.from(tactics),
       advisories,
       marketData: marketData.length > 0 ? marketData : undefined,
+      marketLines: marketLines.length > 0 ? marketLines : undefined,
     };
   }
 

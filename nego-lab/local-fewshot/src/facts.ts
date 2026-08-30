@@ -1,15 +1,14 @@
-import type { CategoryCriterion } from "@haggle/shared";
+import {
+  buildBuyerChoiceQuestions,
+  buildCategoryCriteriaScaffold,
+  buildSellerChoiceQuestions,
+  type CategoryCriterion,
+  enrichTagsWithTaxonomy,
+} from "@haggle/shared";
 import type { ItemSpec } from "../../src/types.js";
 
-function criterion(checkId: string, questionKo: string, stance: string): CategoryCriterion {
-  return {
-    checkId,
-    questionKo,
-    enforcement: "soft",
-    requirement: "optional",
-    stance,
-  };
-}
+/** Seller-wizard category. Staging listings do not use "phone". */
+export const STAGING_LISTING_CATEGORY = "electronics";
 
 function storageStance(value: unknown): string {
   const raw = String(value ?? "").toUpperCase();
@@ -40,38 +39,86 @@ function lockStance(value: unknown): string {
   return "carrier-unlocked";
 }
 
-/** Turn nego-lab item attributes into live-path categoryCriteria so seller_facts reach DeepSeek. */
-export function attributesToCriteria(attributes: ItemSpec["attributes"]): CategoryCriterion[] {
-  const out: CategoryCriterion[] = [];
-  if (attributes.storage != null) {
-    out.push(
-      criterion("storage_capacity", "저장 용량은 얼마인가요?", storageStance(attributes.storage)),
-    );
-  }
-  if (attributes.batteryHealth != null) {
-    out.push(
-      criterion(
-        "battery_health",
-        "배터리 성능(%)은 얼마인가요?",
-        batteryStance(attributes.batteryHealth),
-      ),
-    );
-  }
-  if (attributes.scratches != null) {
-    out.push(
-      criterion(
-        "screen_condition",
-        "화면 상태(균열/데드픽셀/터치)는 어떤가요?",
-        scratchStance(attributes.scratches),
-      ),
-    );
-  }
-  if (attributes.carrierLock != null) {
-    out.push(
-      criterion("carrier_lock", "통신사 언락 상태인가요?", lockStance(attributes.carrierLock)),
-    );
+/** Attribute sweeps override storage / battery / screen / lock when those cards exist. */
+function attributeOverrides(attributes: ItemSpec["attributes"]): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (attributes.storage != null) out.storage_capacity = storageStance(attributes.storage);
+  if (attributes.batteryHealth != null)
+    out.battery_health = batteryStance(attributes.batteryHealth);
+  if (attributes.scratches != null) out.screen_condition = scratchStance(attributes.scratches);
+  if (attributes.carrierLock != null) out.carrier_lock = lockStance(attributes.carrierLock);
+  if (attributes.condition != null) {
+    out.working_status = "fully working, no functional defects";
   }
   return out;
+}
+
+function firstOptionStance(options: Array<{ stance: string }> | undefined): string | undefined {
+  return options?.[0]?.stance;
+}
+
+/**
+ * Fill every opened HARD (and any attribute-overridden SOFT) from taxonomy
+ * options. AirPods get authenticity + Find My unpaired — not IMEI.
+ */
+function fillCriteria(
+  tags: string[],
+  attributes: ItemSpec["attributes"],
+  side: "seller" | "buyer",
+): CategoryCriterion[] {
+  const overrides = attributeOverrides(attributes);
+  const questions =
+    side === "seller" ? buildSellerChoiceQuestions(tags) : buildBuyerChoiceQuestions(tags);
+  const optionById = new Map(questions.map((q) => [q.checkId, q.options]));
+  return buildCategoryCriteriaScaffold(tags).map((c) => {
+    const stance =
+      overrides[c.checkId] ??
+      (c.enforcement === "hard" ? firstOptionStance(optionById.get(c.checkId)) : undefined);
+    if (!stance) return c;
+    return {
+      ...c,
+      stance,
+      requirement: c.enforcement === "hard" ? ("required" as const) : c.requirement,
+    };
+  });
+}
+
+export interface PublishedSellerListing {
+  category: typeof STAGING_LISTING_CATEGORY;
+  tags: string[];
+  categoryCriteria: CategoryCriterion[];
+}
+
+/**
+ * Same assembly as staging auto-detect degrade + seller builder:
+ * category + title → enrichTagsWithTaxonomy (tag garden)
+ * tags → buildCategoryCriteriaScaffold → every HARD filled
+ */
+export function buildPublishedSellerListing(item: ItemSpec): PublishedSellerListing {
+  const { tags } = enrichTagsWithTaxonomy([STAGING_LISTING_CATEGORY], item.title);
+  return {
+    category: STAGING_LISTING_CATEGORY,
+    tags,
+    categoryCriteria: fillCriteria(tags, item.attributes, "seller"),
+  };
+}
+
+export function buildBuyerBriefing(item: ItemSpec): CategoryCriterion[] {
+  const { tags } = enrichTagsWithTaxonomy([STAGING_LISTING_CATEGORY], item.title);
+  return fillCriteria(tags, item.attributes, "buyer");
+}
+
+/** @deprecated use buildPublishedSellerListing — kept for older lab callers */
+export function attributesToCriteria(attributes: ItemSpec["attributes"]): CategoryCriterion[] {
+  return buildPublishedSellerListing({
+    title: "iPhone 15 Pro 256GB",
+    category: STAGING_LISTING_CATEGORY,
+    condition: "good",
+    askPrice: 900,
+    floorPrice: 780,
+    deadlineHours: 7 * 24,
+    attributes,
+  }).categoryCriteria;
 }
 
 export const LAB_PARCEL = { weight_oz: 16, length_in: 8, width_in: 5, height_in: 2 };

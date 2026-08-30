@@ -1103,11 +1103,11 @@ describe("LLM Executor — Integration", () => {
   });
 
   // ═══════════════════════════════════════════════════════════════════════
-  // 13. REASONING MODE — Verify shouldUseReasoning integration
+  // 13. TEMPERATURE — Decide sampler, not a reasoning switch
   // ═══════════════════════════════════════════════════════════════════════
 
-  describe("Reasoning mode selection", () => {
-    it("passes reasoning flag to callLLM during BARGAINING", async () => {
+  describe("Decide temperature", () => {
+    it("passes temperature to callLLM during BARGAINING", async () => {
       const session = makeDbSession({
         currentRound: 5,
         status: "ACTIVE",
@@ -1132,12 +1132,10 @@ describe("LLM Executor — Integration", () => {
 
       await executeLLMNegotiationRound(db as any, makeInput({ offerPriceMinor: 85500 }));
 
-      // callLLM should be called with reasoning option
       expect(mockCallLLM).toHaveBeenCalledOnce();
       const callArgs = mockCallLLM.mock.calls[0];
-      // callArgs: [systemPrompt, userPrompt, options]
       expect(callArgs[2]).toBeDefined();
-      expect(typeof callArgs[2].reasoning).toBe("boolean");
+      expect(typeof callArgs[2].temperature).toBe("number");
       expect(callArgs[2].correlationId).toBe("sess-int-001");
     });
   });

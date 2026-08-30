@@ -6,6 +6,7 @@ import {
   type CategoryCriterion,
   criterionAnswered,
   requiredCriteria,
+  unansweredHardCriteria,
   resolveBuyerChoiceOption,
   unresolvedSellerRequirements,
 } from "../criteria.js";
@@ -60,6 +61,32 @@ describe("buildCategoryCriteriaScaffold", () => {
     // "other" is a canonical listing category with no taxonomy node.
     expect(buildCategoryCriteriaScaffold(["other", "misc"])).toEqual([]);
     expect(buildCategoryCriteriaScaffold([])).toEqual([]);
+  });
+});
+
+describe("unansweredHardCriteria", () => {
+  it("lists every open HARD until it has a stance", () => {
+    const tags = ["electronics", "iphone-15-pro"];
+    const missing = unansweredHardCriteria(tags, []);
+    expect(missing.map((c) => c.checkId)).toContain("imei_verification");
+    expect(
+      unansweredHardCriteria(tags, [
+        criterion({
+          checkId: "imei_verification",
+          enforcement: "hard",
+          requirement: "required",
+          stance: "clean IMEI, not blacklisted, verifiable",
+        }),
+      ]).map((c) => c.checkId),
+    ).not.toContain("imei_verification");
+  });
+
+  it("does not invent IMEI for AirPods", () => {
+    const missing = unansweredHardCriteria(["electronics", "airpods"], []);
+    expect(missing.map((c) => c.checkId)).not.toContain("imei_verification");
+    expect(missing.map((c) => c.checkId)).toEqual(
+      expect.arrayContaining(["counterfeit_authenticity", "find_my_unpaired"]),
+    );
   });
 });
 

@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { estimateLlmCostUsd, resolveLlmModelPricing } from "../lib/llm-cost.js";
+import {
+  estimateLlmCostUsd,
+  formatLlmSpend,
+  isDeepSeekPeakUtc,
+  recordLlmSpend,
+  resetLlmSpendMeter,
+  resolveLlmModelPricing,
+  snapshotLlmSpendMeter,
+} from "../lib/llm-cost.js";
 
 describe("llm-cost", () => {
   afterEach(() => {
@@ -63,5 +71,69 @@ describe("llm-cost", () => {
       }),
     ).toBeNull();
     expect(estimateLlmCostUsd("grok-4.3", undefined)).toBeNull();
+  });
+
+  it("prices DeepSeek V4 Pro with cache hits cheaper than misses", () => {
+    const offPeak = new Date("2026-08-26T20:00:00.000Z");
+    const miss = estimateLlmCostUsd(
+      "deepseek-v4-pro",
+      { promptTokens: 1_000_000, completionTokens: 0, totalTokens: 1_000_000 },
+      offPeak,
+    );
+    const hit = estimateLlmCostUsd(
+      "deepseek-v4-pro",
+      {
+        promptTokens: 1_000_000,
+        completionTokens: 0,
+        totalTokens: 1_000_000,
+        cacheHitTokens: 1_000_000,
+        cacheMissTokens: 0,
+      },
+      offPeak,
+    );
+    expect(miss?.totalUsd).toBeCloseTo(0.66);
+    expect(hit?.totalUsd).toBeCloseTo(0.022);
+    expect(isDeepSeekPeakUtc(new Date("2026-08-27T03:00:00.000Z"))).toBe(true);
+    expect(isDeepSeekPeakUtc(offPeak)).toBe(false);
+  });
+
+  it("prices DeepSeek V4 Flash at one third of Pro", () => {
+    const offPeak = new Date("2026-08-26T20:00:00.000Z");
+    const flash = estimateLlmCostUsd(
+      "deepseek-v4-flash",
+      { promptTokens: 1_000_000, completionTokens: 0, totalTokens: 1_000_000 },
+      offPeak,
+    );
+    const pro = estimateLlmCostUsd(
+      "deepseek-v4-pro",
+      { promptTokens: 1_000_000, completionTokens: 0, totalTokens: 1_000_000 },
+      offPeak,
+    );
+    expect(flash?.totalUsd).toBeCloseTo(0.22);
+    expect(pro?.totalUsd).toBeCloseTo(0.66);
+    expect(flash?.totalUsd).toBeCloseTo((pro?.totalUsd ?? 0) / 3);
+  });
+
+  it("accumulates a process-local spend meter", () => {
+    resetLlmSpendMeter();
+    recordLlmSpend(
+      "deepseek-v4-pro",
+      {
+        promptTokens: 4000,
+        completionTokens: 1000,
+        totalTokens: 5000,
+        cacheHitTokens: 3000,
+        cacheMissTokens: 1000,
+      },
+      new Date("2026-08-26T20:00:00.000Z"),
+    );
+    const snap = snapshotLlmSpendMeter();
+    expect(snap.calls).toBe(1);
+    expect(snap.promptTokens).toBe(4000);
+    expect(snap.usd).toBeGreaterThan(0);
+    expect(formatLlmSpend(snap)).toContain("tokens=5000");
+    expect(formatLlmSpend(snap)).toContain("cache 75%");
+    resetLlmSpendMeter();
+    expect(snapshotLlmSpendMeter().calls).toBe(0);
   });
 });

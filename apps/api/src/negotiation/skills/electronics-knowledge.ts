@@ -1,12 +1,18 @@
 /**
  * skills/electronics-knowledge.ts
  *
- * Default knowledge skill for electronics category.
- * Provides: term definitions, valuation rules, constraints, category context.
- * Pure data — no strategy recommendations, no coaching.
+ * Tag-matched knowledge skill for electronics.
+ * Clothing/vehicles get their own skill on the same interface, or empty slots.
+ * Pure data — no strategy recommendations, no coaching, no fixed $ tables.
+ *
+ * HARD rules come from the opened taxonomy checks. IMEI / activation lock
+ * are phone gates. They must not appear on AirPods, chargers, or Kindles.
  */
 
+import { resolveChecks } from "@haggle/shared";
 import { ELECTRONICS_TERMS } from "../term/standard-terms.js";
+import type { CoreMemory } from "../types.js";
+import { resolveItemTags } from "./skill-stack.js";
 import type {
   DecideHookResult,
   HookContext,
@@ -46,10 +52,27 @@ const manifest: SkillManifest = {
   },
 };
 
-// ─── Term hints for UNDERSTAND stage ────────────────────────────
+const PHONE_ONLY_TERM_IDS = new Set(["imei_verification", "find_my_status", "carrier_lock"]);
 
-function buildTermHints() {
-  return ELECTRONICS_TERMS.map((t) => ({
+function listingTags(ctx: HookContext): string[] {
+  return resolveItemTags(ctx.memory.listing_context as CoreMemory["listing_context"]);
+}
+
+function openedChecks(ctx: HookContext) {
+  return resolveChecks(listingTags(ctx));
+}
+
+function termsForListing(ctx: HookContext) {
+  const checks = openedChecks(ctx);
+  const openedIds = new Set(checks.map((c) => c.id));
+  if (openedIds.size === 0) {
+    return ELECTRONICS_TERMS.filter((t) => !PHONE_ONLY_TERM_IDS.has(t.id));
+  }
+  return ELECTRONICS_TERMS.filter((t) => openedIds.has(t.id));
+}
+
+function buildTermHints(ctx: HookContext) {
+  return termsForListing(ctx).map((t) => ({
     id: t.id,
     parseAs: t.value_type as "number" | "enum" | "boolean" | "string",
     range: t.value_range,
@@ -57,28 +80,17 @@ function buildTermHints() {
   }));
 }
 
-// ─── Valuation rules for DECIDE stage ───────────────────────────
-
-function buildValuationRules(): string[] {
-  return ELECTRONICS_TERMS.filter((t) => t.evaluate_hint).map((t) => t.evaluate_hint);
+function buildValuationRules(ctx: HookContext): string[] {
+  return termsForListing(ctx)
+    .filter((t) => t.evaluate_hint)
+    .map((t) => t.evaluate_hint);
 }
 
-// ─── Constraint rules for VALIDATE stage ────────────────────────
-
-const HARD_RULES = [
-  { rule: "IMEI_REQUIRED", description: "IMEI must be verified before CLOSING phase." },
-  { rule: "FIND_MY_OFF", description: "Find My must be disabled before sale." },
-];
-
-const SOFT_RULES = [
-  { rule: "BATTERY_DISCLOSURE", description: "Battery below 80% triggers mandatory disclosure." },
-  {
-    rule: "COSMETIC_DISCLOSURE",
-    description: 'Cosmetic grade "fair" or below should be disclosed early.',
-  },
-];
-
-// ─── Skill Runtime ──────────────────────────────────────────────
+function rulesFromChecks(ctx: HookContext, enforcement: "hard" | "soft") {
+  return openedChecks(ctx)
+    .filter((c) => c.enforcement === enforcement)
+    .map((c) => ({ rule: c.id.toUpperCase(), description: c.questionKo }));
+}
 
 export class ElectronicsKnowledgeSkill implements SkillRuntime {
   readonly manifest = manifest;
@@ -86,11 +98,11 @@ export class ElectronicsKnowledgeSkill implements SkillRuntime {
   async onHook(context: HookContext): Promise<HookResult> {
     switch (context.stage) {
       case "understand":
-        return this.onUnderstand();
+        return this.onUnderstand(context);
       case "decide":
-        return this.onDecide();
+        return this.onDecide(context);
       case "validate":
-        return this.onValidate();
+        return this.onValidate(context);
       case "respond":
         return this.onRespond();
       default:
@@ -98,26 +110,28 @@ export class ElectronicsKnowledgeSkill implements SkillRuntime {
     }
   }
 
-  private onUnderstand(): UnderstandHookResult {
+  private onUnderstand(ctx: HookContext): UnderstandHookResult {
     return {
       content: {
-        termHints: buildTermHints(),
+        termHints: buildTermHints(ctx),
         parsingContext:
-          "Parse battery health as 0-100%. Carrier lock as unlocked/locked. Storage as GB/TB enum.",
+          "Parse only terms that this listing's opened checks use. Do not invent IMEI or carrier lock unless those cards are open.",
       },
     };
   }
 
-  private onDecide(): DecideHookResult {
+  private onDecide(ctx: HookContext): DecideHookResult {
+    const checks = openedChecks(ctx);
+    const hard = checks.filter((c) => c.enforcement === "hard").length;
+    const soft = checks.filter((c) => c.enforcement === "soft").length;
     return {
       content: {
         categoryBrief: [
-          "Category: Consumer Electronics (US used market).",
-          "Reference pricing: Swappa 30-day median.",
-          "Key factors: battery health, carrier lock, screen condition, storage capacity, cosmetic grade.",
-          "Verification deal-breakers: IMEI clean check, Find My disabled.",
+          "Category: consumer electronics (US used market).",
+          `This tag opened ${hard} HARD and ${soft} SOFT criteria.`,
+          "Use only the opened cards. Do not invent phone gates (IMEI, activation lock) unless those cards are open.",
         ].join(" "),
-        valuationRules: buildValuationRules(),
+        valuationRules: buildValuationRules(ctx),
         tactics: [
           "anchoring",
           "reciprocal_concession",
@@ -130,11 +144,11 @@ export class ElectronicsKnowledgeSkill implements SkillRuntime {
     };
   }
 
-  private onValidate(): ValidateHookResult {
+  private onValidate(ctx: HookContext): ValidateHookResult {
     return {
       content: {
-        hardRules: HARD_RULES,
-        softRules: SOFT_RULES,
+        hardRules: rulesFromChecks(ctx, "hard"),
+        softRules: rulesFromChecks(ctx, "soft"),
       },
     };
   }

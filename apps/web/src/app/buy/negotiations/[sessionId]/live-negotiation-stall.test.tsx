@@ -78,10 +78,10 @@ describe("LiveNegotiation — stall watchdog", () => {
 
       // Wrapped in act so the watchdog's setState is flushed before asserting.
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(121_000);
+        await vi.advanceTimersByTimeAsync(211_000);
       });
-      // The fetch is actively cancelled at 75s; the 120s watchdog remains a second
-      // line of defence for transports/mocks that ignore AbortSignal.
+      // The fetch is cancelled at 200s; the 210s watchdog is the second line
+      // for transports/mocks that ignore AbortSignal.
       expect(roundSignal?.aborted).toBe(true);
       expect(
         screen.getByText("This round is taking longer than expected. Nothing has been lost."),

@@ -129,6 +129,15 @@ describe("DeepSeekAdapter", () => {
     expect(decision.tactic_used).toBe("anchoring");
   });
 
+  it("parses a private plan and does not require it", () => {
+    const withPlan = adapter.parseResponse(
+      '{"action":"COUNTER","price":540,"reasoning":"open","message":"128GB so I start lower","private_plan":"Open below ask on 128GB; update if they concede fast."}',
+    );
+    expect(withPlan.private_plan).toContain("Open below ask on 128GB");
+    const without = adapter.parseResponse('{"action":"COUNTER","price":540,"reasoning":"open"}');
+    expect(without.private_plan).toBeUndefined();
+  });
+
   it("should parse response with markdown code blocks", () => {
     const raw = '```json\n{"action":"ACCEPT","price":600,"reasoning":"good price"}\n```';
     const decision = adapter.parseResponse(raw);
@@ -235,7 +244,8 @@ describe("DeepSeekAdapter", () => {
     };
     const prompt = adapter.buildUserPrompt(memory, []);
     expect(prompt).toContain("NEGOTIATION_HINT:");
-    expect(prompt).toMatch(/ACCEPT/);
+    expect(prompt).not.toMatch(/ACCEPT the opponent's offer/i);
+    expect(prompt).toContain("not a reason to close");
   });
 
   it("should NOT emit NEGOTIATION_HINT when gap is still wide", () => {

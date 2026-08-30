@@ -35,6 +35,7 @@ import {
 } from "../lib/negotiation-fulfillment.js";
 import type { AuthUser } from "../middleware/auth.js";
 import { requireAuth } from "../middleware/require-auth.js";
+import { isDecideCatalogModel, resolveDecideModel } from "../negotiation/decide-model.js";
 import { projectSellerFacts } from "../negotiation/memory/seller-facts.js";
 import {
   applyBuyerPauseAnswer,
@@ -124,6 +125,12 @@ const startSessionSchema = z.object({
     .max(24 * 14)
     .optional(),
   fulfillment: fulfillmentPreferenceSchema.optional(),
+  /**
+   * Wish only. Ignored for routing. A later ledger must debit, then set
+   * snapshot `allowed_model`. Do not treat this as payment.
+   */
+  pro_model_credit: z.boolean().optional(),
+  requested_model: z.string().min(1).max(80).optional(),
 });
 
 const runNextAutoPlayRoundSchema = z.object({
@@ -266,9 +273,8 @@ export function registerNegotiationRoutes(
 
     const roundLimit =
       attemptControl?.max_rounds_per_session ?? defaultAttemptControlPolicy().maxRoundsPerSession;
-    const negotiationAgentSnapshot = applyRoundLimitToStrategy(
-      data.negotiation_agent_snapshot,
-      roundLimit,
+    const negotiationAgentSnapshot = stripClientModelEntitlement(
+      applyRoundLimitToStrategy(data.negotiation_agent_snapshot, roundLimit),
     );
     try {
       await assertListingAcceptsNewSession(db, data.listing_id);
@@ -990,12 +996,22 @@ export function registerNegotiationRoutes(
     const sellerFacts = projectSellerFacts(
       sellerNegotiationAgentBuilderMemory?.categoryCriteria as CategoryCriterion[] | undefined,
     );
-    const sharedListingContext =
-      sellerFacts.length > 0
-        ? { ...((listingContextSnapshot as object | undefined) ?? {}), seller_facts: sellerFacts }
-        : listingContextSnapshot;
+    const sharedListingContext = {
+      ...((listingContextSnapshot as object | undefined) ?? {}),
+      ...(sellerFacts.length > 0 ? { seller_facts: sellerFacts } : {}),
+      published_ask_minor: askMinor,
+    };
     const sellerNegotiationAgentPresetId = listingContext.sellerNegotiationAgentPresetId;
     const listingSnapshot = listing.negotiationAgentSnapshot as Record<string, unknown> | null;
+    const defaultRoute = resolveDecideModel({ publishedAskMinor: askMinor });
+    const listingRequestedModel =
+      typeof listingSnapshot?.seller_requested_model === "string"
+        ? listingSnapshot.seller_requested_model.trim()
+        : undefined;
+    const sellerAllowedModel =
+      listingRequestedModel && isDecideCatalogModel(listingRequestedModel)
+        ? listingRequestedModel
+        : defaultRoute.model;
     const listingOffer = parseSellerFulfillmentOffer(listingSnapshot?.sellerFulfillmentOffer);
     const listingParcel =
       parseListingParcel(listingSnapshot?.parcel) ?? listingContext.listingContext?.parcel;
@@ -1049,7 +1065,8 @@ export function registerNegotiationRoutes(
       ...(sellerNegotiationAgentBuilderMemory
         ? { seller_negotiation_agent_builder_memory: sellerNegotiationAgentBuilderMemory }
         : {}),
-      ...(sharedListingContext ? { listing_context: sharedListingContext } : {}),
+      listing_context: sharedListingContext,
+      allowed_model: sellerAllowedModel,
       ...(sellerNegotiationAgentPresetId
         ? { negotiation_agent_preset_id: sellerNegotiationAgentPresetId }
         : {}),
@@ -1119,7 +1136,8 @@ export function registerNegotiationRoutes(
       ...(sellerRequiredCriteria.length > 0
         ? { pause_seller_required_criteria: sellerRequiredCriteria }
         : {}),
-      ...(sharedListingContext ? { listing_context: sharedListingContext } : {}),
+      listing_context: sharedListingContext,
+      allowed_model: defaultRoute.model,
       negotiation_agent_preset_id: body.negotiation_agent_preset_id,
       ...(body.agent_weights ? { agent_weights: body.agent_weights } : {}),
       ...(body.agent_overrides ? { agent_overrides: body.agent_overrides } : {}),
@@ -1730,6 +1748,15 @@ function isValidAgentDelegation(
     delegation.scopes.includes("hnp:negotiate") ||
     delegation.scopes.includes(`hnp:${expected.action}`)
   );
+}
+
+function stripClientModelEntitlement(
+  negotiationAgentSnapshot: Record<string, unknown>,
+): Record<string, unknown> {
+  const next = { ...negotiationAgentSnapshot };
+  delete next.pro_model_credit;
+  delete next.allowed_model;
+  return next;
 }
 
 function applyRoundLimitToStrategy(

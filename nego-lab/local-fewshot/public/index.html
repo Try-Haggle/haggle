@@ -73,7 +73,7 @@
 <body>
   <header>
     <h1>fewshot-lab</h1>
-    <p>이 컴퓨터에서만 돌아갑니다. staging에 올리지 마세요. 같은 시나리오를 기존 프롬프트와 few-shot으로 한 번씩 돌립니다.</p>
+    <p>스테이징과 같은 경로입니다: publishDraft → POST /negotiations/start → auto-play/next. <b>있음</b>은 스테이징 Decide(카드 on). <b>없음</b>은 카드만 끕니다.</p>
   </header>
   <main>
     <aside>
@@ -87,9 +87,6 @@
       </select>
       <label>각 케이스 반복</label>
       <input id="repeat" type="number" min="1" max="5" value="1">
-      <label>few-shot 텍스트</label>
-      <textarea id="fewshot"></textarea>
-      <button type="button" id="save">few-shot 저장</button>
       <button type="button" id="estimate">비용 미리보기</button>
       <div id="est" class="est hidden"></div>
       <button type="button" class="primary" id="run" disabled>비용 확인 후 실행</button>
@@ -102,8 +99,8 @@
           <tr>
             <th>케이스</th>
             <th>속성</th>
-            <th class="base">baseline 타결</th>
-            <th class="shot">few-shot 타결</th>
+            <th class="base">퓨샷 없음</th>
+            <th class="shot">퓨샷 있음</th>
             <th>차이</th>
           </tr>
         </thead>
@@ -125,19 +122,6 @@
         : `<span class="pill bad">${s.dbOk ? "" : "DB URL 아님 "} ${s.keyOk ? "" : "DEEPSEEK 키 없음"}</span>`;
     }
 
-    async function loadFewshot() {
-      const data = await (await fetch("/api/fewshot")).json();
-      $("fewshot").value = data.text;
-    }
-
-    $("save").onclick = async () => {
-      await fetch("/api/fewshot", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: $("fewshot").value }),
-      });
-    };
-
     $("estimate").onclick = async () => {
       confirmed = false;
       $("run").disabled = true;
@@ -149,7 +133,7 @@
       const e = data.estimate;
       $("est").classList.remove("hidden");
       $("est").innerHTML =
-        `케이스 ${data.cases.length} × 반복 ${$("repeat").value} × 2변형 = <b>${e.negotiations} 협상</b><br>` +
+        `케이스 ${data.cases.length} × 반복 ${$("repeat").value} × (퓨샷 없음 + 있음) = <b>${e.negotiations} 협상</b><br>` +
         `상한 약 $${e.estUsd.toFixed(2)} · ${e.estDuration}<br>` +
         data.cases.map((c) => c.label).join(" · ");
       $("run").disabled = false;
@@ -166,7 +150,6 @@
           group: $("group").value,
           repeat: Number($("repeat").value),
           confirm: true,
-          fewshot: $("fewshot").value,
         }),
       });
       const data = await res.json();
@@ -199,10 +182,10 @@
     function render(job) {
       const s = job.summary || {};
       $("summary").innerHTML = `
-        <div class="card"><span>baseline 타결</span><b>${s.baselineAccepts ?? 0}/${s.baselineTotal ?? 0}</b></div>
-        <div class="card"><span>few-shot 타결</span><b>${s.fewshotAccepts ?? 0}/${s.fewshotTotal ?? 0}</b></div>
-        <div class="card"><span>baseline 가격 폭</span><b>${money(s.baselinePriceSpan)}</b></div>
-        <div class="card"><span>few-shot 가격 폭</span><b>${money(s.fewshotPriceSpan)}</b></div>
+        <div class="card"><span>퓨샷 없음 타결</span><b>${s.baselineAccepts ?? 0}/${s.baselineTotal ?? 0}</b></div>
+        <div class="card"><span>퓨샷 있음 타결</span><b>${s.fewshotAccepts ?? 0}/${s.fewshotTotal ?? 0}</b></div>
+        <div class="card"><span>없음 가격 폭</span><b>${money(s.baselinePriceSpan)}</b></div>
+        <div class="card"><span>있음 가격 폭</span><b>${money(s.fewshotPriceSpan)}</b></div>
       `;
       const rows = pairRows(job.results || []);
       $("rows").innerHTML = rows.map((row, i) => {
@@ -231,7 +214,7 @@
         ).join("");
         return `<div><h3 class="${cls}">${title} · ${money(r.finalPrice)} · ${r.outcome}</h3>${msgs || "<p>대사 없음</p>"}</div>`;
       };
-      $("detail").innerHTML = block("baseline", row.baseline, "base") + block("few-shot", row.fewshot, "shot");
+      $("detail").innerHTML = block("퓨샷 없음", row.baseline, "base") + block("퓨샷 있음", row.fewshot, "shot");
     }
 
     async function refreshJob() {
@@ -245,7 +228,6 @@
     }
 
     loadStatus();
-    loadFewshot();
   </script>
 </body>
 </html>

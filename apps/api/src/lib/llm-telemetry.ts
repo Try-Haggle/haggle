@@ -49,6 +49,8 @@ export interface LLMTelemetryUsage {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  cacheHitTokens?: number;
+  cacheMissTokens?: number;
 }
 
 export interface LLMTelemetryRecord extends LLMTelemetryMeta {

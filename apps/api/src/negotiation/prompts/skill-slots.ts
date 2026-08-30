@@ -9,7 +9,7 @@
 export interface SkillSlotContent {
   /** Category briefs and the session skill's getLLMContext() pointer. */
   knowledge?: string[];
-  /** How this category usually prices a slot. Advisory, not a script. */
+  /** How a slot moves value. No fixed $ table. */
   valuation?: string[];
   /** Tactic names the model may put in tactic_used. */
   tactics?: string[];
@@ -37,6 +37,8 @@ export interface SkillSlotHookDraft {
     observations?: string[];
   }>;
   marketData?: Array<{ skillId?: string; price: number; source: string }>;
+  /** Product-matched market facts. Advisory. Not a category $ table. */
+  marketLines?: string[];
 }
 
 export interface SkillSlotValidateDraft {
@@ -46,10 +48,22 @@ export interface SkillSlotValidateDraft {
 
 const SKILL_LEGEND = [
   "## Skills",
-  "Engine plugins for THIS item. Advisory. BOX, floor, and HARD criteria still win.",
-  'Do not invent an HNP issue id from a skill. Do not quote a skill dollar hint as your floor or as "always $X".',
+  "Engine plugins for THIS item. Advisory. The safety envelope, floor, and HARD criteria still win.",
+  "Faratin Advisor is concession pace this round — not the opening and not the settlement. You may ignore it.",
+  'Do not invent an HNP issue id from a skill. A Market dollar may move your number. It is not your floor and not "always $X".',
   "If a skill line conflicts with LISTING, STRATEGY, or a criteria card, trust LISTING / STRATEGY / the card.",
 ].join("\n");
+
+/** Category-wide "$50-80 per tier" tables. Live Market/Advisor quotes are not this. */
+const FIXED_DOLLAR_TABLE = /\$\s*\d/;
+
+export function looksLikeFixedDollarTable(line: string): boolean {
+  return FIXED_DOLLAR_TABLE.test(line);
+}
+
+function withoutFixedDollarTable(lines: string[] | undefined): string[] {
+  return (lines ?? []).filter((line) => !looksLikeFixedDollarTable(line));
+}
 
 function take(lines: string[] | undefined, max: number): string[] {
   return (lines ?? [])
@@ -85,7 +99,9 @@ export function collectSkillSlots(input: {
   const advisor: string[] = [];
   for (const adv of input.decide?.advisories ?? []) {
     if (typeof adv.recommendedPrice === "number") {
-      advisor.push(`${adv.skillId}: suggested ${centsToUsd(adv.recommendedPrice)} (advisory)`);
+      advisor.push(
+        `${adv.skillId}: curve pace ${centsToUsd(adv.recommendedPrice)} this round (advisory — not the deal price)`,
+      );
     }
     if (adv.acceptableRange) {
       advisor.push(
@@ -100,7 +116,7 @@ export function collectSkillSlots(input: {
     }
   }
 
-  const market = [...(input.market ?? [])];
+  const market = [...(input.market ?? []), ...(input.decide?.marketLines ?? [])];
 
   const constraints = [
     ...(input.validate?.hardRules ?? []).map((r) => `HARD ${r.rule}: ${r.description}`),
@@ -118,7 +134,7 @@ export function collectSkillSlots(input: {
 
   return {
     knowledge,
-    valuation: input.decide?.valuationRules,
+    valuation: withoutFixedDollarTable(input.decide?.valuationRules),
     tactics: input.decide?.tactics,
     advisor,
     market,
@@ -131,7 +147,7 @@ export function collectSkillSlots(input: {
 /** System-prompt block. Always present so a future skill has a labeled home. */
 export function encodeSkillSlots(slots?: SkillSlotContent | null): string {
   const knowledge = take(slots?.knowledge, 8);
-  const valuation = take(slots?.valuation, 8);
+  const valuation = take(withoutFixedDollarTable(slots?.valuation), 8);
   const tactics = take(slots?.tactics, 8);
   const advisor = take(slots?.advisor, 6);
   const market = take(slots?.market, 4);

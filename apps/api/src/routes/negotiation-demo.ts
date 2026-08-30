@@ -944,11 +944,11 @@ async function traceLLMCall<T>(
   systemPrompt: string,
   userPrompt: string,
   parser: (raw: string) => T,
-  options?: { reasoning?: boolean },
+  options?: { temperature?: number },
 ): Promise<StageTrace<T>> {
   const start = Date.now();
   const response = await callLLM(systemPrompt, userPrompt, {
-    reasoning: options?.reasoning,
+    temperature: options?.temperature,
     correlationId: `demo-${stageName}`,
   });
   const latency = Date.now() - start;
@@ -1319,20 +1319,17 @@ ${presetTuningPrompt}`,
     // ────────────────────────────────────────────────
     const decidePrompts = buildDecidePrompt(session, briefing, skillDecideResult, understood);
 
-    // Reasoning mode trigger (Doc 26: code decides, not LLM)
     const gapRatio =
       session.memory.boundaries.my_floor > 0
         ? session.memory.boundaries.gap /
           Math.abs(session.memory.boundaries.my_floor - session.memory.boundaries.my_target)
         : 1;
-    const useReasoning = gapRatio < 0.1 || briefing.warnings.length >= 2;
 
     const decideTrace = await traceLLMCall<DecideResult>(
       "3_DECIDE",
       decidePrompts.system,
       decidePrompts.user,
       parseJSON<DecideResult>,
-      { reasoning: useReasoning },
     );
     stages.push(decideTrace);
 
@@ -1616,7 +1613,7 @@ ${presetTuningPrompt}`,
         seller_price: sellerPriceMinor,
         gap: session.memory.boundaries.gap,
         gap_pct: (gapRatio * 100).toFixed(1) + "%",
-        reasoning_mode: useReasoning,
+        reasoning_mode: false,
         done: session.done,
       },
       cost: {
