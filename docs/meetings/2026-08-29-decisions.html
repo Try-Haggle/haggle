@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>오늘 협의할 것 — 2026-08-29</title>
+<style>
+  :root {
+    --bg: #111113;
+    --card: #1c1c1f;
+    --line: #2a2a2e;
+    --text: #ececec;
+    --muted: #9b9ba3;
+    --warn: #c7a008;
+    --ok: #3d9a5b;
+    --info: #5b8def;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+    padding: 28px 20px 64px;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 22px; font-weight: 650; margin-bottom: 6px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 18px; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px 12px; }
+  .stat b { display: block; font-size: 26px; font-weight: 650; }
+  .stat span { color: var(--muted); font-size: 12px; }
+  .filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .filters button {
+    background: var(--card);
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .filters button.on { border-color: var(--info); color: var(--info); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 8px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  select {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 4px 6px;
+  }
+  .draft { color: var(--muted); }
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 22px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+  .card h2 { font-size: 14px; margin-bottom: 8px; }
+  .card p { color: var(--muted); font-size: 13px; margin-bottom: 6px; }
+  @media (max-width: 720px) {
+    .stats, .cards { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>오늘 협의할 것</h1>
+  <p class="sub">2026-08-29 · 초안이지 확정이 아니다. 합의된 뒤에만 SOT·지급표에 넣는다. 상태는 이 브라우저에만 저장된다.</p>
+  <div class="stats">
+    <div class="stat"><b id="n-open">12</b><span>미정</span></div>
+    <div class="stat"><b id="n-leaning">0</b><span>기울어짐</span></div>
+    <div class="stat"><b id="n-agreed">0</b><span>합의</span></div>
+    <div class="stat"><b id="n-later">0</b><span>다음 주</span></div>
+  </div>
+  <div class="filters" id="filters"></div>
+  <table>
+    <thead>
+      <tr><th>주제</th><th>질문</th><th>초안</th><th>선택지</th><th>카드</th><th>상태</th></tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div class="cards">
+    <div class="card">
+      <h2>오늘 꼭</h2>
+      <p>가입·출석·보너스.</p>
+      <p>틱을 결제에만, P 2시간, 틱 표, 홀드가 공개.</p>
+      <p>판매자 업그레이드: 크레딧 vs 기본만.</p>
+    </div>
+    <div class="card">
+      <h2>오늘 말고</h2>
+      <p>목표 에이전트 구현. 알림/자동 문턱.</p>
+      <p>호가 비례 AI 예산을 코드에 넣기.</p>
+      <p>SOT 확정.</p>
+    </div>
+  </div>
+</div>
+<script>
+const TOPIC = { credit: "크레딧", hold: "홀드", model: "모델", fee: "수수료", next: "다음" };
+const STATUS = { open: "미정", leaning: "기울어짐", agreed: "합의", later: "다음 주" };
+const ITEMS = [
+  { id: "seller-upgrade", topic: "model", ask: "판매자가 기본보다 좋은 모델을 쓸 때 누가 내나", draft: "기본($100+면 양쪽 Pro)은 우리 원가. 그보다 올릴 때만 판매자 크레딧.", options: "판매자 크레딧 / 지금은 기본만 / 상품으로 팜", card: "W22-05" },
+  { id: "signup-200", topic: "credit", ask: "가입 크레딧 얼마로 하나", draft: "200. 비싼 모델 기준 약 20판. 우리 원가 약 $0.80.", options: "200 / 150 / 다른 숫자", card: "W22-05" },
+  { id: "attendance", topic: "credit", ask: "출석을 어떻게 주나", draft: "첫날 10, 연속마다 +1, 최대 20. 매일 1판 배급은 버림.", options: "10→20 확정 / 숫자만 바꿈 / 출석 없음", card: "W22-05" },
+  { id: "trade-bonus", topic: "credit", ask: "결제·정산·초대 보너스를 쓰나", draft: "FUNDED 양쪽 각 10. 정산 +10. 초대는 첫 결제 때 40.", options: "초안대로 / 줄임 / 초대만 / 안 함", card: "W22-05" },
+  { id: "unlimited-flag", topic: "credit", ask: "스테이징 무한 크레딧을 언제 끄나", draft: "local/staging는 안 깎음. 프로덕션은 항상 깎음.", options: "장부 붙일 때 끔 / 지금 문구만 고정", card: "W22-05" },
+  { id: "tick-on-pay", topic: "hold", ask: "후발 최소 인상(틱)을 어디에 걸까", draft: "흥정은 호가에서. 틱은 결제에만. 원래 합의자는 P로 냄.", options: "결제에만 / 흥정도 홀드가에서 / 틱 없음", card: "W22-09" },
+  { id: "p-ttl", topic: "hold", ask: "합의 가격 P를 얼마나 살려 둘까", draft: "합의 후 2시간. 그 안 펀딩 시작하면 15분 리스 동안 유지.", options: "2시간 / 더 김 / 펀딩 시작 전까지만", card: "W22-09" },
+  { id: "tick-table", topic: "hold", ask: "틱 표가 센가", draft: "$40→$2, $80→$5, $300→$10, $725→$20, $1210→$25, $5000→$50.", options: "초안대로 / 줄임 / 호가 %로", card: "W22-09" },
+  { id: "show-hold-price", topic: "hold", ask: "홀드가를 화면에 보여 줄까", draft: "지금은 뱃지만. 합의 금액 없음.", options: "계속 숨김 / 뱃지에 금액 / 결제 직전에만", card: "W22-09" },
+  { id: "card-fee-copy", topic: "fee", ask: "카드 1.5%를 시작 화면에서 더 세게 고지할까", draft: "우리 1.5% + 카드 온램프 1.5%. +$0.30 없음.", options: "카피 강화 / 지금 유지", card: "W22-03" },
+  { id: "budget-linear", topic: "model", ask: "세션 AI 예산을 호가에 비례시킬까", draft: "C = r0·1.5%·P 이면 필요 성사율이 호가마다 같아짐.", options: "다음 스프린트 / $100 컷 유지 / r0만 정함", card: "W22-02" },
+  { id: "goal-agent", topic: "next", ask: "목표+크레딧 에이전트를 새 카드로 열까", draft: "비슷한 매물만 자동. 매물당 2명. 오늘 구현 아님.", options: "새 카드 / 이야기만 / 보류", card: "없음" }
+];
+const KEY = "haggle-2026-08-29-decisions";
+let filter = "all";
+let statuses = {};
+try { statuses = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch { statuses = {}; }
+
+function count() {
+  const c = { open: 0, leaning: 0, agreed: 0, later: 0 };
+  for (const it of ITEMS) c[statuses[it.id] || "open"] += 1;
+  document.getElementById("n-open").textContent = c.open;
+  document.getElementById("n-leaning").textContent = c.leaning;
+  document.getElementById("n-agreed").textContent = c.agreed;
+  document.getElementById("n-later").textContent = c.later;
+}
+
+function renderFilters() {
+  const bar = document.getElementById("filters");
+  bar.innerHTML = "";
+  for (const [id, label] of [["all", "전체"], ...Object.entries(TOPIC)]) {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.className = filter === id ? "on" : "";
+    b.onclick = () => { filter = id; render(); };
+    bar.appendChild(b);
+  }
+}
+
+function render() {
+  renderFilters();
+  count();
+  const body = document.getElementById("rows");
+  body.innerHTML = "";
+  for (const it of ITEMS) {
+    if (filter !== "all" && it.topic !== filter) continue;
+    const st = statuses[it.id] || "open";
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${TOPIC[it.topic]}</td><td>${it.ask}</td><td class="draft">${it.draft}</td><td>${it.options}</td><td>${it.card}</td>`;
+    const td = document.createElement("td");
+    const sel = document.createElement("select");
+    for (const [k, v] of Object.entries(STATUS)) {
+      const o = document.createElement("option");
+      o.value = k; o.textContent = v; if (k === st) o.selected = true;
+      sel.appendChild(o);
+    }
+    sel.onchange = () => {
+      statuses[it.id] = sel.value;
+      localStorage.setItem(KEY, JSON.stringify(statuses));
+      count();
+    };
+    td.appendChild(sel);
+    tr.appendChild(td);
+    body.appendChild(tr);
+  }
+}
+render();
+</script>
+</body>
+</html>
