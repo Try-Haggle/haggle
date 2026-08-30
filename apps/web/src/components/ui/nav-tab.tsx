@@ -68,7 +68,7 @@ export function NavTab({
         {label}
         {badge && (
           <span
-            className="-top-1 -right-2.5 absolute size-1.5 rounded-full bg-error"
+            className="-top-0.5 -right-1.5 absolute size-[5px] rounded-full bg-error"
             aria-hidden="true"
           />
         )}
