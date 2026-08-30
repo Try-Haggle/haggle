@@ -9,6 +9,7 @@ import type { ExtractedFeature } from "@haggle/engine-core";
 import type { EvermemoBrief } from "../../services/evermemo-bridge.service.js";
 import type { UserMemoryBrief } from "../../services/user-memory-card.service.js";
 import type { MemoEncodingConfig } from "../config.js";
+import type { SkillSlotContent } from "../prompts/skill-slots.js";
 import type { SkillStack } from "../skills/skill-stack.js";
 import type { RefereeBriefing, SkillAppliedRecord } from "../skills/skill-types.js";
 import type {
@@ -147,6 +148,11 @@ export interface DecideInput {
    * still negotiates but only sees the compact memo line.
    */
   conversation?: ConversationContext;
+  /**
+   * Engine skill plugins for the system prompt (`encodeSkillSlots`).
+   * When omitted, Decide falls back to `skill.getLLMContext()` only.
+   */
+  skillSlots?: SkillSlotContent;
 }
 
 export interface DecideOutput {

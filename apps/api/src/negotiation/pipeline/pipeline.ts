@@ -7,6 +7,7 @@
 
 import { resolveMemoEncoding } from "../config.js";
 import { createSnapshot } from "../memo/memo-manager.js";
+import { collectSkillSlots, type SkillSlotContent } from "../prompts/skill-slots.js";
 import { assembleStageContext } from "../stages/context.js";
 import { decide } from "../stages/decide.js";
 import { persist } from "../stages/persist.js";
@@ -107,6 +108,7 @@ export async function executePipeline(
   );
 
   // ─── Stage 2.5: Skill 'context' hook (knowledge + market data) ───
+  const contextMarketLines: string[] = [];
   if (deps.skillStack && hookContext) {
     try {
       const contextHookResult = await deps.skillStack.dispatchHook({
@@ -117,6 +119,7 @@ export async function executePipeline(
       if (contextHookResult.decide?.marketData) {
         for (const md of contextHookResult.decide.marketData) {
           contextOutput.layers.L5_signals += `\nMKT_SKILL:${md.source}:$${md.price}`;
+          contextMarketLines.push(`${md.source}: $${md.price} (advisory)`);
         }
       }
       // Inject knowledge body from ElectronicsKnowledgeSkill
@@ -124,6 +127,13 @@ export async function executePipeline(
         const body = (result.content as Record<string, unknown>).body;
         if (typeof body === "string") {
           contextOutput.layers.L2_skill += `\n[${skillId}] ${body}`;
+        }
+        const md = (result.content as Record<string, unknown>).marketData as
+          | { price?: number; source?: string }
+          | undefined;
+        if (md && typeof md.price === "number" && typeof md.source === "string") {
+          contextOutput.layers.L5_signals += `\nMKT_SKILL:${md.source}:$${md.price}`;
+          contextMarketLines.push(`${md.source}: $${md.price} (advisory)`);
         }
         // Merge observations
         const obs = (result.content as Record<string, unknown>).observations;
@@ -137,14 +147,18 @@ export async function executePipeline(
   }
 
   // ─── Stage 3: Decide ───
-  // First, get skill advisories for the decide stage
+  // Skill hooks already ran for understand/context. Peek decide + validate +
+  // respond so their bodies land in labeled Decide slots (not L3, which Decide
+  // does not read). Validate still runs again at 4.5 for the code path.
+  let skillSlots: SkillSlotContent = { knowledge: [deps.skill.getLLMContext()] };
   const skillAdvisories: string[] = [];
   if (deps.skillStack && hookContext) {
     try {
-      const decideHookResult = await deps.skillStack.dispatchHook({
-        ...hookContext,
-        stage: "decide",
-      });
+      const [decideHookResult, validatePeek, respondPeek] = await Promise.all([
+        deps.skillStack.dispatchHook({ ...hookContext, stage: "decide" }),
+        deps.skillStack.dispatchHook({ ...hookContext, stage: "validate" }),
+        deps.skillStack.dispatchHook({ ...hookContext, stage: "respond" }),
+      ]);
       if (decideHookResult.decide?.advisories) {
         for (const adv of decideHookResult.decide.advisories) {
           if (adv.recommendedPrice) {
@@ -160,12 +174,26 @@ export async function executePipeline(
           }
         }
       }
+      const respondContent = Object.values(respondPeek.bySkill)
+        .map((r) => r.content as { toneGuidance?: string; terminology?: Record<string, string> })
+        .find((c) => c.toneGuidance || c.terminology);
+      const decideMarket = (decideHookResult.decide?.marketData ?? []).map(
+        (md) => `${md.source}: $${md.price} (advisory)`,
+      );
+      skillSlots = collectSkillSlots({
+        llmContext: deps.skill.getLLMContext(),
+        decide: decideHookResult.decide,
+        validate: validatePeek.validate,
+        market: [...contextMarketLines, ...decideMarket],
+        toneGuidance: respondContent?.toneGuidance,
+        terminology: respondContent?.terminology,
+      });
     } catch {
-      /* non-fatal */
+      /* non-fatal: Decide still gets the session skill pointer */
     }
   }
 
-  // Inject advisories into context L3 layer (optional, LLM may ignore)
+  // Keep L3 for explainability. Decide does not read L3; slots go to the system prompt.
   if (skillAdvisories.length > 0) {
     contextOutput.layers.L3_coaching +=
       "\n## Advisor Notes (optional, you may ignore)\n" +
@@ -182,6 +210,7 @@ export async function executePipeline(
     facts: deps.facts,
     opponent: deps.opponent,
     conversation: deps.conversation,
+    skillSlots,
   });
 
   // ─── Stage 4: Validate ───

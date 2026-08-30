@@ -10,29 +10,28 @@ describe("resolveCategoryProfile (P3 — taxonomy-driven)", () => {
   it("a real iphone listing (bare electronics + iphone-15-pro tag) gets IMEI in DECIDE context", () => {
     // Mirrors production tags: bare category + hyphenated tag (not a synthetic token).
     const p = resolveCategoryProfile(["electronics", "iphone-15-pro"]);
-    expect(p.llmContext).toMatch(/IMEI/);
-    expect(p.llmContext).toMatch(/배터리/);
+    expect(p.llmContext).toContain("criteria few-shot");
     expect(p.constraints.some((c) => c.rule === "IMEI_VERIFICATION")).toBe(true);
   });
 
   it("non-phone electronics (laptops) gets its own checks, NOT IMEI (fixes L4a residual)", () => {
     const p = resolveCategoryProfile(["electronics/laptops"]);
-    expect(p.llmContext).toMatch(/사이클|사양/);
-    expect(p.llmContext).not.toMatch(/IMEI/);
+    expect(p.llmContext).toContain("criteria few-shot");
+    expect(p.constraints.some((c) => c.rule === "IMEI_VERIFICATION")).toBe(false);
   });
 
   it("bare electronics gets only top-level checks (no phone/IMEI)", () => {
     const p = resolveCategoryProfile(["electronics"]);
-    expect(p.llmContext).toMatch(/작동/);
-    expect(p.llmContext).not.toMatch(/IMEI/);
+    expect(p.llmContext).toContain("criteria few-shot");
+    expect(p.constraints.some((c) => c.rule === "IMEI_VERIFICATION")).toBe(false);
   });
 
   it("non-electronics categories get their own checks, never IMEI", () => {
-    const vehicles = resolveCategoryProfile(["vehicles"]).llmContext;
-    expect(vehicles).toMatch(/주행거리|명의/);
-    expect(vehicles).not.toMatch(/IMEI/);
-    // fashion is a clothing alias → real checks, no longer the neutral fallback
-    expect(resolveCategoryProfile(["fashion"]).llmContext).toMatch(/정품|사이즈/);
+    const vehicles = resolveCategoryProfile(["vehicles"]);
+    expect(vehicles.llmContext).toContain("criteria few-shot");
+    expect(vehicles.constraints.some((c) => c.rule === "IMEI_VERIFICATION")).toBe(false);
+    expect(vehicles.constraints.some((c) => c.rule === "TITLE_STATUS")).toBe(true);
+    expect(resolveCategoryProfile(["fashion"]).llmContext).toContain("criteria few-shot");
   });
 
   it("unknown / empty tags fall back to the neutral profile", () => {

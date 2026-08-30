@@ -1,6 +1,6 @@
 import { HNP_CORE_CAPABILITY } from "@haggle/engine-session";
 import { describe, expect, it } from "vitest";
-import { buildHostHnpOfferEnvelope } from "../hnp/host-envelope.js";
+import { buildHostHnpOfferEnvelope, wrapPriceOnlyAsHostEnvelope } from "../hnp/host-envelope.js";
 import { normalizeSubmitOffer } from "../hnp/normalize-offer.js";
 
 const sessionId = "11111111-1111-1111-1111-111111111111";
@@ -49,5 +49,28 @@ describe("buildHostHnpOfferEnvelope", () => {
     expect(first.message_id).toBe(retry.message_id);
     expect(first.idempotency_key).toBe(retry.idempotency_key);
     expect(first.sequence).toBe(retry.sequence);
+  });
+
+  it("wraps a price-only REST offer as a host envelope that still ingresses", () => {
+    const envelope = wrapPriceOnlyAsHostEnvelope({
+      sessionId,
+      currentRound: 0,
+      senderRole: "BUYER",
+      priceMinor: 37000,
+      idempotencyKey: "client-idem-1",
+      nowMs: 1_700_000_000_000,
+    });
+
+    expect(envelope.sender_agent_id).toBe("haggle.host.buyer");
+    expect(envelope.idempotency_key).toBe("client-idem-1");
+    expect(envelope.type).toBe("OFFER");
+    expect(envelope.sequence).toBe(1);
+
+    const normalized = normalizeSubmitOffer({ hnp: envelope }, sessionId, 1_700_000_000_000);
+    expect(normalized.ok).toBe(true);
+    if (normalized.ok) {
+      expect(normalized.offerPriceMinor).toBe(37000);
+      expect(normalized.protocol?.senderAgentId).toBe("haggle.host.buyer");
+    }
   });
 });

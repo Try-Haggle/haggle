@@ -56,12 +56,14 @@ export const DEFAULT_PROFILE: CategoryProfile = {
   },
 };
 
-/** Format taxonomy checks into an LLM context block for the DECIDE prompt. */
+/** Skill context is a pointer. The opened cards live in the criteria few-shot. */
 function buildCategoryLLMContext(checks: readonly NegotiationCheck[]): string {
-  const lines = checks.map(
-    (c) => `- ${c.questionKo} [${c.enforcement === "hard" ? "필수" : "권장"}]`,
-  );
-  return ["## Category checks — verify/discuss for this item:", ...lines].join("\n");
+  const hard = checks.filter((c) => c.enforcement === "hard").length;
+  const soft = checks.filter((c) => c.enforcement === "soft").length;
+  return [
+    "## Category",
+    `This tag opened ${hard} HARD and ${soft} SOFT criteria. The criteria few-shot above is the list. Do not add checks.`,
+  ].join("\n");
 }
 
 /**

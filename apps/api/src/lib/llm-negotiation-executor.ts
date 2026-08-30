@@ -36,6 +36,7 @@ import {
 } from "../negotiation/memory/memory-reconstructor.js";
 import { checkIntervention } from "../negotiation/phase/human-intervention.js";
 import { detectPhaseEvent, tryTransition } from "../negotiation/phase/phase-machine.js";
+import { encodeSkillSlots } from "../negotiation/prompts/skill-slots.js";
 import { computeCoaching } from "../negotiation/referee/coach.js";
 import { RefereeService } from "../negotiation/referee/referee-service.js";
 import { screenMessage } from "../negotiation/screening/auto-screening.js";
@@ -268,8 +269,9 @@ export async function executeLLMNegotiationRound(
 
         // Build prompts
         const systemPrompt = adapter.buildSystemPrompt(
-          skill.getLLMContext(),
+          encodeSkillSlots({ knowledge: [skill.getLLMContext()] }),
           updatedMemory.session.role,
+          updatedMemory.listing_context,
         );
         const userPrompt = adapter.buildUserPrompt(updatedMemory, facts.slice(-5));
 

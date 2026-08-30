@@ -19,7 +19,7 @@ import {
   normalizeAcceptRequest,
 } from "../hnp/accept-session.js";
 import { hnpAcceptEnvelopeSchema, hnpOfferEnvelopeSchema } from "../hnp/envelope-schema.js";
-import { buildHostHnpOfferEnvelope } from "../hnp/host-envelope.js";
+import { buildHostHnpOfferEnvelope, wrapPriceOnlyAsHostEnvelope } from "../hnp/host-envelope.js";
 import { normalizeSubmitOffer } from "../hnp/normalize-offer.js";
 import { submitHnpOffer } from "../hnp/submit-offer.js";
 import type { EventDispatcher } from "../lib/event-dispatcher.js";
@@ -371,7 +371,6 @@ export function registerNegotiationRoutes(
       session.negotiationAgentSnapshot,
     );
 
-    // 공정함: utility 점수 공개, 상대방 전략 파라미터 비공개
     return reply.send({
       session: {
         id: session.id,
@@ -453,14 +452,33 @@ export function registerNegotiationRoutes(
       if (!writeAccess.ok) {
         return reply.code(writeAccess.status).send({ error: writeAccess.error });
       }
-      if (normalized.hnp || normalized.protocol) {
-        const hnpIngress = await validateHnpIngress(db, request.params.id, {
-          envelope: normalized.hnp,
-          protocol: normalized.protocol,
+
+      let offer = normalized;
+      let hostMinted = false;
+      if (!offer.hnp) {
+        const envelope = wrapPriceOnlyAsHostEnvelope({
+          sessionId: session.id,
+          currentRound: session.currentRound,
+          senderRole: offer.senderRole,
+          priceMinor: offer.offerPriceMinor,
+          idempotencyKey: offer.idempotencyKey,
+          nowMs,
         });
-        if (!hnpIngress.ok) {
-          return reply.code(hnpIngress.status).send(hnpIngress.body);
+        const wrapped = normalizeSubmitOffer({ hnp: envelope }, session.id, nowMs);
+        if (!wrapped.ok) {
+          return reply.code(wrapped.status).send(wrapped.body);
         }
+        offer = wrapped;
+        hostMinted = true;
+      }
+
+      const hnpIngress = await validateHnpIngress(db, request.params.id, {
+        envelope: offer.hnp,
+        protocol: offer.protocol,
+        requireSignature: hostMinted ? false : undefined,
+      });
+      if (!hnpIngress.ok) {
+        return reply.code(hnpIngress.status).send(hnpIngress.body);
       }
 
       try {
@@ -469,11 +487,11 @@ export function registerNegotiationRoutes(
           db,
           {
             sessionId: request.params.id,
-            offerPriceMinor: normalized.offerPriceMinor,
+            offerPriceMinor: offer.offerPriceMinor,
             messageText: data.message_text,
-            senderRole: normalized.senderRole,
-            idempotencyKey: normalized.idempotencyKey,
-            protocol: normalized.protocol,
+            senderRole: offer.senderRole,
+            idempotencyKey: offer.idempotencyKey,
+            protocol: offer.protocol,
             roundData: data.round_data ?? {},
             nowMs,
           },
@@ -526,14 +544,14 @@ export function registerNegotiationRoutes(
           responseBody.explainability = extended.explainability;
           responseBody.utility = result.utility;
         }
-        if (normalized.hnp) {
+        if (offer.hnp) {
           responseBody.hnp = {
-            spec_version: normalized.hnp.spec_version,
-            capability: normalized.hnp.capability,
-            message_id: normalized.hnp.message_id,
-            sequence: normalized.hnp.sequence,
-            proposal_id: normalized.hnp.payload.proposal_id,
-            proposal_hash: normalized.protocol?.proposalHash,
+            spec_version: offer.hnp.spec_version,
+            capability: offer.hnp.capability,
+            message_id: offer.hnp.message_id,
+            sequence: offer.hnp.sequence,
+            proposal_id: offer.hnp.payload.proposal_id,
+            proposal_hash: offer.protocol?.proposalHash,
           };
         }
 
