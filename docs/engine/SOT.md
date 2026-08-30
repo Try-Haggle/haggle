@@ -392,7 +392,7 @@ P(t) = P_start + (P_limit − P_start) × (t/T)^(1/β)      t/T는 [0,1] clamp
 
 ## 10. 데이터 영속화
 
-**현황 ✅** `db/schema/negotiation-sessions.ts`  
+**현황 ✅** `db/schema/negotiation-sessions.ts`
 사람 기준 흐름은 [`tag-spec-fewshot.md`](./tag-spec-fewshot.md) §6. 와이어는 HNP만. MEMO는 세션 스냅샷·해시로 남고 봉투에 안 탄다.
 - `negotiation_sessions` — 세션 상태 + 스냅샷 + 데이터모트 컬럼(outcome·priceTrajectory·opponentModel·coreMemorySnapshot·memoHash·sessionFactChainHash…)
 - `negotiation_rounds` — append-only 라운드 로그 (utility·coaching·validation·referee_violations·coach_recommended·deviation…)

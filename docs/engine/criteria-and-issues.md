@@ -1,9 +1,9 @@
 # Criteria와 HNP issues
 
-**상태:** 2026-08-24 정행. 이름과 Decide 시스템 프롬프트 계약.  
+**상태:** 2026-08-24 정행. 이름과 Decide 시스템 프롬프트 계약.
 **관련:** `W2026-08-22-02`
 
-태그가 연 질문과, 봉투에 실리는 공개 값을 섞지 않기 위한 문서다.  
+태그가 연 질문과, 봉투에 실리는 공개 값을 섞지 않기 위한 문서다.
 전체 협상 흐름은 [`tag-spec-fewshot.md`](./tag-spec-fewshot.md). Decide 블록은 [`decide-prompt-contract.md`](./decide-prompt-contract.md). 와이어는 [`../protocol/HNP.md`](../protocol/HNP.md).
 
 ---
@@ -24,7 +24,7 @@
 | HARD / SOFT | 있음. HARD=게이트, SOFT=가격 레버 | 없음. 공개 값의 칸일 뿐 |
 | 누가 보나 | 우리 엔진·Decide | 상대 에이전트·공개 compact state |
 
-판매자가 `배터리 87%`를 고르면 그건 criteria `battery_health`의 답이다.  
+판매자가 `배터리 87%`를 고르면 그건 criteria `battery_health`의 답이다.
 호스트가 그 값을 봉투에 넣으면 그때 `hnp.issue.condition.battery_health = 87%`가 된다.
 
 호스트는 criteria에서 issue ID를 지어 넣지 않는다. 지금 Haggle 호스트 봉투는 `issues: []`다. 가격은 `total_price`로 간다.
@@ -72,7 +72,7 @@ HNP 코어 issue는 적다. 가격, 외관 등급, 배터리, 배송 창, 워런
 | SOFT | `carrier_lock` | 언락인지 |
 | SOFT | `storage_capacity` | 용량 |
 
-**Issues (지금 와이어)**  
+**Issues (지금 와이어)**
 코어 이름으로 갈 수 있는 것은 배터리·외관·가격뿐이다. Find My와 용량은 criteria로만 남는다.
 
 ---
@@ -84,10 +84,10 @@ Decide LLM을 부를 때마다 시스템 프롬프트에 아래가 **항상** �
 1. **범례** — 처음 보는 모델용. criteria가 뭔지, HARD/SOFT가 JSON action을 어떻게 바꾸는지, HOLD와 REJECT의 차이, 답을 어디서 읽는지.
 2. **이 태그가 연 카드** — 열린 criteria마다 한 장. Meaning / Your move / What to say / Wire.
 
-카드는 행동을 가르친다. “256은 항상 $480” 같은 대본은 넣지 않는다.  
+카드는 행동을 가르친다. “256은 항상 $480” 같은 대본은 넣지 않는다.
 이번 매물의 답은 유저 프롬프트 LISTING / STRATEGY에만 있다.
 
-구현: `apps/api/src/negotiation/prompts/criteria-fewshot.ts`  
+구현: `apps/api/src/negotiation/prompts/criteria-fewshot.ts`
 호출: `decide-system-prompt.ts` → 매 Decide `callLLM`
 
 ---

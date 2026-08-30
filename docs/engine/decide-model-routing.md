@@ -1,9 +1,9 @@
 # Decide 모델 라우팅
 
-**이 문서가 Decide가 어떤 모델을 부르는지의 변경 기준이다.**  
+**이 문서가 Decide가 어떤 모델을 부르는지의 변경 기준이다.**
 코드와 이 문서가 어긋나면 이 문서를 먼저 고친다. 구현은 `decide-model.ts`.
 
-프롬프트 블록은 [`decide-prompt-contract.md`](./decide-prompt-contract.md).  
+프롬프트 블록은 [`decide-prompt-contract.md`](./decide-prompt-contract.md).
 엔진 현황 한 줄은 [`SOT.md`](./SOT.md) §5.4 · §8. 모델 id 목록을 SOT에 다시 적지 않는다.
 
 ---

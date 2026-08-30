@@ -1,6 +1,6 @@
 # Decide 프롬프트 계약
 
-**이 문서가 Decide가 보는 입력의 변경 기준이다.**  
+**이 문서가 Decide가 보는 입력의 변경 기준이다.**
 코드와 이 문서가 어긋나면 이 문서를 먼저 고치고, 인코더와 계약 테스트를 같이 맞춘다.
 
 | 역할 | 문서 |
@@ -12,8 +12,8 @@
 | Decide 모델 고르기 | [`decide-model-routing.md`](./decide-model-routing.md) |
 | criteria vs issues | [`criteria-and-issues.md`](./criteria-and-issues.md) |
 
-구현: `decide-user-prompt.ts` · `decide-system-prompt.ts` · `criteria-fewshot.ts` · `skill-slots.ts`  
-호출: `stages/decide.ts` → `DeepSeekAdapter.buildSystemPrompt` + `buildUserPrompt`  
+구현: `decide-user-prompt.ts` · `decide-system-prompt.ts` · `criteria-fewshot.ts` · `skill-slots.ts`
+호출: `stages/decide.ts` → `DeepSeekAdapter.buildSystemPrompt` + `buildUserPrompt`
 검증: `decide-prompt-contract.test.ts` · `tag-family-fewshot.test.ts` · `skill-slots.test.ts`
 
 ---
