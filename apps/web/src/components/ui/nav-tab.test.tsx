@@ -1,8 +1,9 @@
 /**
  * NavTab unread indication.
  *
- * The text tab has room for a number; the icon tab does not, so the same prop
- * has to render differently in the two variants.
+ * One language on both variants: a dot. A count next to a word reads as "items
+ * in this view", and in red it reads as an error — neither is what an unread
+ * message means.
  */
 
 import { render, screen } from "@testing-library/react";
@@ -10,32 +11,25 @@ import { describe, expect, it } from "vitest";
 import { NavTab } from "./nav-tab";
 
 describe("NavTab", () => {
-  it("puts the unread count on a text tab", () => {
-    render(<NavTab href="/messages" label="Messages" badge={3} />);
+  it("marks a text tab with a dot, not a number", () => {
+    const { container } = render(<NavTab href="/messages" label="Messages" badge />);
 
     expect(screen.getByText("Messages")).toBeInTheDocument();
-    expect(screen.getByText("3")).toBeInTheDocument();
+    expect(container.querySelector(".bg-error")).not.toBeNull();
+    expect(container.textContent).toBe("Messages");
   });
 
-  it("caps a large count", () => {
-    render(<NavTab href="/messages" label="Messages" badge={42} />);
+  it("shows nothing when there is nothing waiting", () => {
+    const { container } = render(<NavTab href="/messages" label="Messages" badge={false} />);
 
-    expect(screen.getByText("9+")).toBeInTheDocument();
-  });
-
-  it("shows nothing at zero", () => {
-    const { container } = render(<NavTab href="/messages" label="Messages" badge={0} />);
-
-    expect(screen.queryByText("0")).toBeNull();
     expect(container.querySelector(".bg-error")).toBeNull();
   });
 
-  it("keeps the icon tab to a dot — a number would not fit", () => {
+  it("marks the icon tab the same way", () => {
     const { container } = render(
-      <NavTab href="/messages" label="Inbox" variant="stacked" icon={<svg />} badge={3} />,
+      <NavTab href="/notifications" label="Inbox" variant="stacked" icon={<svg />} badge />,
     );
 
-    expect(screen.queryByText("3")).toBeNull();
     expect(container.querySelector(".bg-error")).not.toBeNull();
   });
 });

@@ -170,7 +170,7 @@ export function Nav({ userEmail, userName, userAvatarUrl, modeOverride }: NavPro
                   href={tab.href}
                   label={tab.label}
                   active={isActive}
-                  badge={tab.href === "/messages" ? messagesUnreadCount : undefined}
+                  badge={tab.href === "/messages" && messagesUnreadCount > 0}
                 />
               );
             })}
