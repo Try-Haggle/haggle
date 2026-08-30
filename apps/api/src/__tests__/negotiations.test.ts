@@ -97,6 +97,7 @@ const mockRound = {
   roundNo: 1,
   senderRole: "BUYER",
   messageType: "OFFER",
+  message: "Counter at $95",
   priceminor: "10000",
   counterPriceMinor: "9500",
   utility: { u_total: 0.6, v_p: 0.5, v_t: 0.03, v_r: 0.04, v_s: 0.03 },
