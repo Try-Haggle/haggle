@@ -15,6 +15,7 @@ function conversation(overrides: Partial<ConversationSummary> = {}): Conversatio
   return {
     id: "conversation-1",
     subject: { type: "negotiation_session", id: "session-1" },
+    side: "buying",
     otherMember: { id: THEM, displayName: "Dana Seller", avatarUrl: null },
     lastMessage: {
       id: "m1",

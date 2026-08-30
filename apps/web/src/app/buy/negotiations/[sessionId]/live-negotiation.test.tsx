@@ -456,3 +456,23 @@ describe("LiveNegotiation — the answer shows under the question", () => {
     expect(screen.queryByText("You answered")).not.toBeInTheDocument();
   });
 });
+
+describe("LiveNegotiation — the way to the seller", () => {
+  it("stays out of the way while the rounds are running", () => {
+    render(<LiveNegotiation initialPayload={payload("ACTIVE")} canMessageSeller />);
+
+    expect(screen.queryByRole("button", { name: /Message seller/ })).toBeNull();
+  });
+
+  it("appears once the negotiation is over", () => {
+    render(<LiveNegotiation initialPayload={payload("REJECTED")} canMessageSeller />);
+
+    expect(screen.getByRole("button", { name: /Message seller/ })).toBeInTheDocument();
+  });
+
+  it("never appears for a guest — there is no account to hold the thread", () => {
+    render(<LiveNegotiation initialPayload={payload("REJECTED")} />);
+
+    expect(screen.queryByRole("button", { name: /Message seller/ })).toBeNull();
+  });
+});

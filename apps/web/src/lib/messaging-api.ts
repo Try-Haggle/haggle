@@ -15,23 +15,42 @@ export interface UserDisplay {
   avatarUrl: string | null;
 }
 
+/** Which side of the subject the viewer is on. */
+export type ConversationSide = "buying" | "selling";
+export type ConversationFilter = "all" | "buying" | "selling";
+
 export interface ConversationSummary {
   id: string;
   subject: ConversationSubject | null;
+  side: ConversationSide | null;
   otherMember: UserDisplay | null;
   lastMessage: { id: string; body: string; senderId: string; createdAt: string } | null;
   unreadCount: number;
   lastMessageAt: string;
 }
 
+export type ConversationOutcomeStatus = "DEAL" | "NEAR_DEAL" | "NO_DEAL" | "EXPIRED";
+
+/** How the negotiation behind this conversation ended. */
+export interface ConversationOutcome {
+  status: ConversationOutcomeStatus;
+  /** Settled price on a deal, the last price on the table otherwise. Minor units. */
+  priceMinor: number | null;
+  rounds: number;
+  settledAt: string | null;
+}
+
 export interface ConversationDetail {
   id: string;
   subject: ConversationSubject | null;
+  side: ConversationSide | null;
   otherMember: UserDisplay | null;
   unreadCount: number;
   lastReadAt: string | null;
   /** The other side's read position — drives the unread mark on sent bubbles. */
   otherLastReadAt: string | null;
+  /** Null while the negotiation is still running, or for a subjectless thread. */
+  outcome: ConversationOutcome | null;
 }
 
 export interface Message {
@@ -68,15 +87,24 @@ async function retryOnAuthGap<T>(run: () => Promise<T>): Promise<T> {
 }
 
 export const messagingApi = {
-  listConversations: (cursor?: string | null) =>
-    retryOnAuthGap(() =>
+  listConversations: (options: { cursor?: string | null; filter?: ConversationFilter } = {}) => {
+    const params = new URLSearchParams();
+    if (options.cursor) params.set("cursor", options.cursor);
+    if (options.filter && options.filter !== "all") params.set("filter", options.filter);
+    const query = params.toString();
+    return retryOnAuthGap(() =>
       api.get<{ conversations: ConversationSummary[]; nextCursor: string | null }>(
-        `/api/conversations${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
+        `/api/conversations${query ? `?${query}` : ""}`,
       ),
-    ),
+    );
+  },
 
   unreadCount: () =>
-    retryOnAuthGap(() => api.get<{ count: number }>("/api/conversations/unread-count")),
+    retryOnAuthGap(() =>
+      api.get<{ count: number; total?: number; buying?: number; selling?: number }>(
+        "/api/conversations/unread-count",
+      ),
+    ),
 
   get: (id: string) =>
     retryOnAuthGap(() => api.get<{ conversation: ConversationDetail }>(`/api/conversations/${id}`)),

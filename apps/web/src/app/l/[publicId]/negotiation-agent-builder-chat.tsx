@@ -19,6 +19,7 @@ import {
   TypingIndicator,
 } from "@/components/ui";
 import { ApiError, apiClient } from "@/lib/api-client";
+import { isSubmitEnter } from "@/lib/keyboard";
 
 /* ─── Types ───────────────────────────────────────────────── */
 
@@ -1119,7 +1120,7 @@ export function NegotiationAgentBuilderChat({
   );
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (isSubmitEnter(e)) {
       e.preventDefault();
       handleSend();
     }

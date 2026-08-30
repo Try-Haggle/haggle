@@ -33,6 +33,7 @@ import { StrategyRadar } from "@/components/agents/StrategyRadar";
 import { Button, buttonVariants, Input, PageHeader } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { draftNegotiationAgentStore } from "@/lib/draft-negotiation-agent-store";
+import { isImeComposing } from "@/lib/keyboard";
 import type { NegotiationAgentBuilderMemory } from "@/lib/negotiation-agent-builder-types";
 import { AgentsList } from "./AgentsList";
 
@@ -478,6 +479,7 @@ function SaveAsAgentControl({
         value={name}
         onChange={(e) => onNameChange(e.target.value)}
         onKeyDown={(e) => {
+          if (isImeComposing(e)) return;
           if (e.key === "Enter") onConfirm();
           else if (e.key === "Escape") onCancel();
         }}

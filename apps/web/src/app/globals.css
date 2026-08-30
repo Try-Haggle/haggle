@@ -136,6 +136,33 @@
   }
 }
 
+/* ----------------------------------------------------------------
+   MOTION · a control arriving
+   Slower than a message landing: this one marks a change of state
+   (the negotiation ended, so now you can talk), and it appears in a
+   bar the reader is not looking at. It should register, not blink.
+   ---------------------------------------------------------------- */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-rise-in {
+  animation: rise-in var(--motion-base) var(--ease-decelerate) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise-in {
+    animation: none;
+  }
+}
+
 /* Users who ask for less motion still get state changes — just not
    travel through space. Blanket brake; components additionally swap
    to opacity-only variants via framer-motion's useReducedMotion. */

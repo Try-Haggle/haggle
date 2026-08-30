@@ -31,12 +31,17 @@ export function ConversationList({
   onLoadMore,
   hasMore,
 }: ConversationListProps) {
-  // A failed fetch is not an empty inbox; saying "no messages" there would be
-  // a lie the reader cannot recover from.
+  // These are the phone's empty states: there, this column is the whole screen.
+  // On desktop the pane beside it carries them instead — one per screen, in the
+  // larger area, so "select a conversation" never appears next to an empty list.
+  //
+  // Centred rather than pinned to the top: at the top it reads as a first row
+  // that failed to fill in.
   if (!loading && failed && conversations.length === 0) {
     return (
-      <div className="p-4">
+      <div className="flex min-h-full items-center justify-center p-6 md:hidden">
         <EmptyState
+          bordered={false}
           size="sm"
           padding="sm"
           icon={<MessageIcon />}
@@ -58,8 +63,9 @@ export function ConversationList({
 
   if (!loading && conversations.length === 0) {
     return (
-      <div className="p-4">
+      <div className="flex min-h-full items-center justify-center p-6 md:hidden">
         <EmptyState
+          bordered={false}
           size="sm"
           padding="sm"
           icon={<MessageIcon />}

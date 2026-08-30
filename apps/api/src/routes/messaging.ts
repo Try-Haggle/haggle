@@ -23,12 +23,14 @@ import {
   decodeCursor,
   findOrCreateConversation,
   getConversationForUser,
-  getTotalUnreadCount,
+  getConversationOutcome,
+  getUnreadSummary,
   listConversations,
   listMessages,
   MESSAGE_PAGE_SIZE,
   type MessageItem,
   markConversationRead,
+  parseConversationFilter,
   resolveSubjectParticipants,
   sendMessage,
 } from "../services/messaging.service.js";
@@ -80,10 +82,12 @@ export function registerMessagingRoutes(app: FastifyInstance, db: Database): voi
   // ─── Conversation list ──────────────────────────────────────────────────────
 
   app.get("/api/conversations", { preHandler: [requireAuth] }, async (request, reply) => {
-    const query = request.query as { cursor?: string; limit?: string };
+    const query = request.query as { cursor?: string; limit?: string; filter?: string };
     const { items, nextCursor } = await listConversations(db, request.user!.id, {
       cursor: decodeCursor(query.cursor),
       limit: clampLimit(query.limit),
+      // An unknown value narrows nothing rather than hiding conversations.
+      filter: parseConversationFilter(query.filter),
     });
     return reply.send({ conversations: items, nextCursor });
   });
@@ -93,8 +97,10 @@ export function registerMessagingRoutes(app: FastifyInstance, db: Database): voi
     "/api/conversations/unread-count",
     { preHandler: [requireAuth] },
     async (request, reply) => {
-      const count = await getTotalUnreadCount(db, request.user!.id);
-      return reply.send({ count });
+      const summary = await getUnreadSummary(db, request.user!.id);
+      // `count` stays the whole number — the navigation badge must not depend on
+      // whichever filter the messages page happens to be showing.
+      return reply.send({ count: summary.total, ...summary });
     },
   );
 
@@ -135,7 +141,11 @@ export function registerMessagingRoutes(app: FastifyInstance, db: Database): voi
       // Non-members get 404, not 403: membership is the only thing that makes a
       // conversation visible, so its existence is not disclosed either.
       if (!detail) return reply.code(404).send({ error: "CONVERSATION_NOT_FOUND" });
-      return reply.send({ conversation: detail });
+      // The negotiation result rides along with the conversation rather than
+      // waiting behind the detail panel: it is the reason this thread exists,
+      // so it has to be readable without opening anything.
+      const outcome = await getConversationOutcome(db, detail.subject);
+      return reply.send({ conversation: { ...detail, outcome } });
     },
   );
 

@@ -74,15 +74,21 @@ describe("SellerNegotiation", () => {
     expect(arena).toHaveTextContent("Dashboard");
   });
 
-  it("offers the human thread with the buyer from the arena header", () => {
+  it("does not invite a human message while the agents are still negotiating", () => {
     render(<SellerNegotiation initialPayload={payload("ACTIVE")} />);
+
+    expect(screen.queryByRole("button", { name: /Message buyer/ })).toBeNull();
+  });
+
+  it("offers the thread once the rounds have stopped", () => {
+    // A finished negotiation — deal or no deal — is exactly when people talk.
+    render(<SellerNegotiation initialPayload={payload("ACCEPTED")} />);
 
     expect(screen.getByRole("button", { name: /Message buyer/ })).toBeInTheDocument();
   });
 
-  it("keeps the message entry point after the negotiation ends", () => {
-    // A finished negotiation is exactly when people still need to talk.
-    render(<SellerNegotiation initialPayload={payload("ACCEPTED")} />);
+  it("offers it at NEAR_DEAL too, where the rounds have also stopped", () => {
+    render(<SellerNegotiation initialPayload={payload("NEAR_DEAL")} />);
 
     expect(screen.getByRole("button", { name: /Message buyer/ })).toBeInTheDocument();
   });

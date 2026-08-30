@@ -2,6 +2,7 @@
 
 import { type KeyboardEvent, useState } from "react";
 import { cn } from "@/lib/cn";
+import { isImeComposing } from "@/lib/keyboard";
 import { Chip } from "./chip";
 
 export interface TagInputProps {
@@ -42,6 +43,7 @@ export function TagInput({
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (disabled) return;
+    if (isImeComposing(e)) return;
     if (e.key === "Enter" || e.key === ",") {
       e.preventDefault();
       add(draft);

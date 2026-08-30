@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { BottomNav } from "@/components/bottom-nav";
 import { Nav } from "@/components/nav";
 import { createClient } from "@/lib/supabase/server";
+import { MessagesUnreadProvider } from "./_components/messages-unread-provider";
 import { NotificationProvider } from "./_components/notification-provider";
 import { UserEventsProvider } from "./_components/user-events-provider";
 
@@ -30,13 +31,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <UserEventsProvider>
       <NotificationProvider>
-        <Nav userEmail={user.email ?? ""} userName={userName} userAvatarUrl={userAvatarUrl} />
-        <div className="pb-16 md:pt-16 md:pb-0">{children}</div>
-        {/* BottomNav reads the query string to know when a conversation is
-            open, which Next requires a boundary for. */}
-        <Suspense fallback={null}>
-          <BottomNav />
-        </Suspense>
+        <MessagesUnreadProvider>
+          <Nav userEmail={user.email ?? ""} userName={userName} userAvatarUrl={userAvatarUrl} />
+          <div className="pb-16 md:pt-16 md:pb-0">{children}</div>
+          {/* BottomNav reads the query string to know when a conversation is
+              open, which Next requires a boundary for. */}
+          <Suspense fallback={null}>
+            <BottomNav />
+          </Suspense>
+        </MessagesUnreadProvider>
       </NotificationProvider>
     </UserEventsProvider>
   );

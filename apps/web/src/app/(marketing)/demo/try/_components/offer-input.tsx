@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { isImeComposing } from "@/lib/keyboard";
 
 interface OfferInputProps {
   round: number;
@@ -43,7 +44,7 @@ export function OfferInput({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !disabled) {
+    if (e.key === "Enter" && !disabled && !isImeComposing(e)) {
       handleSubmit();
     }
   };
