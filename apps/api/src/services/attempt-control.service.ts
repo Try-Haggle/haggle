@@ -1,4 +1,5 @@
-import { type Database, sql } from "@haggle/db";
+import type { Database } from "@haggle/db";
+import { sql } from "drizzle-orm";
 
 export interface AttemptControlPolicy {
   scope: "buyer_per_listing";
@@ -65,38 +66,42 @@ export async function evaluateAttemptControl(
   const windowStart = new Date(now.getTime() - policy.windowSeconds * 1000);
   const dayStart = new Date(now);
   dayStart.setUTCHours(0, 0, 0, 0);
+  // drizzle + postgres-js cannot bind JS Date in raw sql`` — it throws in Bind().
+  const nowIso = now.toISOString();
+  const windowStartIso = windowStart.toISOString();
+  const dayStartIso = dayStart.toISOString();
 
   const rows = await db.execute(sql`
     SELECT
       COUNT(*) FILTER (
-          WHERE buyer_id = ${input.buyerPrincipalId}
+          WHERE buyer_id = ${input.buyerPrincipalId}::uuid
           AND status IN ('CREATED', 'ACTIVE', 'NEAR_DEAL', 'STALLED', 'WAITING', 'NEGOTIATING_VERSION')
-          AND (expires_at IS NULL OR expires_at > ${now})
+          AND (expires_at IS NULL OR expires_at > ${nowIso}::timestamptz)
       )::int AS active_sessions,
       COUNT(*) FILTER (
-        WHERE buyer_id = ${input.buyerPrincipalId}
-          AND listing_id = ${input.listingId}
+        WHERE buyer_id = ${input.buyerPrincipalId}::uuid
+          AND listing_id = ${input.listingId}::uuid
           AND status IN ('CREATED', 'ACTIVE', 'NEAR_DEAL', 'STALLED', 'WAITING', 'NEGOTIATING_VERSION')
-          AND (expires_at IS NULL OR expires_at > ${now})
+          AND (expires_at IS NULL OR expires_at > ${nowIso}::timestamptz)
       )::int AS active_sessions_on_listing,
       COUNT(*) FILTER (
-        WHERE buyer_id = ${input.buyerPrincipalId}
-          AND listing_id = ${input.listingId}
-          AND created_at >= ${windowStart}
+        WHERE buyer_id = ${input.buyerPrincipalId}::uuid
+          AND listing_id = ${input.listingId}::uuid
+          AND created_at >= ${windowStartIso}::timestamptz
       )::int AS sessions_in_window,
       COUNT(*) FILTER (
-        WHERE buyer_id = ${input.buyerPrincipalId}
-          AND created_at >= ${dayStart}
+        WHERE buyer_id = ${input.buyerPrincipalId}::uuid
+          AND created_at >= ${dayStartIso}::timestamptz
       )::int AS marketplace_attempts_today,
       MAX(created_at) FILTER (
-        WHERE buyer_id = ${input.buyerPrincipalId}
-          AND listing_id = ${input.listingId}
+        WHERE buyer_id = ${input.buyerPrincipalId}::uuid
+          AND listing_id = ${input.listingId}::uuid
       ) AS last_listing_attempt_at
     FROM negotiation_sessions
-    WHERE buyer_id = ${input.buyerPrincipalId}
+    WHERE buyer_id = ${input.buyerPrincipalId}::uuid
   `);
 
-  const row = ((rows as unknown as Record<string, unknown>[])[0] ?? {}) as Record<string, unknown>;
+  const row = firstExecuteRow(rows);
   const activeSessions = toInt(row.active_sessions);
   const activeSessionsOnListing = toInt(row.active_sessions_on_listing);
   const sessionsInWindow = toInt(row.sessions_in_window);
@@ -167,4 +172,15 @@ function intEnv(name: string, fallback: number): number {
 function toInt(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function firstExecuteRow(result: unknown): Record<string, unknown> {
+  if (Array.isArray(result)) {
+    return (result[0] ?? {}) as Record<string, unknown>;
+  }
+  if (result && typeof result === "object" && "rows" in result) {
+    const rows = (result as { rows?: unknown }).rows;
+    if (Array.isArray(rows)) return (rows[0] ?? {}) as Record<string, unknown>;
+  }
+  return {};
 }
