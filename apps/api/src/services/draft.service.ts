@@ -65,6 +65,7 @@ export async function createAndPublishOwnedListing(
     condition?: string;
     floorPrice?: string;
     tags?: string[];
+    photoUrl?: string;
   },
 ) {
   const draft = await createDraft(db, { userId: input.userId });
@@ -77,6 +78,7 @@ export async function createAndPublishOwnedListing(
     ...(input.condition !== undefined ? { condition: input.condition } : {}),
     ...(input.floorPrice !== undefined ? { floorPrice: input.floorPrice } : {}),
     ...(input.tags !== undefined ? { tags: input.tags } : {}),
+    ...(input.photoUrl !== undefined ? { photoUrl: input.photoUrl } : {}),
   });
   if (!patched) return { ok: false as const, error: "DRAFT_NOT_FOUND", draftId: draft.id };
   const errors = validateDraft(patched);
@@ -91,6 +93,47 @@ export async function createAndPublishOwnedListing(
     publicId: published.publicId,
     shareUrl: published.shareUrl,
     listingUrl: published.shareUrl,
+    photoUrl: patched.photoUrl ?? null,
+  };
+}
+
+export async function setOwnedListingPhoto(
+  db: Database,
+  input: { userId: string; publicId: string; photoUrl: string },
+) {
+  const listing = await getPublishedListingByPublicId(db, input.publicId);
+  if (!listing) return { ok: false as const, error: "LISTING_NOT_FOUND" };
+  if (listing.sellerId !== input.userId) return { ok: false as const, error: "FORBIDDEN" };
+
+  const published = await db
+    .select({
+      id: listingsPublished.id,
+      draftId: listingsPublished.draftId,
+      snapshotJson: listingsPublished.snapshotJson,
+    })
+    .from(listingsPublished)
+    .where(eq(listingsPublished.publicId, input.publicId))
+    .limit(1);
+  const row = published[0];
+  if (!row) return { ok: false as const, error: "LISTING_NOT_FOUND" };
+
+  const patched = await patchDraft(db, row.draftId, { photoUrl: input.photoUrl });
+  if (!patched) return { ok: false as const, error: "DRAFT_NOT_FOUND" };
+
+  await db
+    .update(listingsPublished)
+    .set({
+      snapshotJson: {
+        ...(row.snapshotJson as Record<string, unknown>),
+        photoUrl: input.photoUrl,
+      },
+    })
+    .where(eq(listingsPublished.id, row.id));
+
+  return {
+    ok: true as const,
+    publicId: input.publicId,
+    photoUrl: patched.photoUrl ?? input.photoUrl,
   };
 }
 
