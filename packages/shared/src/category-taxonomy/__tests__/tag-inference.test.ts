@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { enrichTagsWithTaxonomy, inferTaxonomyTags, looksLikeAccessory } from "../tag-inference.js";
+import {
+  enrichTagsWithTaxonomy,
+  inferTaxonomyTags,
+  keepTaxonomyLevelTags,
+  looksLikeAccessory,
+} from "../tag-inference.js";
 import { resolveChecks } from "../taxonomy.js";
 
 const hardGates = (tags: string[]) =>
@@ -320,5 +325,29 @@ describe("collision safety — inference must not resurrect the fixed false posi
   it("a real Tesla still resolves the vehicle spine", () => {
     const { tags } = enrichTagsWithTaxonomy(["vehicles"], "2021 Tesla Model 3 Long Range");
     expect(hardGates(tags)).toEqual(expect.arrayContaining(["title_status", "vin_theft_check"]));
+  });
+});
+
+describe("keepTaxonomyLevelTags", () => {
+  it("keeps category → type → model and drops color/condition specs", () => {
+    expect(
+      keepTaxonomyLevelTags([
+        "iphone 14 plus",
+        "iphone",
+        "mint color",
+        "like new",
+        "excellent-condition",
+        "256gb",
+        "space-black",
+        "with-charger",
+      ]),
+    ).toEqual(["iphone-14-plus", "iphone"]);
+  });
+
+  it("keeps airpods-pro as a model child and drops mint-color", () => {
+    expect(keepTaxonomyLevelTags(["airpods-pro", "mint-color", "headphones"])).toEqual([
+      "airpods-pro",
+      "headphones",
+    ]);
   });
 });

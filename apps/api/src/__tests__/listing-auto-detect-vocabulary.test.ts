@@ -44,11 +44,14 @@ const INPUT = {
 
 describe("vision prompt — controlled item-type vocabulary", () => {
   it("injects the taxonomy vocabulary and an accessory rule into the system prompt", async () => {
-    const { client, seen } = fakeOpenAI({ tags: ["iphone", "256gb"] });
+    const { client, seen } = fakeOpenAI({ tags: ["iphone", "iphone-15-pro"] });
     await autoDetectListing(INPUT, client);
 
     const sys = seen.system ?? "";
     expect(sys).toContain("ITEM-TYPE TAG");
+    expect(sys).toContain("LEVEL tags");
+    expect(sys).toContain("do NOT emit color");
+    expect(sys).toContain("do NOT emit condition");
     // Real safety-gate anchors must be offered to the model.
     for (const term of ["iphone", "mattress", "car-seat", "stroller", "office-chair"]) {
       expect(sys).toContain(term);
@@ -90,6 +93,8 @@ describe("vision prompt — controlled item-type vocabulary", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.tags).toContain("iphone");
+    expect(result.tags).not.toContain("256gb");
+    expect(result.tags).not.toContain("space-black");
     const hard = resolveChecks(["electronics", ...result.tags])
       .filter((c) => c.enforcement === "hard")
       .map((c) => c.id);

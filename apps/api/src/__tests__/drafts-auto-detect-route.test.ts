@@ -89,9 +89,8 @@ describe("auto-detect — taxonomy enrichment (vision OK)", () => {
     expect(status).toBe(200);
     expect(body.ok).toBe(true);
     expect(body.visionOk).toBe(true);
-    // vision tags preserved…
-    expect(body.tags).toEqual(expect.arrayContaining(["256gb", "space-black"]));
-    // …plus the taxonomy item-type token that unlocks the IMEI/activation gates.
+    expect(body.tags).not.toEqual(expect.arrayContaining(["256gb", "space-black"]));
+    // taxonomy item-type token that unlocks the IMEI/activation gates
     expect(body.inferred).toContain("iphone");
     expect(body.tags).toContain("iphone");
     // persisted, not just returned
@@ -103,14 +102,16 @@ describe("auto-detect — taxonomy enrichment (vision OK)", () => {
     await app.close();
   });
 
-  it("keeps tags the seller already added", async () => {
-    getDraftByIdMock.mockResolvedValue(draft({ tags: ["seller-added"] }));
-    autoDetectMock.mockResolvedValue({ ok: true, tags: ["v-tag"] });
+  it("keeps level tags the seller already added and drops spec adjectives", async () => {
+    getDraftByIdMock.mockResolvedValue(draft({ tags: ["iphone", "mint-color"] }));
+    autoDetectMock.mockResolvedValue({ ok: true, tags: ["iphone-15-pro", "excellent-condition"] });
 
     const app = buildApp();
     const { body } = await call(app);
 
-    expect(body.tags.slice(0, 2)).toEqual(["seller-added", "v-tag"]);
+    expect(body.tags).toEqual(expect.arrayContaining(["iphone", "iphone-15-pro"]));
+    expect(body.tags).not.toContain("mint-color");
+    expect(body.tags).not.toContain("excellent-condition");
     await app.close();
   });
 });
@@ -161,7 +162,7 @@ describe("auto-detect — vision FAILURE degrades instead of 500", () => {
 
     expect(status).toBe(200);
     expect(body.inferred).toEqual([]);
-    expect(body.tags).toEqual(["a"]);
+    expect(body.tags).toEqual([]);
     await app.close();
   });
 });

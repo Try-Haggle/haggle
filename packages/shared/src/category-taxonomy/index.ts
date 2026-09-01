@@ -32,6 +32,7 @@ export {
   enrichTagsWithTaxonomy,
   getTaxonomyVocabulary,
   inferTaxonomyTags,
+  keepTaxonomyLevelTags,
   looksLikeAccessory,
 } from "./tag-inference.js";
 export {

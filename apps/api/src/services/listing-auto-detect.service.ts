@@ -9,7 +9,7 @@
  * as `{ ok: false, error }`.
  */
 
-import { getTaxonomyVocabulary } from "@haggle/shared";
+import { getTaxonomyVocabulary, keepTaxonomyLevelTags } from "@haggle/shared";
 import OpenAI from "openai";
 import { usageExtractors, withLLMTelemetry } from "../lib/llm-telemetry.js";
 
@@ -70,18 +70,20 @@ export interface OpenAIClientLike {
  */
 const ITEM_TYPE_VOCABULARY = getTaxonomyVocabulary();
 
-const SYSTEM_PROMPT = `You analyze marketplace listings. Given a product photo, title, and optional description, propose descriptive tags.
+const SYSTEM_PROMPT = `You analyze marketplace listings. Given a product photo, title, and optional description, propose taxonomy LEVEL tags only — what the item IS on the category → type → family → model ladder.
 
 Tag rules:
-- 4 to 8 tags total
-- lowercase-hyphenated (e.g. "256gb", "space-black", "minor-scratches", "with-charger")
-- focus on objectively visible / known attributes: model/generation, storage, color, condition cues, included accessories
-- do NOT invent specs you cannot verify from the photo + text
-- do NOT include carrier lock status (unlocked, locked, carrier-locked, etc.) — this is collected separately
+- 2 to 6 tags total
+- lowercase-hyphenated (e.g. "electronics", "phones", "iphone", "iphone-15-pro")
+- emit only identity levels: category, product type, brand/family, model/generation
+- do NOT emit color or colorway (mint, space-black, navy)
+- do NOT emit condition (like-new, excellent-condition, minor-scratches, sealed)
+- do NOT emit storage/capacity, accessories, or lock status (256gb, with-charger, unlocked)
+- do NOT invent a model you cannot verify from the photo + text
 - prefer specific over generic ("iphone-15-pro" over just "smartphone")
 
 ITEM-TYPE TAG (important):
-- In addition to the descriptive tags, include ONE tag naming what the item IS, chosen from this list when one genuinely applies:
+- Include ONE tag naming what the item IS, chosen from this list when one genuinely applies:
 ${ITEM_TYPE_VOCABULARY.join(", ")}
 - Pick the most specific match (e.g. "iphone" over "phones", "mattress" over "furniture").
 - If nothing in the list genuinely applies, omit it — never force a match.
@@ -185,13 +187,15 @@ export async function autoDetectListing(
     }
 
     const obj = parsed as { tags?: unknown };
-    const tags = Array.isArray(obj.tags)
-      ? (obj.tags as unknown[])
-          .filter((t): t is string => typeof t === "string")
-          .map((t) => t.trim().toLowerCase())
-          .filter((t) => /^[a-z0-9]+(-[a-z0-9]+)*$/.test(t))
-          .slice(0, MAX_TAGS)
-      : [];
+    const tags = keepTaxonomyLevelTags(
+      Array.isArray(obj.tags)
+        ? (obj.tags as unknown[])
+            .filter((t): t is string => typeof t === "string")
+            .map((t) => t.trim().toLowerCase())
+            .filter((t) => /^[a-z0-9]+(-[a-z0-9]+)*$/.test(t))
+            .slice(0, MAX_TAGS)
+        : [],
+    );
 
     return {
       ok: true,

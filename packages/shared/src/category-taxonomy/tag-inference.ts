@@ -185,6 +185,141 @@ export function getTaxonomyVocabulary(): string[] {
     .sort();
 }
 
+/** Listing condition / color / capacity — not a taxonomy level. */
+const SPEC_EXACT = new Set([
+  "mint",
+  "navy",
+  "black",
+  "white",
+  "blue",
+  "red",
+  "green",
+  "gold",
+  "silver",
+  "gray",
+  "grey",
+  "pink",
+  "purple",
+  "orange",
+  "yellow",
+  "beige",
+  "cream",
+  "brown",
+  "space-black",
+  "midnight",
+  "starlight",
+  "product-red",
+  "sierra-blue",
+  "mint-color",
+  "mint-colour",
+  "new",
+  "used",
+  "sealed",
+  "refurbished",
+  "like-new",
+  "brand-new",
+  "excellent",
+  "excellent-condition",
+  "good-condition",
+  "fair-condition",
+  "poor-condition",
+  "mint-condition",
+  "minor-scratches",
+  "barely-used",
+  "unlocked",
+  "locked",
+  "carrier-locked",
+]);
+
+const COLOR_PARTS = new Set([
+  "black",
+  "white",
+  "blue",
+  "red",
+  "green",
+  "gold",
+  "silver",
+  "gray",
+  "grey",
+  "pink",
+  "purple",
+  "orange",
+  "yellow",
+  "beige",
+  "cream",
+  "brown",
+  "navy",
+  "mint",
+  "midnight",
+  "starlight",
+]);
+
+const GENERATION_PARTS = new Set([
+  "pro",
+  "plus",
+  "max",
+  "ultra",
+  "mini",
+  "air",
+  "se",
+  "lite",
+  "xl",
+  "promax",
+]);
+
+function normalizeLevelTag(raw: string): string {
+  return raw.trim().toLowerCase().replace(/\s+/g, "-");
+}
+
+function isSpecAttributeTag(normalized: string): boolean {
+  if (SPEC_EXACT.has(normalized)) return true;
+  if (/^\d+(gb|tb)$/.test(normalized)) return true;
+  if (/^(with|includes|incl)-/.test(normalized)) return true;
+  if (normalized.endsWith("-color") || normalized.endsWith("-colour")) return true;
+  if (normalized.endsWith("-condition") || normalized.endsWith("-scratches")) return true;
+  return normalized.split("-").some((part) => COLOR_PARTS.has(part));
+}
+
+function isModelChildOfVocab(normalized: string, vocabTerm: string): boolean {
+  if (vocabTerm.length < 4 || !normalized.startsWith(`${vocabTerm}-`)) return false;
+  const rest = normalized.slice(vocabTerm.length + 1);
+  if (!rest) return false;
+  if (isSpecAttributeTag(rest)) return false;
+  const parts = rest.split("-").filter(Boolean);
+  if (parts.some((part) => COLOR_PARTS.has(part) || SPEC_EXACT.has(part))) return false;
+  if (parts.some((part) => /\d/.test(part))) return true;
+  return parts.every((part) => GENERATION_PARTS.has(part));
+}
+
+/**
+ * Keep tags that sit on the category → type → family → model ladder.
+ * Drops color, condition, storage, and other listing-spec adjectives.
+ * No LLM / network — filters strings already in hand.
+ */
+export function keepTaxonomyLevelTags(tags: readonly string[]): string[] {
+  const vocab = getVocabulary().filter((v) => !v.cjk);
+  const pathSegments = new Set<string>();
+  for (const node of CATEGORY_TAXONOMY) {
+    for (const part of node.path.split("/")) {
+      if (part) pathSegments.add(part);
+    }
+  }
+
+  const kept: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of tags) {
+    const normalized = normalizeLevelTag(raw);
+    if (!normalized || seen.has(normalized)) continue;
+    if (isSpecAttributeTag(normalized)) continue;
+    const exact = pathSegments.has(normalized) || vocab.some((entry) => entry.term === normalized);
+    const child = vocab.some((entry) => isModelChildOfVocab(normalized, entry.term));
+    if (!exact && !child) continue;
+    seen.add(normalized);
+    kept.push(normalized);
+  }
+  return kept;
+}
+
 let VOCAB_WORDS_CACHE: Set<string> | null = null;
 
 /**
