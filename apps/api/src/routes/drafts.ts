@@ -1,5 +1,5 @@
 import type { Database } from "@haggle/db";
-import { enrichTagsWithTaxonomy } from "@haggle/shared";
+import { enrichTagsWithTaxonomy, keepTaxonomyLevelTags } from "@haggle/shared";
 import type { FastifyInstance } from "fastify";
 import { requireAuth } from "../middleware/require-auth.js";
 import { getNotificationUserInfo } from "../notification/get-user-info.js";
@@ -104,10 +104,14 @@ export function registerDraftRoutes(
     // PAUSE system actually needs (an item-type tag), and it is derived deterministically
     // from the listing's own text — so a vision outage (unreachable image, missing key,
     // provider error) must NOT block tagging. Degrade instead of failing.
-    const existingTags: string[] = Array.isArray(draft.tags) ? (draft.tags as string[]) : [];
+    const existingTags = keepTaxonomyLevelTags(
+      Array.isArray(draft.tags) ? (draft.tags as string[]) : [],
+    );
     const mergedTags = [...existingTags];
     if (result.ok) {
-      for (const t of result.tags) if (!mergedTags.includes(t)) mergedTags.push(t);
+      for (const t of keepTaxonomyLevelTags(result.tags)) {
+        if (!mergedTags.includes(t)) mergedTags.push(t);
+      }
     }
 
     // Deterministic item-type inference from the TITLE ONLY. Vision emits descriptive
