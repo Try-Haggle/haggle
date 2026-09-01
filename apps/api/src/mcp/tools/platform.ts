@@ -59,11 +59,13 @@ import {
   getSettlementApprovalById,
   updateCommerceOrderStatus,
 } from "../../services/payment-record.service.js";
+import { buyerVisibleRequiredCriteria } from "../../services/public-listing-view.js";
 import { getShipmentByOrderId } from "../../services/shipment-record.service.js";
 import {
   startBuyerNegotiation,
   startBuyerNegotiationSchema,
 } from "../../services/start-buyer-negotiation.service.js";
+import { haggleGetListingInputShape, haggleGetListingOutputShape } from "./mcp-listing-schema.js";
 import { haggleStartNegotiationInputShape } from "./mcp-start-schema.js";
 import {
   mcpNegotiationTranscript,
@@ -133,7 +135,7 @@ async function resolveBuyerPresetId(
   return fromConfig ?? DEFAULT_NEGOTIATION_AGENT_PRESET_ID;
 }
 
-function publicListingView(listing: {
+export function publicListingView(listing: {
   publicId: string | null;
   title: string | null;
   description?: string | null;
@@ -142,6 +144,7 @@ function publicListingView(listing: {
   targetPrice: string | null;
   photoUrl: string | null;
   sellerId?: string | null;
+  negotiationAgentSnapshot?: unknown;
 }) {
   return {
     public_id: listing.publicId,
@@ -153,6 +156,7 @@ function publicListingView(listing: {
     photo_url: listing.photoUrl,
     claimed: listing.sellerId === undefined ? undefined : Boolean(listing.sellerId),
     listing_url: listing.publicId ? `${publicAppBaseUrl()}/l/${listing.publicId}` : null,
+    required_criteria: buyerVisibleRequiredCriteria(listing.negotiationAgentSnapshot),
   };
 }
 
@@ -221,14 +225,19 @@ export function registerPlatformTools(
     },
   );
 
-  server.tool(
+  server.registerTool(
     "haggle_get_listing",
-    "Get a published listing by its public id (the /l/:publicId slug).",
-    { public_id: z.string().min(1) },
+    {
+      description:
+        "Get a published listing by its public id (the /l/:publicId slug). Returns required_criteria as {checkId, ask}[] from extractSellerRequiredCriteria(listing.negotiationAgentSnapshot) — same source as the web start wizard. Empty when the seller has no required checks. Do not assume IMEI/완납/침수/Find My.",
+      inputSchema: haggleGetListingInputShape,
+      outputSchema: haggleGetListingOutputShape,
+    },
     async ({ public_id }) => {
       const listing = await getPublishedListingByPublicId(db, public_id);
       if (!listing) return mcpError("LISTING_NOT_FOUND", { public_id });
-      return mcpJson({ listing: publicListingView(listing) });
+      const view = { listing: publicListingView(listing) };
+      return { ...mcpJson(view), structuredContent: view };
     },
   );
 
@@ -523,7 +532,7 @@ export function registerPlatformTools(
 
   server.tool(
     "haggle_start_negotiation",
-    "Start a buyer negotiation on a published listing. Same as POST /negotiations/start. Requires a connected account that is not the seller. public_id may be the slug (jc6r2T3d) or the full /l/... URL. agent_id is optional — use a preset (hunter, balancer, closer, verifier), an id from haggle_list_agents, or omit it to use balancer. If the listing has seller required criteria (IMEI/완납/침수/Find My), pass buyerCriteria ({checkId, stance?}) now — start is rejected when those checks exist and buyerCriteria is empty. Do not use answer_pause. Do not invent user IDs.",
+    "Start a buyer negotiation on a published listing. Same as POST /negotiations/start. Requires a connected account that is not the seller. public_id may be the slug (jc6r2T3d) or the full /l/... URL. agent_id is optional — use a preset (hunter, balancer, closer, verifier), an id from haggle_list_agents, or omit it to use balancer. Call haggle_get_listing first and answer required_criteria ({checkId, ask}) via buyerCriteria ({checkId, stance?}). Empty start is 409 BUYER_CRITERIA_REQUIRED with required_criteria {checkId, ask}[] (and required_check_ids) and no session. Do not assume IMEI/완납/침수/Find My. Do not use answer_pause. Do not invent user IDs.",
     haggleStartNegotiationInputShape,
     async ({ public_id, agent_id, deadline_hours, buyerCriteria }) => {
       const scoped = requireScopedActor("negotiate");
@@ -560,7 +569,7 @@ export function registerPlatformTools(
                     : started.body.error === "INSUFFICIENT_SCOPE"
                       ? "Reconnect and allow the negotiate permission."
                       : started.body.error === "BUYER_CRITERIA_REQUIRED"
-                        ? "Pass buyerCriteria ({checkId, stance?}) on this tool — same gate as the web start wizard. Do not use haggle_answer_pause."
+                        ? "Ask the user each required_criteria.ask from this error or haggle_get_listing, then pass buyerCriteria ({checkId, stance?}). Do not invent checkIds. Do not use haggle_answer_pause."
                         : undefined,
             },
             true,

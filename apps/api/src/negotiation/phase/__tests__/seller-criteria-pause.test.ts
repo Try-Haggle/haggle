@@ -268,6 +268,9 @@ describe("buyerCriteriaStartGate", () => {
     const asks = buyerCriteriaStartGate(snap([]));
     expect(asks.map((a) => a.checkId)).toEqual(["imei_verification"]);
     expect(buyerCriteriaRequiredReject(snap([]))?.error).toBe("BUYER_CRITERIA_REQUIRED");
+    expect(buyerCriteriaRequiredReject(snap([]))?.required_criteria).toEqual([
+      { checkId: "imei_verification", ask: "Should the agent require a clean IMEI?" },
+    ]);
   });
 
   it("does not treat listing_context.seller_facts as buyer answers", () => {

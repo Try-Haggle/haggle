@@ -118,11 +118,40 @@ describe("startBuyerNegotiation buyerCriteria gate", () => {
       body: {
         error: "BUYER_CRITERIA_REQUIRED",
         required_check_ids: ["imei_verification"],
+        required_criteria: [
+          { checkId: "imei_verification", ask: "Should the agent require a clean IMEI?" },
+        ],
       },
     });
     expect(result.status).not.toBe(202);
     expect(result.body).not.toHaveProperty("session_id");
     expect(createSession).not.toHaveBeenCalled();
+  });
+
+  it("creates a session when the listing snapshot has no required checks", async () => {
+    getPublishedListingByRef.mockResolvedValue({
+      id: "listing-1",
+      publicId: "jc6r2T3d",
+      sellerId: "seller-1",
+      negotiationAgentSnapshot: {
+        negotiationAgentBuilderMemory: { categoryCriteria: [] },
+      },
+    });
+    const result = await startBuyerNegotiation({} as never, {
+      body: {
+        listing_public_id: "jc6r2T3d",
+        negotiation_agent_preset_id: "balancer",
+      },
+      buyerId: "buyer-1",
+      isGuest: false,
+      driver: "mcp",
+      allowGuest: false,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.body.session_id).toBe("sess-new");
+    }
+    expect(createSession).toHaveBeenCalled();
   });
 
   it("creates a session when buyerCriteria answers the listing snapshot required checks", async () => {

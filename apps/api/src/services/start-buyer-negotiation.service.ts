@@ -394,6 +394,7 @@ export async function startBuyerNegotiation(
         message:
           "Answer seller required criteria (IMEI/완납/침수/Find My) in the start wizard via buyerCriteria before play_next. Do not use answer_pause.",
         required_check_ids: snapshotRequired.map((c) => c.checkId),
+        required_criteria: snapshotRequired,
       },
     };
   }

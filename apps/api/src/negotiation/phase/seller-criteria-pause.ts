@@ -93,6 +93,7 @@ export function buyerCriteriaRequiredReject(snapshot: Record<string, unknown>): 
   error: typeof BUYER_CRITERIA_REQUIRED;
   message: string;
   required_check_ids: string[];
+  required_criteria: BuyerPauseAsk[];
 } | null {
   const asks = buyerCriteriaStartGate(snapshot);
   if (asks.length === 0) return null;
@@ -101,6 +102,7 @@ export function buyerCriteriaRequiredReject(snapshot: Record<string, unknown>): 
     message:
       "Answer seller required criteria (IMEI/완납/침수/Find My) in the start wizard via buyerCriteria before play_next. Do not use answer_pause.",
     required_check_ids: asks.map((c) => c.checkId),
+    required_criteria: asks,
   };
 }
 
