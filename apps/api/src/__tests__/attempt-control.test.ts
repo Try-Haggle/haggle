@@ -4,15 +4,27 @@ import { evaluateAttemptControl } from "../services/attempt-control.service.js";
 const BUYER_ID = "00000000-0000-4000-a000-000000000010";
 const LISTING_ID = "00000000-0000-4000-a000-000000000001";
 
-function sqlBoundValues(query: unknown): unknown[] {
-  const chunks = (query as { queryChunks?: unknown[] }).queryChunks ?? [];
-  const values: unknown[] = [];
-  for (const chunk of chunks) {
-    if (chunk && typeof chunk === "object" && "value" in chunk) {
-      values.push((chunk as { value: unknown }).value);
-    }
+function collectBoundPrimitives(
+  node: unknown,
+  out: unknown[] = [],
+  seen = new WeakSet<object>(),
+): unknown[] {
+  if (node instanceof Date) {
+    out.push(node);
+    return out;
   }
-  return values;
+  if (typeof node === "string" || typeof node === "number" || typeof node === "boolean") {
+    out.push(node);
+    return out;
+  }
+  if (!node || typeof node !== "object" || seen.has(node)) return out;
+  seen.add(node);
+  if (Array.isArray(node)) {
+    for (const item of node) collectBoundPrimitives(item, out, seen);
+    return out;
+  }
+  for (const value of Object.values(node)) collectBoundPrimitives(value, out, seen);
+  return out;
 }
 
 function mockDb(row: Record<string, unknown> = {}) {
@@ -41,7 +53,7 @@ describe("evaluateAttemptControl", () => {
     });
 
     expect(db.execute).toHaveBeenCalledOnce();
-    const values = sqlBoundValues(db.execute.mock.calls[0]?.[0]);
+    const values = collectBoundPrimitives(db.execute.mock.calls[0]?.[0]);
     expect(values.some((value) => value instanceof Date)).toBe(false);
     expect(values).toContain("2026-09-01T12:00:00.000Z");
     expect(values).toContain(BUYER_ID);
