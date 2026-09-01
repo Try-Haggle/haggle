@@ -35,6 +35,125 @@ export function spokenRoundPriceMinor(input: {
   return input.priceMinor ?? null;
 }
 
+export type McpTranscriptRound = {
+  roundNo: number;
+  senderRole?: BargainRole | null;
+  message?: string | null;
+  decision?: string | null;
+  priceminor?: string | number | null;
+  counterPriceMinor?: string | number | null;
+  heldForCriteriaPause?: boolean;
+  pauseQuestions?: string[];
+};
+
+export type McpRecentMessage = {
+  round_no: number;
+  speaker: BargainRole;
+  sender_role: BargainRole;
+  offer_sender_role: BargainRole | null;
+  message: string | null;
+  decision: string | null;
+  price_minor: string | number | null;
+  incoming_price_minor: string | number | null;
+  counter_price_minor: string | number | null;
+  held_for_criteria_pause: boolean;
+};
+
+/** Same buyer-open line the web live chat synthesizes from price_minor. */
+export function buyerOpeningMessage(priceMinor: string | number | null | undefined): string {
+  const major = Number(priceMinor) / 100;
+  const formatted = Number.isFinite(major)
+    ? major.toLocaleString("en-US", {
+        style: "currency",
+        currency: "USD",
+        maximumFractionDigits: 0,
+      })
+    : "$0";
+  return `Hi, I'm interested in this listing. I'd like to offer ${formatted}.`;
+}
+
+function asBargainRole(role: BargainRole | null | undefined): BargainRole | null {
+  if (role === "BUYER" || role === "SELLER") return role;
+  return null;
+}
+
+/**
+ * Web stores one DB row per exchange, then prepends a synthetic BUYER OPENING
+ * so chat shows two lines. MCP used to return that one row, so Grok saw a
+ * fold: current_round 1 and a single recent_message.
+ */
+export function expandMcpTranscript(rounds: McpTranscriptRound[]): McpRecentMessage[] {
+  const mapped = rounds.map((round) => {
+    const pauseQuestions = round.pauseQuestions ?? [];
+    const held = Boolean(round.heldForCriteriaPause);
+    const speaker = spokenRoundSpeaker({
+      senderRole: round.senderRole,
+      message: round.message,
+      heldForCriteriaPause: held,
+      pauseDump: pauseQuestions.join(" "),
+    });
+    return {
+      round_no: round.roundNo,
+      speaker,
+      sender_role: speaker,
+      offer_sender_role: asBargainRole(round.senderRole ?? null),
+      message: round.message ?? null,
+      decision: round.decision ?? null,
+      price_minor: spokenRoundPriceMinor({
+        priceMinor: round.priceminor,
+        counterPriceMinor: round.counterPriceMinor,
+      }),
+      incoming_price_minor: round.priceminor ?? null,
+      counter_price_minor: round.counterPriceMinor ?? null,
+      held_for_criteria_pause: held,
+    };
+  });
+
+  const first = rounds[0];
+  const hasSyntheticBuyerOpen =
+    !!first && first.senderRole === "BUYER" && Boolean(first.message?.trim());
+  if (!hasSyntheticBuyerOpen) return mapped;
+
+  const opening: McpRecentMessage = {
+    round_no: 1,
+    speaker: "BUYER",
+    sender_role: "BUYER",
+    offer_sender_role: "BUYER",
+    message: buyerOpeningMessage(first.priceminor),
+    decision: "OPENING",
+    price_minor: first.priceminor ?? null,
+    incoming_price_minor: first.priceminor ?? null,
+    counter_price_minor: null,
+    held_for_criteria_pause: false,
+  };
+
+  return [
+    opening,
+    ...mapped.map((msg, index) => {
+      const source = rounds[index];
+      const decision =
+        source?.roundNo === 1 && msg.decision === "OPENING" ? "COUNTER" : msg.decision;
+      return {
+        ...msg,
+        round_no: (source?.roundNo ?? index + 1) + 1,
+        decision,
+      };
+    }),
+  ];
+}
+
+export function mcpNegotiationTranscript(
+  rounds: McpTranscriptRound[],
+  sessionCurrentRound: number,
+): { current_round: number; recent_messages: McpRecentMessage[] } {
+  const messages = expandMcpTranscript(rounds);
+  const last = messages.at(-1);
+  return {
+    current_round: last?.round_no ?? sessionCurrentRound,
+    recent_messages: messages.slice(-4),
+  };
+}
+
 export function negotiationSayToUser(input: {
   counterpartRole?: BargainRole | null;
   counterpartMessage?: string | null;
