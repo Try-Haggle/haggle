@@ -121,7 +121,6 @@ function extractChips(memory: SellerNegotiationAgentBuilderMemory): Chip[] {
 export default function NegotiationAgentBuilderChat({
   agent,
   listingTitle,
-  listingPrice,
   onMemoryUpdate,
   callTool,
 }: NegotiationAgentBuilderChatProps) {
@@ -209,7 +208,7 @@ export default function NegotiationAgentBuilderChat({
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, agent, memory, listingTitle, listingPrice, callTool, onMemoryUpdate]);
+  }, [input, isLoading, agent, memory, callTool, onMemoryUpdate]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {

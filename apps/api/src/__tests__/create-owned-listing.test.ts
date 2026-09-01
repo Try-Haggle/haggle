@@ -19,9 +19,9 @@ describe("Grok listing publish path", () => {
 
   it("allows Grok browser origins in production CORS", () => {
     const corsAllowedOrigins = new Set<string>(DEFAULT_API_CORS_ORIGINS);
-    expect(isCorsOriginAllowed("https://grok.com", { isProduction: true, corsAllowedOrigins })).toBe(
-      true,
-    );
+    expect(
+      isCorsOriginAllowed("https://grok.com", { isProduction: true, corsAllowedOrigins }),
+    ).toBe(true);
     expect(
       isCorsOriginAllowed("https://accounts.x.ai", { isProduction: true, corsAllowedOrigins }),
     ).toBe(true);

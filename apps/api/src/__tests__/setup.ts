@@ -97,14 +97,7 @@ vi.mock("@haggle/db", () => ({
   isNull: vi.fn(),
   isNotNull: vi.fn(),
   inArray: vi.fn(),
-  MCP_OAUTH_SCOPES: [
-    "agents",
-    "listings",
-    "negotiate",
-    "orders",
-    "disputes",
-    "offline_access",
-  ],
+  MCP_OAUTH_SCOPES: ["agents", "listings", "negotiate", "orders", "disputes", "offline_access"],
   mcpOauthClients: {
     clientId: "clientId",
     redirectUris: "redirectUris",

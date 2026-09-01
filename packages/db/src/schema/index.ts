@@ -61,6 +61,10 @@ export {
   userMemoryCards,
   userMemoryEvents,
 } from "./intelligence-layer.js";
+export { listingClaims } from "./listing-claims.js";
+export { listingDrafts } from "./listing-drafts.js";
+export { listingEmbeddings } from "./listing-embeddings.js";
+export { listingsPublished } from "./listings-published.js";
 export {
   MCP_OAUTH_SCOPES,
   type McpOauthScope,
@@ -68,10 +72,6 @@ export {
   mcpOauthAuthorizationCodes,
   mcpOauthClients,
 } from "./mcp-oauth.js";
-export { listingClaims } from "./listing-claims.js";
-export { listingDrafts } from "./listing-drafts.js";
-export { listingEmbeddings } from "./listing-embeddings.js";
-export { listingsPublished } from "./listings-published.js";
 export {
   CONVERSATION_SUBJECT_TYPES,
   type ConversationSubjectType,

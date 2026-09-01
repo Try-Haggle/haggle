@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  createMcpTransportBinding,
-  mcpTransportOwnerMismatch,
-} from "../lib/mcp-transport-auth.js";
+import { createMcpTransportBinding, mcpTransportOwnerMismatch } from "../lib/mcp-transport-auth.js";
 
 const userA = { id: "user-a", role: "user" };
 const userB = { id: "user-b", role: "user" };

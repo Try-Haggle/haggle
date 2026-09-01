@@ -1,11 +1,11 @@
 import Fastify from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createMcpTransportBinding } from "../lib/mcp-transport-auth.js";
 import {
   registerMcpRoutes,
   resetMcpTransportSessionsForTests,
   seedMcpTransportSessionForTests,
 } from "../mcp/router.js";
-import { createMcpTransportBinding } from "../lib/mcp-transport-auth.js";
 
 const USER_A = { id: "00000000-0000-4000-a000-000000000010", role: "user" };
 const USER_B = { id: "00000000-0000-4000-a000-000000000011", role: "user" };

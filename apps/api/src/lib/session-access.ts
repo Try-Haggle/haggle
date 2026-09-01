@@ -26,7 +26,10 @@ export type SessionWriteAccessResult =
   | {
       ok: false;
       status: 403;
-      error: "SESSION_ACTOR_MISMATCH" | "HNP_SENDER_AGENT_MISMATCH" | "HNP_AGENT_DELEGATION_INVALID";
+      error:
+        | "SESSION_ACTOR_MISMATCH"
+        | "HNP_SENDER_AGENT_MISMATCH"
+        | "HNP_AGENT_DELEGATION_INVALID";
     };
 
 export function validateSessionParticipant(
