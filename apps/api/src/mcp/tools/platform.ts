@@ -64,6 +64,7 @@ import {
   startBuyerNegotiation,
   startBuyerNegotiationSchema,
 } from "../../services/start-buyer-negotiation.service.js";
+import { haggleStartNegotiationInputShape } from "./mcp-start-schema.js";
 import {
   mcpNegotiationTranscript,
   mcpStartNextActions,
@@ -522,25 +523,8 @@ export function registerPlatformTools(
 
   server.tool(
     "haggle_start_negotiation",
-    "Start a buyer negotiation on a published listing. Same as POST /negotiations/start. Requires a connected account that is not the seller. public_id may be the slug (jc6r2T3d) or the full /l/... URL. agent_id is optional — use a preset (hunter, balancer, closer, verifier), an id from haggle_list_agents, or omit it to use balancer. If the listing has seller required criteria (IMEI/완납/침수/Find My), pass buyerCriteria from the start wizard before play_next. Do not invent user IDs.",
-    {
-      public_id: z.string().min(1),
-      agent_id: z.string().min(1).optional(),
-      deadline_hours: z
-        .number()
-        .positive()
-        .max(24 * 14)
-        .optional(),
-      buyerCriteria: z
-        .array(
-          z.object({
-            checkId: z.string().min(1).max(80),
-            stance: z.string().max(2000).optional(),
-          }),
-        )
-        .max(40)
-        .optional(),
-    },
+    "Start a buyer negotiation on a published listing. Same as POST /negotiations/start. Requires a connected account that is not the seller. public_id may be the slug (jc6r2T3d) or the full /l/... URL. agent_id is optional — use a preset (hunter, balancer, closer, verifier), an id from haggle_list_agents, or omit it to use balancer. If the listing has seller required criteria (IMEI/완납/침수/Find My), pass buyerCriteria ({checkId, stance?}) now — start is rejected when those checks exist and buyerCriteria is empty. Do not use answer_pause. Do not invent user IDs.",
+    haggleStartNegotiationInputShape,
     async ({ public_id, agent_id, deadline_hours, buyerCriteria }) => {
       const scoped = requireScopedActor("negotiate");
       if (!scoped.ok) return scoped.error;
@@ -575,27 +559,21 @@ export function registerPlatformTools(
                     ? "Pass the listing slug or https://app.staging.tryhaggle.ai/l/<slug>."
                     : started.body.error === "INSUFFICIENT_SCOPE"
                       ? "Reconnect and allow the negotiate permission."
-                      : undefined,
+                      : started.body.error === "BUYER_CRITERIA_REQUIRED"
+                        ? "Pass buyerCriteria ({checkId, stance?}) on this tool — same gate as the web start wizard. Do not use haggle_answer_pause."
+                        : undefined,
             },
             true,
           );
         }
-        const buyerCriteriaRequired = Boolean(started.body.buyer_criteria_required);
         return mcpJson({
           session_id: started.body.session_id,
           status: started.body.status,
           driver: "mcp",
           chat_url: negotiationChatUrl(started.body.session_id),
-          next_actions: mcpStartNextActions(buyerCriteriaRequired),
-          ...(buyerCriteriaRequired
-            ? {
-                buyer_criteria_required: true,
-                required_check_ids: started.body.required_check_ids,
-              }
-            : {}),
-          message: buyerCriteriaRequired
-            ? "Negotiation started. Pass buyerCriteria at start for seller required checks. Do not call haggle_play_next or haggle_answer_pause."
-            : "Negotiation started. Call haggle_play_next to advance a round. Open chat_url to watch on the web.",
+          next_actions: mcpStartNextActions(false),
+          message:
+            "Negotiation started. Call haggle_play_next to advance a round. Open chat_url to watch on the web.",
         });
       } catch (error) {
         return mcpError("START_NEGOTIATION_FAILED", {

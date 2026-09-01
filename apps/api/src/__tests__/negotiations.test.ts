@@ -163,6 +163,14 @@ vi.mock("../services/listing-strategy.service.js", () => ({
   loadListingStrategyContext: (...args: unknown[]) => mockLoadListingStrategyContext(...args),
 }));
 
+vi.mock("../services/attempt-control.service.js", () => ({
+  defaultAttemptControlPolicy: () => ({ maxRoundsPerSession: 8 }),
+  evaluateAttemptControl: vi.fn(async () => ({
+    allowed: true,
+    attemptControl: { max_rounds_per_session: 8 },
+  })),
+}));
+
 vi.mock("../notification/get-user-info.js", () => ({
   getNotificationUserInfo: vi.fn().mockResolvedValue(null),
 }));
@@ -812,6 +820,55 @@ describe("Negotiation API", () => {
   });
 
   describe("POST /negotiations/start", () => {
+    it("rejects start when seller required criteria exist and buyerCriteria is empty", async () => {
+      mockGetPublishedListingByPublicId.mockResolvedValue({
+        id: "00000000-0000-4000-a000-000000000001",
+        publicId: "imei-listing",
+        sellerId: "00000000-0000-4000-a000-000000000020",
+        negotiationAgentSnapshot: {},
+      });
+      mockLoadListingStrategyContext.mockResolvedValue({
+        listingId: "00000000-0000-4000-a000-000000000001",
+        sellerId: "00000000-0000-4000-a000-000000000020",
+        listedAtMs: Date.now() - 60_000,
+        deadlineAtMs: Date.now() + 86_400_000,
+        askPriceMinor: 100_00,
+        floorPriceMinor: 80_00,
+        sellerNegotiationAgentPresetId: "balancer",
+        listingContext: { category: "electronics", tags: ["iphone"] },
+        sellerNegotiationAgentBuilderMemory: {
+          categoryCriteria: [
+            {
+              checkId: "imei_verification",
+              questionKo: "IMEI가 깨끗한지 확인 가능한가요?",
+              buyerAskKo: "Should the agent require a clean IMEI?",
+              enforcement: "hard",
+              requirement: "required",
+              stance: "clean IMEI, seller confirmed",
+            },
+          ],
+        },
+        sellerStrategy: {
+          compiler: { selected_playbook: "default" },
+          weights: { w_p: 0.4, w_t: 0.2, w_r: 0.2, w_s: 0.2 },
+          alpha: { price: 0.4, time: 0.2, reputation: 0.2, satisfaction: 0.2 },
+        },
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/start",
+        payload: {
+          listing_public_id: "imei-listing",
+          negotiation_agent_preset_id: "balancer",
+        },
+      });
+
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error).toBe("BUYER_CRITERIA_REQUIRED");
+      expect(mockCreateSession).not.toHaveBeenCalled();
+    });
+
     it("accepts buyerCriteria on the start schema", async () => {
       const res = await app.inject({
         method: "POST",
