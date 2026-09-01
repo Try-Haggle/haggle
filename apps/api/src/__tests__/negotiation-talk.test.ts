@@ -19,6 +19,8 @@ describe("negotiationSayToUser", () => {
     });
     expect(talk.say_to_user).toContain("Seller said: I can do $880.");
     expect(talk.ask_user).toContain("Quote that line");
+    expect(talk.ask_user).toContain("haggle_play_next");
+    expect(talk.ask_user).toContain("price_minor");
   });
 
   it("does not put pause questions in say_to_user", () => {

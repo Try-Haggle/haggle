@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyUserSpecifiedAutoPlayCounter,
   createNegotiationAutoPlaySetup,
   getNegotiationAutoPlayContext,
   planNegotiationAutoPlayRound,
@@ -130,5 +131,31 @@ describe("negotiation auto-play", () => {
     expect(
       planNegotiationAutoPlayRound({ ...base, currentRound: 2, status: "ACCEPTED" }, [], context),
     ).toBeNull();
+  });
+
+  it("overlays a user-specified counter and leaves autoplay when omitted", () => {
+    const plan = {
+      roundNo: 3,
+      senderRole: "BUYER" as const,
+      responderRole: "SELLER" as const,
+      responderSnapshot: { side: "seller" },
+      offerPriceMinor: 45000,
+      messageText: "autoplay",
+    };
+    expect(applyUserSpecifiedAutoPlayCounter(plan)).toEqual(plan);
+    expect(applyUserSpecifiedAutoPlayCounter(plan, {})).toEqual(plan);
+    expect(
+      applyUserSpecifiedAutoPlayCounter(plan, {
+        priceMinor: 42000,
+        message:
+          "Listing doesn't spec storage or battery, and 14 Plus is a discontinued size. $495 is still asking.",
+      }),
+    ).toMatchObject({
+      offerPriceMinor: 42000,
+      messageText:
+        "Listing doesn't spec storage or battery, and 14 Plus is a discontinued size. $495 is still asking.",
+      senderRole: "BUYER",
+      roundNo: 3,
+    });
   });
 });
