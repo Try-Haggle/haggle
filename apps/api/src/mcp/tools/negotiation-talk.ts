@@ -1,5 +1,7 @@
 /** Copy the host model should speak, so Grok does not stop on raw JSON. */
 
+import { sellerCriteriaHoldChatMessage } from "../../negotiation/phase/seller-criteria-pause.js";
+
 export type BargainRole = "BUYER" | "SELLER";
 
 export function formatMinorAsDollars(minor: string | number | null | undefined): string | null {
@@ -20,9 +22,12 @@ export function spokenRoundSpeaker(input: {
   pauseDump?: string | null;
 }): BargainRole {
   const sender = input.senderRole === "BUYER" ? "BUYER" : "SELLER";
+  // Match web getRoundSpeaker: a criteria HOLD keeps the persisted sender.
+  // Flipping it labeled R3 as BUYER while the stored line was still the seller's.
+  if (input.heldForCriteriaPause) return sender;
+  void input.pauseDump;
   const spoken = input.message?.trim() ?? "";
   if (!spoken) return sender;
-  if (input.heldForCriteriaPause && spoken === (input.pauseDump ?? "").trim()) return sender;
   return sender === "BUYER" ? "SELLER" : "BUYER";
 }
 
@@ -104,17 +109,27 @@ export function expandMcpTranscript(rounds: McpTranscriptRound[]): McpRecentMess
           heldForCriteriaPause: held,
           pauseDump: pauseQuestions.join(" "),
         });
+    const priceMinor = spokenRoundPriceMinor({
+      priceMinor: round.priceminor,
+      counterPriceMinor: round.counterPriceMinor,
+    });
+    const message = held
+      ? sellerCriteriaHoldChatMessage({
+          incomingMessage: null,
+          incomingPriceMinor: Number(priceMinor ?? round.priceminor ?? 0),
+          senderRole: speaker,
+          pauseQuestions,
+          decision: round.decision,
+        })
+      : (round.message ?? null);
     return {
       round_no: round.roundNo,
       speaker,
       sender_role: speaker,
       offer_sender_role: asBargainRole(round.senderRole ?? null),
-      message: round.message ?? null,
+      message,
       decision: round.decision ?? null,
-      price_minor: spokenRoundPriceMinor({
-        priceMinor: round.priceminor,
-        counterPriceMinor: round.counterPriceMinor,
-      }),
+      price_minor: priceMinor,
       incoming_price_minor: round.priceminor ?? null,
       counter_price_minor: round.counterPriceMinor ?? null,
       held_for_criteria_pause: held,
@@ -188,19 +203,24 @@ export function negotiationSayToUser(input: {
   else if (decision && price) parts.push(`${who} is at ${price} (${decision}).`);
   else if (price) parts.push(`${who} is at ${price}.`);
   const questions = (input.pauseQuestions ?? []).map((q) => q.trim()).filter(Boolean);
-  if (questions.length > 0) {
-    parts.push(`Before we continue they need answers: ${questions.join(" / ")}`);
-  }
+  // Pause asks live in pause_checks / the answer panel — not say_to_user or chat bubbles.
+  void questions;
   if (input.sessionStatus === "ACCEPTED") {
     parts.push("Deal is accepted. Open the Haggle checkout URL to pay.");
   }
   const say_to_user =
     parts.join(" ") || "The negotiation is waiting. Tell me your next price or answer.";
-  const ask_user =
-    questions.length > 0
-      ? "Answer each question, then say whether to accept or counter and at what price."
-      : input.sessionStatus === "ACCEPTED"
-        ? "Open checkout on Haggle to finish payment."
-        : "Quote that line, then ask what price to offer or whether to accept.";
+  const ask_user = (input.pauseQuestions ?? []).some((q) => q.trim())
+    ? "Answer pause_checks via haggle_answer_pause (or the answer panel). Do not treat them as chat."
+    : input.sessionStatus === "ACCEPTED"
+      ? "Open checkout on Haggle to finish payment."
+      : "Quote that line, then ask what price to offer or whether to accept.";
   return { say_to_user, ask_user };
+}
+
+/** After start: never advertise play_next when seller required criteria still need buyerCriteria. */
+export function mcpStartNextActions(buyerCriteriaRequired: boolean): string[] {
+  return buyerCriteriaRequired
+    ? ["haggle_get_negotiation"]
+    : ["haggle_play_next", "haggle_get_negotiation"];
 }

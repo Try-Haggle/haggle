@@ -18,6 +18,7 @@ import { validateSessionParticipant } from "../../lib/session-access.js";
 import type { AuthUser } from "../../middleware/auth.js";
 import {
   applyBuyerPauseAnswer,
+  buyerCriteriaRequiredReject,
   isSellerCriteriaPauseReasoning,
   readSellerCriteriaFromSnapshot,
   SELLER_CRITERIA_PAUSE_MARKER,
@@ -65,6 +66,7 @@ import {
 } from "../../services/start-buyer-negotiation.service.js";
 import {
   mcpNegotiationTranscript,
+  mcpStartNextActions,
   negotiationSayToUser,
   spokenRoundPriceMinor,
   spokenRoundSpeaker,
@@ -520,7 +522,7 @@ export function registerPlatformTools(
 
   server.tool(
     "haggle_start_negotiation",
-    "Start a buyer negotiation on a published listing. Same as POST /negotiations/start. Requires a connected account that is not the seller. public_id may be the slug (jc6r2T3d) or the full /l/... URL. agent_id is optional — use a preset (hunter, balancer, closer, verifier), an id from haggle_list_agents, or omit it to use balancer. Do not invent user IDs.",
+    "Start a buyer negotiation on a published listing. Same as POST /negotiations/start. Requires a connected account that is not the seller. public_id may be the slug (jc6r2T3d) or the full /l/... URL. agent_id is optional — use a preset (hunter, balancer, closer, verifier), an id from haggle_list_agents, or omit it to use balancer. If the listing has seller required criteria (IMEI/완납/침수/Find My), pass buyerCriteria from the start wizard before play_next. Do not invent user IDs.",
     {
       public_id: z.string().min(1),
       agent_id: z.string().min(1).optional(),
@@ -529,8 +531,17 @@ export function registerPlatformTools(
         .positive()
         .max(24 * 14)
         .optional(),
+      buyerCriteria: z
+        .array(
+          z.object({
+            checkId: z.string().min(1).max(80),
+            stance: z.string().max(2000).optional(),
+          }),
+        )
+        .max(40)
+        .optional(),
     },
-    async ({ public_id, agent_id, deadline_hours }) => {
+    async ({ public_id, agent_id, deadline_hours, buyerCriteria }) => {
       const scoped = requireScopedActor("negotiate");
       if (!scoped.ok) return scoped.error;
       const actor = scoped.actor;
@@ -540,6 +551,7 @@ export function registerPlatformTools(
           listing_public_id: public_id,
           negotiation_agent_preset_id: presetId,
           deadline_hours,
+          ...(buyerCriteria ? { buyerCriteria } : {}),
         });
         if (!parsed.success) {
           return mcpError("INVALID_START_REQUEST", { issues: parsed.error.issues });
@@ -568,14 +580,22 @@ export function registerPlatformTools(
             true,
           );
         }
+        const buyerCriteriaRequired = Boolean(started.body.buyer_criteria_required);
         return mcpJson({
           session_id: started.body.session_id,
           status: started.body.status,
           driver: "mcp",
           chat_url: negotiationChatUrl(started.body.session_id),
-          next_actions: ["haggle_play_next", "haggle_get_negotiation"],
-          message:
-            "Negotiation started. Call haggle_play_next to advance a round. Open chat_url to watch on the web.",
+          next_actions: mcpStartNextActions(buyerCriteriaRequired),
+          ...(buyerCriteriaRequired
+            ? {
+                buyer_criteria_required: true,
+                required_check_ids: started.body.required_check_ids,
+              }
+            : {}),
+          message: buyerCriteriaRequired
+            ? "Negotiation started. Pass buyerCriteria at start for seller required checks. Do not call haggle_play_next or haggle_answer_pause."
+            : "Negotiation started. Call haggle_play_next to advance a round. Open chat_url to watch on the web.",
         });
       } catch (error) {
         return mcpError("START_NEGOTIATION_FAILED", {
@@ -607,16 +627,6 @@ export function registerPlatformTools(
         isSellerCriteriaPauseReasoning(latestMeta?.reasoning) && !latestMeta?.buyer_pause_answers
           ? unresolvedBuyerPauseAsks(pauseSnapshot)
           : [];
-      const storedQuestions = Array.isArray(latestMeta?.pause_questions)
-        ? latestMeta.pause_questions.filter(
-            (q): q is string => typeof q === "string" && Boolean(q.trim()),
-          )
-        : [];
-      const pauseDump = storedQuestions.join(" ");
-      const latestSpoken =
-        latest?.message?.trim() && latest.message.trim() !== pauseDump
-          ? latest.message.trim()
-          : null;
       const transcript = mcpNegotiationTranscript(
         rounds.map((round) => {
           const meta = (round.metadata as Record<string, unknown> | null) ?? null;
@@ -637,24 +647,30 @@ export function registerPlatformTools(
         session.currentRound,
       );
       const recent = transcript.recent_messages;
+      const lastMsg = recent.at(-1);
       const driver = session.driver === "mcp" ? "mcp" : "web";
       const nextActions: string[] = [];
+      const playBlocked = Boolean(buyerCriteriaRequiredReject(pauseSnapshot));
       if (session.status === "ACCEPTED") nextActions.push("haggle_create_checkout");
       else if (!["REJECTED", "EXPIRED", "SUPERSEDED", "STALLED"].includes(session.status)) {
-        if (pauseAsks.length > 0) nextActions.push("haggle_answer_pause");
-        else if (driver === "mcp") nextActions.push("haggle_play_next");
+        if (pauseAsks.length > 0 && !playBlocked) nextActions.push("haggle_answer_pause");
+        else if (driver === "mcp" && !playBlocked) nextActions.push("haggle_play_next");
         nextActions.push("haggle_reject_negotiation");
       }
-      const latestSpeaker = spokenRoundSpeaker({
-        senderRole: latest?.senderRole,
-        message: latestSpoken,
-        heldForCriteriaPause: isSellerCriteriaPauseReasoning(latestMeta?.reasoning),
-        pauseDump,
-      });
-      const latestSpokenPrice = spokenRoundPriceMinor({
-        priceMinor: latest?.priceminor,
-        counterPriceMinor: latest?.counterPriceMinor,
-      });
+      const latestSpeaker =
+        lastMsg?.speaker ??
+        spokenRoundSpeaker({
+          senderRole: latest?.senderRole,
+          message: lastMsg?.message,
+          heldForCriteriaPause: isSellerCriteriaPauseReasoning(latestMeta?.reasoning),
+        });
+      const latestSpoken = lastMsg?.message ?? null;
+      const latestSpokenPrice =
+        lastMsg?.price_minor ??
+        spokenRoundPriceMinor({
+          priceMinor: latest?.priceminor,
+          counterPriceMinor: latest?.counterPriceMinor,
+        });
       const talk = negotiationSayToUser({
         counterpartRole: latestSpeaker,
         counterpartMessage: latestSpoken,
@@ -685,7 +701,7 @@ export function registerPlatformTools(
 
   server.tool(
     "haggle_play_next",
-    "Advance one Haggle auto-play round (DeepSeek plays a side). After the tool returns, immediately quote say_to_user. If pause_questions appear, those are buyer checks — not the seller's bargain line.",
+    "Advance one Haggle auto-play round (DeepSeek plays a side). After the tool returns, immediately quote say_to_user. Rejected with BUYER_CRITERIA_REQUIRED if seller required criteria exist and buyerCriteria was not provided at start — do not start auto-play and do not use answer_pause.",
     { session_id: z.string().uuid() },
     async ({ session_id }) => {
       const scoped = requireScopedActor("negotiate");
@@ -703,25 +719,40 @@ export function registerPlatformTools(
       const rounds = await getRoundsBySessionId(db, session_id);
       const latest = rounds.at(-1);
       const latestMeta = (latest?.metadata as Record<string, unknown> | null) ?? null;
-      const pauseDump = Array.isArray(latestMeta?.pause_questions)
-        ? latestMeta.pause_questions.filter((q): q is string => typeof q === "string").join(" ")
-        : "";
-      const spoken =
-        latest?.message?.trim() && latest.message.trim() !== pauseDump
-          ? latest.message.trim()
-          : typeof played.body.message === "string"
-            ? played.body.message
-            : null;
-      const speaker = spokenRoundSpeaker({
-        senderRole: latest?.senderRole,
-        message: spoken,
-        heldForCriteriaPause: isSellerCriteriaPauseReasoning(latestMeta?.reasoning),
-        pauseDump,
-      });
-      const spokenPrice = spokenRoundPriceMinor({
-        priceMinor: latest?.priceminor,
-        counterPriceMinor: latest?.counterPriceMinor,
-      });
+      const transcript = mcpNegotiationTranscript(
+        rounds.map((round) => {
+          const meta = (round.metadata as Record<string, unknown> | null) ?? null;
+          const heldQuestions = Array.isArray(meta?.pause_questions)
+            ? meta.pause_questions.filter((q): q is string => typeof q === "string")
+            : [];
+          return {
+            roundNo: round.roundNo,
+            senderRole: round.senderRole,
+            message: round.message,
+            decision: round.decision,
+            priceminor: round.priceminor,
+            counterPriceMinor: round.counterPriceMinor,
+            heldForCriteriaPause: isSellerCriteriaPauseReasoning(meta?.reasoning),
+            pauseQuestions: heldQuestions,
+          };
+        }),
+        Number(played.body.current_round ?? latest?.roundNo ?? 0),
+      );
+      const lastMsg = transcript.recent_messages.at(-1);
+      const speaker =
+        lastMsg?.speaker ??
+        spokenRoundSpeaker({
+          senderRole: latest?.senderRole,
+          message: lastMsg?.message,
+          heldForCriteriaPause: isSellerCriteriaPauseReasoning(latestMeta?.reasoning),
+        });
+      const spoken = lastMsg?.message ?? null;
+      const spokenPrice =
+        lastMsg?.price_minor ??
+        spokenRoundPriceMinor({
+          priceMinor: latest?.priceminor,
+          counterPriceMinor: latest?.counterPriceMinor,
+        });
       const talk = negotiationSayToUser({
         counterpartRole: speaker,
         counterpartMessage: spoken,
@@ -739,6 +770,8 @@ export function registerPlatformTools(
         speaker,
         spoken_price_minor: spokenPrice,
         message: spoken,
+        current_round: transcript.current_round,
+        recent_messages: transcript.recent_messages,
         ...talk,
         instruction: "Speak say_to_user now. Ask ask_user. Do not stop silently.",
       });
@@ -793,6 +826,8 @@ export function registerPlatformTools(
       if (actor.id !== session.buyerId) return mcpError("PAUSE_ANSWER_BUYER_ONLY");
       const context = getNegotiationAutoPlayContext(session.negotiationAgentSnapshot);
       if (!context) return mcpError("AUTO_PLAY_CONTEXT_MISSING");
+      const startReject = buyerCriteriaRequiredReject(context.buyerSnapshot);
+      if (startReject) return mcpJson(startReject, true);
       const { sellerRequired, buyerCriteria } = readSellerCriteriaFromSnapshot(
         context.buyerSnapshot,
       );

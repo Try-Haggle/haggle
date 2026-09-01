@@ -2,6 +2,8 @@ import { type CategoryCriterion, unresolvedSellerRequirements } from "@haggle/sh
 import { describe, expect, it } from "vitest";
 import {
   applyBuyerPauseAnswer,
+  buyerCriteriaRequiredReject,
+  buyerCriteriaStartGate,
   detectSellerCriteriaPause,
   readSellerCriteriaFromSnapshot,
   sellerCriteriaHoldChatMessage,
@@ -210,7 +212,7 @@ describe("Flow 3 resume — readSellerCriteriaFromSnapshot + applyBuyerPauseAnsw
 });
 
 describe("sellerCriteriaHoldChatMessage", () => {
-  it("keeps the incoming counterpart line instead of the pause checklist", () => {
+  it("does not copy the incoming seller line onto the HOLD bubble", () => {
     expect(
       sellerCriteriaHoldChatMessage({
         incomingMessage: "I can do $880 if we close this week.",
@@ -218,10 +220,10 @@ describe("sellerCriteriaHoldChatMessage", () => {
         senderRole: "SELLER",
         pauseQuestions: ["Is the IMEI clean?", "Any water damage?"],
       }),
-    ).toBe("I can do $880 if we close this week.");
+    ).toBe("Seller is at $880.");
   });
 
-  it("falls back to a price line when the incoming text is the pause dump", () => {
+  it("does not dump pause questions into the HOLD bubble", () => {
     const questions = ["IMEI clean?", "FRP off?"];
     expect(
       sellerCriteriaHoldChatMessage({
@@ -231,5 +233,69 @@ describe("sellerCriteriaHoldChatMessage", () => {
         pauseQuestions: questions,
       }),
     ).toBe("Seller is at $880.");
+  });
+
+  it("uses near-deal copy when decision is NEAR_DEAL", () => {
+    expect(
+      sellerCriteriaHoldChatMessage({
+        incomingMessage: "I can do $880 if we close this week.",
+        incomingPriceMinor: 880_00,
+        senderRole: "SELLER",
+        decision: "NEAR_DEAL",
+      }),
+    ).toBe("Seller signals near-deal at $880.");
+  });
+});
+
+describe("buyerCriteriaStartGate", () => {
+  const sellerRequired = {
+    checkId: "imei_verification",
+    questionKo: "IMEI가 깨끗한지 확인 가능한가요?",
+    buyerAskKo: "Should the agent require a clean IMEI?",
+    enforcement: "hard" as const,
+    requirement: "required" as const,
+  };
+
+  function snap(buyerCriteria: unknown[], extra: Record<string, unknown> = {}) {
+    return {
+      pause_seller_required_criteria: [sellerRequired],
+      buyer_negotiation_agent_builder_memory: { categoryCriteria: buyerCriteria },
+      ...extra,
+    };
+  }
+
+  it("blocks play when seller required exist and buyerCriteria is empty", () => {
+    const asks = buyerCriteriaStartGate(snap([]));
+    expect(asks.map((a) => a.checkId)).toEqual(["imei_verification"]);
+    expect(buyerCriteriaRequiredReject(snap([]))?.error).toBe("BUYER_CRITERIA_REQUIRED");
+  });
+
+  it("does not treat listing_context.seller_facts as buyer answers", () => {
+    const asks = buyerCriteriaStartGate(
+      snap([], {
+        listing_context: {
+          seller_facts: [{ checkId: "imei_verification", label: "IMEI", value: "Clean" }],
+        },
+      }),
+    );
+    expect(asks.map((a) => a.checkId)).toEqual(["imei_verification"]);
+  });
+
+  it("allows play once the buyer has a stance", () => {
+    expect(
+      buyerCriteriaStartGate(snap([{ ...sellerRequired, stance: "clean IMEI required" }])),
+    ).toEqual([]);
+    expect(
+      buyerCriteriaRequiredReject(snap([{ ...sellerRequired, stance: "clean IMEI required" }])),
+    ).toBeNull();
+  });
+
+  it("is a no-op when the seller declared no required criteria", () => {
+    expect(
+      buyerCriteriaStartGate({
+        pause_seller_required_criteria: [],
+        buyer_negotiation_agent_builder_memory: { categoryCriteria: [] },
+      }),
+    ).toEqual([]);
   });
 });

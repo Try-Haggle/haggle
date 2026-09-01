@@ -812,6 +812,21 @@ describe("Negotiation API", () => {
   });
 
   describe("POST /negotiations/start", () => {
+    it("accepts buyerCriteria on the start schema", async () => {
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/start",
+        payload: {
+          listing_public_id: "any-listing",
+          negotiation_agent_preset_id: "balancer",
+          buyerCriteria: [{ checkId: "imei_verification", stance: "clean IMEI required" }],
+        },
+      });
+      // Listing mock is null; a schema reject would be 400 INVALID_START_REQUEST.
+      expect(res.statusCode).toBe(404);
+      expect(res.json().error).toBe("LISTING_NOT_FOUND");
+    });
+
     it("rejects a listing whose negotiation deadline has passed", async () => {
       mockGetPublishedListingByPublicId.mockResolvedValue({
         id: "00000000-0000-4000-a000-000000000001",
@@ -878,21 +893,53 @@ describe("Negotiation API", () => {
   });
 
   describe("Phase G Flow 3 — seller-criteria pause resume", () => {
-    // A buyer snapshot carrying a seller REQUIRED criterion the buyer never answered.
+    const TITLE_REQUIRED = {
+      checkId: "title_status",
+      questionKo: "명의/소유권(등록증)이 명확한가요?",
+      buyerAskKo: "Should the agent only consider clean-title vehicles?",
+      enforcement: "hard" as const,
+      requirement: "required" as const,
+    };
+    const IMEI_REQUIRED = {
+      checkId: "imei_verification",
+      questionKo: "IMEI가 깨끗한지 확인 가능한가요?",
+      buyerAskKo: "Should the agent require a clean IMEI?",
+      enforcement: "hard" as const,
+      requirement: "required" as const,
+    };
+
+    // Empty buyerCriteria: start-gate. Must not play or fill via answer_pause.
+    function emptyStartFixture() {
+      const setup = createNegotiationAutoPlaySetup({
+        buyerSnapshot: {
+          side: "buyer",
+          pause_seller_required_criteria: [TITLE_REQUIRED],
+          buyer_negotiation_agent_builder_memory: { categoryCriteria: [] },
+        },
+        sellerSnapshot: { side: "seller" },
+        buyerTargetMinor: 9_000,
+        maxRounds: 8,
+      });
+      const session = {
+        ...mockSession,
+        role: "BUYER" as const,
+        status: "WAITING",
+        currentRound: 0,
+        version: 4,
+        negotiationAgentSnapshot: setup.buyerSnapshot,
+      };
+      return { setup, session };
+    }
+
+    // Some criteria answered at start; HOLD remains for another required check.
     function pausedFixture() {
       const setup = createNegotiationAutoPlaySetup({
         buyerSnapshot: {
           side: "buyer",
-          pause_seller_required_criteria: [
-            {
-              checkId: "title_status",
-              questionKo: "명의/소유권(등록증)이 명확한가요?",
-              buyerAskKo: "Should the agent only consider clean-title vehicles?",
-              enforcement: "hard",
-              requirement: "required",
-            },
-          ],
-          buyer_negotiation_agent_builder_memory: { categoryCriteria: [] },
+          pause_seller_required_criteria: [TITLE_REQUIRED, IMEI_REQUIRED],
+          buyer_negotiation_agent_builder_memory: {
+            categoryCriteria: [{ ...IMEI_REQUIRED, stance: "clean IMEI required" }],
+          },
         },
         sellerSnapshot: { side: "seller" },
         buyerTargetMinor: 9_000,
@@ -904,21 +951,53 @@ describe("Negotiation API", () => {
         status: "WAITING",
         currentRound: 2,
         version: 4,
-        negotiationAgentSnapshot: setup.buyerSnapshot, // buyer perspective + context + pause fields
+        negotiationAgentSnapshot: setup.buyerSnapshot,
       };
-      // The last round is the seller-criteria HOLD (marker in its reasoning).
       const pauseRound = {
         roundNo: 2,
         senderRole: "SELLER",
         priceminor: "9000",
         counterPriceMinor: "8000",
-        message: "Should the agent only consider clean-title vehicles?",
+        message: "Seller is at $90.",
         metadata: { reasoning: "SELLER_CRITERIA_PAUSE: seller requires title_status" },
       };
       return { setup, session, pauseRound };
     }
 
-    it("BLOCKS auto-play and surfaces the question while the buyer has not answered", async () => {
+    it("rejects auto-play when seller required exist and buyerCriteria is empty", async () => {
+      const { setup, session } = emptyStartFixture();
+      mockGetSessionById.mockResolvedValue(session);
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/sess-001/auto-play/next",
+        payload: { run_token: setup.runToken },
+      });
+
+      expect(res.statusCode).toBe(409);
+      expect(res.json()).toMatchObject({
+        error: "BUYER_CRITERIA_REQUIRED",
+        required_check_ids: ["title_status"],
+      });
+      expect(mockExecuteNegotiationRound).not.toHaveBeenCalled();
+    });
+
+    it("does not fill start criteria via mid-session pause/answer", async () => {
+      const { setup, session } = emptyStartFixture();
+      mockGetSessionById.mockResolvedValue(session);
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/sess-001/pause/answer",
+        payload: { run_token: setup.runToken, answer: "yes, clean title only" },
+      });
+
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error).toBe("BUYER_CRITERIA_REQUIRED");
+      expect(mockSetSessionPerspective).not.toHaveBeenCalled();
+    });
+
+    it("BLOCKS auto-play and surfaces the remaining HOLD question", async () => {
       const { setup, session, pauseRound } = pausedFixture();
       mockGetSessionById.mockResolvedValue(session);
       mockGetRoundsBySessionId.mockResolvedValue([pauseRound]);
@@ -935,11 +1014,10 @@ describe("Negotiation API", () => {
         pause_questions: ["Should the agent only consider clean-title vehicles?"],
         pause_check_ids: ["title_status"],
       });
-      // No round is executed while parked.
       expect(mockExecuteNegotiationRound).not.toHaveBeenCalled();
     });
 
-    it("records the buyer's answer into the snapshot and reports resolved", async () => {
+    it("records the buyer's HOLD answer into the snapshot and reports resolved", async () => {
       const { setup, session } = pausedFixture();
       mockGetSessionById.mockResolvedValue(session);
       mockSetSessionPerspective.mockResolvedValue(true);
@@ -952,7 +1030,6 @@ describe("Negotiation API", () => {
 
       expect(res.statusCode).toBe(200);
       expect(res.json()).toMatchObject({ ok: true, resolved: true, remaining_check_ids: [] });
-      // The updated buyer snapshot (with the stance) is persisted.
       expect(mockSetSessionPerspective).toHaveBeenCalledOnce();
       const persistedSnapshot = mockSetSessionPerspective.mock.calls[0]?.[3] as Record<
         string,

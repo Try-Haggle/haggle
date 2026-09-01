@@ -21,6 +21,7 @@ import {
 } from "../lib/negotiation-fulfillment.js";
 import { isDecideCatalogModel, resolveDecideModel } from "../negotiation/decide-model.js";
 import { projectSellerFacts } from "../negotiation/memory/seller-facts.js";
+import { buyerCriteriaRequiredReject } from "../negotiation/phase/seller-criteria-pause.js";
 import {
   type AttemptControlSnapshot,
   defaultAttemptControlPolicy,
@@ -35,6 +36,15 @@ import {
 import { loadListingStrategyContext } from "./listing-strategy.service.js";
 import { createNegotiationAutoPlaySetup } from "./negotiation-auto-play.service.js";
 import { createSession, type NegotiationDriver } from "./negotiation-session.service.js";
+
+const buyerCriterionInputSchema = z.object({
+  checkId: z.string().min(1).max(80),
+  stance: z.string().max(2000).optional(),
+  questionKo: z.string().max(500).optional(),
+  buyerAskKo: z.string().max(500).optional(),
+  enforcement: z.enum(["hard", "soft"]).optional(),
+  requirement: z.enum(["required", "optional"]).optional(),
+});
 
 export const startBuyerNegotiationSchema = z.object({
   listing_public_id: z.string().min(1),
@@ -56,6 +66,8 @@ export const startBuyerNegotiationSchema = z.object({
     })
     .passthrough()
     .optional(),
+  /** Wizard-before-start answers for seller required criteria (IMEI/완납/침수/Find My). */
+  buyerCriteria: z.array(buyerCriterionInputSchema).max(40).optional(),
   deadline_hours: z
     .number()
     .positive()
@@ -80,6 +92,8 @@ export type StartBuyerNegotiationResult =
         attempt_control?: AttemptControlSnapshot;
         chat_url?: string;
         driver: NegotiationDriver;
+        buyer_criteria_required?: boolean;
+        required_check_ids?: string[];
       };
     }
   | { ok: false; status: number; body: Record<string, unknown> };
@@ -333,32 +347,20 @@ export async function startBuyerNegotiation(
       if (c.buyerAskKo !== undefined) projected.buyerAskKo = c.buyerAskKo;
       return projected;
     });
+  const buyerTags = [
+    (listingContextSnapshot as { category?: string } | undefined)?.category,
+    ...((listingContextSnapshot as { tags?: string[] } | undefined)?.tags ?? []),
+  ].filter((tag): tag is string => typeof tag === "string" && tag.length > 0);
+  const rawBuyerCriteria =
+    body.buyerCriteria ?? (advisor as { categoryCriteria?: unknown } | undefined)?.categoryCriteria;
+  const cleanedBuyerCriteria = sanitizeBuyerCriteriaInput(
+    rawBuyerCriteria,
+    buyerTags,
+    sellerRequiredCriteria,
+  );
   let buyerAdvisor = advisor;
-  const rawBuyerCriteria = (advisor as { categoryCriteria?: unknown } | undefined)
-    ?.categoryCriteria;
-  if (advisor && Array.isArray(rawBuyerCriteria)) {
-    const buyerTags = [
-      (listingContextSnapshot as { category?: string } | undefined)?.category,
-      ...((listingContextSnapshot as { tags?: string[] } | undefined)?.tags ?? []),
-    ].filter((t): t is string => typeof t === "string" && t.length > 0);
-    const scaffoldById = new Map(
-      buildCategoryCriteriaScaffold(buyerTags).map((c) => [c.checkId, c]),
-    );
-    const cleaned = (rawBuyerCriteria as Array<{ checkId?: unknown; stance?: unknown }>)
-      .filter((c) => typeof c?.checkId === "string" && scaffoldById.has(c.checkId as string))
-      .slice(0, 40)
-      .map((c) => {
-        const base = scaffoldById.get(c.checkId as string) as CategoryCriterion;
-        const merged: CategoryCriterion = {
-          ...base,
-          requirement: base.enforcement === "hard" ? "required" : base.requirement,
-        };
-        if (typeof c.stance === "string" && c.stance.trim().length > 0) {
-          merged.stance = c.stance.trim();
-        }
-        return merged;
-      });
-    buyerAdvisor = { ...advisor, categoryCriteria: cleaned };
+  if (cleanedBuyerCriteria) {
+    buyerAdvisor = { ...(advisor ?? {}), categoryCriteria: cleanedBuyerCriteria };
   }
   const buyerSnapshot: Record<string, unknown> = {
     ...buyerCompiled,
@@ -417,6 +419,7 @@ export async function startBuyerNegotiation(
     });
   }
 
+  const criteriaReject = buyerCriteriaRequiredReject(buyerSnapshot);
   return {
     ok: true,
     status: 202,
@@ -428,8 +431,40 @@ export async function startBuyerNegotiation(
       ...(input.isGuest ? { guest_buyer_id: buyer.id } : {}),
       ...(attemptControl ? { attempt_control: attemptControl } : {}),
       ...(input.chatUrl ? { chat_url: input.chatUrl } : {}),
+      ...(criteriaReject
+        ? {
+            buyer_criteria_required: true,
+            required_check_ids: criteriaReject.required_check_ids,
+          }
+        : {}),
     },
   };
+}
+
+function sanitizeBuyerCriteriaInput(
+  raw: unknown,
+  tags: string[],
+  sellerRequired: readonly CategoryCriterion[],
+): CategoryCriterion[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const scaffoldById = new Map(buildCategoryCriteriaScaffold(tags).map((c) => [c.checkId, c]));
+  const requiredById = new Map(sellerRequired.map((c) => [c.checkId, c]));
+  return (raw as Array<{ checkId?: unknown; stance?: unknown }>)
+    .filter((c) => typeof c?.checkId === "string")
+    .slice(0, 40)
+    .flatMap((c) => {
+      const checkId = c.checkId as string;
+      const base = scaffoldById.get(checkId) ?? requiredById.get(checkId);
+      if (!base) return [];
+      const merged: CategoryCriterion = {
+        ...base,
+        requirement: base.enforcement === "hard" ? "required" : base.requirement,
+      };
+      if (typeof c.stance === "string" && c.stance.trim().length > 0) {
+        merged.stance = c.stance.trim();
+      }
+      return [merged];
+    });
 }
 
 function toMinorOrUndefined(value: number | undefined | null): number | undefined {

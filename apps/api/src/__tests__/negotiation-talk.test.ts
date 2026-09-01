@@ -3,6 +3,7 @@ import {
   buyerOpeningMessage,
   expandMcpTranscript,
   mcpNegotiationTranscript,
+  mcpStartNextActions,
   negotiationSayToUser,
   spokenRoundPriceMinor,
   spokenRoundSpeaker,
@@ -20,7 +21,7 @@ describe("negotiationSayToUser", () => {
     expect(talk.ask_user).toContain("Quote that line");
   });
 
-  it("keeps pause questions separate from the bargain line", () => {
+  it("does not put pause questions in say_to_user", () => {
     const talk = negotiationSayToUser({
       counterpartRole: "SELLER",
       counterpartMessage: "Seller is at $880.",
@@ -29,8 +30,19 @@ describe("negotiationSayToUser", () => {
       pauseQuestions: ["IMEI clean?", "FRP off?"],
     });
     expect(talk.say_to_user).toContain("Seller said: Seller is at $880.");
-    expect(talk.say_to_user).toContain("IMEI clean?");
-    expect(talk.ask_user).toContain("Answer each question");
+    expect(talk.say_to_user).not.toContain("IMEI clean?");
+    expect(talk.say_to_user).not.toContain("FRP off?");
+  });
+
+  it("keeps GET speaker SELLER on a criteria HOLD", () => {
+    expect(
+      spokenRoundSpeaker({
+        senderRole: "SELLER",
+        message: "This one is like-new, unlocked, 128GB, and battery is 90%+.",
+        heldForCriteriaPause: true,
+        pauseDump: "IMEI clean? FRP off?",
+      }),
+    ).toBe("SELLER");
   });
 
   it("labels the seller answer, not the incoming buyer offer", () => {
@@ -199,5 +211,46 @@ describe("mcpNegotiationTranscript", () => {
     expect(view.recent_messages).toHaveLength(4);
     expect(view.recent_messages.map((m) => m.round_no)).toEqual([2, 3, 4, 5]);
     expect(view.recent_messages[0]?.decision).not.toBe("OPENING");
+  });
+});
+
+describe("HOLD transcript", () => {
+  const sellerR2 =
+    "This one is like-new, unlocked, 128GB, and battery is 90%+, so $360 is below what it's worth. I can meet you at $395.";
+
+  it("does not copy the R2 seller line onto a HOLD round and keeps speaker SELLER", () => {
+    const messages = expandMcpTranscript([
+      sellerCounter,
+      {
+        roundNo: 2,
+        senderRole: "SELLER",
+        message: sellerR2,
+        decision: "HOLD",
+        priceminor: "39500",
+        counterPriceMinor: null,
+        heldForCriteriaPause: true,
+        pauseQuestions: ["IMEI clean?", "Water damage?"],
+      },
+    ]);
+    const hold = messages.at(-1);
+    expect(hold).toMatchObject({
+      speaker: "SELLER",
+      sender_role: "SELLER",
+      held_for_criteria_pause: true,
+      message: "Seller is at $395.",
+    });
+    expect(hold?.message).not.toBe(sellerR2);
+    expect(hold?.message).not.toContain("IMEI");
+  });
+});
+
+describe("mcpStartNextActions", () => {
+  it("does not advertise play_next when buyerCriteria is still required", () => {
+    expect(mcpStartNextActions(true)).toEqual(["haggle_get_negotiation"]);
+    expect(mcpStartNextActions(true)).not.toContain("haggle_play_next");
+  });
+
+  it("advertises play_next when start criteria are already answered", () => {
+    expect(mcpStartNextActions(false)).toEqual(["haggle_play_next", "haggle_get_negotiation"]);
   });
 });

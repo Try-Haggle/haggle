@@ -5,6 +5,7 @@ import { submitHnpOffer } from "../hnp/submit-offer.js";
 import type { EventDispatcher } from "../lib/event-dispatcher.js";
 import type { AuthUser } from "../middleware/auth.js";
 import {
+  buyerCriteriaRequiredReject,
   readSellerCriteriaFromSnapshot,
   SELLER_CRITERIA_PAUSE_MARKER,
 } from "../negotiation/phase/seller-criteria-pause.js";
@@ -102,6 +103,11 @@ export async function executeAutoPlayNext(
         current_round: stalled.currentRound,
       },
     };
+  }
+
+  const criteriaReject = buyerCriteriaRequiredReject(context.buyerSnapshot);
+  if (criteriaReject) {
+    return { ok: false, status: 409, body: criteriaReject };
   }
 
   const rounds = await getRoundsBySessionId(db, session.id);
