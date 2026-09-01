@@ -874,6 +874,176 @@
       ],
       "dueDate": "2026-09-05",
       "sourceNote": "8/29 회의 끝에서 정행이 크레딧을 UI에 넣어 달라고 했고 종우가 하겠다고 했다."
+    },
+    {
+      "id": "W2026-08-31-01",
+      "title": "MCP Connect — Plaid형 OAuth 2.1",
+      "status": "in_progress",
+      "ownerId": "jeonghaeng",
+      "reviewerId": null,
+      "reviewerAssignmentStatus": null,
+      "reviewerReason": "구현은 정행. 단일 리뷰어는 확인 전.",
+      "assignmentConfidence": "confirmed",
+      "domains": [
+        "MCP",
+        "인증"
+      ],
+      "outcome": "그록봇이 해글 계정에 연결하고 MCP 도구가 토큰의 사용자를 쓴다.",
+      "nextAction": "OAuth 메타데이터·동의·토큰·whoami와 보안 가드를 리뷰한다.",
+      "reviewBrief": "연결 전 write가 막히고 buyer_id/user_id를 모델이 고르지 않는지 본다. HNP sender_role, scope, MCP 세션 바인딩, DCR redirect를 확인한다.",
+      "evidence": [
+        "oauth 서비스 테스트",
+        "oauth 라우트 테스트",
+        "session-access·scope·redirect·transport 테스트"
+      ],
+      "verifiedEvidence": [],
+      "remainingGaps": [
+        "리뷰어 미지정"
+      ],
+      "dependsOn": [],
+      "dueDate": "2026-09-06",
+      "sourceNote": "MCP platform parity plan connect-oauth"
+    },
+    {
+      "id": "W2026-08-31-02",
+      "title": "MCP Agent 스튜디오 패리티",
+      "status": "in_progress",
+      "ownerId": "jeonghaeng",
+      "reviewerId": null,
+      "reviewerAssignmentStatus": null,
+      "reviewerReason": "구현은 정행. 단일 리뷰어는 확인 전.",
+      "assignmentConfidence": "confirmed",
+      "domains": [
+        "MCP",
+        "에이전트"
+      ],
+      "outcome": "MCP builder_chat_turn과 agent CRUD가 웹 스튜디오와 같은 서비스를 쓴다.",
+      "nextAction": "MCP 전용 advisor 삭제와 스튜디오 왕복을 리뷰한다.",
+      "reviewBrief": "builder memory가 negotiation_agents에 저장되는지 본다.",
+      "evidence": [],
+      "verifiedEvidence": [],
+      "remainingGaps": [
+        "리뷰어 미지정"
+      ],
+      "dependsOn": [
+        "W2026-08-31-01"
+      ],
+      "dueDate": "2026-09-06",
+      "sourceNote": "MCP platform parity plan agent-parity"
+    },
+    {
+      "id": "W2026-08-31-03",
+      "title": "MCP 협상 start/play 패리티",
+      "status": "in_progress",
+      "ownerId": "jeonghaeng",
+      "reviewerId": null,
+      "reviewerAssignmentStatus": null,
+      "reviewerReason": "구현은 정행. 단일 리뷰어는 확인 전.",
+      "assignmentConfidence": "confirmed",
+      "domains": [
+        "MCP",
+        "협상"
+      ],
+      "outcome": "publicId로 시작해 웹과 같은 start/auto-play를 돌린다.",
+      "nextAction": "시도 제한과 guest 금지를 리뷰한다.",
+      "reviewBrief": "MCP가 guest buyer를 만들지 않는지, start가 웹 서비스인지 본다.",
+      "evidence": [
+        "start-buyer-negotiation 서비스",
+        "auto-play driver 테스트"
+      ],
+      "verifiedEvidence": [],
+      "remainingGaps": [
+        "리뷰어 미지정"
+      ],
+      "dependsOn": [
+        "W2026-08-31-01"
+      ],
+      "dueDate": "2026-09-06",
+      "sourceNote": "MCP platform parity plan negotiate-parity"
+    },
+    {
+      "id": "W2026-08-31-04",
+      "title": "MCP/웹 선수·관전",
+      "status": "in_progress",
+      "ownerId": "jeonghaeng",
+      "reviewerId": null,
+      "reviewerAssignmentStatus": null,
+      "reviewerReason": "구현은 정행. 단일 리뷰어는 확인 전.",
+      "assignmentConfidence": "confirmed",
+      "domains": [
+        "MCP",
+        "웹"
+      ],
+      "outcome": "MCP가 선수면 웹 라이브는 관전만 한다.",
+      "nextAction": "driver mismatch와 채팅 URL을 리뷰한다.",
+      "reviewBrief": "driver=mcp일 때 웹이 auto-play/next를 치지 않는지 본다.",
+      "evidence": [
+        "live-negotiation spectator 테스트"
+      ],
+      "verifiedEvidence": [],
+      "remainingGaps": [
+        "리뷰어 미지정"
+      ],
+      "dependsOn": [
+        "W2026-08-31-03"
+      ],
+      "dueDate": "2026-09-06",
+      "sourceNote": "MCP platform parity plan watch-driver"
+    },
+    {
+      "id": "W2026-08-31-05",
+      "title": "MCP 리스팅을 연결 사용자에 묶음",
+      "status": "in_progress",
+      "ownerId": "jeonghaeng",
+      "reviewerId": null,
+      "reviewerAssignmentStatus": null,
+      "reviewerReason": "구현은 정행. 단일 리뷰어는 확인 전.",
+      "assignmentConfidence": "confirmed",
+      "domains": [
+        "MCP",
+        "리스팅"
+      ],
+      "outcome": "draft/publish/claim이 토큰 사용자를 쓴다.",
+      "nextAction": "haggle_create_listing으로 그록봇 리스팅 독푸드를 리뷰한다.",
+      "reviewBrief": "claim과 createDraft가 연결 사용자에만 묶이는지 본다.",
+      "evidence": [],
+      "verifiedEvidence": [],
+      "remainingGaps": [
+        "리뷰어 미지정"
+      ],
+      "dependsOn": [
+        "W2026-08-31-01"
+      ],
+      "dueDate": "2026-09-06",
+      "sourceNote": "MCP platform parity plan listing-auth"
+    },
+    {
+      "id": "W2026-08-31-06",
+      "title": "MCP checkout·주문·분쟁 조회/시작",
+      "status": "in_progress",
+      "ownerId": "jeonghaeng",
+      "reviewerId": null,
+      "reviewerAssignmentStatus": null,
+      "reviewerReason": "구현은 정행. 단일 리뷰어는 확인 전.",
+      "assignmentConfidence": "confirmed",
+      "domains": [
+        "MCP",
+        "결제",
+        "분쟁"
+      ],
+      "outcome": "수락 후 체크아웃 URL과 주문/배송/분쟁 조회·시작. 서명은 웹.",
+      "nextAction": "MCP가 돈을 옮기지 않는지 리뷰한다.",
+      "reviewBrief": "create_checkout가 URL만 주는지, 분쟁 증거는 웹인지 본다.",
+      "evidence": [],
+      "verifiedEvidence": [],
+      "remainingGaps": [
+        "리뷰어 미지정"
+      ],
+      "dependsOn": [
+        "W2026-08-31-03"
+      ],
+      "dueDate": "2026-09-06",
+      "sourceNote": "MCP platform parity plan redeem-read"
     }
   ]
 }

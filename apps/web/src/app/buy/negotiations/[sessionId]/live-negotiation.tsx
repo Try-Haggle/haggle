@@ -125,7 +125,10 @@ export function LiveNegotiation({
     pollIntervalMs: 1_500,
   });
 
+  const isSpectator = initialPayload.session.driver === "mcp";
+
   useEffect(() => {
+    if (isSpectator) return;
     if (isTerminalNegotiationStatus(initialPayload.session.status)) return;
     if (runnerAttempt > 0) setUpdateError(false);
     let cancelled = false;
@@ -209,7 +212,7 @@ export function LiveNegotiation({
       cancelled = true;
       activeRoundController?.abort();
     };
-  }, [initialPayload.session.id, initialPayload.session.status, runnerAttempt]);
+  }, [initialPayload.session.id, initialPayload.session.status, runnerAttempt, isSpectator]);
 
   useEffect(() => {
     if (!isTerminal) return;
@@ -264,7 +267,7 @@ export function LiveNegotiation({
       checkoutLabel={checkoutLabel}
       mode="live"
       liveTerminal={isTerminal}
-      connectionLabel={connectionLabel}
+      connectionLabel={isSpectator ? "Watching MCP" : connectionLabel}
       liveError={liveError}
       pauseChecks={pause?.checks ?? null}
       onPauseAnswer={submitPauseAnswer}

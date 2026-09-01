@@ -2,13 +2,25 @@ import type { IncomingMessage } from "node:http";
 import type { Database } from "@haggle/db";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { EventDispatcher } from "../lib/event-dispatcher.js";
+import { runWithMcpActor } from "../lib/mcp-actor.js";
+import {
+  createMcpTransportBinding,
+  mcpTransportOwnerMismatch,
+  type McpTransportBinding,
+} from "../lib/mcp-transport-auth.js";
+import { publicApiBaseUrl } from "../lib/public-urls.js";
 import { registerResources } from "./resources.js";
 import { registerTools } from "./tools/index.js";
 
+type BoundTransportSession = {
+  transport: StreamableHTTPServerTransport;
+  createdAt: number;
+} & McpTransportBinding;
+
 /** Active MCP sessions keyed by session ID, with creation timestamp for TTL */
-const sessions = new Map<string, { transport: StreamableHTTPServerTransport; createdAt: number }>();
+const sessions = new Map<string, BoundTransportSession>();
 
 /** Max session lifetime: 2 hours. Sweep every 5 minutes. */
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
@@ -35,6 +47,56 @@ function createMcpServer(db: Database, eventDispatcher?: EventDispatcher): McpSe
   return mcp;
 }
 
+function mcpWwwAuthenticate(request: FastifyRequest): string {
+  return `Bearer realm="haggle", resource_metadata="${publicApiBaseUrl(request)}/.well-known/oauth-protected-resource"`;
+}
+
+function rejectMcpUnauthorized(request: FastifyRequest, reply: FastifyReply) {
+  return reply
+    .header("WWW-Authenticate", mcpWwwAuthenticate(request))
+    .code(401)
+    .send({ error: "AUTH_REQUIRED" });
+}
+
+function rejectMcpSession(reply: FastifyReply) {
+  return reply.code(404).send({ error: "MCP_SESSION_NOT_FOUND" });
+}
+
+function ownedMcpSession(request: FastifyRequest) {
+  const sessionId = request.headers["mcp-session-id"];
+  if (typeof sessionId !== "string" || sessionId.length === 0) return null;
+  const existing = sessions.get(sessionId);
+  if (
+    !existing ||
+    mcpTransportOwnerMismatch(existing, request.user, request.headers.authorization)
+  ) {
+    return null;
+  }
+  return { sessionId, existing };
+}
+
+export function resetMcpTransportSessionsForTests(): void {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error("MCP transport session reset is test-only");
+  }
+  sessions.clear();
+}
+
+export function seedMcpTransportSessionForTests(
+  sessionId: string,
+  binding: McpTransportBinding,
+  transport: Pick<StreamableHTTPServerTransport, "handleRequest" | "close">,
+): void {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error("MCP transport session seed is test-only");
+  }
+  sessions.set(sessionId, {
+    transport: transport as StreamableHTTPServerTransport,
+    createdAt: Date.now(),
+    ...binding,
+  });
+}
+
 /**
  * Register MCP Streamable HTTP routes on the Fastify instance.
  * Handles POST (requests), GET (SSE stream), DELETE (session cleanup).
@@ -44,18 +106,32 @@ export function registerMcpRoutes(
   db: Database,
   eventDispatcher?: EventDispatcher,
 ) {
-  // ─── POST /mcp — Initialize or send requests ────────────
-  app.post("/mcp", async (request, reply) => {
-    const sessionId = request.headers["mcp-session-id"] as string | undefined;
+  app.addHook("onRequest", async (request, reply) => {
+    if (request.url.split("?")[0] !== "/mcp") return;
+    if (request.user) return;
+    return rejectMcpUnauthorized(request, reply);
+  });
 
-    // Existing session — forward request
-    if (sessionId && sessions.has(sessionId)) {
-      const { transport } = sessions.get(sessionId)!;
-      await transport.handleRequest(request.raw as IncomingMessage, reply.raw, request.body);
+  app.post("/mcp", async (request, reply) => {
+    const binding = createMcpTransportBinding(request.user, request.headers.authorization);
+    if (!binding) {
+      return rejectMcpUnauthorized(request, reply);
+    }
+
+    const sessionId = request.headers["mcp-session-id"];
+    if (typeof sessionId === "string" && sessionId.length > 0) {
+      const owned = ownedMcpSession(request);
+      if (!owned) return rejectMcpSession(reply);
+      await runWithMcpActor(request.user, () =>
+        owned.existing.transport.handleRequest(
+          request.raw as IncomingMessage,
+          reply.raw,
+          request.body,
+        ),
+      );
       return reply.hijack();
     }
 
-    // New session — create transport + server
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => crypto.randomUUID(),
     });
@@ -69,38 +145,46 @@ export function registerMcpRoutes(
     const server = createMcpServer(db, eventDispatcher);
     await server.connect(transport);
 
-    await transport.handleRequest(request.raw as IncomingMessage, reply.raw, request.body);
+    await runWithMcpActor(request.user, () =>
+      transport.handleRequest(request.raw as IncomingMessage, reply.raw, request.body),
+    );
 
-    // Store session AFTER handleRequest — sessionId is assigned during initialize
     if (transport.sessionId) {
-      sessions.set(transport.sessionId, { transport, createdAt: Date.now() });
+      sessions.set(transport.sessionId, { transport, createdAt: Date.now(), ...binding });
     }
     return reply.hijack();
   });
 
-  // ─── GET /mcp — SSE stream for server-initiated messages ─
   app.get("/mcp", async (request, reply) => {
-    const sessionId = request.headers["mcp-session-id"] as string | undefined;
-
-    if (!sessionId || !sessions.has(sessionId)) {
-      return reply.status(400).send({ error: "Invalid or missing session ID" });
+    const binding = createMcpTransportBinding(request.user, request.headers.authorization);
+    if (!binding) {
+      return rejectMcpUnauthorized(request, reply);
     }
 
-    const { transport } = sessions.get(sessionId)!;
-    await transport.handleRequest(request.raw as IncomingMessage, reply.raw, request.body);
+    const owned = ownedMcpSession(request);
+    if (!owned) return rejectMcpSession(reply);
+
+    await runWithMcpActor(request.user, () =>
+      owned.existing.transport.handleRequest(
+        request.raw as IncomingMessage,
+        reply.raw,
+        request.body,
+      ),
+    );
     return reply.hijack();
   });
 
-  // ─── DELETE /mcp — Terminate session ─────────────────────
   app.delete("/mcp", async (request, reply) => {
-    const sessionId = request.headers["mcp-session-id"] as string | undefined;
-
-    if (sessionId && sessions.has(sessionId)) {
-      const { transport } = sessions.get(sessionId)!;
-      await transport.close();
-      sessions.delete(sessionId);
+    const binding = createMcpTransportBinding(request.user, request.headers.authorization);
+    if (!binding) {
+      return rejectMcpUnauthorized(request, reply);
     }
 
+    const owned = ownedMcpSession(request);
+    if (!owned) return rejectMcpSession(reply);
+
+    await owned.existing.transport.close();
+    sessions.delete(owned.sessionId);
     return reply.status(200).send({ ok: true });
   });
 }

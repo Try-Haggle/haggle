@@ -578,6 +578,16 @@ export async function getCommerceOrderByOrderId(
   return row ?? null;
 }
 
+export async function getCommerceOrderBySettlementApprovalId(
+  db: Database,
+  settlementApprovalId: string,
+): Promise<typeof commerceOrders.$inferSelect | null> {
+  const row = await db.query.commerceOrders.findFirst({
+    where: (fields, ops) => ops.eq(fields.settlementApprovalId, settlementApprovalId),
+  });
+  return row ?? null;
+}
+
 export async function getPaymentIntentByOrderId(
   db: Database,
   orderId: string,

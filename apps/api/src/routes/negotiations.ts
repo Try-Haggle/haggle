@@ -1,14 +1,7 @@
-import { and, type Database, eq, sql, userSavedAddresses } from "@haggle/db";
-import { compileNegotiationAgentSnapshot, type EngineParamsInput } from "@haggle/engine-session";
+import { type Database, sql } from "@haggle/db";
 import {
-  buildCategoryCriteriaScaffold,
   buyerChoiceOptionsForCheck,
   type CategoryCriterion,
-  criterionAnswered,
-  type EngineParameters,
-  getNegotiationAgentPreset,
-  presetToEngineParameters,
-  requiredCriteria,
   unresolvedSellerRequirements,
 } from "@haggle/shared";
 import type { FastifyInstance } from "fastify";
@@ -25,18 +18,12 @@ import { submitHnpOffer } from "../hnp/submit-offer.js";
 import type { EventDispatcher } from "../lib/event-dispatcher.js";
 import { getExecutor } from "../lib/executor-factory.js";
 import { executeGroupOrchestration, executeGroupTerminal } from "../lib/group-executor.js";
+import { negotiationChatUrl } from "../lib/public-urls.js";
 import {
-  type BuyerShippingAddress,
-  type FulfillmentPreference,
-  fulfillmentPreferenceSchema,
-  parseListingParcel,
-  parseSellerFulfillmentOffer,
-  snapshotFulfillmentFields,
-} from "../lib/negotiation-fulfillment.js";
-import type { AuthUser } from "../middleware/auth.js";
+  validateSessionParticipant,
+  validateSessionWriteAccess,
+} from "../lib/session-access.js";
 import { requireAuth } from "../middleware/require-auth.js";
-import { isDecideCatalogModel, resolveDecideModel } from "../negotiation/decide-model.js";
-import { projectSellerFacts } from "../negotiation/memory/seller-facts.js";
 import {
   applyBuyerPauseAnswer,
   readSellerCriteriaFromSnapshot,
@@ -49,20 +36,15 @@ import {
   defaultAttemptControlPolicy,
   evaluateAttemptControl,
 } from "../services/attempt-control.service.js";
-import {
-  getListingPlaybackSummaryByInternalId,
-  getPublishedListingByPublicId,
-} from "../services/draft.service.js";
+import { getListingPlaybackSummaryByInternalId } from "../services/draft.service.js";
 import { validateHnpIngress } from "../services/hnp-ingress.service.js";
 import {
   assertListingAcceptsNewSession,
   LISTING_CLAIM_HTTP,
   ListingClaimError,
 } from "../services/listing-claim.service.js";
-import { loadListingStrategyContext } from "../services/listing-strategy.service.js";
 import {
   attachNegotiationAutoPlayContext,
-  createNegotiationAutoPlaySetup,
   getNegotiationAutoPlayContext,
   isNegotiationAutoPlayTerminal,
   planNegotiationAutoPlayRound,
@@ -80,6 +62,10 @@ import {
   setSessionPerspective,
   updateSessionState,
 } from "../services/negotiation-session.service.js";
+import {
+  startBuyerNegotiation,
+  startBuyerNegotiationSchema,
+} from "../services/start-buyer-negotiation.service.js";
 import { loadUserMemoryBrief } from "../services/user-memory-card.service.js";
 import { projectLastUtility, projectRoundEngineFields } from "./session-projection.js";
 
@@ -98,40 +84,7 @@ const createSessionSchema = z.object({
   expires_at: z.string().datetime().optional(),
 });
 
-// Body for POST /negotiations/start — buyer-side entry from the web listing page.
-const startSessionSchema = z.object({
-  listing_public_id: z.string().min(1),
-  negotiation_agent_preset_id: z.string().min(1),
-  agent_weights: z.record(z.number()).optional(),
-  agent_overrides: z.record(z.unknown()).optional(),
-  negotiation_agent_builder_memory: z
-    .object({
-      budgetMax: z.number().positive().optional(),
-      targetPrice: z.number().positive().optional(),
-      mustHave: z.array(z.string()).optional(),
-      avoid: z.array(z.string()).optional(),
-      riskStyle: z.string().optional(),
-      negotiationStyle: z.string().optional(),
-      openingTactic: z.string().optional(),
-      categoryInterest: z.string().optional(),
-      questions: z.array(z.string()).optional(),
-      source: z.array(z.string()).optional(),
-    })
-    .passthrough()
-    .optional(),
-  deadline_hours: z
-    .number()
-    .positive()
-    .max(24 * 14)
-    .optional(),
-  fulfillment: fulfillmentPreferenceSchema.optional(),
-  /**
-   * Wish only. Ignored for routing. A later ledger must debit, then set
-   * snapshot `allowed_model`. Do not treat this as payment.
-   */
-  pro_model_credit: z.boolean().optional(),
-  requested_model: z.string().min(1).max(80).optional(),
-});
+const startSessionSchema = startBuyerNegotiationSchema;
 
 const runNextAutoPlayRoundSchema = z.object({
   run_token: z.string().min(32).optional(),
@@ -196,12 +149,6 @@ const submitOfferSchema = z
   });
 
 type CreateSessionBody = z.infer<typeof createSessionSchema>;
-type AgentDelegation = z.infer<typeof agentDelegationSchema>;
-
-interface SessionAccessView {
-  buyerId: string;
-  sellerId: string;
-}
 
 const acceptSessionSchema = z
   .object({
@@ -392,6 +339,8 @@ export function registerNegotiationRoutes(
         created_at: session.createdAt,
         updated_at: session.updatedAt,
         buyer_negotiation_agent_preset_id: buyerNegotiationAgentPresetId,
+        driver: session.driver === "mcp" ? "mcp" : "web",
+        chat_url: negotiationChatUrl(session.id),
         listing: listing
           ? {
               public_id: listing.publicId,
@@ -882,313 +831,28 @@ export function registerNegotiationRoutes(
     if (!parsed.success) {
       return reply.code(400).send({ error: "INVALID_START_REQUEST", issues: parsed.error.issues });
     }
-    const body = parsed.data;
     const isGuest = !request.user;
-    const buyer = request.user ?? { id: crypto.randomUUID() };
-
-    const listing = await getPublishedListingByPublicId(db, body.listing_public_id);
-    if (!listing) {
-      return reply.code(404).send({ error: "LISTING_NOT_FOUND" });
-    }
-    if (!listing.sellerId) {
-      return reply.code(409).send({ error: "LISTING_UNCLAIMED" });
-    }
-    if (!isGuest && listing.sellerId === buyer.id) {
-      return reply.code(403).send({ error: "BUYER_IS_SELLER" });
-    }
-
-    const listingContext = await loadListingStrategyContext(db, listing.id);
-    if (!listingContext?.askPriceMinor || !listingContext.floorPriceMinor) {
-      return reply.code(409).send({ error: "LISTING_STRATEGY_INCOMPLETE" });
-    }
-
-    const askMinor = listingContext.askPriceMinor;
-    const floorMinor = listingContext.floorPriceMinor;
-    const listedAtMs = listingContext.listedAtMs;
-    const nowMs = Date.now();
-    if (listingContext.deadlineAtMs && listingContext.deadlineAtMs <= nowMs) {
-      return reply.code(409).send({
-        error: "LISTING_NEGOTIATION_EXPIRED",
-        message: "This listing's negotiation window has ended.",
-      });
-    }
-    const buyerDeadlineMs = nowMs + (body.deadline_hours ?? 24) * 60 * 60 * 1000;
-    const effectiveDeadlineMs = listingContext.deadlineAtMs
-      ? Math.min(buyerDeadlineMs, listingContext.deadlineAtMs)
-      : buyerDeadlineMs;
-    const timeTotalMs = Math.max(1, effectiveDeadlineMs - listedAtMs);
-
-    // Buyer target/reservation: prefer advisor memory budgetMax/targetPrice
-    // (decimal dollars), else infer from listing price (10% discount target,
-    // ask price as walk-away).
-    const advisor = body.negotiation_agent_builder_memory;
-    const budgetMaxMinor = toMinorOrUndefined(advisor?.budgetMax);
-    const targetPriceMinor = toMinorOrUndefined(advisor?.targetPrice);
-    const buyerReservation = budgetMaxMinor ?? askMinor;
-    const buyerTarget = targetPriceMinor ?? Math.max(floorMinor, Math.round(askMinor * 0.9));
-    if (buyerTarget >= buyerReservation) {
-      return reply.code(400).send({ error: "INVALID_PRICE_RANGE" });
-    }
-
-    const styleDefaults = mapStyleToDefaults(advisor?.negotiationStyle);
-    const sellerStrategy = listingContext.sellerStrategy;
-    const sellerNegotiationAgentBuilderMemory = listingContext.sellerNegotiationAgentBuilderMemory;
-    if (!sellerStrategy) {
-      return reply.code(409).send({ error: "LISTING_STRATEGY_INCOMPLETE" });
-    }
-
-    const buyerRequestedStrategy = {
-      style: styleDefaults.style,
-      p_reservation: buyerReservation,
-      p_target: buyerTarget,
-      p_initial: buyerTarget,
-      t_max: timeTotalMs,
-      created_at_ms: listedAtMs,
-      deadline_at_ms: effectiveDeadlineMs,
-      alpha: styleDefaults.alpha,
-      thresholds: styleDefaults.thresholds,
-      concession: styleDefaults.concession,
-      agent: {
-        preset_id: body.negotiation_agent_preset_id,
-        weights: body.agent_weights ?? null,
-        overrides: body.agent_overrides ?? null,
-      },
-      ...(advisor ? { negotiation_agent_builder_memory: advisor } : {}),
-    };
-
-    // Auto-play loop: cap rounds and add max_rounds to both perspectives so
-    // the executor's round-limit check fires symmetrically.
-    const AUTO_PLAY_MAX_ROUNDS = 8;
-
-    // Resolve the buyer's chosen agent into the single EngineParameters form:
-    // start from the named preset, then layer the builder/advanced overrides the
-    // client sent, so the buyer's preset AND tuning reach the negotiation.
-    const buyerParams = resolveRequestedTuning(
-      body.negotiation_agent_preset_id,
-      body.agent_weights,
-      body.agent_overrides,
-    );
-
-    // Buyer-side compiled snapshot (mirror of the seller one).
-    const buyerCompiled = compileNegotiationAgentSnapshot({
-      role: "BUYER",
-      userId: buyer.id,
-      strategyId: `buyer_${body.negotiation_agent_preset_id}`,
-      preset: body.negotiation_agent_preset_id,
-      params: buyerParams,
-      listing: {
-        id: listing.id,
-        category: null,
-        condition: null,
-        targetPriceMinor: buyerTarget,
-        floorPriceMinor: buyerReservation,
-        listedAtMs,
-        deadlineAtMs: effectiveDeadlineMs,
-      },
-      nowMs,
+    const buyerId = request.user?.id ?? crypto.randomUUID();
+    const started = await startBuyerNegotiation(db, {
+      body: parsed.data,
+      buyerId,
+      isGuest,
+      driver: "web",
+      allowGuest: true,
+      chatUrl: undefined,
     });
-
-    const listingContextSnapshot = listingContext.listingContext;
-    // The seller's ANSWERED category criteria are item facts (battery %, storage,
-    // scratches) stated in response to buyer-facing questions — not strategy. Surface
-    // them on the SHARED listing context so both agents see them: without this the
-    // buyer's agent never learns soft facts and can't use them as price leverage.
-    const sellerFacts = projectSellerFacts(
-      sellerNegotiationAgentBuilderMemory?.categoryCriteria as CategoryCriterion[] | undefined,
-    );
-    const sharedListingContext = {
-      ...((listingContextSnapshot as object | undefined) ?? {}),
-      ...(sellerFacts.length > 0 ? { seller_facts: sellerFacts } : {}),
-      published_ask_minor: askMinor,
-    };
-    const sellerNegotiationAgentPresetId = listingContext.sellerNegotiationAgentPresetId;
-    const listingSnapshot = listing.negotiationAgentSnapshot as Record<string, unknown> | null;
-    const defaultRoute = resolveDecideModel({ publishedAskMinor: askMinor });
-    const listingRequestedModel =
-      typeof listingSnapshot?.seller_requested_model === "string"
-        ? listingSnapshot.seller_requested_model.trim()
-        : undefined;
-    const sellerAllowedModel =
-      listingRequestedModel && isDecideCatalogModel(listingRequestedModel)
-        ? listingRequestedModel
-        : defaultRoute.model;
-    const listingOffer = parseSellerFulfillmentOffer(listingSnapshot?.sellerFulfillmentOffer);
-    const listingParcel =
-      parseListingParcel(listingSnapshot?.parcel) ?? listingContext.listingContext?.parcel;
-    let fulfillment = body.fulfillment as FulfillmentPreference | undefined;
-    if (fulfillment && listingOffer) {
-      const allowed = new Set(listingOffer.options.map((option) => option.method));
-      const methods = fulfillment.methods.filter((method) => allowed.has(method));
-      if (methods.length === 0) {
-        return reply.code(400).send({
-          error: "FULFILLMENT_NOT_OFFERED",
-          message: "Choose at least one delivery method the seller offered.",
-        });
+    if (!started.ok) {
+      if (started.body.retry_after) {
+        reply.header("retry-after", String(started.body.retry_after));
       }
-      fulfillment = {
-        ...fulfillment,
-        methods,
-        preferred:
-          fulfillment.preferred && methods.includes(fulfillment.preferred)
-            ? fulfillment.preferred
-            : methods[0],
-        seller_offer: fulfillment.seller_offer ?? listingOffer,
-      };
+      return reply.code(started.status).send(started.body);
     }
-    if (fulfillment && (listingParcel || fulfillment.methods.includes("carrier"))) {
-      fulfillment = {
-        ...fulfillment,
-        ...(listingParcel ? { parcel: fulfillment.parcel ?? listingParcel } : {}),
-        ...(fulfillment.methods.includes("carrier")
-          ? { carrier_priority: fulfillment.carrier_priority ?? "balanced" }
-          : {}),
-      };
-    }
-    const fulfillmentFields = snapshotFulfillmentFields(fulfillment);
-    const sellerSnapshot: Record<string, unknown> = {
-      ...sellerStrategy,
-      max_rounds: AUTO_PLAY_MAX_ROUNDS,
-      // Surface the seller's resolved tuning to the LLM STRATEGY block, mirroring
-      // the buyer's agent_weights/agent_overrides (extractStrategyContextMemory).
-      agent_weights: sellerStrategy.weights,
-      agent_overrides: {
-        alpha: sellerStrategy.alpha,
-        beta: sellerStrategy.beta,
-        u_threshold: sellerStrategy.u_threshold,
-        u_aspiration: sellerStrategy.u_aspiration,
-        anchor_ratio: sellerStrategy.anchor_ratio,
-        v_t_floor: sellerStrategy.v_t_floor,
-        w_rep: sellerStrategy.w_rep,
-        v_s_base: sellerStrategy.v_s_base,
-        n_threshold: sellerStrategy.n_threshold,
-      },
-      ...(sellerNegotiationAgentBuilderMemory
-        ? { seller_negotiation_agent_builder_memory: sellerNegotiationAgentBuilderMemory }
-        : {}),
-      listing_context: sharedListingContext,
-      allowed_model: sellerAllowedModel,
-      ...(sellerNegotiationAgentPresetId
-        ? { negotiation_agent_preset_id: sellerNegotiationAgentPresetId }
-        : {}),
-      buyer_requested_strategy: buyerRequestedStrategy,
-      ...fulfillmentFields,
-    };
-    // Phase G Flow 3: the seller's REQUIRED criteria travel on the buyer snapshot so
-    // the executor can pause and ask the buyer about any the buyer never addressed.
-    // Only criteria the seller DELIBERATELY engaged — required AND with a stated
-    // stance (criterionAnswered) — drive the pause. Otherwise the scaffold's default
-    // (every HARD taxonomy check → required, no stance) would pause almost every
-    // negotiation for checks the seller never actually specified. `stance` is still
-    // omitted here — the pause machinery only needs the question; the stated fact
-    // already travels to both sides via listing_context.seller_facts above. Empty for
-    // pre-Phase-G sellers → the pause never fires (backward-compatible).
-    const sellerRequiredCriteria = requiredCriteria(
-      (sellerNegotiationAgentBuilderMemory?.categoryCriteria as CategoryCriterion[] | undefined) ??
-        [],
-    )
-      .filter(criterionAnswered)
-      .map((c) => {
-        const projected: CategoryCriterion = {
-          checkId: c.checkId,
-          questionKo: c.questionKo,
-          enforcement: c.enforcement,
-          requirement: "required",
-        };
-        if (c.buyerAskKo !== undefined) projected.buyerAskKo = c.buyerAskKo;
-        return projected; // note: `stance` intentionally omitted
-      });
-    // MED-2 trust boundary: the buyer's builder memory is client-supplied. Sanitize its
-    // categoryCriteria server-side (like the seller side is DB-authoritative): keep only
-    // real taxonomy check ids, re-author checkId/questionKo/enforcement from the listing
-    // scaffold (blocks arbitrary questionKo/enforcement injection into the buyer's own
-    // DECIDE prompt), pin hard→required, and cap length (blocks unbounded snapshot bloat
-    // re-attached every round). Unknown ids / junk are dropped.
-    let buyerAdvisor = advisor;
-    const rawBuyerCriteria = (advisor as { categoryCriteria?: unknown } | undefined)
-      ?.categoryCriteria;
-    if (advisor && Array.isArray(rawBuyerCriteria)) {
-      const buyerTags = [
-        (listingContextSnapshot as { category?: string } | undefined)?.category,
-        ...((listingContextSnapshot as { tags?: string[] } | undefined)?.tags ?? []),
-      ].filter((t): t is string => typeof t === "string" && t.length > 0);
-      const scaffoldById = new Map(
-        buildCategoryCriteriaScaffold(buyerTags).map((c) => [c.checkId, c]),
-      );
-      const cleaned = (rawBuyerCriteria as Array<{ checkId?: unknown; stance?: unknown }>)
-        .filter((c) => typeof c?.checkId === "string" && scaffoldById.has(c.checkId as string))
-        .slice(0, 40)
-        .map((c) => {
-          const base = scaffoldById.get(c.checkId as string) as CategoryCriterion;
-          const merged: CategoryCriterion = {
-            ...base,
-            requirement: base.enforcement === "hard" ? "required" : base.requirement,
-          };
-          if (typeof c.stance === "string" && c.stance.trim().length > 0)
-            merged.stance = c.stance.trim();
-          return merged;
-        });
-      buyerAdvisor = { ...advisor, categoryCriteria: cleaned };
-    }
-    const buyerSnapshot: Record<string, unknown> = {
-      ...buyerCompiled,
-      max_rounds: AUTO_PLAY_MAX_ROUNDS,
-      ...(buyerAdvisor ? { buyer_negotiation_agent_builder_memory: buyerAdvisor } : {}),
-      ...(sellerRequiredCriteria.length > 0
-        ? { pause_seller_required_criteria: sellerRequiredCriteria }
-        : {}),
-      listing_context: sharedListingContext,
-      allowed_model: defaultRoute.model,
-      negotiation_agent_preset_id: body.negotiation_agent_preset_id,
-      ...(body.agent_weights ? { agent_weights: body.agent_weights } : {}),
-      ...(body.agent_overrides ? { agent_overrides: body.agent_overrides } : {}),
-      buyer_requested_strategy: buyerRequestedStrategy,
-      ...fulfillmentFields,
-    };
-
-    const strategyId = sellerStrategy.compiler.selected_playbook;
-    const expiresAt = new Date(effectiveDeadlineMs);
-    const autoPlay = createNegotiationAutoPlaySetup({
-      buyerSnapshot,
-      sellerSnapshot,
-      buyerTargetMinor: buyerTarget,
-      maxRounds: AUTO_PLAY_MAX_ROUNDS,
-    });
-
-    // Session starts in SELLER POV — round 1 is the buyer's opening offer.
-    try {
-      await assertListingAcceptsNewSession(db, listing.id);
-    } catch (error) {
-      if (error instanceof ListingClaimError) {
-        const mapped = LISTING_CLAIM_HTTP[error.code];
-        return reply.code(mapped.status).send({
-          error: mapped.error,
-          message: error.code,
-        });
-      }
-      throw error;
-    }
-    const session = await createSession(db, {
-      listingId: listing.id,
-      strategyId,
-      role: "SELLER",
-      buyerId: buyer.id,
-      sellerId: listing.sellerId,
-      counterpartyId: buyer.id,
-      negotiationAgentSnapshot: autoPlay.sellerSnapshot,
-      expiresAt,
-    });
-
-    if (!isGuest && body.fulfillment?.save_address && body.fulfillment.buyer_address) {
-      await saveBuyerDefaultAddress(db, buyer.id, body.fulfillment.buyer_address).catch((err) => {
-        console.error("[negotiations] save default address failed:", (err as Error).message);
-      });
-    }
-
     return reply.code(202).send({
-      session_id: session.id,
-      status: session.status,
-      run_token: autoPlay.runToken,
-      ...(isGuest ? { guest_buyer_id: buyer.id } : {}),
+      session_id: started.body.session_id,
+      status: started.body.status,
+      run_token: started.body.run_token,
+      ...(started.body.guest_buyer_id ? { guest_buyer_id: started.body.guest_buyer_id } : {}),
+      ...(started.body.attempt_control ? { attempt_control: started.body.attempt_control } : {}),
     });
   });
 
@@ -1210,6 +874,9 @@ export function registerNegotiationRoutes(
       const session = await getSessionById(db, request.params.id);
       if (!session) {
         return reply.code(404).send({ error: "SESSION_NOT_FOUND" });
+      }
+      if (session.driver === "mcp") {
+        return reply.code(409).send({ error: "DRIVER_MISMATCH" });
       }
       const context = getNegotiationAutoPlayContext(session.negotiationAgentSnapshot);
       if (!context) {
@@ -1580,176 +1247,6 @@ function extractBuyerNegotiationAgentPresetId(
   return null;
 }
 
-function toMinorOrUndefined(value: number | undefined | null): number | undefined {
-  if (value === undefined || value === null) return undefined;
-  if (!Number.isFinite(value) || value <= 0) return undefined;
-  return Math.round(value * 100);
-}
-
-const ENGINE_PARAM_KEYS = [
-  "alpha",
-  "beta",
-  "u_threshold",
-  "u_aspiration",
-  "anchor_ratio",
-  "v_t_floor",
-  "w_rep",
-  "v_s_base",
-  "n_threshold",
-  "late_round_aggression_modifier",
-  "gamma",
-] as const;
-
-function pickNumericFields(raw: Record<string, unknown> | undefined): Record<string, number> {
-  const out: Record<string, number> = {};
-  if (!raw) return out;
-  for (const key of ENGINE_PARAM_KEYS) {
-    const v = raw[key];
-    if (typeof v === "number" && Number.isFinite(v)) out[key] = v;
-  }
-  return out;
-}
-
-function defaultEngineParameters(): EngineParameters {
-  const preset = getNegotiationAgentPreset("balancer");
-  // balancer always exists; non-null assertion is safe.
-  return presetToEngineParameters(preset!);
-}
-
-/**
- * Resolve a request-provided agent (preset id + optional weight/knob overrides)
- * into the single EngineParameters form the compiler consumes. Precedence:
- * named preset → client overrides → balancer default.
- */
-function resolveRequestedTuning(
-  presetId: string | undefined,
-  weights: Record<string, number> | undefined,
-  overrides: Record<string, unknown> | undefined,
-): EngineParamsInput {
-  const preset = presetId ? getNegotiationAgentPreset(presetId) : undefined;
-  const base = preset ? presetToEngineParameters(preset) : defaultEngineParameters();
-  const overrideParams = pickNumericFields(overrides);
-
-  const resolvedWeights =
-    weights && ["w_p", "w_t", "w_r", "w_s"].every((k) => typeof weights[k] === "number")
-      ? {
-          w_p: weights.w_p as number,
-          w_t: weights.w_t as number,
-          w_r: weights.w_r as number,
-          w_s: weights.w_s as number,
-        }
-      : base.weights;
-
-  return { ...base, ...overrideParams, weights: resolvedWeights };
-}
-
-// Map a buyer-side negotiationStyle keyword to default alpha/threshold/concession
-// numbers. The buyer's NegotiationAgentBuilderMemory only carries a coarse label ("defensive" |
-// "balanced" | "aggressive"); the engine still needs concrete parameters.
-function mapStyleToDefaults(style: string | undefined): {
-  style: string;
-  alpha: { price: number; time: number; reputation: number; satisfaction: number };
-  thresholds: { accept: number; counter: number; reject: number; near_deal: number };
-  concession: { beta: number; k: number };
-} {
-  switch (style) {
-    case "aggressive":
-      return {
-        style: "aggressive",
-        alpha: { price: 0.55, time: 0.15, reputation: 0.15, satisfaction: 0.15 },
-        thresholds: { accept: 0.82, counter: 0.5, reject: 0.25, near_deal: 0.75 },
-        concession: { beta: 0.35, k: 0.8 },
-      };
-    case "defensive":
-      return {
-        style: "patient",
-        alpha: { price: 0.4, time: 0.15, reputation: 0.3, satisfaction: 0.15 },
-        thresholds: { accept: 0.7, counter: 0.4, reject: 0.18, near_deal: 0.65 },
-        concession: { beta: 0.5, k: 1.0 },
-      };
-    default:
-      return {
-        style: "balanced",
-        alpha: { price: 0.4, time: 0.25, reputation: 0.2, satisfaction: 0.15 },
-        thresholds: { accept: 0.78, counter: 0.45, reject: 0.2, near_deal: 0.72 },
-        concession: { beta: 0.6, k: 1.2 },
-      };
-  }
-}
-
-function validateSessionParticipant(
-  actor: AuthUser,
-  session: SessionAccessView,
-): { ok: true } | { ok: false; status: 403; error: "SESSION_ACTOR_MISMATCH" } {
-  if (actor.role === "admin") return { ok: true };
-  if (actor.id === session.buyerId || actor.id === session.sellerId) return { ok: true };
-  return { ok: false, status: 403, error: "SESSION_ACTOR_MISMATCH" };
-}
-
-function validateSessionWriteAccess(
-  actor: AuthUser,
-  session: SessionAccessView,
-  input: {
-    senderRole: "BUYER" | "SELLER";
-    senderAgentId?: string;
-    agentDelegation?: AgentDelegation;
-    action?: "offer" | "accept";
-    nowMs?: number;
-  },
-):
-  | { ok: true }
-  | {
-      ok: false;
-      status: 403;
-      error:
-        | "SESSION_ACTOR_MISMATCH"
-        | "HNP_SENDER_AGENT_MISMATCH"
-        | "HNP_AGENT_DELEGATION_INVALID";
-    } {
-  if (actor.role === "admin") return { ok: true };
-  const principalId = input.senderRole === "BUYER" ? session.buyerId : session.sellerId;
-  if (actor.id !== principalId) {
-    return { ok: false, status: 403, error: "SESSION_ACTOR_MISMATCH" };
-  }
-  if (!input.senderAgentId || input.senderAgentId === actor.id) return { ok: true };
-
-  if (
-    isValidAgentDelegation(input.agentDelegation, {
-      principalUserId: actor.id,
-      agentId: input.senderAgentId,
-      action: input.action ?? "offer",
-      nowMs: input.nowMs ?? Date.now(),
-    })
-  ) {
-    return { ok: true };
-  }
-
-  return {
-    ok: false,
-    status: 403,
-    error: input.agentDelegation ? "HNP_AGENT_DELEGATION_INVALID" : "HNP_SENDER_AGENT_MISMATCH",
-  };
-}
-
-function isValidAgentDelegation(
-  delegation: AgentDelegation | undefined,
-  expected: {
-    principalUserId: string;
-    agentId: string;
-    action: "offer" | "accept";
-    nowMs: number;
-  },
-): boolean {
-  if (!delegation) return false;
-  if (delegation.principal_user_id !== expected.principalUserId) return false;
-  if (delegation.agent_id !== expected.agentId) return false;
-  if (delegation.expires_at_ms <= expected.nowMs) return false;
-  return (
-    delegation.scopes.includes("hnp:negotiate") ||
-    delegation.scopes.includes(`hnp:${expected.action}`)
-  );
-}
-
 function stripClientModelEntitlement(
   negotiationAgentSnapshot: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -1772,29 +1269,4 @@ function applyRoundLimitToStrategy(
       ? Math.min(current, maxRoundsPerSession)
       : maxRoundsPerSession;
   return { ...negotiationAgentSnapshot, max_rounds: capped };
-}
-
-async function saveBuyerDefaultAddress(
-  db: Database,
-  userId: string,
-  address: BuyerShippingAddress,
-) {
-  await db
-    .update(userSavedAddresses)
-    .set({ isDefault: false })
-    .where(and(eq(userSavedAddresses.userId, userId), eq(userSavedAddresses.isDefault, true)));
-
-  await db.insert(userSavedAddresses).values({
-    userId,
-    label: "home",
-    name: address.name,
-    street1: address.street1,
-    street2: address.street2 ?? null,
-    city: address.city,
-    state: address.state,
-    zip: address.zip,
-    country: address.country,
-    phone: address.phone ?? null,
-    isDefault: true,
-  });
 }

@@ -18,6 +18,8 @@ type SessionStatus =
 // Create
 // ---------------------------------------------------------------------------
 
+export type NegotiationDriver = "web" | "mcp";
+
 export async function createSession(
   db: Database,
   data: {
@@ -31,6 +33,7 @@ export async function createSession(
     counterpartyId: string;
     negotiationAgentSnapshot: Record<string, unknown>;
     expiresAt?: Date;
+    driver?: NegotiationDriver;
   },
 ) {
   const [row] = await db
@@ -46,6 +49,7 @@ export async function createSession(
       counterpartyId: data.counterpartyId,
       negotiationAgentSnapshot: data.negotiationAgentSnapshot,
       expiresAt: data.expiresAt,
+      driver: data.driver ?? "web",
     })
     .returning();
 

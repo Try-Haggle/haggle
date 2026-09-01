@@ -68,6 +68,7 @@ export const negotiationSessions = pgTable(
       .default("CREATED"),
     buyerId: uuid("buyer_id").notNull(),
     sellerId: uuid("seller_id").notNull(),
+    driver: text("driver", { enum: ["web", "mcp"] }).notNull().default("web"),
     counterpartyId: uuid("counterparty_id").notNull(),
     currentRound: integer("current_round").notNull().default(0),
     roundsNoConcession: integer("rounds_no_concession").notNull().default(0),

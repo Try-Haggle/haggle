@@ -169,12 +169,12 @@ export default function NegotiationAgentBuilderChat({
     setIsLoading(true);
 
     try {
-      const raw = await callTool("haggle_seller_advisor_turn", {
+      const raw = await callTool("haggle_builder_chat_turn", {
         message: trimmed,
         previous_memory: memory,
-        listing_title: listingTitle,
-        listing_price: listingPrice,
-        agent_preset: agent.id,
+        side: "seller",
+        agent_id: agent.id,
+        listings: [],
       });
 
       const r = raw as Record<string, unknown> | undefined;

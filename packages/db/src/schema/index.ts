@@ -61,6 +61,13 @@ export {
   userMemoryCards,
   userMemoryEvents,
 } from "./intelligence-layer.js";
+export {
+  MCP_OAUTH_SCOPES,
+  type McpOauthScope,
+  mcpOauthAccessTokens,
+  mcpOauthAuthorizationCodes,
+  mcpOauthClients,
+} from "./mcp-oauth.js";
 export { listingClaims } from "./listing-claims.js";
 export { listingDrafts } from "./listing-drafts.js";
 export { listingEmbeddings } from "./listing-embeddings.js";

@@ -4,6 +4,8 @@ export type ServerSession = {
   current_round: number;
   last_offer_price_minor: string | number | null;
   buyer_negotiation_agent_preset_id: string | null;
+  driver?: "web" | "mcp";
+  chat_url?: string;
   listing: {
     public_id: string;
     title: string;

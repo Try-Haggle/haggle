@@ -61,6 +61,9 @@ const paymentsLimiter = new SlidingWindowRateLimiter(20, 60_000);
 // a thread.
 const messagesLimiter = new SlidingWindowRateLimiter(30, 60_000);
 
+// Unauthenticated DCR: 10 registrations / 15 minutes per IP
+const oauthRegisterLimiter = new SlidingWindowRateLimiter(10, 15 * 60 * 1000);
+
 export function resetRateLimitsForTests(): void {
   if (process.env.NODE_ENV !== "test") {
     throw new Error("rate limit reset is test-only");
@@ -69,6 +72,7 @@ export function resetRateLimitsForTests(): void {
   offersLimiter.clear();
   paymentsLimiter.clear();
   messagesLimiter.clear();
+  oauthRegisterLimiter.clear();
 }
 
 function getIp(request: FastifyRequest): string {
@@ -162,6 +166,19 @@ export async function messagesRateLimit(
 ): Promise<void> {
   const key = getUserKey(request);
   const result = messagesLimiter.isAllowed(key);
+  if (!result.allowed) {
+    reply
+      .code(429)
+      .header("Retry-After", String(result.retryAfter))
+      .send({ error: "TOO_MANY_REQUESTS", retryAfter: result.retryAfter });
+  }
+}
+
+export async function oauthRegisterRateLimit(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<void> {
+  const result = oauthRegisterLimiter.isAllowed(getIp(request));
   if (!result.allowed) {
     reply
       .code(429)
