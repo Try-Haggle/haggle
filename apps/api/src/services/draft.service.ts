@@ -22,6 +22,7 @@ import {
   sql,
   tags,
 } from "@haggle/db";
+import { isListingId, normalizeListingPublicId } from "../lib/listing-ref.js";
 import { triggerEmbeddingGeneration } from "./embedding.service.js";
 import { sanitizePersistedBuilderMemory } from "./negotiation-agent-builder-chat.service.js";
 import { placeListingTags } from "./tag-placement.service.js";
@@ -501,6 +502,43 @@ export async function getListingByIdForUser(db: Database, id: string, userId: st
 }
 
 // ─── Public Listing (Buyer) ─────────────────────────────────
+
+/** Resolve a slug, /l/:id URL, or published listing UUID. */
+export async function getPublishedListingByRef(db: Database, ref: string) {
+  const normalized = normalizeListingPublicId(ref);
+  if (!normalized) return null;
+  const byPublicId = await getPublishedListingByPublicId(db, normalized);
+  if (byPublicId) return byPublicId;
+  if (!isListingId(normalized)) return null;
+  const rows = await db
+    .select({
+      id: listingsPublished.id,
+      publicId: listingsPublished.publicId,
+      publishedAt: listingsPublished.publishedAt,
+      sellerId: listingDrafts.userId,
+      title: listingDrafts.title,
+      description: listingDrafts.description,
+      category: listingDrafts.category,
+      condition: listingDrafts.condition,
+      photoUrl: listingDrafts.photoUrl,
+      targetPrice: listingDrafts.targetPrice,
+      tags: listingDrafts.tags,
+      negotiationAgentSnapshot: listingDrafts.negotiationAgentSnapshot,
+      sellingDeadline: listingDrafts.sellingDeadline,
+      claimStatus: listingClaims.status,
+    })
+    .from(listingsPublished)
+    .innerJoin(listingDrafts, eq(listingDrafts.id, listingsPublished.draftId))
+    .leftJoin(listingClaims, activeListingClaimJoin())
+    .where(eq(listingsPublished.id, normalized));
+  const row = rows[0];
+  if (!row) return null;
+  const { claimStatus, ...listing } = row;
+  return {
+    ...listing,
+    holdState: toPublicListingHoldState(claimStatus as ListingClaimStatus | null),
+  };
+}
 
 /** Fetch a published listing by its public_id. No auth required. */
 export async function getPublishedListingByPublicId(db: Database, publicId: string) {

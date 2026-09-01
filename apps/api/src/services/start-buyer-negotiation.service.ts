@@ -26,7 +26,7 @@ import {
   defaultAttemptControlPolicy,
   evaluateAttemptControl,
 } from "./attempt-control.service.js";
-import { getPublishedListingByPublicId } from "./draft.service.js";
+import { getPublishedListingByRef } from "./draft.service.js";
 import {
   assertListingAcceptsNewSession,
   LISTING_CLAIM_HTTP,
@@ -102,7 +102,7 @@ export async function startBuyerNegotiation(
   const body = input.body;
   const buyer = { id: input.buyerId };
 
-  const listing = await getPublishedListingByPublicId(db, body.listing_public_id);
+  const listing = await getPublishedListingByRef(db, body.listing_public_id);
   if (!listing) {
     return { ok: false, status: 404, body: { error: "LISTING_NOT_FOUND" } };
   }
