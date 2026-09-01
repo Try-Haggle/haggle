@@ -25,10 +25,19 @@ export interface PublicListingView {
   sellerId: string | null;
 }
 
+/** Seller required {checkId, ask} — the start-wizard questions. No stance/floor. */
+export function buyerVisibleRequiredCriteria(
+  negotiationAgentSnapshot: unknown,
+): { checkId: string; ask: string }[] {
+  const snapshot = (negotiationAgentSnapshot as Record<string, unknown> | null) ?? {};
+  return extractSellerRequiredCriteria(snapshot);
+}
+
 export function toPublicListingView(row: PublishedListingRow): PublicListingView {
   // floorPrice, sellerId, and the raw strategy never reach a buyer.
   const { negotiationAgentSnapshot, sellerId, ...publicFields } = row;
   const cfg = (negotiationAgentSnapshot as Record<string, unknown> | null) ?? {};
+  const required_criteria = buyerVisibleRequiredCriteria(cfg);
 
   return {
     listing: {
@@ -37,7 +46,8 @@ export function toPublicListingView(row: PublishedListingRow): PublicListingView
       sellerAgentPreset: cfg.preset ?? null,
       specs: extractSellerProductFacts(cfg),
       // Check id + ask only: no stance, leverage, or floor.
-      sellerRequiredCriteria: extractSellerRequiredCriteria(cfg),
+      sellerRequiredCriteria: required_criteria,
+      required_criteria,
       sellerFulfillmentOffer: parseSellerFulfillmentOffer(cfg.sellerFulfillmentOffer) ?? null,
       parcel: parseListingParcel(cfg.parcel) ?? null,
     },

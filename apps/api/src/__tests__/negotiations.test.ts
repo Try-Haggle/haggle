@@ -874,6 +874,9 @@ describe("Negotiation API", () => {
       expect(res.json()).toMatchObject({
         error: "BUYER_CRITERIA_REQUIRED",
         required_check_ids: ["imei_verification"],
+        required_criteria: [
+          { checkId: "imei_verification", ask: "Should the agent require a clean IMEI?" },
+        ],
       });
       expect(res.statusCode).not.toBe(202);
       expect(res.json()).not.toHaveProperty("session_id");

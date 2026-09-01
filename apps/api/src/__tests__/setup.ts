@@ -259,6 +259,7 @@ vi.mock("@haggle/db", () => ({
 vi.mock("@modelcontextprotocol/sdk/server/mcp.js", () => ({
   McpServer: vi.fn().mockImplementation(() => ({
     tool: vi.fn(),
+    registerTool: vi.fn(),
     resource: vi.fn(),
     connect: vi.fn(),
   })),
