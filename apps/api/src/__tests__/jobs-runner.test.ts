@@ -88,6 +88,16 @@ afterEach(() => {
 });
 
 describe("cron job registry", () => {
+  it("registers seller-deleted listing purge once a day", () => {
+    expect(
+      buildJobRegistry().find((job) => job.name === "listing-withdraw-retention"),
+    ).toMatchObject({
+      enabled: true,
+      runOnStart: true,
+      intervalMs: 86_400_000,
+    });
+  });
+
   it("registers evidence scan retries every 30 seconds only when enabled", () => {
     delete process.env.ENABLE_DISPUTE_EVIDENCE_SCAN_RETRY_JOB;
     expect(
