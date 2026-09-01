@@ -29,6 +29,6 @@ export function mcpTransportOwnerMismatch(
   authorization: string | undefined,
 ): boolean {
   if (!user?.id || user.id !== binding.userId) return true;
-  const tokenFingerprint = mcpBearerFingerprint(authorization);
-  return !tokenFingerprint || tokenFingerprint !== binding.tokenFingerprint;
+  // Refresh rotates the bearer. Same user + any live token is still the owner.
+  return !mcpBearerFingerprint(authorization);
 }

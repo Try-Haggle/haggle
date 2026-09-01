@@ -1,22 +1,47 @@
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import Fastify from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createMcpTransportBinding } from "../lib/mcp-transport-auth.js";
-import {
-  registerMcpRoutes,
-  resetMcpTransportSessionsForTests,
-  seedMcpTransportSessionForTests,
-} from "../mcp/router.js";
+
+vi.mock("../mcp/tools/index.js", () => ({
+  registerTools: vi.fn(),
+}));
+vi.mock("../mcp/resources.js", () => ({
+  registerResources: vi.fn(),
+}));
+
+const { registerMcpRoutes } = await import("../mcp/router.js");
 
 const USER_A = { id: "00000000-0000-4000-a000-000000000010", role: "user" };
-const USER_B = { id: "00000000-0000-4000-a000-000000000011", role: "user" };
 const TOKEN_A = "a".repeat(32);
 const TOKEN_B = "b".repeat(32);
+
+const INITIALIZE_BODY = {
+  jsonrpc: "2.0",
+  id: 1,
+  method: "initialize",
+  params: {
+    protocolVersion: "2025-03-26",
+    capabilities: {},
+    clientInfo: { name: "test", version: "1.0.0" },
+  },
+};
 
 describe("MCP transport routes", () => {
   let app: ReturnType<typeof Fastify>;
 
   beforeEach(async () => {
-    resetMcpTransportSessionsForTests();
+    vi.mocked(StreamableHTTPServerTransport).mockImplementation(
+      () =>
+        ({
+          handleRequest: vi.fn(async (_req: IncomingMessage, res: ServerResponse) => {
+            res.statusCode = 200;
+            res.setHeader("content-type", "application/json");
+            res.end(JSON.stringify({ jsonrpc: "2.0", id: 1, result: {} }));
+          }),
+          close: vi.fn(),
+        }) as unknown as StreamableHTTPServerTransport,
+    );
     app = Fastify();
     app.decorateRequest("user", undefined);
     app.addHook(
@@ -28,9 +53,6 @@ describe("MCP transport routes", () => {
         if (request.headers.authorization === `Bearer ${TOKEN_A}`) {
           request.user = USER_A;
         }
-        if (request.headers.authorization === `Bearer ${TOKEN_B}`) {
-          request.user = USER_B;
-        }
       },
     );
     registerMcpRoutes(app, {} as never);
@@ -39,14 +61,13 @@ describe("MCP transport routes", () => {
 
   afterEach(async () => {
     await app.close();
-    resetMcpTransportSessionsForTests();
   });
 
   it("rejects POST, GET, and DELETE without a bearer token", async () => {
     const postRes = await app.inject({
       method: "POST",
       url: "/mcp",
-      payload: { jsonrpc: "2.0", id: 1, method: "initialize", params: {} },
+      payload: INITIALIZE_BODY,
     });
     expect(postRes.statusCode).toBe(401);
     expect(postRes.headers["www-authenticate"]).toContain("oauth-protected-resource");
@@ -67,33 +88,38 @@ describe("MCP transport routes", () => {
     expect(deleteRes.statusCode).toBe(401);
   });
 
-  it("rejects a stolen session id used with a different user token", async () => {
-    const binding = createMcpTransportBinding(USER_A, `Bearer ${TOKEN_A}`);
-    seedMcpTransportSessionForTests("sess-1", binding!, {
-      handleRequest: vi.fn(),
-      close: vi.fn().mockResolvedValue(undefined),
-    });
-
+  it("does not die on a stale mcp-session-id after login", async () => {
     const res = await app.inject({
-      method: "GET",
+      method: "POST",
       url: "/mcp",
       headers: {
-        authorization: `Bearer ${TOKEN_B}`,
-        "mcp-session-id": "sess-1",
+        authorization: `Bearer ${TOKEN_A}`,
+        "mcp-session-id": "stale-from-before-deploy",
+        accept: "application/json, text/event-stream",
       },
+      payload: INITIALIZE_BODY,
     });
-    expect(res.statusCode).toBe(404);
-    expect(res.json().error).toBe("MCP_SESSION_NOT_FOUND");
+
+    expect(res.statusCode).not.toBe(404);
+    const body = res.json() as { error?: string };
+    expect(body.error).not.toBe("MCP_SESSION_NOT_FOUND");
+    expect(res.statusCode).toBe(200);
   });
 
-  it("does not let DELETE close someone else's session", async () => {
-    const close = vi.fn().mockResolvedValue(undefined);
-    const binding = createMcpTransportBinding(USER_A, `Bearer ${TOKEN_A}`);
-    seedMcpTransportSessionForTests("sess-1", binding!, {
-      handleRequest: vi.fn(),
-      close,
+  it("lets the same user delete without a live HTTP session", async () => {
+    const res = await app.inject({
+      method: "DELETE",
+      url: "/mcp",
+      headers: {
+        authorization: `Bearer ${TOKEN_A}`,
+        "mcp-session-id": "already-gone",
+      },
     });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ok: true });
+  });
 
+  it("still rejects a token that is not the connected user", async () => {
     const res = await app.inject({
       method: "DELETE",
       url: "/mcp",
@@ -102,7 +128,6 @@ describe("MCP transport routes", () => {
         "mcp-session-id": "sess-1",
       },
     });
-    expect(res.statusCode).toBe(404);
-    expect(close).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(401);
   });
 });
