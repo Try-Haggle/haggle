@@ -66,6 +66,7 @@ import {
   startBuyerNegotiationSchema,
 } from "../../services/start-buyer-negotiation.service.js";
 import { haggleGetListingInputShape, haggleGetListingOutputShape } from "./mcp-listing-schema.js";
+import { hagglePlayNextInputShape } from "./mcp-play-next-schema.js";
 import { haggleStartNegotiationInputShape } from "./mcp-start-schema.js";
 import {
   mcpNegotiationTranscript,
@@ -688,9 +689,9 @@ export function registerPlatformTools(
 
   server.tool(
     "haggle_play_next",
-    "Advance one Haggle auto-play round (DeepSeek plays a side). After the tool returns, immediately quote say_to_user. Rejected with BUYER_CRITERIA_REQUIRED if seller required criteria exist and buyerCriteria was not provided at start — do not start auto-play and do not use answer_pause.",
-    { session_id: z.string().uuid() },
-    async ({ session_id }) => {
+    "Advance one Haggle auto-play round (DeepSeek plays a side). After the tool returns, immediately quote say_to_user. If ask_user asked for a price/accept, pass the user's counter as price_minor (integer cents, 42000 = $420) and optional message — same as the web counter, not hnp_submit_offer. Omit both fields to autoplay. Rejected with BUYER_CRITERIA_REQUIRED if seller required criteria exist and buyerCriteria was not provided at start — do not start auto-play and do not use answer_pause.",
+    hagglePlayNextInputShape,
+    async ({ session_id, price_minor, message }) => {
       const scoped = requireScopedActor("negotiate");
       if (!scoped.ok) return scoped.error;
       const played = await executeAutoPlayNext(db, {
@@ -698,6 +699,8 @@ export function registerPlatformTools(
         actor: scoped.actor,
         expectedDriver: "mcp",
         eventDispatcher,
+        ...(price_minor !== undefined ? { priceMinor: price_minor } : {}),
+        ...(message !== undefined ? { message } : {}),
       });
       if (!played.ok) return mcpJson(played.body, true);
       const pauseQuestions = Array.isArray(played.body.pause_questions)

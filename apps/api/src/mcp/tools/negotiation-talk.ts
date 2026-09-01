@@ -214,7 +214,7 @@ export function negotiationSayToUser(input: {
     ? "Answer pause_checks via haggle_answer_pause (or the answer panel). Do not treat them as chat."
     : input.sessionStatus === "ACCEPTED"
       ? "Open checkout on Haggle to finish payment."
-      : "Quote that line, then ask what price to offer or whether to accept.";
+      : "Quote that line, then ask what price to offer or whether to accept. Submit the user's counter via haggle_play_next with price_minor (cents) and optional message. Do not use hnp_submit_offer.";
   return { say_to_user, ask_user };
 }
 
