@@ -48,6 +48,7 @@ import {
   detectSellerCriteriaPause,
   readSellerCriteriaFromSnapshot,
   SELLER_CRITERIA_PAUSE_MARKER,
+  sellerCriteriaHoldChatMessage,
 } from "../phase/seller-criteria-pause.js";
 import { sanitizePrivatePlan } from "../prompts/private-plan.js";
 import { computeBriefing } from "../referee/briefing.js";
@@ -374,9 +375,16 @@ export async function executeStagedNegotiationRound(
             reason: `${SELLER_CRITERIA_PAUSE_MARKER}: ${sellerCriteriaPause.reason}`,
           },
         },
-        // Surface ALL unresolved seller requirements in the single fire-once hold,
-        // so the buyer sees every gap at once (not just the first).
-        sellerCriteriaPause.questions.join(" "),
+        sellerCriteriaHoldChatMessage({
+          incomingMessage: input.messageText,
+          incomingPriceMinor: input.offerPriceMinor,
+          senderRole: input.senderRole,
+          pauseQuestions: sellerCriteriaPause.questions,
+        }),
+        {
+          pause_questions: sellerCriteriaPause.questions,
+          pause_check_ids: sellerCriteriaPause.unresolvedCheckIds,
+        },
       );
       return { early: pauseResult };
     }
@@ -664,6 +672,7 @@ interface PersistRoundParams {
   llmTokensUsed: number;
   reasoningUsed: boolean;
   explainability?: import("../types.js").RoundExplainability;
+  metadataExtras?: Record<string, unknown>;
 }
 
 async function persistPipelineRound(
@@ -733,6 +742,7 @@ async function persistPipelineRound(
       engine: "staged-pipeline",
       protocol: input.protocol ? { hnp: input.protocol } : undefined,
       explainability: params.explainability ?? undefined,
+      ...params.metadataExtras,
     },
     idempotencyKey: input.idempotencyKey,
     coaching: coaching as unknown as Record<string, unknown>,
@@ -914,6 +924,7 @@ async function persistHoldRound(
   intervention: { pendingReview?: { reason: string } },
   /** Buyer-facing message for the held round. Defaults to the approval-wait copy. */
   message = "Waiting for your approval to proceed.",
+  metadataExtras?: Record<string, unknown>,
 ): Promise<RoundExecutionResult> {
   const holdDecision: EngineDecision = {
     action: "HOLD",
@@ -940,6 +951,7 @@ async function persistHoldRound(
     message,
     llmTokensUsed: 0,
     reasoningUsed: false,
+    metadataExtras,
   });
 }
 

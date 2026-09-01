@@ -18,8 +18,10 @@ import { validateSessionParticipant } from "../../lib/session-access.js";
 import type { AuthUser } from "../../middleware/auth.js";
 import {
   applyBuyerPauseAnswer,
+  isSellerCriteriaPauseReasoning,
   readSellerCriteriaFromSnapshot,
   SELLER_CRITERIA_PAUSE_MARKER,
+  unresolvedBuyerPauseAsks,
 } from "../../negotiation/phase/seller-criteria-pause.js";
 import { mcpConnectHint } from "../../routes/mcp-oauth.js";
 import { evaluateDisputeOpeningEligibility } from "../../services/dispute-opening-eligibility.service.js";
@@ -61,6 +63,7 @@ import {
   startBuyerNegotiation,
   startBuyerNegotiationSchema,
 } from "../../services/start-buyer-negotiation.service.js";
+import { negotiationSayToUser } from "./negotiation-talk.js";
 import { mcpError, mcpJson } from "./responses.js";
 
 const DEFAULT_BUILDER_SKILL_ID = "negotiation-agent-builder-v1";
@@ -579,7 +582,7 @@ export function registerPlatformTools(
 
   server.tool(
     "haggle_get_negotiation",
-    "Read a negotiation the connected user is in: status, recent messages, next actions, and the web chat URL.",
+    "Read the live negotiation. Immediately quote say_to_user to the human — that is the counterpart's line. If pause_questions are present, ask those next; do not treat them as the seller's bargain line. Do not stop silently.",
     { session_id: z.string().uuid() },
     async ({ session_id }) => {
       const scoped = requireScopedActor("negotiate");
@@ -590,20 +593,53 @@ export function registerPlatformTools(
       const access = validateSessionParticipant(actor, session);
       if (!access.ok) return mcpError(access.error);
       const rounds = await getRoundsBySessionId(db, session.id);
-      const recent = rounds.slice(-4).map((round) => ({
-        round_no: round.roundNo,
-        sender_role: round.senderRole,
-        message: round.message,
-        decision: round.decision,
-        price_minor: round.priceminor,
-      }));
+      const latest = rounds.at(-1);
+      const latestMeta = (latest?.metadata as Record<string, unknown> | null) ?? null;
+      const pauseSnapshot =
+        getNegotiationAutoPlayContext(session.negotiationAgentSnapshot)?.buyerSnapshot ??
+        session.negotiationAgentSnapshot;
+      const pauseAsks =
+        isSellerCriteriaPauseReasoning(latestMeta?.reasoning) && !latestMeta?.buyer_pause_answers
+          ? unresolvedBuyerPauseAsks(pauseSnapshot)
+          : [];
+      const storedQuestions = Array.isArray(latestMeta?.pause_questions)
+        ? latestMeta.pause_questions.filter(
+            (q): q is string => typeof q === "string" && Boolean(q.trim()),
+          )
+        : [];
+      const pauseDump = storedQuestions.join(" ");
+      const latestSpoken =
+        latest?.message?.trim() && latest.message.trim() !== pauseDump
+          ? latest.message.trim()
+          : null;
+      const recent = rounds.slice(-4).map((round) => {
+        const meta = (round.metadata as Record<string, unknown> | null) ?? null;
+        const held = isSellerCriteriaPauseReasoning(meta?.reasoning);
+        return {
+          round_no: round.roundNo,
+          sender_role: held ? round.senderRole : round.senderRole,
+          message: round.message,
+          decision: round.decision,
+          price_minor: round.priceminor,
+          held_for_criteria_pause: held,
+        };
+      });
       const driver = session.driver === "mcp" ? "mcp" : "web";
       const nextActions: string[] = [];
       if (session.status === "ACCEPTED") nextActions.push("haggle_create_checkout");
       else if (!["REJECTED", "EXPIRED", "SUPERSEDED", "STALLED"].includes(session.status)) {
-        if (driver === "mcp") nextActions.push("haggle_play_next");
-        nextActions.push("haggle_answer_pause", "haggle_reject_negotiation");
+        if (pauseAsks.length > 0) nextActions.push("haggle_answer_pause");
+        else if (driver === "mcp") nextActions.push("haggle_play_next");
+        nextActions.push("haggle_reject_negotiation");
       }
+      const talk = negotiationSayToUser({
+        counterpartRole: latest?.senderRole ?? "SELLER",
+        counterpartMessage: latestSpoken,
+        decision: latest?.decision,
+        priceMinor: latest?.priceminor ?? session.lastOfferPriceMinor,
+        pauseQuestions: pauseAsks.map((c) => c.ask),
+        sessionStatus: session.status,
+      });
       return mcpJson({
         session_id: session.id,
         status: session.status,
@@ -612,14 +648,19 @@ export function registerPlatformTools(
         chat_url: negotiationChatUrl(session.id),
         last_offer_price_minor: session.lastOfferPriceMinor,
         recent_messages: recent,
+        pause_questions: pauseAsks.map((c) => c.ask),
+        pause_check_ids: pauseAsks.map((c) => c.checkId),
         next_actions: nextActions,
+        ...talk,
+        instruction:
+          "Speak say_to_user now. Ask ask_user. Do not wait for the human to prompt you.",
       });
     },
   );
 
   server.tool(
     "haggle_play_next",
-    "Advance one auto-play round on an MCP-driven negotiation. Same service as the web live page. Fails with DRIVER_MISMATCH if the web started this session.",
+    "Advance one Haggle auto-play round (DeepSeek plays a side). After the tool returns, immediately quote say_to_user. If pause_questions appear, those are buyer checks — not the seller's bargain line.",
     { session_id: z.string().uuid() },
     async ({ session_id }) => {
       const scoped = requireScopedActor("negotiate");
@@ -630,7 +671,28 @@ export function registerPlatformTools(
         expectedDriver: "mcp",
         eventDispatcher,
       });
-      return mcpJson(played.body, !played.ok);
+      if (!played.ok) return mcpJson(played.body, true);
+      const pauseQuestions = Array.isArray(played.body.pause_questions)
+        ? played.body.pause_questions.filter((q): q is string => typeof q === "string")
+        : [];
+      const talk = negotiationSayToUser({
+        counterpartRole: "SELLER",
+        counterpartMessage: typeof played.body.message === "string" ? played.body.message : null,
+        decision: typeof played.body.decision === "string" ? played.body.decision : null,
+        priceMinor:
+          typeof played.body.last_offer_price_minor === "number" ||
+          typeof played.body.last_offer_price_minor === "string"
+            ? played.body.last_offer_price_minor
+            : null,
+        pauseQuestions,
+        sessionStatus:
+          typeof played.body.session_status === "string" ? played.body.session_status : undefined,
+      });
+      return mcpJson({
+        ...played.body,
+        ...talk,
+        instruction: "Speak say_to_user now. Ask ask_user. Do not stop silently.",
+      });
     },
   );
 

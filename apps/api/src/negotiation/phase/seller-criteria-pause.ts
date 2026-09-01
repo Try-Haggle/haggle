@@ -15,12 +15,48 @@
 
 import { type CategoryCriterion, unresolvedSellerRequirements } from "@haggle/shared";
 
+export function isSellerCriteriaPauseReasoning(reasoning: unknown): boolean {
+  return typeof reasoning === "string" && reasoning.includes(SELLER_CRITERIA_PAUSE_MARKER);
+}
+
+/** Unresolved seller-required asks still blocking a WAITING hold. */
+export function unresolvedBuyerPauseAsks(snapshot: Record<string, unknown>): {
+  checkId: string;
+  ask: string;
+}[] {
+  const { sellerRequired, buyerCriteria } = readSellerCriteriaFromSnapshot(snapshot);
+  return unresolvedSellerRequirements(sellerRequired, buyerCriteria)
+    .map((c) => ({ checkId: c.checkId, ask: (c.buyerAskKo ?? c.questionKo)?.trim() ?? "" }))
+    .filter((c): c is { checkId: string; ask: string } => Boolean(c.ask));
+}
+
 /**
  * Marker embedded in a seller-criteria hold's `reasoning` so the round loop can (a)
  * fire the pause at most once and (b) recognize a pending pause round and block the
  * auto-play loop on it until the buyer answers.
  */
 export const SELLER_CRITERIA_PAUSE_MARKER = "SELLER_CRITERIA_PAUSE";
+
+/**
+ * Chat bubble for a seller-criteria HOLD. Pause questions belong in metadata /
+ * the pause UI — not here. Otherwise the transcript replaces the counterpart
+ * line (e.g. NEAR_DEAL $880) with IMEI/FRP/lock checklist text.
+ */
+export function sellerCriteriaHoldChatMessage(input: {
+  incomingMessage?: string | null;
+  incomingPriceMinor: number;
+  senderRole: "BUYER" | "SELLER";
+  pauseQuestions?: readonly string[];
+}): string {
+  const spoken = input.incomingMessage?.trim() ?? "";
+  const pauseDump = (input.pauseQuestions ?? []).filter((q) => q.trim()).join(" ");
+  if (spoken && spoken !== pauseDump) return spoken;
+  const dollars = (input.incomingPriceMinor / 100).toFixed(
+    input.incomingPriceMinor % 100 === 0 ? 0 : 2,
+  );
+  const who = input.senderRole === "SELLER" ? "Seller" : "Buyer";
+  return `${who} is at $${dollars}.`;
+}
 
 /**
  * Read the seller's REQUIRED criteria (injected at negotiation start) and the buyer's

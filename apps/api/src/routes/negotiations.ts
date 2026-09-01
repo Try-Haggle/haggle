@@ -23,8 +23,10 @@ import { validateSessionParticipant, validateSessionWriteAccess } from "../lib/s
 import { requireAuth } from "../middleware/require-auth.js";
 import {
   applyBuyerPauseAnswer,
+  isSellerCriteriaPauseReasoning,
   readSellerCriteriaFromSnapshot,
   SELLER_CRITERIA_PAUSE_MARKER,
+  unresolvedBuyerPauseAsks,
 } from "../negotiation/phase/seller-criteria-pause.js";
 import { getNotificationUserInfo } from "../notification/get-user-info.js";
 import type { NotificationBus } from "../notification/index.js";
@@ -321,6 +323,17 @@ export function registerNegotiationRoutes(
       session.negotiationAgentSnapshot,
     );
 
+    const latestRound = rounds.at(-1);
+    const latestMeta = (latestRound?.metadata as Record<string, unknown> | null) ?? null;
+    const heldForCriteriaPause = isSellerCriteriaPauseReasoning(latestMeta?.reasoning);
+    const pauseSnapshot =
+      getNegotiationAutoPlayContext(session.negotiationAgentSnapshot)?.buyerSnapshot ??
+      session.negotiationAgentSnapshot;
+    const pendingPauseAsks =
+      heldForCriteriaPause && !latestMeta?.buyer_pause_answers
+        ? unresolvedBuyerPauseAsks(pauseSnapshot)
+        : [];
+
     return reply.send({
       session: {
         id: session.id,
@@ -349,26 +362,48 @@ export function registerNegotiationRoutes(
             }
           : null,
       },
-      rounds: rounds.map((r) => ({
-        id: r.id,
-        round_no: r.roundNo,
-        sender_role: r.senderRole,
-        message_type: r.messageType,
-        price_minor: r.priceminor,
-        counter_price_minor: r.counterPriceMinor,
-        decision: r.decision,
-        message: r.message,
-        phase_at_round: r.phaseAtRound,
-        created_at: r.createdAt,
-        // The buyer's reply to a mid-negotiation pause, so the transcript can show it
-        // under the question that asked for it.
-        pause_answers: (r.metadata as Record<string, unknown> | null)?.buyer_pause_answers ?? null,
-        ...projectRoundEngineFields(viewer, {
-          utility: r.utility,
-          tactic_used: r.tacticUsed,
-          concession_rate: r.concessionRate,
-        }),
+      paused_for_buyer: pendingPauseAsks.length > 0,
+      pause_questions: pendingPauseAsks.map((c) => c.ask),
+      pause_check_ids: pendingPauseAsks.map((c) => c.checkId),
+      pause_checks: pendingPauseAsks.map((c) => ({
+        checkId: c.checkId,
+        ask: c.ask,
+        options: buyerChoiceOptionsForCheck(c.checkId).map((o) => ({
+          label: o.label,
+          stance: o.stance,
+        })),
       })),
+      rounds: rounds.map((r) => {
+        const meta = (r.metadata as Record<string, unknown> | null) ?? null;
+        const held = isSellerCriteriaPauseReasoning(meta?.reasoning);
+        const storedQuestions = Array.isArray(meta?.pause_questions)
+          ? meta.pause_questions.filter(
+              (q): q is string => typeof q === "string" && Boolean(q.trim()),
+            )
+          : [];
+        return {
+          id: r.id,
+          round_no: r.roundNo,
+          sender_role: r.senderRole,
+          message_type: r.messageType,
+          price_minor: r.priceminor,
+          counter_price_minor: r.counterPriceMinor,
+          decision: r.decision,
+          message: r.message,
+          phase_at_round: r.phaseAtRound,
+          created_at: r.createdAt,
+          held_for_criteria_pause: held,
+          pause_questions: storedQuestions.length > 0 ? storedQuestions : null,
+          // The buyer's reply to a mid-negotiation pause, so the transcript can show it
+          // under the question that asked for it.
+          pause_answers: meta?.buyer_pause_answers ?? null,
+          ...projectRoundEngineFields(viewer, {
+            utility: r.utility,
+            tactic_used: r.tacticUsed,
+            concession_rate: r.concessionRate,
+          }),
+        };
+      }),
     });
   });
 
