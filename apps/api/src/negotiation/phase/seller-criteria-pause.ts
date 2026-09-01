@@ -13,7 +13,11 @@
  * pre-Phase-G sessions carry no criteria, so `sellerRequired` is empty → never fires.
  */
 
-import { type CategoryCriterion, unresolvedSellerRequirements } from "@haggle/shared";
+import {
+  type CategoryCriterion,
+  criterionAnswered,
+  unresolvedSellerRequirements,
+} from "@haggle/shared";
 
 export function isSellerCriteriaPauseReasoning(reasoning: unknown): boolean {
   return typeof reasoning === "string" && reasoning.includes(SELLER_CRITERIA_PAUSE_MARKER);
@@ -47,15 +51,57 @@ export function sellerCriteriaHoldChatMessage(input: {
   incomingPriceMinor: number;
   senderRole: "BUYER" | "SELLER";
   pauseQuestions?: readonly string[];
+  decision?: string | null;
 }): string {
-  const spoken = input.incomingMessage?.trim() ?? "";
-  const pauseDump = (input.pauseQuestions ?? []).filter((q) => q.trim()).join(" ");
-  if (spoken && spoken !== pauseDump) return spoken;
+  // Never copy the incoming counterpart line (R2 seller text must not reappear as R3).
+  // Pause questions belong in metadata / the pause UI, not the transcript bubble.
+  void input.incomingMessage;
+  void input.pauseQuestions;
   const dollars = (input.incomingPriceMinor / 100).toFixed(
     input.incomingPriceMinor % 100 === 0 ? 0 : 2,
   );
   const who = input.senderRole === "SELLER" ? "Seller" : "Buyer";
+  if (input.decision === "NEAR_DEAL") {
+    return `${who} signals near-deal at $${dollars}.`;
+  }
   return `${who} is at $${dollars}.`;
+}
+
+export type BuyerPauseAsk = { checkId: string; ask: string };
+
+export const BUYER_CRITERIA_REQUIRED = "BUYER_CRITERIA_REQUIRED";
+
+/** True when the buyer has taken at least one non-blank stance. */
+export function buyerHasAnsweredCriteria(buyerCriteria: readonly CategoryCriterion[]): boolean {
+  return buyerCriteria.some(criterionAnswered);
+}
+
+/**
+ * Start/play wizard-gate: seller required criteria exist and the buyer has not
+ * answered any of them. Do not treat listing_context.seller_facts as answers.
+ * Returns unresolved asks when play_next must reject — not a mid-session pause.
+ */
+export function buyerCriteriaStartGate(snapshot: Record<string, unknown>): BuyerPauseAsk[] {
+  const { sellerRequired, buyerCriteria } = readSellerCriteriaFromSnapshot(snapshot);
+  if (sellerRequired.length === 0) return [];
+  if (buyerHasAnsweredCriteria(buyerCriteria)) return [];
+  return unresolvedBuyerPauseAsks(snapshot);
+}
+
+/** Reject play_next / auto-play when the start wizard never answered seller required criteria. */
+export function buyerCriteriaRequiredReject(snapshot: Record<string, unknown>): {
+  error: typeof BUYER_CRITERIA_REQUIRED;
+  message: string;
+  required_check_ids: string[];
+} | null {
+  const asks = buyerCriteriaStartGate(snapshot);
+  if (asks.length === 0) return null;
+  return {
+    error: BUYER_CRITERIA_REQUIRED,
+    message:
+      "Answer seller required criteria (IMEI/완납/침수/Find My) in the start wizard via buyerCriteria before play_next. Do not use answer_pause.",
+    required_check_ids: asks.map((c) => c.checkId),
+  };
 }
 
 /**

@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { executeAutoPlayNext } from "../services/execute-auto-play-next.service.js";
+import {
+  getNegotiationAutoPlayContext,
+  planNegotiationAutoPlayRound,
+} from "../services/negotiation-auto-play.service.js";
+import { getSessionById } from "../services/negotiation-session.service.js";
 
 vi.mock("../services/negotiation-session.service.js", () => ({
   getSessionById: vi.fn(async () => ({
@@ -39,5 +44,90 @@ describe("executeAutoPlayNext driver guard", () => {
       status: 409,
       body: { error: "DRIVER_MISMATCH" },
     });
+  });
+});
+
+const sellerRequiredSnap = {
+  pause_seller_required_criteria: [
+    {
+      checkId: "imei_verification",
+      questionKo: "IMEI가 깨끗한지 확인 가능한가요?",
+      buyerAskKo: "Should the agent require a clean IMEI?",
+      enforcement: "hard",
+      requirement: "required",
+    },
+  ],
+  buyer_negotiation_agent_builder_memory: { categoryCriteria: [] },
+  listing_context: {
+    seller_facts: [{ checkId: "imei_verification", label: "IMEI", value: "Clean" }],
+  },
+};
+
+describe("executeAutoPlayNext buyerCriteria start gate", () => {
+  it("rejects play_next when seller required exist and buyerCriteria is empty", async () => {
+    vi.mocked(getSessionById).mockResolvedValueOnce({
+      id: "sess-1",
+      driver: "mcp",
+      buyerId: "buyer-1",
+      sellerId: "seller-1",
+      status: "ACTIVE",
+      currentRound: 0,
+      version: 1,
+      negotiationAgentSnapshot: {},
+    } as never);
+    vi.mocked(getNegotiationAutoPlayContext).mockReturnValueOnce({
+      maxRounds: 8,
+      buyerSnapshot: sellerRequiredSnap,
+    } as never);
+
+    const result = await executeAutoPlayNext({} as never, {
+      sessionId: "sess-1",
+      actor: { id: "buyer-1", role: "user" },
+      expectedDriver: "mcp",
+    });
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(409);
+    expect(result.body.error).toBe("BUYER_CRITERIA_REQUIRED");
+    expect(result.body.required_check_ids).toEqual(["imei_verification"]);
+    expect(planNegotiationAutoPlayRound).not.toHaveBeenCalled();
+  });
+
+  it("does not reject when the buyer already answered at start", async () => {
+    vi.mocked(getSessionById).mockResolvedValueOnce({
+      id: "sess-1",
+      driver: "mcp",
+      buyerId: "buyer-1",
+      sellerId: "seller-1",
+      status: "ACTIVE",
+      currentRound: 0,
+      version: 1,
+      negotiationAgentSnapshot: {},
+    } as never);
+    vi.mocked(getNegotiationAutoPlayContext).mockReturnValueOnce({
+      maxRounds: 8,
+      buyerSnapshot: {
+        ...sellerRequiredSnap,
+        buyer_negotiation_agent_builder_memory: {
+          categoryCriteria: [
+            {
+              checkId: "imei_verification",
+              questionKo: "IMEI?",
+              enforcement: "hard",
+              requirement: "required",
+              stance: "clean IMEI required",
+            },
+          ],
+        },
+      },
+    } as never);
+    vi.mocked(planNegotiationAutoPlayRound).mockReturnValueOnce(null);
+
+    const result = await executeAutoPlayNext({} as never, {
+      sessionId: "sess-1",
+      actor: { id: "buyer-1", role: "user" },
+      expectedDriver: "mcp",
+    });
+    expect(result.body.error).not.toBe("BUYER_CRITERIA_REQUIRED");
+    expect(planNegotiationAutoPlayRound).toHaveBeenCalled();
   });
 });
