@@ -64,6 +64,7 @@ import {
   startBuyerNegotiationSchema,
 } from "../../services/start-buyer-negotiation.service.js";
 import {
+  mcpNegotiationTranscript,
   negotiationSayToUser,
   spokenRoundPriceMinor,
   spokenRoundSpeaker,
@@ -616,35 +617,26 @@ export function registerPlatformTools(
         latest?.message?.trim() && latest.message.trim() !== pauseDump
           ? latest.message.trim()
           : null;
-      const recent = rounds.slice(-4).map((round) => {
-        const meta = (round.metadata as Record<string, unknown> | null) ?? null;
-        const held = isSellerCriteriaPauseReasoning(meta?.reasoning);
-        const pauseQuestions = Array.isArray(meta?.pause_questions)
-          ? meta.pause_questions.filter((q): q is string => typeof q === "string")
-          : [];
-        const speaker = spokenRoundSpeaker({
-          senderRole: round.senderRole,
-          message: round.message,
-          heldForCriteriaPause: held,
-          pauseDump: pauseQuestions.join(" "),
-        });
-        const spokenPrice = spokenRoundPriceMinor({
-          priceMinor: round.priceminor,
-          counterPriceMinor: round.counterPriceMinor,
-        });
-        return {
-          round_no: round.roundNo,
-          speaker,
-          sender_role: speaker,
-          offer_sender_role: round.senderRole,
-          message: round.message,
-          decision: round.decision,
-          price_minor: spokenPrice,
-          incoming_price_minor: round.priceminor,
-          counter_price_minor: round.counterPriceMinor,
-          held_for_criteria_pause: held,
-        };
-      });
+      const transcript = mcpNegotiationTranscript(
+        rounds.map((round) => {
+          const meta = (round.metadata as Record<string, unknown> | null) ?? null;
+          const pauseQuestions = Array.isArray(meta?.pause_questions)
+            ? meta.pause_questions.filter((q): q is string => typeof q === "string")
+            : [];
+          return {
+            roundNo: round.roundNo,
+            senderRole: round.senderRole,
+            message: round.message,
+            decision: round.decision,
+            priceminor: round.priceminor,
+            counterPriceMinor: round.counterPriceMinor,
+            heldForCriteriaPause: isSellerCriteriaPauseReasoning(meta?.reasoning),
+            pauseQuestions,
+          };
+        }),
+        session.currentRound,
+      );
+      const recent = transcript.recent_messages;
       const driver = session.driver === "mcp" ? "mcp" : "web";
       const nextActions: string[] = [];
       if (session.status === "ACCEPTED") nextActions.push("haggle_create_checkout");
@@ -674,7 +666,7 @@ export function registerPlatformTools(
       return mcpJson({
         session_id: session.id,
         status: session.status,
-        current_round: session.currentRound,
+        current_round: transcript.current_round,
         driver,
         chat_url: negotiationChatUrl(session.id),
         speaker: latestSpeaker,

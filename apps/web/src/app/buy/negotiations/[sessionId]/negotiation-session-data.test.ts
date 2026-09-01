@@ -94,4 +94,45 @@ describe("negotiation live session data", () => {
 
     expect(transformed.session.finalStatus).toBe("IN_PROGRESS");
   });
+
+  it("does not collapse buyer OPENING and seller COUNTER into one round", () => {
+    const transformed = transformNegotiationPlayback({
+      session: {
+        id: "a9626ebf-31af-4cee-842d-3454fc4dec83",
+        status: "ACTIVE",
+        current_round: 1,
+        last_offer_price_minor: 395_00,
+        buyer_negotiation_agent_preset_id: "steady-buyer",
+        listing: null,
+      },
+      rounds: [
+        round({
+          sender_role: "BUYER",
+          message_type: "OFFER",
+          price_minor: 360_00,
+          counter_price_minor: 395_00,
+          decision: "COUNTER",
+          message:
+            "This one is like-new, unlocked, 128GB, and battery is 90%+, so $360 is below what it's worth. I can meet you at $395.",
+        }),
+      ],
+    });
+    expect(transformed.rounds).toHaveLength(2);
+    expect(transformed.session.roundsTotal).toBe(2);
+    expect(transformed.rounds[0]).toMatchObject({
+      roundIndex: 1,
+      sender: "BUYER",
+      decision: "OPENING",
+      offerPrice: 360,
+    });
+    expect(transformed.rounds[0]?.message).toBe(
+      "Hi, I'm interested in this listing. I'd like to offer $360.",
+    );
+    expect(transformed.rounds[1]).toMatchObject({
+      roundIndex: 2,
+      sender: "SELLER",
+      decision: "COUNTER",
+      offerPrice: 395,
+    });
+  });
 });
