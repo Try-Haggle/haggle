@@ -5,6 +5,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { EventDispatcher } from "../../lib/event-dispatcher.js";
 import { executeGroupTerminal } from "../../lib/group-executor.js";
+import { storeListingPhoto } from "../../lib/listing-photo.js";
 import { getMcpActor } from "../../lib/mcp-actor.js";
 import { effectiveMcpScopes, requireActorWithScope } from "../../lib/mcp-scopes.js";
 import { checkoutUrl, negotiationChatUrl, publicAppBaseUrl } from "../../lib/public-urls.js";
@@ -23,6 +24,7 @@ import {
   getDraftById,
   getPublishedListingByPublicId,
   listPublishedListings,
+  setOwnedListingPhoto,
 } from "../../services/draft.service.js";
 import { executeAutoPlayNext } from "../../services/execute-auto-play-next.service.js";
 import {
@@ -188,7 +190,7 @@ export function registerPlatformTools(
 
   server.tool(
     "haggle_create_listing",
-    "Create and publish a listing as the connected user. Grok Bot and other text clients should use this instead of the ChatGPT listing widget. Requires a connected Haggle account. Do not invent user IDs. Photo is optional — a title, asking price, and deadline are enough. If selling_deadline is omitted, the listing stays up for 7 days.",
+    "Create and publish a listing as the connected user. Grok Bot and other text clients should use this instead of the ChatGPT listing widget. Requires a connected Haggle account. Do not invent user IDs. If the user attached a photo, pass it as image_base64 (raw base64 or a data URI) or photo_url (public HTTPS image). Title and asking price are required. If selling_deadline is omitted, the listing stays up for 7 days.",
     {
       title: z.string().min(1).max(200),
       target_price: z.string().min(1).max(20),
@@ -209,6 +211,9 @@ export function registerPlatformTools(
       floor_price: z.string().max(20).optional(),
       tags: z.array(z.string().min(1).max(40)).max(12).optional(),
       selling_deadline: z.string().datetime().optional(),
+      photo_url: z.string().url().optional(),
+      image_base64: z.string().min(32).max(8_000_000).optional(),
+      mime_type: z.enum(["image/jpeg", "image/png", "image/webp"]).optional(),
     },
     async ({
       title,
@@ -219,9 +224,24 @@ export function registerPlatformTools(
       floor_price,
       tags,
       selling_deadline,
+      photo_url,
+      image_base64,
+      mime_type,
     }) => {
       const scoped = requireScopedActor("listings");
       if (!scoped.ok) return scoped.error;
+      const draftId = crypto.randomUUID();
+      let storedPhotoUrl: string | undefined;
+      if (image_base64 || photo_url) {
+        const stored = await storeListingPhoto({
+          storageKey: draftId,
+          imageBase64: image_base64,
+          mimeType: mime_type,
+          photoUrl: photo_url,
+        });
+        if (!stored.ok) return mcpError(stored.error, { photo_url });
+        storedPhotoUrl = stored.publicUrl;
+      }
       const created = await createAndPublishOwnedListing(db, {
         userId: scoped.actor.id,
         title,
@@ -232,6 +252,7 @@ export function registerPlatformTools(
         floorPrice: floor_price,
         tags,
         sellingDeadline: selling_deadline ? new Date(selling_deadline) : undefined,
+        photoUrl: storedPhotoUrl,
       });
       if (!created.ok) {
         return mcpError(created.error, {
@@ -244,9 +265,52 @@ export function registerPlatformTools(
         public_id: created.publicId,
         share_url: created.shareUrl,
         listing_url: created.listingUrl,
-        next_actions: ["haggle_get_listing", "haggle_start_negotiation"],
-        message:
-          "Listing is live and owned by the connected account. Share listing_url. Buyers start from haggle_start_negotiation with this public_id.",
+        photo_url: created.photoUrl,
+        next_actions: [
+          "haggle_get_listing",
+          "haggle_start_negotiation",
+          "haggle_set_listing_photo",
+        ],
+        message: created.photoUrl
+          ? "Listing is live with a photo. Share listing_url."
+          : "Listing is live. Share listing_url. To add a photo later, call haggle_set_listing_photo with this public_id.",
+      });
+    },
+  );
+
+  server.tool(
+    "haggle_set_listing_photo",
+    "Add or replace the photo on a listing the connected user owns. Use this when the user already published a listing and later attaches a photo. Pass image_base64 from the chat attachment, or photo_url if you have a public HTTPS image.",
+    {
+      public_id: z.string().min(1),
+      photo_url: z.string().url().optional(),
+      image_base64: z.string().min(32).max(8_000_000).optional(),
+      mime_type: z.enum(["image/jpeg", "image/png", "image/webp"]).optional(),
+    },
+    async ({ public_id, photo_url, image_base64, mime_type }) => {
+      const scoped = requireScopedActor("listings");
+      if (!scoped.ok) return scoped.error;
+      if (!image_base64 && !photo_url) {
+        return mcpError("PHOTO_REQUIRED", { public_id });
+      }
+      const stored = await storeListingPhoto({
+        storageKey: public_id,
+        imageBase64: image_base64,
+        mimeType: mime_type,
+        photoUrl: photo_url,
+      });
+      if (!stored.ok) return mcpError(stored.error, { public_id, photo_url });
+      const updated = await setOwnedListingPhoto(db, {
+        userId: scoped.actor.id,
+        publicId: public_id,
+        photoUrl: stored.publicUrl,
+      });
+      if (!updated.ok) return mcpError(updated.error, { public_id });
+      return mcpJson({
+        public_id: updated.publicId,
+        photo_url: updated.photoUrl,
+        listing_url: `${publicAppBaseUrl()}/l/${updated.publicId}`,
+        message: "Photo saved on the listing.",
       });
     },
   );
