@@ -160,7 +160,9 @@ describe("startBuyerNegotiation buyerCriteria gate", () => {
         ],
       },
     });
-    expect(result.body.error).not.toBe("ATTEMPT_LIMIT_EXCEEDED");
+    if (!result.ok) {
+      expect(result.body.error).not.toBe("ATTEMPT_LIMIT_EXCEEDED");
+    }
     expect(result.body).not.toHaveProperty("session_id");
     expect(evaluateAttemptControl).not.toHaveBeenCalled();
     expect(quoteNegotiationCredits).not.toHaveBeenCalled();
