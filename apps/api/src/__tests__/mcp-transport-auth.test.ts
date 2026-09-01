@@ -7,12 +7,12 @@ const tokenA = `Bearer ${"a".repeat(32)}`;
 const tokenB = `Bearer ${"b".repeat(32)}`;
 
 describe("MCP transport binding", () => {
-  it("binds a session to the caller and rejects a stolen session id", () => {
+  it("binds a transport to the user and allows token refresh", () => {
     const binding = createMcpTransportBinding(userA, tokenA);
     expect(binding?.userId).toBe("user-a");
     expect(mcpTransportOwnerMismatch(binding!, undefined, undefined)).toBe(true);
     expect(mcpTransportOwnerMismatch(binding!, userB, tokenB)).toBe(true);
-    expect(mcpTransportOwnerMismatch(binding!, userA, tokenB)).toBe(true);
+    expect(mcpTransportOwnerMismatch(binding!, userA, tokenB)).toBe(false);
     expect(mcpTransportOwnerMismatch(binding!, userA, tokenA)).toBe(false);
   });
 

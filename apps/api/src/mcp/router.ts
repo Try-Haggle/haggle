@@ -5,36 +5,10 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { EventDispatcher } from "../lib/event-dispatcher.js";
 import { runWithMcpActor } from "../lib/mcp-actor.js";
-import {
-  createMcpTransportBinding,
-  type McpTransportBinding,
-  mcpTransportOwnerMismatch,
-} from "../lib/mcp-transport-auth.js";
+import { createMcpTransportBinding } from "../lib/mcp-transport-auth.js";
 import { publicApiBaseUrl } from "../lib/public-urls.js";
 import { registerResources } from "./resources.js";
 import { registerTools } from "./tools/index.js";
-
-type BoundTransportSession = {
-  transport: StreamableHTTPServerTransport;
-  createdAt: number;
-} & McpTransportBinding;
-
-/** Active MCP sessions keyed by session ID, with creation timestamp for TTL */
-const sessions = new Map<string, BoundTransportSession>();
-
-/** Max session lifetime: 2 hours. Sweep every 5 minutes. */
-const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
-const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
-
-setInterval(() => {
-  const now = Date.now();
-  for (const [id, entry] of sessions) {
-    if (now - entry.createdAt > SESSION_TTL_MS) {
-      entry.transport.close().catch(() => {});
-      sessions.delete(id);
-    }
-  }
-}, SWEEP_INTERVAL_MS).unref(); // unref() so the timer doesn't prevent process exit
 
 function createMcpServer(db: Database, eventDispatcher?: EventDispatcher): McpServer {
   const mcp = new McpServer({
@@ -58,43 +32,31 @@ function rejectMcpUnauthorized(request: FastifyRequest, reply: FastifyReply) {
     .send({ error: "AUTH_REQUIRED" });
 }
 
-function rejectMcpSession(reply: FastifyReply) {
-  return reply.code(404).send({ error: "MCP_SESSION_NOT_FOUND" });
-}
-
-function ownedMcpSession(request: FastifyRequest) {
-  const sessionId = request.headers["mcp-session-id"];
-  if (typeof sessionId !== "string" || sessionId.length === 0) return null;
-  const existing = sessions.get(sessionId);
-  if (
-    !existing ||
-    mcpTransportOwnerMismatch(existing, request.user, request.headers.authorization)
-  ) {
-    return null;
+/**
+ * One request = one transport. Grok keeps a mcp-session-id across Railway
+ * restarts; an in-memory Map then answers MCP_SESSION_NOT_FOUND and the
+ * connector dies. Stateless mode ignores that header and still requires Bearer.
+ */
+async function handleStatelessMcp(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  db: Database,
+  eventDispatcher?: EventDispatcher,
+) {
+  const binding = createMcpTransportBinding(request.user, request.headers.authorization);
+  if (!binding) {
+    return rejectMcpUnauthorized(request, reply);
   }
-  return { sessionId, existing };
-}
 
-export function resetMcpTransportSessionsForTests(): void {
-  if (process.env.NODE_ENV !== "test") {
-    throw new Error("MCP transport session reset is test-only");
-  }
-  sessions.clear();
-}
-
-export function seedMcpTransportSessionForTests(
-  sessionId: string,
-  binding: McpTransportBinding,
-  transport: Pick<StreamableHTTPServerTransport, "handleRequest" | "close">,
-): void {
-  if (process.env.NODE_ENV !== "test") {
-    throw new Error("MCP transport session seed is test-only");
-  }
-  sessions.set(sessionId, {
-    transport: transport as StreamableHTTPServerTransport,
-    createdAt: Date.now(),
-    ...binding,
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
   });
+  const server = createMcpServer(db, eventDispatcher);
+  await server.connect(transport);
+  await runWithMcpActor(request.user, () =>
+    transport.handleRequest(request.raw as IncomingMessage, reply.raw, request.body),
+  );
+  return reply.hijack();
 }
 
 /**
@@ -112,79 +74,19 @@ export function registerMcpRoutes(
     return rejectMcpUnauthorized(request, reply);
   });
 
-  app.post("/mcp", async (request, reply) => {
-    const binding = createMcpTransportBinding(request.user, request.headers.authorization);
-    if (!binding) {
-      return rejectMcpUnauthorized(request, reply);
-    }
+  app.post("/mcp", async (request, reply) =>
+    handleStatelessMcp(request, reply, db, eventDispatcher),
+  );
 
-    const sessionId = request.headers["mcp-session-id"];
-    if (typeof sessionId === "string" && sessionId.length > 0) {
-      const owned = ownedMcpSession(request);
-      if (!owned) return rejectMcpSession(reply);
-      await runWithMcpActor(request.user, () =>
-        owned.existing.transport.handleRequest(
-          request.raw as IncomingMessage,
-          reply.raw,
-          request.body,
-        ),
-      );
-      return reply.hijack();
-    }
-
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: () => crypto.randomUUID(),
-    });
-
-    transport.onclose = () => {
-      if (transport.sessionId) {
-        sessions.delete(transport.sessionId);
-      }
-    };
-
-    const server = createMcpServer(db, eventDispatcher);
-    await server.connect(transport);
-
-    await runWithMcpActor(request.user, () =>
-      transport.handleRequest(request.raw as IncomingMessage, reply.raw, request.body),
-    );
-
-    if (transport.sessionId) {
-      sessions.set(transport.sessionId, { transport, createdAt: Date.now(), ...binding });
-    }
-    return reply.hijack();
-  });
-
-  app.get("/mcp", async (request, reply) => {
-    const binding = createMcpTransportBinding(request.user, request.headers.authorization);
-    if (!binding) {
-      return rejectMcpUnauthorized(request, reply);
-    }
-
-    const owned = ownedMcpSession(request);
-    if (!owned) return rejectMcpSession(reply);
-
-    await runWithMcpActor(request.user, () =>
-      owned.existing.transport.handleRequest(
-        request.raw as IncomingMessage,
-        reply.raw,
-        request.body,
-      ),
-    );
-    return reply.hijack();
-  });
+  app.get("/mcp", async (request, reply) =>
+    handleStatelessMcp(request, reply, db, eventDispatcher),
+  );
 
   app.delete("/mcp", async (request, reply) => {
     const binding = createMcpTransportBinding(request.user, request.headers.authorization);
     if (!binding) {
       return rejectMcpUnauthorized(request, reply);
     }
-
-    const owned = ownedMcpSession(request);
-    if (!owned) return rejectMcpSession(reply);
-
-    await owned.existing.transport.close();
-    sessions.delete(owned.sessionId);
     return reply.status(200).send({ ok: true });
   });
 }
