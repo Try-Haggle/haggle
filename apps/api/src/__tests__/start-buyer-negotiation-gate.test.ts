@@ -120,7 +120,8 @@ describe("startBuyerNegotiation buyerCriteria gate", () => {
         required_check_ids: ["imei_verification"],
       },
     });
-    expect(result).not.toMatchObject({ body: { session_id: expect.anything() } });
+    expect(result.status).not.toBe(202);
+    expect(result.body).not.toHaveProperty("session_id");
     expect(createSession).not.toHaveBeenCalled();
   });
 

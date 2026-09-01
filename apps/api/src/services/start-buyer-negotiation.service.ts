@@ -384,7 +384,7 @@ export async function startBuyerNegotiation(
   };
 
   // Listing snapshot is the web-wizard source. Required + empty buyerCriteria
-  // rejects with no session — do not 202 after createSession.
+  // rejects with no session; do not 202 after createSession.
   if (snapshotRequired.length > 0 && !buyerHasAnsweredCriteria(cleanedBuyerCriteria ?? [])) {
     return {
       ok: false,

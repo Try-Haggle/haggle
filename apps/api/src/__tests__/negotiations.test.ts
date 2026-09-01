@@ -875,6 +875,7 @@ describe("Negotiation API", () => {
         error: "BUYER_CRITERIA_REQUIRED",
         required_check_ids: ["imei_verification"],
       });
+      expect(res.statusCode).not.toBe(202);
       expect(res.json()).not.toHaveProperty("session_id");
       expect(res.json()).not.toHaveProperty("buyer_criteria_required");
       expect(mockCreateSession).not.toHaveBeenCalled();
