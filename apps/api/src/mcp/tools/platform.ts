@@ -1,11 +1,16 @@
 import { and, type Database, eq, inArray, negotiationAgents, or } from "@haggle/db";
 import { type DisputeReasonCode, DisputeService, REASON_CODE_REGISTRY } from "@haggle/dispute-core";
-import { unresolvedSellerRequirements } from "@haggle/shared";
+import {
+  DEFAULT_NEGOTIATION_AGENT_PRESET_ID,
+  getNegotiationAgentPreset,
+  unresolvedSellerRequirements,
+} from "@haggle/shared";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { EventDispatcher } from "../../lib/event-dispatcher.js";
 import { executeGroupTerminal } from "../../lib/group-executor.js";
 import { storeListingPhoto } from "../../lib/listing-photo.js";
+import { isListingId } from "../../lib/listing-ref.js";
 import { getMcpActor } from "../../lib/mcp-actor.js";
 import { effectiveMcpScopes, requireActorWithScope } from "../../lib/mcp-scopes.js";
 import { checkoutUrl, negotiationChatUrl, publicAppBaseUrl } from "../../lib/public-urls.js";
@@ -87,6 +92,34 @@ function requireActor(): AuthUser | null {
 
 function requireScopedActor(scope: "agents" | "listings" | "negotiate" | "orders" | "disputes") {
   return requireActorWithScope(scope);
+}
+
+async function resolveBuyerPresetId(
+  db: Database,
+  actor: AuthUser,
+  agentId: string | undefined,
+): Promise<string> {
+  const raw = agentId?.trim() || DEFAULT_NEGOTIATION_AGENT_PRESET_ID;
+  if (getNegotiationAgentPreset(raw)) return raw;
+  if (!isListingId(raw)) {
+    const byName = raw.toLowerCase();
+    if (getNegotiationAgentPreset(byName)) return byName;
+    return DEFAULT_NEGOTIATION_AGENT_PRESET_ID;
+  }
+  const [agent] = await db
+    .select()
+    .from(negotiationAgents)
+    .where(eq(negotiationAgents.id, raw))
+    .limit(1);
+  if (!agent || (!agent.isSystem && agent.userId !== actor.id)) {
+    return DEFAULT_NEGOTIATION_AGENT_PRESET_ID;
+  }
+  const config = agent.negotiationAgentConfig ?? {};
+  const fromConfig = [config.basePresetId, config.negotiationAgentPresetId, agent.name].find(
+    (value): value is string =>
+      typeof value === "string" && Boolean(getNegotiationAgentPreset(value)),
+  );
+  return fromConfig ?? DEFAULT_NEGOTIATION_AGENT_PRESET_ID;
 }
 
 function publicListingView(listing: {
@@ -479,10 +512,10 @@ export function registerPlatformTools(
 
   server.tool(
     "haggle_start_negotiation",
-    "Start a buyer negotiation on a published listing. Same as POST /negotiations/start. Requires a connected account. Uses the connected user as buyer; seller comes from the listing. Do not invent user IDs.",
+    "Start a buyer negotiation on a published listing. Same as POST /negotiations/start. Requires a connected account that is not the seller. public_id may be the slug (jc6r2T3d) or the full /l/... URL. agent_id is optional — use a preset (hunter, balancer, closer, verifier), an id from haggle_list_agents, or omit it to use balancer. Do not invent user IDs.",
     {
       public_id: z.string().min(1),
-      agent_id: z.string().min(1),
+      agent_id: z.string().min(1).optional(),
       deadline_hours: z
         .number()
         .positive()
@@ -493,34 +526,54 @@ export function registerPlatformTools(
       const scoped = requireScopedActor("negotiate");
       if (!scoped.ok) return scoped.error;
       const actor = scoped.actor;
-      const parsed = startBuyerNegotiationSchema.safeParse({
-        listing_public_id: public_id,
-        negotiation_agent_preset_id: agent_id,
-        deadline_hours,
-      });
-      if (!parsed.success) {
-        return mcpError("INVALID_START_REQUEST", { issues: parsed.error.issues });
+      try {
+        const presetId = await resolveBuyerPresetId(db, actor, agent_id);
+        const parsed = startBuyerNegotiationSchema.safeParse({
+          listing_public_id: public_id,
+          negotiation_agent_preset_id: presetId,
+          deadline_hours,
+        });
+        if (!parsed.success) {
+          return mcpError("INVALID_START_REQUEST", { issues: parsed.error.issues });
+        }
+        const started = await startBuyerNegotiation(db, {
+          body: parsed.data,
+          buyerId: actor.id,
+          isGuest: false,
+          driver: "mcp",
+          allowGuest: false,
+          chatUrl: undefined,
+        });
+        if (!started.ok) {
+          return mcpJson(
+            {
+              ...started.body,
+              hint:
+                started.body.error === "BUYER_IS_SELLER"
+                  ? "The connected account owns this listing. Connect a different Haggle user as the buyer."
+                  : started.body.error === "LISTING_NOT_FOUND"
+                    ? "Pass the listing slug or https://app.staging.tryhaggle.ai/l/<slug>."
+                    : started.body.error === "INSUFFICIENT_SCOPE"
+                      ? "Reconnect and allow the negotiate permission."
+                      : undefined,
+            },
+            true,
+          );
+        }
+        return mcpJson({
+          session_id: started.body.session_id,
+          status: started.body.status,
+          driver: "mcp",
+          chat_url: negotiationChatUrl(started.body.session_id),
+          next_actions: ["haggle_play_next", "haggle_get_negotiation"],
+          message:
+            "Negotiation started. Call haggle_play_next to advance a round. Open chat_url to watch on the web.",
+        });
+      } catch (error) {
+        return mcpError("START_NEGOTIATION_FAILED", {
+          message: error instanceof Error ? error.message : "unknown",
+        });
       }
-      const started = await startBuyerNegotiation(db, {
-        body: parsed.data,
-        buyerId: actor.id,
-        isGuest: false,
-        driver: "mcp",
-        allowGuest: false,
-        chatUrl: undefined,
-      });
-      if (!started.ok) {
-        return mcpJson(started.body, true);
-      }
-      return mcpJson({
-        session_id: started.body.session_id,
-        status: started.body.status,
-        driver: "mcp",
-        chat_url: negotiationChatUrl(started.body.session_id),
-        next_actions: ["haggle_play_next", "haggle_get_negotiation"],
-        message:
-          "Negotiation started. Call haggle_play_next to advance a round. Open chat_url to watch on the web.",
-      });
     },
   );
 

@@ -301,6 +301,7 @@ vi.mock("../services/draft.service.js", () => ({
   publishDraft: vi.fn().mockResolvedValue(null),
   getListingPlaybackSummaryByInternalId: vi.fn().mockResolvedValue(null),
   getPublishedListingByPublicId: (...args: unknown[]) => mockGetPublishedListingByPublicId(...args),
+  getPublishedListingByRef: (...args: unknown[]) => mockGetPublishedListingByPublicId(...args),
 }));
 
 vi.mock("../lib/action-handlers.js", () => ({
