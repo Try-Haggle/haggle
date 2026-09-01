@@ -1,13 +1,42 @@
 /** Copy the host model should speak, so Grok does not stop on raw JSON. */
 
+export type BargainRole = "BUYER" | "SELLER";
+
 export function formatMinorAsDollars(minor: string | number | null | undefined): string | null {
   const value = Number(minor);
   if (!Number.isFinite(value) || value <= 0) return null;
   return `$${(value / 100).toFixed(value % 100 === 0 ? 0 : 2)}`;
 }
 
+/**
+ * One DB round is an exchange: sender_role + price_minor is the incoming offer,
+ * message + counter_price_minor is the other side answering. Web flips the
+ * speaker the same way. MCP must not label the answer as the incoming sender.
+ */
+export function spokenRoundSpeaker(input: {
+  senderRole?: BargainRole | null;
+  message?: string | null;
+  heldForCriteriaPause?: boolean;
+  pauseDump?: string | null;
+}): BargainRole {
+  const sender = input.senderRole === "BUYER" ? "BUYER" : "SELLER";
+  const spoken = input.message?.trim() ?? "";
+  if (!spoken) return sender;
+  if (input.heldForCriteriaPause && spoken === (input.pauseDump ?? "").trim()) return sender;
+  return sender === "BUYER" ? "SELLER" : "BUYER";
+}
+
+export function spokenRoundPriceMinor(input: {
+  priceMinor?: string | number | null;
+  counterPriceMinor?: string | number | null;
+}): string | number | null {
+  const counter = Number(input.counterPriceMinor);
+  if (Number.isFinite(counter) && counter > 0) return input.counterPriceMinor ?? counter;
+  return input.priceMinor ?? null;
+}
+
 export function negotiationSayToUser(input: {
-  counterpartRole?: "BUYER" | "SELLER" | null;
+  counterpartRole?: BargainRole | null;
   counterpartMessage?: string | null;
   decision?: string | null;
   priceMinor?: string | number | null;

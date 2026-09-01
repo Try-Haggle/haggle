@@ -63,7 +63,11 @@ import {
   startBuyerNegotiation,
   startBuyerNegotiationSchema,
 } from "../../services/start-buyer-negotiation.service.js";
-import { negotiationSayToUser } from "./negotiation-talk.js";
+import {
+  negotiationSayToUser,
+  spokenRoundPriceMinor,
+  spokenRoundSpeaker,
+} from "./negotiation-talk.js";
 import { mcpError, mcpJson } from "./responses.js";
 
 const DEFAULT_BUILDER_SKILL_ID = "negotiation-agent-builder-v1";
@@ -615,12 +619,29 @@ export function registerPlatformTools(
       const recent = rounds.slice(-4).map((round) => {
         const meta = (round.metadata as Record<string, unknown> | null) ?? null;
         const held = isSellerCriteriaPauseReasoning(meta?.reasoning);
+        const pauseQuestions = Array.isArray(meta?.pause_questions)
+          ? meta.pause_questions.filter((q): q is string => typeof q === "string")
+          : [];
+        const speaker = spokenRoundSpeaker({
+          senderRole: round.senderRole,
+          message: round.message,
+          heldForCriteriaPause: held,
+          pauseDump: pauseQuestions.join(" "),
+        });
+        const spokenPrice = spokenRoundPriceMinor({
+          priceMinor: round.priceminor,
+          counterPriceMinor: round.counterPriceMinor,
+        });
         return {
           round_no: round.roundNo,
-          sender_role: held ? round.senderRole : round.senderRole,
+          speaker,
+          sender_role: speaker,
+          offer_sender_role: round.senderRole,
           message: round.message,
           decision: round.decision,
-          price_minor: round.priceminor,
+          price_minor: spokenPrice,
+          incoming_price_minor: round.priceminor,
+          counter_price_minor: round.counterPriceMinor,
           held_for_criteria_pause: held,
         };
       });
@@ -632,11 +653,21 @@ export function registerPlatformTools(
         else if (driver === "mcp") nextActions.push("haggle_play_next");
         nextActions.push("haggle_reject_negotiation");
       }
+      const latestSpeaker = spokenRoundSpeaker({
+        senderRole: latest?.senderRole,
+        message: latestSpoken,
+        heldForCriteriaPause: isSellerCriteriaPauseReasoning(latestMeta?.reasoning),
+        pauseDump,
+      });
+      const latestSpokenPrice = spokenRoundPriceMinor({
+        priceMinor: latest?.priceminor,
+        counterPriceMinor: latest?.counterPriceMinor,
+      });
       const talk = negotiationSayToUser({
-        counterpartRole: latest?.senderRole ?? "SELLER",
+        counterpartRole: latestSpeaker,
         counterpartMessage: latestSpoken,
         decision: latest?.decision,
-        priceMinor: latest?.priceminor ?? session.lastOfferPriceMinor,
+        priceMinor: latestSpokenPrice ?? session.lastOfferPriceMinor,
         pauseQuestions: pauseAsks.map((c) => c.ask),
         sessionStatus: session.status,
       });
@@ -646,6 +677,8 @@ export function registerPlatformTools(
         current_round: session.currentRound,
         driver,
         chat_url: negotiationChatUrl(session.id),
+        speaker: latestSpeaker,
+        spoken_price_minor: latestSpokenPrice,
         last_offer_price_minor: session.lastOfferPriceMinor,
         recent_messages: recent,
         pause_questions: pauseAsks.map((c) => c.ask),
@@ -675,21 +708,45 @@ export function registerPlatformTools(
       const pauseQuestions = Array.isArray(played.body.pause_questions)
         ? played.body.pause_questions.filter((q): q is string => typeof q === "string")
         : [];
+      const rounds = await getRoundsBySessionId(db, session_id);
+      const latest = rounds.at(-1);
+      const latestMeta = (latest?.metadata as Record<string, unknown> | null) ?? null;
+      const pauseDump = Array.isArray(latestMeta?.pause_questions)
+        ? latestMeta.pause_questions.filter((q): q is string => typeof q === "string").join(" ")
+        : "";
+      const spoken =
+        latest?.message?.trim() && latest.message.trim() !== pauseDump
+          ? latest.message.trim()
+          : typeof played.body.message === "string"
+            ? played.body.message
+            : null;
+      const speaker = spokenRoundSpeaker({
+        senderRole: latest?.senderRole,
+        message: spoken,
+        heldForCriteriaPause: isSellerCriteriaPauseReasoning(latestMeta?.reasoning),
+        pauseDump,
+      });
+      const spokenPrice = spokenRoundPriceMinor({
+        priceMinor: latest?.priceminor,
+        counterPriceMinor: latest?.counterPriceMinor,
+      });
       const talk = negotiationSayToUser({
-        counterpartRole: "SELLER",
-        counterpartMessage: typeof played.body.message === "string" ? played.body.message : null,
-        decision: typeof played.body.decision === "string" ? played.body.decision : null,
-        priceMinor:
-          typeof played.body.last_offer_price_minor === "number" ||
-          typeof played.body.last_offer_price_minor === "string"
-            ? played.body.last_offer_price_minor
-            : null,
+        counterpartRole: speaker,
+        counterpartMessage: spoken,
+        decision:
+          typeof played.body.decision === "string"
+            ? played.body.decision
+            : (latest?.decision ?? null),
+        priceMinor: spokenPrice,
         pauseQuestions,
         sessionStatus:
           typeof played.body.session_status === "string" ? played.body.session_status : undefined,
       });
       return mcpJson({
         ...played.body,
+        speaker,
+        spoken_price_minor: spokenPrice,
+        message: spoken,
         ...talk,
         instruction: "Speak say_to_user now. Ask ask_user. Do not stop silently.",
       });
