@@ -29,6 +29,7 @@ import { runDisputeSimilarityReviewAlert } from "./dispute-similarity-review-ale
 import { runDisputeSimilarityReviewAuditArchive } from "./dispute-similarity-review-audit-archive.js";
 import { runDisputeSimilarityReviewAuditArchiveAlert } from "./dispute-similarity-review-audit-archive-alert.js";
 import { runDisputeSimilarityReviewExpiry } from "./dispute-similarity-review-expiry.js";
+import { runListingWithdrawRetention } from "./listing-withdraw-retention.js";
 import { runPaymentIntentExpiry } from "./payment-intent-expiry.js";
 import { runProductionReconciliationReport } from "./production-reconciliation-report.js";
 import { runRetryFailedEmails } from "./retry-failed-emails.js";
@@ -68,6 +69,15 @@ export function buildJobRegistry(): CronJob[] {
       intervalMs: 5 * 60 * 1000,
       handler: async (db) => {
         await runWebSocketAuthTicketRetention(db);
+      },
+      enabled: true,
+      runOnStart: true,
+    },
+    {
+      name: "listing-withdraw-retention",
+      intervalMs: 24 * 60 * 60 * 1000,
+      handler: async (db) => {
+        await runListingWithdrawRetention(db);
       },
       enabled: true,
       runOnStart: true,

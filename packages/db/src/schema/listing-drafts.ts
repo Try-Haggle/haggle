@@ -29,4 +29,9 @@ export const listingDrafts = pgTable("listing_drafts", {
   agentId: text("agent_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  /**
+   * Seller withdrew the listing from public view. The row stays for
+   * `LISTING_WITHDRAW_RETENTION_DAYS` (90) so ops can still read it.
+   */
+  withdrawnAt: timestamp("withdrawn_at", { withTimezone: true }),
 });

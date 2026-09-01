@@ -9,6 +9,7 @@ import {
   MessageSquare,
   TrendingUp,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   BackLink,
@@ -74,10 +75,12 @@ export function DetailContent({
   listing: ListingDetail;
   sellerId?: string;
 }) {
+  const router = useRouter();
   const [sessions, setSessions] = useState<NegotiationSession[]>([]);
   const [attestation, setAttestation] = useState<AttestationStatus | null>(null);
   const [attestationLoading, setAttestationLoading] = useState(true);
   const [showWizard, setShowWizard] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const [origin, setOrigin] = useState("");
   useEffect(() => setOrigin(window.location.origin), []);
@@ -117,6 +120,19 @@ export function DetailContent({
   const timeLeft = useTimeLeft(listing.sellingDeadline);
 
   const { track } = useAmplitude();
+
+  const handleDelete = async () => {
+    if (!confirm("Delete this listing? Buyers will no longer see it.")) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/api/listings/${listing.id}`);
+      track("Listing Deleted", { public_id: listing.publicId, source: "listing_detail" });
+      router.push("/sell/dashboard");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete listing");
+      setDeleting(false);
+    }
+  };
 
   const totalCount = sessions.length;
   const withOffers = sessions.filter((s) => s.last_offer_price_minor !== null);
@@ -162,14 +178,30 @@ export function DetailContent({
           </>
         }
         actions={
-          <CopyButton
-            value={shareUrl}
-            onCopy={() =>
-              track("Share Link Copied", { public_id: listing.publicId, source: "listing_detail" })
-            }
-            className="rounded-full"
-            label={<span className="max-w-32 truncate sm:max-w-[12.5rem]">{shareUrl}</span>}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <CopyButton
+              value={shareUrl}
+              onCopy={() =>
+                track("Share Link Copied", {
+                  public_id: listing.publicId,
+                  source: "listing_detail",
+                })
+              }
+              className="rounded-full"
+              label={<span className="max-w-32 truncate sm:max-w-[12.5rem]">{shareUrl}</span>}
+            />
+            {listing.status === "published" && (
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                loading={deleting}
+                onClick={() => void handleDelete()}
+              >
+                Delete listing
+              </Button>
+            )}
+          </div>
         }
       />
 

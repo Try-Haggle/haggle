@@ -23,6 +23,11 @@ import {
   tags,
 } from "@haggle/db";
 import { isListingId, normalizeListingPublicId } from "../lib/listing-ref.js";
+import {
+  CLOSEABLE_SESSION_STATUSES,
+  type ListingWithdrawBlock,
+  listingWithdrawBlockReason,
+} from "../lib/listing-withdraw.js";
 import { triggerEmbeddingGeneration } from "./embedding.service.js";
 import { sanitizePersistedBuilderMemory } from "./negotiation-agent-builder-chat.service.js";
 import { placeListingTags } from "./tag-placement.service.js";
@@ -448,7 +453,7 @@ export async function getListingsByUserId(db: Database, userId: string) {
     .from(listingDrafts)
     .innerJoin(listingsPublished, eq(listingsPublished.draftId, listingDrafts.id))
     .leftJoin(negotiationSessions, eq(negotiationSessions.listingId, listingsPublished.id))
-    .where(eq(listingDrafts.userId, userId))
+    .where(and(eq(listingDrafts.userId, userId), eq(listingDrafts.status, "published")))
     .groupBy(listingDrafts.id, listingsPublished.id)
     .orderBy(listingDrafts.createdAt);
 
@@ -501,6 +506,84 @@ export async function getListingByIdForUser(db: Database, id: string, userId: st
   return rows[0] ?? null;
 }
 
+/**
+ * Seller soft-deletes their listing: hide from browse and the seller dashboard,
+ * keep the row for LISTING_WITHDRAW_RETENTION_DAYS. Open negotiations are
+ * rejected. Funding/funded claims and accepted deals stay blocked.
+ */
+export async function withdrawOwnedListing(
+  db: Database,
+  input: { actorId: string; listingKey: string },
+): Promise<
+  | { ok: true; alreadyWithdrawn?: true }
+  | {
+      ok: false;
+      error: Exclude<ListingWithdrawBlock, "ALREADY_WITHDRAWN"> | "NOT_FOUND";
+    }
+> {
+  const listing = await getListingByIdForUser(db, input.listingKey, input.actorId);
+  if (!listing) return { ok: false, error: "NOT_FOUND" };
+
+  const [published] = await db
+    .select({ id: listingsPublished.id })
+    .from(listingsPublished)
+    .where(eq(listingsPublished.draftId, listing.id))
+    .limit(1);
+  if (!published) return { ok: false, error: "NOT_FOUND" };
+
+  const [claim] = await db
+    .select({ status: listingClaims.status })
+    .from(listingClaims)
+    .where(
+      and(
+        eq(listingClaims.listingId, published.id),
+        inArray(listingClaims.status, ["OPEN", "EXCLUSIVE", "FUNDING", "FUNDED"]),
+      ),
+    )
+    .limit(1);
+
+  const [accepted] = await db
+    .select({ id: negotiationSessions.id })
+    .from(negotiationSessions)
+    .where(
+      and(
+        eq(negotiationSessions.listingId, published.id),
+        eq(negotiationSessions.status, "ACCEPTED"),
+      ),
+    )
+    .limit(1);
+
+  const block = listingWithdrawBlockReason({
+    draftStatus: listing.status,
+    claimStatus: claim?.status ?? null,
+    hasAcceptedSession: Boolean(accepted),
+  });
+  if (block === "ALREADY_WITHDRAWN") return { ok: true, alreadyWithdrawn: true };
+  if (block) return { ok: false, error: block };
+
+  const now = new Date();
+  await db
+    .update(listingDrafts)
+    .set({ status: "expired", withdrawnAt: now, updatedAt: now })
+    .where(eq(listingDrafts.id, listing.id));
+
+  await db
+    .update(negotiationSessions)
+    .set({
+      status: "REJECTED",
+      updatedAt: now,
+      version: sql`${negotiationSessions.version} + 1`,
+    })
+    .where(
+      and(
+        eq(negotiationSessions.listingId, published.id),
+        inArray(negotiationSessions.status, [...CLOSEABLE_SESSION_STATUSES]),
+      ),
+    );
+
+  return { ok: true };
+}
+
 // ─── Public Listing (Buyer) ─────────────────────────────────
 
 /** Resolve a slug, /l/:id URL, or published listing UUID. */
@@ -530,7 +613,7 @@ export async function getPublishedListingByRef(db: Database, ref: string) {
     .from(listingsPublished)
     .innerJoin(listingDrafts, eq(listingDrafts.id, listingsPublished.draftId))
     .leftJoin(listingClaims, activeListingClaimJoin())
-    .where(eq(listingsPublished.id, normalized));
+    .where(and(eq(listingsPublished.id, normalized), eq(listingDrafts.status, "published")));
   const row = rows[0];
   if (!row) return null;
   const { claimStatus, ...listing } = row;
@@ -562,7 +645,7 @@ export async function getPublishedListingByPublicId(db: Database, publicId: stri
     .from(listingsPublished)
     .innerJoin(listingDrafts, eq(listingDrafts.id, listingsPublished.draftId))
     .leftJoin(listingClaims, activeListingClaimJoin())
-    .where(eq(listingsPublished.publicId, publicId));
+    .where(and(eq(listingsPublished.publicId, publicId), eq(listingDrafts.status, "published")));
 
   const row = rows[0];
   if (!row) return null;
