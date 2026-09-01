@@ -45,14 +45,21 @@ export function isProductionRuntime(): boolean {
   return getNodeEnv() === "production" || process.env.VERCEL_ENV === "production";
 }
 
+export const DEFAULT_API_CORS_ORIGINS = [
+  "https://chatgpt.com",
+  "https://chat.openai.com",
+  "https://grok.com",
+  "https://www.grok.com",
+  "https://grok.x.ai",
+  "https://x.com",
+  "https://accounts.x.ai",
+  "https://tryhaggle.ai",
+  "https://app.tryhaggle.ai",
+  "https://app.staging.tryhaggle.ai",
+] as const;
+
 function parseCorsOrigins(rawOrigins: string | undefined): Set<string> {
-  const origins = new Set([
-    "https://chatgpt.com",
-    "https://chat.openai.com",
-    "https://tryhaggle.ai",
-    "https://app.tryhaggle.ai",
-    "https://app.staging.tryhaggle.ai",
-  ]);
+  const origins = new Set<string>(DEFAULT_API_CORS_ORIGINS);
 
   for (const rawOrigin of rawOrigins?.split(",") ?? []) {
     const origin = rawOrigin.trim().replace(/\/$/, "");

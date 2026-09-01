@@ -66,6 +66,13 @@ export { listingDrafts } from "./listing-drafts.js";
 export { listingEmbeddings } from "./listing-embeddings.js";
 export { listingsPublished } from "./listings-published.js";
 export {
+  MCP_OAUTH_SCOPES,
+  type McpOauthScope,
+  mcpOauthAccessTokens,
+  mcpOauthAuthorizationCodes,
+  mcpOauthClients,
+} from "./mcp-oauth.js";
+export {
   CONVERSATION_SUBJECT_TYPES,
   type ConversationSubjectType,
   conversationMembers,

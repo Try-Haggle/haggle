@@ -121,7 +121,6 @@ function extractChips(memory: SellerNegotiationAgentBuilderMemory): Chip[] {
 export default function NegotiationAgentBuilderChat({
   agent,
   listingTitle,
-  listingPrice,
   onMemoryUpdate,
   callTool,
 }: NegotiationAgentBuilderChatProps) {
@@ -169,12 +168,12 @@ export default function NegotiationAgentBuilderChat({
     setIsLoading(true);
 
     try {
-      const raw = await callTool("haggle_seller_advisor_turn", {
+      const raw = await callTool("haggle_builder_chat_turn", {
         message: trimmed,
         previous_memory: memory,
-        listing_title: listingTitle,
-        listing_price: listingPrice,
-        agent_preset: agent.id,
+        side: "seller",
+        agent_id: agent.id,
+        listings: [],
       });
 
       const r = raw as Record<string, unknown> | undefined;
@@ -209,7 +208,7 @@ export default function NegotiationAgentBuilderChat({
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, agent, memory, listingTitle, listingPrice, callTool, onMemoryUpdate]);
+  }, [input, isLoading, agent, memory, callTool, onMemoryUpdate]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {

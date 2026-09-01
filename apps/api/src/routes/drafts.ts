@@ -1,4 +1,4 @@
-import { type Database, eq, listingDrafts } from "@haggle/db";
+import type { Database } from "@haggle/db";
 import { enrichTagsWithTaxonomy } from "@haggle/shared";
 import type { FastifyInstance } from "fastify";
 import { requireAuth } from "../middleware/require-auth.js";
@@ -44,15 +44,7 @@ export function registerDraftRoutes(
   app.post("/api/drafts", { preHandler: [requireAuth] }, async (request, reply) => {
     const userId = request.user!.id;
 
-    const draft = await createDraft(db);
-
-    // Link userId immediately (web app flow)
-    if (draft) {
-      await db
-        .update(listingDrafts)
-        .set({ userId, updatedAt: new Date() })
-        .where(eq(listingDrafts.id, draft.id));
-    }
+    const draft = await createDraft(db, { userId });
 
     return reply.send({ ok: true, draft });
   });

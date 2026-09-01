@@ -11,18 +11,20 @@ import { hnpAcceptEnvelopeSchema, hnpOfferEnvelopeSchema } from "../../hnp/envel
 import { submitHnpOffer } from "../../hnp/submit-offer.js";
 import type { EventDispatcher } from "../../lib/event-dispatcher.js";
 import { executeGroupTerminal } from "../../lib/group-executor.js";
+import { requireActorWithScope } from "../../lib/mcp-scopes.js";
+import { validateSessionWriteAccess } from "../../lib/session-access.js";
 import { uploadListingPhoto } from "../../lib/supabase-storage.js";
 import {
   claimListing,
   createDraft,
-  getDraftById,
   patchDraft,
   publishDraft,
   validateDraft,
 } from "../../services/draft.service.js";
-import { loadListingStrategyContext } from "../../services/listing-strategy.service.js";
-import { createSession, getSessionById } from "../../services/negotiation-session.service.js";
+import { getSessionById } from "../../services/negotiation-session.service.js";
 import { LISTING_RESOURCE_URI } from "../resources.js";
+import { registerPlatformTools, requireOwnedDraft } from "./platform.js";
+import { mcpError } from "./responses.js";
 
 /**
  * Register all MCP tools with the server.
@@ -30,6 +32,8 @@ import { LISTING_RESOURCE_URI } from "../resources.js";
  * Data-only tools use server.tool() (core MCP SDK).
  */
 export function registerTools(server: McpServer, db: Database, eventDispatcher?: EventDispatcher) {
+  registerPlatformTools(server, db, eventDispatcher);
+
   // ─── haggle_ping ─────────────────────────────────────────
   server.tool(
     "haggle_ping",
@@ -59,7 +63,7 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
     {
       title: "Start Draft",
       description:
-        "Start a new listing draft for selling an item. Opens the listing wizard UI where the user fills in details step by step. If the user provided specific item details (e.g. title, price, condition) in the same message, include them in the optional 'patch' parameter to pre-fill the form — do NOT call haggle_apply_patch separately. If the user only said something vague like 'I want to sell something' without concrete details, omit the patch and let them use the wizard UI.",
+        "Start a listing draft. Grok Bot and other text clients should prefer haggle_create_listing, which publishes in one call. ChatGPT hosts may open the listing wizard. If the user already gave title, price, condition, or deadline, include them in 'patch'. Include sellingDeadline when you know it — publish requires title, asking price, and deadline.",
       inputSchema: {
         patch: z
           .object({
@@ -81,6 +85,7 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
             condition: z.enum(["new", "like_new", "good", "fair", "poor"]).optional(),
             targetPrice: z.string().optional(),
             floorPrice: z.string().optional(),
+            sellingDeadline: z.string().datetime().optional(),
           })
           .optional(),
       },
@@ -96,11 +101,17 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
       },
     },
     async ({ patch }) => {
-      let draft = await createDraft(db);
+      const scoped = requireActorWithScope("listings");
+      if (!scoped.ok) return scoped.error;
+      const actor = scoped.actor;
+      let draft = await createDraft(db, { userId: actor.id });
 
       // If the model included initial fields, apply them immediately
       if (patch && Object.keys(patch).length > 0) {
-        const patched = await patchDraft(db, draft.id, patch);
+        const patched = await patchDraft(db, draft.id, {
+          ...patch,
+          sellingDeadline: patch.sellingDeadline ? new Date(patch.sellingDeadline) : undefined,
+        });
         if (patched) draft = patched;
       }
 
@@ -127,7 +138,9 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
     "Retrieve the current state of a listing draft by its ID.",
     { draft_id: z.string().uuid() },
     async ({ draft_id }) => {
-      const draft = await getDraftById(db, draft_id);
+      const owned = await requireOwnedDraft(db, draft_id);
+      if (!owned.ok) return owned.error;
+      const draft = owned.draft;
       if (!draft) {
         return {
           isError: true,
@@ -200,6 +213,8 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
       },
     },
     async ({ draft_id, patch }) => {
+      const owned = await requireOwnedDraft(db, draft_id);
+      if (!owned.ok) return owned.error;
       // Convert ISO string to Date for timestamp field
       const servicePatch = {
         ...patch,
@@ -236,7 +251,9 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
     "Validate a listing draft before publishing. Checks that all required fields (title, asking price, selling deadline) are filled in. Returns ok: true if valid, or a list of errors with the step number to navigate to for fixing. Call this before haggle_publish_listing.",
     { draft_id: z.string().uuid() },
     async ({ draft_id }) => {
-      const draft = await getDraftById(db, draft_id);
+      const owned = await requireOwnedDraft(db, draft_id);
+      if (!owned.ok) return owned.error;
+      const draft = owned.draft;
       if (!draft) {
         return {
           isError: true,
@@ -298,8 +315,10 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
       },
     },
     async ({ draft_id }) => {
+      const owned = await requireOwnedDraft(db, draft_id);
+      if (!owned.ok) return owned.error;
       // Pre-validate
-      const draft = await getDraftById(db, draft_id);
+      const draft = owned.draft;
       if (!draft) {
         return {
           isError: true,
@@ -406,6 +425,8 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
       },
     },
     async ({ draft_id, image_base64, mime_type }) => {
+      const owned = await requireOwnedDraft(db, draft_id);
+      if (!owned.ok) return owned.error;
       try {
         const { publicUrl } = await uploadListingPhoto(draft_id, image_base64, mime_type);
 
@@ -470,7 +491,9 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
       },
     },
     async ({ draft_id }) => {
-      const draft = await getDraftById(db, draft_id);
+      const owned = await requireOwnedDraft(db, draft_id);
+      if (!owned.ok) return owned.error;
+      const draft = owned.draft;
       if (!draft) {
         return {
           isError: true,
@@ -522,380 +545,6 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
     },
   );
 
-  // ─── haggle_seller_advisor_turn ─────────────────────────
-  // Widget-only tool: seller strategy advisor chat turn.
-  // Takes the seller's message + current memory, returns updated memory + AI reply.
-  registerAppTool(
-    server,
-    "haggle_seller_advisor_turn",
-    {
-      title: "Seller Strategy Advisor Turn",
-      description:
-        "Process one turn of the seller's strategy chat. Extracts negotiation preferences (deal-breakers, emphasis points, tone, urgency) from the seller's message and returns an updated memory + conversational reply. Widget-only.",
-      inputSchema: {
-        message: z.string().min(1).max(2000),
-        previous_memory: z.object({
-          dealBreakers: z.array(z.string()),
-          mustEmphasize: z.array(z.string()),
-          tone: z.enum(["firm", "friendly", "flexible"]),
-          urgency: z.enum(["high", "medium", "low"]),
-          notes: z.array(z.string()),
-        }),
-        listing_title: z.string(),
-        listing_price: z.string(),
-        agent_preset: z.string(),
-      },
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: false,
-        openWorldHint: true,
-      },
-      _meta: {
-        ui: { resourceUri: LISTING_RESOURCE_URI, visibility: ["app"] },
-        "openai/outputTemplate": LISTING_RESOURCE_URI,
-        "openai/widgetAccessible": true,
-      },
-    },
-    async ({ message, previous_memory, listing_title, listing_price, agent_preset }) => {
-      const { runSellerNegotiationAgentBuilderTurn } = await import(
-        "../../services/mcp-negotiation-agent-builder.service.js"
-      );
-      const result = await runSellerNegotiationAgentBuilderTurn({
-        message,
-        previousMemory: previous_memory,
-        listingTitle: listing_title,
-        listingPrice: listing_price,
-        agentPreset: agent_preset,
-      });
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(result) }],
-        structuredContent: result as unknown as Record<string, unknown>,
-      };
-    },
-  );
-
-  // ─── haggle_create_negotiation_session ───────────────────
-  // 구매자 AI 에이전트가 리스팅을 보고 협상 세션을 시작
-  server.tool(
-    "haggle_create_negotiation_session",
-    `Start a negotiation session for a listing as a buyer.
-
-HOW TO DECIDE PARAMETERS — read the conversation carefully:
-- If the user says something simple like "negotiate for me" or "get me a good deal" → use ONLY the required fields (listing_id, buyer_id, seller_id, max_price, target_price). Defaults will handle everything else.
-- If the user expresses preferences like "I'm not in a rush", "I want to be aggressive", "price is all I care about", "I trust this seller" → map those to the optional strategy fields:
-  • "aggressive" / "lowball" → lower target_price, higher concession_beta (0.3-0.5), higher accept_threshold (0.82+)
-  • "patient" / "not in a rush" → longer deadline_hours (48-72), lower alpha_time (0.1-0.15)
-  • "price is everything" → higher alpha_price (0.5-0.6), lower alpha_reputation (0.1)
-  • "I trust this seller" / high reputation → higher alpha_reputation (0.3), lower accept_threshold (0.7)
-  • "quick deal" / "just get it done" → shorter deadline, lower accept_threshold (0.65-0.7), higher concession_beta (0.7-0.9)
-  • "firm" / "don't budge much" → lower concession_beta (0.2-0.4), lower concession_k (0.5-0.8)
-
-Only fill in the optional fields you can confidently infer. Leave the rest as defaults.`,
-    {
-      // ── Required ──
-      listing_id: z.string().uuid().describe("The listing to negotiate on"),
-      buyer_id: z.string().uuid().describe("The buyer's user ID"),
-      seller_id: z.string().uuid().describe("The seller's user ID"),
-      max_price: z
-        .number()
-        .positive()
-        .describe(
-          "Maximum price the buyer is willing to pay (in cents). This is the walk-away point.",
-        ),
-      target_price: z
-        .number()
-        .positive()
-        .describe(
-          "Ideal price the buyer wants to achieve (in cents). Should be lower than max_price.",
-        ),
-
-      // ── Optional: Timing ──
-      deadline_hours: z
-        .number()
-        .positive()
-        .optional()
-        .describe(
-          "Buyer-side negotiation deadline in hours. Default 24. Listing sellingDeadline caps the actual time-value window when present.",
-        ),
-
-      // ── Optional: Priority weights (must sum to ~1.0) ──
-      alpha_price: z
-        .number()
-        .min(0)
-        .max(1)
-        .optional()
-        .describe("How much the buyer cares about price. Default 0.4. Range 0.2-0.6."),
-      alpha_time: z
-        .number()
-        .min(0)
-        .max(1)
-        .optional()
-        .describe("How much time pressure matters. Default 0.25. Patient: 0.1. Urgent: 0.4."),
-      alpha_reputation: z
-        .number()
-        .min(0)
-        .max(1)
-        .optional()
-        .describe("How much seller trust matters. Default 0.2. Trusted seller: 0.3. Unknown: 0.1."),
-      alpha_satisfaction: z
-        .number()
-        .min(0)
-        .max(1)
-        .optional()
-        .describe("How much overall deal satisfaction matters. Default 0.15."),
-
-      // ── Optional: Decision thresholds ──
-      accept_threshold: z
-        .number()
-        .min(0)
-        .max(1)
-        .optional()
-        .describe(
-          "Minimum utility to auto-accept. Default 0.78. Aggressive: 0.82+. Easy-going: 0.65-0.70.",
-        ),
-      counter_threshold: z
-        .number()
-        .min(0)
-        .max(1)
-        .optional()
-        .describe("Minimum utility to counter (below = reject). Default 0.45."),
-      reject_threshold: z
-        .number()
-        .min(0)
-        .max(1)
-        .optional()
-        .describe("Below this utility, hard reject. Default 0.2."),
-      near_deal_threshold: z
-        .number()
-        .min(0)
-        .max(1)
-        .optional()
-        .describe("Utility level signaling 'almost there'. Default 0.72."),
-
-      // ── Optional: Concession behavior ──
-      concession_beta: z
-        .number()
-        .min(0.1)
-        .max(1)
-        .optional()
-        .describe(
-          "How fast to concede. Default 0.6. Aggressive/firm: 0.2-0.4. Quick-deal: 0.7-0.9.",
-        ),
-      concession_k: z
-        .number()
-        .min(0.1)
-        .max(3)
-        .optional()
-        .describe(
-          "Concession curve shape. Default 1.2. Firm early: 0.5-0.8. Front-loaded: 1.5-2.0.",
-        ),
-
-      // ── Optional: Negotiation style label ──
-      style: z
-        .enum(["balanced", "aggressive", "patient", "quick_deal", "firm"])
-        .optional()
-        .describe(
-          "Shortcut: sets multiple params at once. Can be overridden by individual fields above.",
-        ),
-    },
-    async (params) => {
-      try {
-        const { listing_id, buyer_id, seller_id, max_price, target_price, style } = params;
-
-        // Validate price relationship: target must be less than max
-        if (target_price >= max_price) {
-          return {
-            isError: true,
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({
-                  error: "INVALID_PRICE_RANGE",
-                  message:
-                    "target_price must be less than max_price. target_price is your ideal price, max_price is your walk-away point.",
-                }),
-              },
-            ],
-          };
-        }
-
-        // Style presets — individual params override these
-        const presets = getStylePreset(style);
-
-        const nowMs = Date.now();
-        const listingContext = await loadListingStrategyContext(db, listing_id);
-        const deadlineHours = params.deadline_hours ?? presets.deadline_hours ?? 24;
-        const buyerDeadlineAtMs = nowMs + deadlineHours * 60 * 60 * 1000;
-        const effectiveDeadlineAtMs = listingContext?.deadlineAtMs
-          ? Math.max(nowMs + 1, Math.min(buyerDeadlineAtMs, listingContext.deadlineAtMs))
-          : buyerDeadlineAtMs;
-        const listedAtMs = listingContext?.listedAtMs ?? nowMs;
-        const timeTotalMs = Math.max(1, effectiveDeadlineAtMs - listedAtMs);
-        const expiresAt = new Date(effectiveDeadlineAtMs);
-
-        const alphaPrice = params.alpha_price ?? presets.alpha_price ?? 0.4;
-        const alphaTime = params.alpha_time ?? presets.alpha_time ?? 0.25;
-        const alphaReputation = params.alpha_reputation ?? presets.alpha_reputation ?? 0.2;
-        const alphaSatisfaction = params.alpha_satisfaction ?? presets.alpha_satisfaction ?? 0.15;
-
-        // Validate alpha weights sum to ~1.0 (tolerance: 0.95-1.05)
-        const alphaSum = alphaPrice + alphaTime + alphaReputation + alphaSatisfaction;
-        if (alphaSum < 0.95 || alphaSum > 1.05) {
-          return {
-            isError: true,
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({
-                  error: "INVALID_ALPHA_WEIGHTS",
-                  message: `Alpha weights must sum to ~1.0 (got ${alphaSum.toFixed(3)}). Adjust alpha_price (${alphaPrice}), alpha_time (${alphaTime}), alpha_reputation (${alphaReputation}), alpha_satisfaction (${alphaSatisfaction}).`,
-                }),
-              },
-            ],
-          };
-        }
-
-        const concessionBeta = params.concession_beta ?? presets.concession_beta ?? 0.6;
-        const concessionK = params.concession_k ?? presets.concession_k ?? 1.2;
-        const sellerStrategy = listingContext?.sellerStrategy;
-        const sellerNegotiationAgentBuilderMemory =
-          listingContext?.sellerNegotiationAgentBuilderMemory;
-        const sessionStrategy = sellerStrategy
-          ? {
-              ...sellerStrategy,
-              ...(sellerNegotiationAgentBuilderMemory
-                ? { seller_negotiation_agent_builder_memory: sellerNegotiationAgentBuilderMemory }
-                : {}),
-              buyer_requested_strategy: {
-                style: style ?? "balanced",
-                p_reservation: max_price,
-                p_target: target_price,
-                alpha: {
-                  price: alphaPrice,
-                  time: alphaTime,
-                  reputation: alphaReputation,
-                  satisfaction: alphaSatisfaction,
-                },
-                thresholds: {
-                  accept: params.accept_threshold ?? presets.accept_threshold ?? 0.78,
-                  counter: params.counter_threshold ?? presets.counter_threshold ?? 0.45,
-                  reject: params.reject_threshold ?? presets.reject_threshold ?? 0.2,
-                  near_deal: params.near_deal_threshold ?? presets.near_deal_threshold ?? 0.72,
-                },
-                concession: {
-                  beta: concessionBeta,
-                  k: concessionK,
-                },
-              },
-            }
-          : {
-              role: "BUYER",
-              p_reservation: max_price,
-              p_target: target_price,
-              p_initial: target_price,
-              t_max: timeTotalMs,
-              created_at_ms: listedAtMs,
-              deadline_at_ms: effectiveDeadlineAtMs,
-              time_value: {
-                curve: "faratin",
-                listed_at_ms: listedAtMs,
-                deadline_at_ms: effectiveDeadlineAtMs,
-                t_total_ms: timeTotalMs,
-                beta: concessionBeta,
-                source: listingContext?.deadlineAtMs
-                  ? "listing_selling_deadline"
-                  : "buyer_session_deadline",
-              },
-              listing_time_value: listingContext
-                ? {
-                    ask_price_minor: listingContext.askPriceMinor,
-                    floor_price_minor: listingContext.floorPriceMinor,
-                    listed_at_ms: listingContext.listedAtMs,
-                    deadline_at_ms: listingContext.deadlineAtMs,
-                  }
-                : undefined,
-              alpha: {
-                price: alphaPrice,
-                time: alphaTime,
-                reputation: alphaReputation,
-                satisfaction: alphaSatisfaction,
-              },
-              thresholds: {
-                accept: params.accept_threshold ?? presets.accept_threshold ?? 0.78,
-                counter: params.counter_threshold ?? presets.counter_threshold ?? 0.45,
-                reject: params.reject_threshold ?? presets.reject_threshold ?? 0.2,
-                near_deal: params.near_deal_threshold ?? presets.near_deal_threshold ?? 0.72,
-              },
-              concession: {
-                beta: concessionBeta,
-                k: concessionK,
-              },
-            };
-
-        const session = await createSession(db, {
-          listingId: listing_id,
-          strategyId: sellerStrategy?.compiler.selected_playbook ?? style ?? "buyer_default",
-          role: sellerStrategy ? "SELLER" : "BUYER",
-          buyerId: buyer_id,
-          sellerId: seller_id,
-          counterpartyId: sellerStrategy ? buyer_id : seller_id,
-          negotiationAgentSnapshot: sessionStrategy,
-          expiresAt,
-        });
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({
-                session_id: session.id,
-                status: session.status,
-                listing_id,
-                role: sellerStrategy ? "SELLER" : "BUYER",
-                style: style ?? "balanced",
-                buyer_style: style ?? "balanced",
-                strategy_summary: {
-                  selected_playbook:
-                    sellerStrategy?.compiler.selected_playbook ?? style ?? "balanced",
-                  role: sellerStrategy ? "SELLER" : "BUYER",
-                  priority: sellerStrategy
-                    ? `price ${Math.round(sellerStrategy.weights.w_p * 100)}% / time ${Math.round(sellerStrategy.weights.w_t * 100)}% / trust ${Math.round(sellerStrategy.weights.w_r * 100)}% / satisfaction ${Math.round(sellerStrategy.weights.w_s * 100)}%`
-                    : `price ${Math.round(alphaPrice * 100)}% / time ${Math.round(alphaTime * 100)}% / trust ${Math.round(alphaReputation * 100)}% / satisfaction ${Math.round(alphaSatisfaction * 100)}%`,
-                  accept_above:
-                    sellerStrategy?.u_aspiration ??
-                    params.accept_threshold ??
-                    presets.accept_threshold ??
-                    0.78,
-                  concession_speed: sellerStrategy?.beta ?? concessionBeta,
-                  time_value_source:
-                    sellerStrategy?.time_value.source ??
-                    (listingContext?.deadlineAtMs
-                      ? "listing_selling_deadline"
-                      : "buyer_session_deadline"),
-                },
-                expires_at: expiresAt.toISOString(),
-                message:
-                  "Negotiation session created. Submit the next move with hnp_submit_offer using an HNP envelope.",
-              }),
-            },
-          ],
-        };
-      } catch (err) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({
-                error: err instanceof Error ? err.message : "Failed to create session",
-              }),
-            },
-          ],
-        };
-      }
-    },
-  );
-
   // ─── hnp_submit_offer ────────────────────────────────────
   // Protocol path: full HNP envelope, same ingress as REST.
   server.tool(
@@ -905,6 +554,9 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
       envelope: hnpOfferEnvelopeSchema,
     },
     async ({ envelope }) => {
+      const scoped = requireActorWithScope("negotiate");
+      if (!scoped.ok) return scoped.error;
+      const actor = scoped.actor;
       try {
         const session = await getSessionById(db, envelope.session_id);
         if (!session) {
@@ -914,6 +566,14 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
               { type: "text" as const, text: JSON.stringify({ error: "SESSION_NOT_FOUND" }) },
             ],
           };
+        }
+        const writeAccess = validateSessionWriteAccess(actor, session, {
+          senderRole: envelope.sender_role,
+          senderAgentId: envelope.sender_agent_id,
+          action: "offer",
+        });
+        if (!writeAccess.ok) {
+          return mcpError(writeAccess.error);
         }
 
         const result = await submitHnpOffer(db, envelope, { eventDispatcher });
@@ -972,6 +632,9 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
       envelope: hnpAcceptEnvelopeSchema,
     },
     async ({ envelope }) => {
+      const scoped = requireActorWithScope("negotiate");
+      if (!scoped.ok) return scoped.error;
+      const actor = scoped.actor;
       try {
         const session = await getSessionById(db, envelope.session_id);
         if (!session) {
@@ -981,6 +644,14 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
               { type: "text" as const, text: JSON.stringify({ error: "SESSION_NOT_FOUND" }) },
             ],
           };
+        }
+        const writeAccess = validateSessionWriteAccess(actor, session, {
+          senderRole: envelope.sender_role,
+          senderAgentId: envelope.sender_agent_id,
+          action: "accept",
+        });
+        if (!writeAccess.ok) {
+          return mcpError(writeAccess.error);
         }
 
         const accepted = normalizeAcceptRequest({ hnp: envelope }, envelope.session_id, Date.now());
@@ -1074,11 +745,13 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
     "Claim ownership of a published listing using the claim token. The token was provided when the listing was published via haggle_publish_listing. Must be claimed within 24 hours before it expires. This links the listing to a real user account.",
     {
       claim_token: z.string().min(1).describe("The claim token returned by haggle_publish_listing"),
-      user_id: z.string().uuid().describe("The authenticated user's ID to link to the listing"),
     },
-    async ({ claim_token, user_id }) => {
+    async ({ claim_token }) => {
+      const scoped = requireActorWithScope("listings");
+      if (!scoped.ok) return scoped.error;
+      const actor = scoped.actor;
       try {
-        const result = await claimListing(db, claim_token, user_id);
+        const result = await claimListing(db, claim_token, actor.id);
 
         if (!result.ok) {
           const errorMessages: Record<string, string> = {
@@ -1109,7 +782,7 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
               text: JSON.stringify({
                 ok: true,
                 draft_id: result.draftId,
-                user_id,
+                user_id: actor.id,
                 message: "Listing claimed successfully! The listing is now linked to your account.",
               }),
             },
@@ -1130,91 +803,4 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
       }
     },
   );
-}
-
-// ---------------------------------------------------------------------------
-// Style presets — maps a single keyword to a coherent strategy configuration
-// ---------------------------------------------------------------------------
-
-interface StylePreset {
-  deadline_hours?: number;
-  alpha_price?: number;
-  alpha_time?: number;
-  alpha_reputation?: number;
-  alpha_satisfaction?: number;
-  accept_threshold?: number;
-  counter_threshold?: number;
-  reject_threshold?: number;
-  near_deal_threshold?: number;
-  concession_beta?: number;
-  concession_k?: number;
-}
-
-function getStylePreset(style?: string): StylePreset {
-  switch (style) {
-    case "aggressive":
-      // 공격적: 낮은 가격 고집, 느린 양보, 높은 수락 기준
-      return {
-        alpha_price: 0.55,
-        alpha_time: 0.2,
-        alpha_reputation: 0.1,
-        alpha_satisfaction: 0.15,
-        accept_threshold: 0.83,
-        counter_threshold: 0.5,
-        reject_threshold: 0.25,
-        near_deal_threshold: 0.76,
-        concession_beta: 0.35,
-        concession_k: 0.7,
-      };
-
-    case "patient":
-      // 인내형: 시간 여유, 느린 양보, 좋은 딜 기다림
-      return {
-        deadline_hours: 72,
-        alpha_price: 0.4,
-        alpha_time: 0.12,
-        alpha_reputation: 0.25,
-        alpha_satisfaction: 0.23,
-        accept_threshold: 0.8,
-        counter_threshold: 0.45,
-        reject_threshold: 0.2,
-        near_deal_threshold: 0.74,
-        concession_beta: 0.45,
-        concession_k: 1.0,
-      };
-
-    case "quick_deal":
-      // 속전속결: 빠른 양보, 낮은 수락 기준
-      return {
-        deadline_hours: 12,
-        alpha_price: 0.3,
-        alpha_time: 0.35,
-        alpha_reputation: 0.15,
-        alpha_satisfaction: 0.2,
-        accept_threshold: 0.68,
-        counter_threshold: 0.4,
-        reject_threshold: 0.18,
-        near_deal_threshold: 0.62,
-        concession_beta: 0.8,
-        concession_k: 1.8,
-      };
-
-    case "firm":
-      // 단호형: 거의 양보 안 함, 가격 중시
-      return {
-        alpha_price: 0.5,
-        alpha_time: 0.2,
-        alpha_reputation: 0.15,
-        alpha_satisfaction: 0.15,
-        accept_threshold: 0.82,
-        counter_threshold: 0.5,
-        reject_threshold: 0.3,
-        near_deal_threshold: 0.76,
-        concession_beta: 0.25,
-        concession_k: 0.5,
-      };
-    default:
-      // 기본: 모든 값 기본값 사용
-      return {};
-  }
 }
