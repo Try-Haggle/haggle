@@ -77,21 +77,33 @@ function asBargainRole(role: BargainRole | null | undefined): BargainRole | null
   return null;
 }
 
+/** True when the stored line is already the web/MCP buyer-open copy. */
+export function isBuyerOpeningCopy(message: string | null | undefined): boolean {
+  const text = message?.trim() ?? "";
+  return text.startsWith("Hi, I'm interested in this listing. I'd like to offer");
+}
+
 /**
  * Web stores one DB row per exchange, then prepends a synthetic BUYER OPENING
  * so chat shows two lines. MCP used to return that one row, so Grok saw a
  * fold: current_round 1 and a single recent_message.
+ *
+ * Gate on persisted senderRole (incoming offer), not the flipped speaker.
+ * After #98 a folded first row speaks as SELLER with offer_sender_role BUYER.
  */
 export function expandMcpTranscript(rounds: McpTranscriptRound[]): McpRecentMessage[] {
   const mapped = rounds.map((round) => {
     const pauseQuestions = round.pauseQuestions ?? [];
     const held = Boolean(round.heldForCriteriaPause);
-    const speaker = spokenRoundSpeaker({
-      senderRole: round.senderRole,
-      message: round.message,
-      heldForCriteriaPause: held,
-      pauseDump: pauseQuestions.join(" "),
-    });
+    const openingCopy = isBuyerOpeningCopy(round.message);
+    const speaker = openingCopy
+      ? "BUYER"
+      : spokenRoundSpeaker({
+          senderRole: round.senderRole,
+          message: round.message,
+          heldForCriteriaPause: held,
+          pauseDump: pauseQuestions.join(" "),
+        });
     return {
       round_no: round.roundNo,
       speaker,
@@ -110,8 +122,13 @@ export function expandMcpTranscript(rounds: McpTranscriptRound[]): McpRecentMess
   });
 
   const first = rounds[0];
+  // Same gate as web transformNegotiationPlayback, plus skip when the first
+  // row is already a real BUYER OPENING so we do not duplicate it.
   const hasSyntheticBuyerOpen =
-    !!first && first.senderRole === "BUYER" && Boolean(first.message?.trim());
+    !!first &&
+    first.senderRole === "BUYER" &&
+    Boolean(first.message?.trim()) &&
+    !isBuyerOpeningCopy(first.message);
   if (!hasSyntheticBuyerOpen) return mapped;
 
   const opening: McpRecentMessage = {

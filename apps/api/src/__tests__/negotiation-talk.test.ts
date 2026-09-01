@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  buyerOpeningMessage,
+  expandMcpTranscript,
   mcpNegotiationTranscript,
   negotiationSayToUser,
   spokenRoundPriceMinor,
@@ -55,22 +57,21 @@ describe("negotiationSayToUser", () => {
   });
 });
 
-describe("mcpNegotiationTranscript", () => {
-  const sellerCounter = {
-    roundNo: 1,
-    senderRole: "BUYER" as const,
-    message:
-      "This one is like-new, unlocked, 128GB, and battery is 90%+, so $360 is below what it's worth. I can meet you at $395.",
-    decision: "COUNTER",
-    priceminor: "36000",
-    counterPriceMinor: "39500",
-  };
+const sellerCounter = {
+  roundNo: 1,
+  senderRole: "BUYER" as const,
+  message:
+    "This one is like-new, unlocked, 128GB, and battery is 90%+, so $360 is below what it's worth. I can meet you at $395.",
+  decision: "COUNTER",
+  priceminor: "36000",
+  counterPriceMinor: "39500",
+};
 
+describe("expandMcpTranscript", () => {
   it("does not collapse buyer OPENING and seller COUNTER into one message", () => {
-    const view = mcpNegotiationTranscript([sellerCounter], 1);
-    expect(view.current_round).toBe(2);
-    expect(view.recent_messages).toHaveLength(2);
-    expect(view.recent_messages[0]).toMatchObject({
+    const messages = expandMcpTranscript([sellerCounter]);
+    expect(messages).toHaveLength(2);
+    expect(messages[0]).toMatchObject({
       round_no: 1,
       speaker: "BUYER",
       sender_role: "BUYER",
@@ -78,7 +79,7 @@ describe("mcpNegotiationTranscript", () => {
       price_minor: "36000",
       message: "Hi, I'm interested in this listing. I'd like to offer $360.",
     });
-    expect(view.recent_messages[1]).toMatchObject({
+    expect(messages[1]).toMatchObject({
       round_no: 2,
       speaker: "SELLER",
       sender_role: "SELLER",
@@ -89,6 +90,53 @@ describe("mcpNegotiationTranscript", () => {
       counter_price_minor: "39500",
       message: sellerCounter.message,
     });
+  });
+
+  it("still expands when the spoken speaker is SELLER after #98", () => {
+    const messages = expandMcpTranscript([sellerCounter]);
+    expect(spokenRoundSpeaker({ senderRole: "BUYER", message: sellerCounter.message })).toBe(
+      "SELLER",
+    );
+    expect(messages.map((m) => [m.round_no, m.speaker, m.decision])).toEqual([
+      [1, "BUYER", "OPENING"],
+      [2, "SELLER", "COUNTER"],
+    ]);
+  });
+
+  it("does not double-prepend if a real opening already exists", () => {
+    const messages = expandMcpTranscript([
+      {
+        roundNo: 1,
+        senderRole: "BUYER",
+        message: buyerOpeningMessage("36000"),
+        decision: "OPENING",
+        priceminor: "36000",
+        counterPriceMinor: null,
+      },
+      {
+        roundNo: 2,
+        senderRole: "BUYER",
+        message: sellerCounter.message,
+        decision: "COUNTER",
+        priceminor: "36000",
+        counterPriceMinor: "39500",
+      },
+    ]);
+    expect(messages.filter((m) => m.decision === "OPENING")).toHaveLength(1);
+    expect(messages).toHaveLength(2);
+    expect(messages.map((m) => [m.round_no, m.speaker, m.decision])).toEqual([
+      [1, "BUYER", "OPENING"],
+      [2, "SELLER", "COUNTER"],
+    ]);
+    expect(messages[0]?.message).toBe(buyerOpeningMessage("36000"));
+  });
+});
+
+describe("mcpNegotiationTranscript", () => {
+  it("reports current_round 2 so MCP matches web chat for a folded first exchange", () => {
+    const view = mcpNegotiationTranscript([sellerCounter], 1);
+    expect(view.current_round).toBe(2);
+    expect(view.recent_messages).toHaveLength(2);
   });
 
   it("keeps later rounds after the synthesized opening", () => {
