@@ -217,3 +217,10 @@ export function negotiationSayToUser(input: {
       : "Quote that line, then ask what price to offer or whether to accept.";
   return { say_to_user, ask_user };
 }
+
+/** After start: never advertise play_next when seller required criteria still need buyerCriteria. */
+export function mcpStartNextActions(buyerCriteriaRequired: boolean): string[] {
+  return buyerCriteriaRequired
+    ? ["haggle_get_negotiation"]
+    : ["haggle_play_next", "haggle_get_negotiation"];
+}

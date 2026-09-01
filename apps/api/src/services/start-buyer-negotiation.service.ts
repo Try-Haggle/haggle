@@ -21,6 +21,7 @@ import {
 } from "../lib/negotiation-fulfillment.js";
 import { isDecideCatalogModel, resolveDecideModel } from "../negotiation/decide-model.js";
 import { projectSellerFacts } from "../negotiation/memory/seller-facts.js";
+import { buyerCriteriaRequiredReject } from "../negotiation/phase/seller-criteria-pause.js";
 import {
   type AttemptControlSnapshot,
   defaultAttemptControlPolicy,
@@ -91,6 +92,8 @@ export type StartBuyerNegotiationResult =
         attempt_control?: AttemptControlSnapshot;
         chat_url?: string;
         driver: NegotiationDriver;
+        buyer_criteria_required?: boolean;
+        required_check_ids?: string[];
       };
     }
   | { ok: false; status: number; body: Record<string, unknown> };
@@ -416,6 +419,7 @@ export async function startBuyerNegotiation(
     });
   }
 
+  const criteriaReject = buyerCriteriaRequiredReject(buyerSnapshot);
   return {
     ok: true,
     status: 202,
@@ -427,6 +431,12 @@ export async function startBuyerNegotiation(
       ...(input.isGuest ? { guest_buyer_id: buyer.id } : {}),
       ...(attemptControl ? { attempt_control: attemptControl } : {}),
       ...(input.chatUrl ? { chat_url: input.chatUrl } : {}),
+      ...(criteriaReject
+        ? {
+            buyer_criteria_required: true,
+            required_check_ids: criteriaReject.required_check_ids,
+          }
+        : {}),
     },
   };
 }

@@ -23,6 +23,7 @@ import { validateSessionParticipant, validateSessionWriteAccess } from "../lib/s
 import { requireAuth } from "../middleware/require-auth.js";
 import {
   applyBuyerPauseAnswer,
+  buyerCriteriaRequiredReject,
   isSellerCriteriaPauseReasoning,
   readSellerCriteriaFromSnapshot,
   SELLER_CRITERIA_PAUSE_MARKER,
@@ -885,6 +886,12 @@ export function registerNegotiationRoutes(
       run_token: started.body.run_token,
       ...(started.body.guest_buyer_id ? { guest_buyer_id: started.body.guest_buyer_id } : {}),
       ...(started.body.attempt_control ? { attempt_control: started.body.attempt_control } : {}),
+      ...(started.body.buyer_criteria_required
+        ? {
+            buyer_criteria_required: true,
+            required_check_ids: started.body.required_check_ids,
+          }
+        : {}),
     });
   });
 
@@ -961,6 +968,11 @@ export function registerNegotiationRoutes(
           session_status: stalled.status,
           current_round: stalled.currentRound,
         });
+      }
+
+      const criteriaReject = buyerCriteriaRequiredReject(context.buyerSnapshot);
+      if (criteriaReject) {
+        return reply.code(409).send(criteriaReject);
       }
 
       const rounds = await getRoundsBySessionId(db, session.id);
@@ -1150,6 +1162,11 @@ export function registerNegotiationRoutes(
         }
       } else if (!validateNegotiationAutoPlayToken(context, parsed.data.run_token)) {
         return reply.code(401).send({ error: "AUTO_PLAY_TOKEN_INVALID" });
+      }
+
+      const startReject = buyerCriteriaRequiredReject(context.buyerSnapshot);
+      if (startReject) {
+        return reply.code(409).send(startReject);
       }
 
       const { sellerRequired, buyerCriteria } = readSellerCriteriaFromSnapshot(

@@ -18,6 +18,7 @@ import { validateSessionParticipant } from "../../lib/session-access.js";
 import type { AuthUser } from "../../middleware/auth.js";
 import {
   applyBuyerPauseAnswer,
+  buyerCriteriaRequiredReject,
   isSellerCriteriaPauseReasoning,
   readSellerCriteriaFromSnapshot,
   SELLER_CRITERIA_PAUSE_MARKER,
@@ -65,6 +66,7 @@ import {
 } from "../../services/start-buyer-negotiation.service.js";
 import {
   mcpNegotiationTranscript,
+  mcpStartNextActions,
   negotiationSayToUser,
   spokenRoundPriceMinor,
   spokenRoundSpeaker,
@@ -578,14 +580,22 @@ export function registerPlatformTools(
             true,
           );
         }
+        const buyerCriteriaRequired = Boolean(started.body.buyer_criteria_required);
         return mcpJson({
           session_id: started.body.session_id,
           status: started.body.status,
           driver: "mcp",
           chat_url: negotiationChatUrl(started.body.session_id),
-          next_actions: ["haggle_play_next", "haggle_get_negotiation"],
-          message:
-            "Negotiation started. Call haggle_play_next to advance a round. Open chat_url to watch on the web.",
+          next_actions: mcpStartNextActions(buyerCriteriaRequired),
+          ...(buyerCriteriaRequired
+            ? {
+                buyer_criteria_required: true,
+                required_check_ids: started.body.required_check_ids,
+              }
+            : {}),
+          message: buyerCriteriaRequired
+            ? "Negotiation started. Pass buyerCriteria at start for seller required checks. Do not call haggle_play_next or haggle_answer_pause."
+            : "Negotiation started. Call haggle_play_next to advance a round. Open chat_url to watch on the web.",
         });
       } catch (error) {
         return mcpError("START_NEGOTIATION_FAILED", {
@@ -640,10 +650,11 @@ export function registerPlatformTools(
       const lastMsg = recent.at(-1);
       const driver = session.driver === "mcp" ? "mcp" : "web";
       const nextActions: string[] = [];
+      const playBlocked = Boolean(buyerCriteriaRequiredReject(pauseSnapshot));
       if (session.status === "ACCEPTED") nextActions.push("haggle_create_checkout");
       else if (!["REJECTED", "EXPIRED", "SUPERSEDED", "STALLED"].includes(session.status)) {
-        if (pauseAsks.length > 0) nextActions.push("haggle_answer_pause");
-        else if (driver === "mcp") nextActions.push("haggle_play_next");
+        if (pauseAsks.length > 0 && !playBlocked) nextActions.push("haggle_answer_pause");
+        else if (driver === "mcp" && !playBlocked) nextActions.push("haggle_play_next");
         nextActions.push("haggle_reject_negotiation");
       }
       const latestSpeaker =
@@ -815,6 +826,8 @@ export function registerPlatformTools(
       if (actor.id !== session.buyerId) return mcpError("PAUSE_ANSWER_BUYER_ONLY");
       const context = getNegotiationAutoPlayContext(session.negotiationAgentSnapshot);
       if (!context) return mcpError("AUTO_PLAY_CONTEXT_MISSING");
+      const startReject = buyerCriteriaRequiredReject(context.buyerSnapshot);
+      if (startReject) return mcpJson(startReject, true);
       const { sellerRequired, buyerCriteria } = readSellerCriteriaFromSnapshot(
         context.buyerSnapshot,
       );

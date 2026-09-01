@@ -3,6 +3,7 @@ import {
   buyerOpeningMessage,
   expandMcpTranscript,
   mcpNegotiationTranscript,
+  mcpStartNextActions,
   negotiationSayToUser,
   spokenRoundPriceMinor,
   spokenRoundSpeaker,
@@ -240,5 +241,16 @@ describe("HOLD transcript", () => {
     });
     expect(hold?.message).not.toBe(sellerR2);
     expect(hold?.message).not.toContain("IMEI");
+  });
+});
+
+describe("mcpStartNextActions", () => {
+  it("does not advertise play_next when buyerCriteria is still required", () => {
+    expect(mcpStartNextActions(true)).toEqual(["haggle_get_negotiation"]);
+    expect(mcpStartNextActions(true)).not.toContain("haggle_play_next");
+  });
+
+  it("advertises play_next when start criteria are already answered", () => {
+    expect(mcpStartNextActions(false)).toEqual(["haggle_play_next", "haggle_get_negotiation"]);
   });
 });
