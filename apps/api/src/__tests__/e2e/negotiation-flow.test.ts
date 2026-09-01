@@ -84,9 +84,14 @@ vi.mock("../../lib/executor-factory.js", () => ({
   getPipelineMode: () => "staged",
 }));
 
-vi.mock("../../services/listing-strategy.service.js", () => ({
-  loadListingStrategyContext: vi.fn().mockResolvedValue(null),
-}));
+vi.mock("../../services/listing-strategy.service.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../services/listing-strategy.service.js")>();
+  return {
+    ...actual,
+    loadListingStrategyContext: vi.fn().mockResolvedValue(null),
+  };
+});
 
 vi.mock("../../notification/get-user-info.js", () => ({
   getNotificationUserInfo: vi.fn().mockResolvedValue(null),

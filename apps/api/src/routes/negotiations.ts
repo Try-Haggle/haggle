@@ -886,12 +886,6 @@ export function registerNegotiationRoutes(
       run_token: started.body.run_token,
       ...(started.body.guest_buyer_id ? { guest_buyer_id: started.body.guest_buyer_id } : {}),
       ...(started.body.attempt_control ? { attempt_control: started.body.attempt_control } : {}),
-      ...(started.body.buyer_criteria_required
-        ? {
-            buyer_criteria_required: true,
-            required_check_ids: started.body.required_check_ids,
-          }
-        : {}),
     });
   });
 

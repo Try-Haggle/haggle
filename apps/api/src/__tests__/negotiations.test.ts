@@ -159,9 +159,13 @@ vi.mock("../lib/executor-factory.js", () => ({
   getPipelineMode: () => "staged",
 }));
 
-vi.mock("../services/listing-strategy.service.js", () => ({
-  loadListingStrategyContext: (...args: unknown[]) => mockLoadListingStrategyContext(...args),
-}));
+vi.mock("../services/listing-strategy.service.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/listing-strategy.service.js")>();
+  return {
+    ...actual,
+    loadListingStrategyContext: (...args: unknown[]) => mockLoadListingStrategyContext(...args),
+  };
+});
 
 vi.mock("../services/attempt-control.service.js", () => ({
   defaultAttemptControlPolicy: () => ({ maxRoundsPerSession: 8 }),
@@ -820,12 +824,25 @@ describe("Negotiation API", () => {
   });
 
   describe("POST /negotiations/start", () => {
-    it("rejects start when seller required criteria exist and buyerCriteria is empty", async () => {
+    it("rejects start when listing snapshot has required checks and buyerCriteria is empty", async () => {
       mockGetPublishedListingByPublicId.mockResolvedValue({
         id: "00000000-0000-4000-a000-000000000001",
         publicId: "imei-listing",
         sellerId: "00000000-0000-4000-a000-000000000020",
-        negotiationAgentSnapshot: {},
+        negotiationAgentSnapshot: {
+          negotiationAgentBuilderMemory: {
+            categoryCriteria: [
+              {
+                checkId: "imei_verification",
+                questionKo: "IMEI가 깨끗한지 확인 가능한가요?",
+                buyerAskKo: "Should the agent require a clean IMEI?",
+                enforcement: "hard",
+                requirement: "required",
+                stance: "clean IMEI, seller confirmed",
+              },
+            ],
+          },
+        },
       });
       mockLoadListingStrategyContext.mockResolvedValue({
         listingId: "00000000-0000-4000-a000-000000000001",
@@ -836,18 +853,7 @@ describe("Negotiation API", () => {
         floorPriceMinor: 80_00,
         sellerNegotiationAgentPresetId: "balancer",
         listingContext: { category: "electronics", tags: ["iphone"] },
-        sellerNegotiationAgentBuilderMemory: {
-          categoryCriteria: [
-            {
-              checkId: "imei_verification",
-              questionKo: "IMEI가 깨끗한지 확인 가능한가요?",
-              buyerAskKo: "Should the agent require a clean IMEI?",
-              enforcement: "hard",
-              requirement: "required",
-              stance: "clean IMEI, seller confirmed",
-            },
-          ],
-        },
+        sellerNegotiationAgentBuilderMemory: {},
         sellerStrategy: {
           compiler: { selected_playbook: "default" },
           weights: { w_p: 0.4, w_t: 0.2, w_r: 0.2, w_s: 0.2 },
@@ -865,7 +871,13 @@ describe("Negotiation API", () => {
       });
 
       expect(res.statusCode).toBe(409);
-      expect(res.json().error).toBe("BUYER_CRITERIA_REQUIRED");
+      expect(res.json()).toMatchObject({
+        error: "BUYER_CRITERIA_REQUIRED",
+        required_check_ids: ["imei_verification"],
+      });
+      expect(res.statusCode).not.toBe(202);
+      expect(res.json()).not.toHaveProperty("session_id");
+      expect(res.json()).not.toHaveProperty("buyer_criteria_required");
       expect(mockCreateSession).not.toHaveBeenCalled();
     });
 
