@@ -12,9 +12,13 @@ vi.mock("../services/draft.service.js", () => ({
   getPublishedListingByRef: (...args: unknown[]) => getPublishedListingByRef(...args),
 }));
 
-vi.mock("../services/listing-strategy.service.js", () => ({
-  loadListingStrategyContext: (...args: unknown[]) => loadListingStrategyContext(...args),
-}));
+vi.mock("../services/listing-strategy.service.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/listing-strategy.service.js")>();
+  return {
+    ...actual,
+    loadListingStrategyContext: (...args: unknown[]) => loadListingStrategyContext(...args),
+  };
+});
 
 vi.mock("../services/listing-claim.service.js", () => ({
   ListingClaimError: class ListingClaimError extends Error {},
@@ -55,7 +59,10 @@ function listingFixture() {
     id: "listing-1",
     publicId: "jc6r2T3d",
     sellerId: "seller-1",
-    negotiationAgentSnapshot: {},
+    // Web wizard reads extractSellerRequiredCriteria(listing.negotiationAgentSnapshot).
+    negotiationAgentSnapshot: {
+      negotiationAgentBuilderMemory: { categoryCriteria: [IMEI_REQUIRED] },
+    },
   });
   loadListingStrategyContext.mockResolvedValue({
     askPriceMinor: 100_00,
@@ -64,7 +71,8 @@ function listingFixture() {
     deadlineAtMs: Date.now() + 86_400_000,
     sellerNegotiationAgentPresetId: "balancer",
     listingContext: { category: "electronics", tags: ["iphone"] },
-    sellerNegotiationAgentBuilderMemory: { categoryCriteria: [IMEI_REQUIRED] },
+    // Empty memory: a memory-only mock must not make this gate pass with a session.
+    sellerNegotiationAgentBuilderMemory: {},
     sellerStrategy: {
       compiler: { selected_playbook: "default" },
       weights: { w_p: 0.4, w_t: 0.2, w_r: 0.2, w_s: 0.2 },
@@ -93,7 +101,7 @@ describe("startBuyerNegotiation buyerCriteria gate", () => {
     listingFixture();
   });
 
-  it("rejects start when seller required criteria exist and buyerCriteria is empty", async () => {
+  it("rejects MCP start from listing snapshot required checks when buyerCriteria is empty", async () => {
     const result = await startBuyerNegotiation({} as never, {
       body: {
         listing_public_id: "jc6r2T3d",
@@ -112,10 +120,11 @@ describe("startBuyerNegotiation buyerCriteria gate", () => {
         required_check_ids: ["imei_verification"],
       },
     });
+    expect(result).not.toMatchObject({ body: { session_id: expect.anything() } });
     expect(createSession).not.toHaveBeenCalled();
   });
 
-  it("creates a session when buyerCriteria answers the seller required checks", async () => {
+  it("creates a session when buyerCriteria answers the listing snapshot required checks", async () => {
     const result = await startBuyerNegotiation({} as never, {
       body: {
         listing_public_id: "jc6r2T3d",
@@ -128,6 +137,10 @@ describe("startBuyerNegotiation buyerCriteria gate", () => {
       allowGuest: false,
     });
     expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.body).not.toHaveProperty("buyer_criteria_required");
+      expect(result.body.session_id).toBe("sess-new");
+    }
     expect(createSession).toHaveBeenCalled();
   });
 });

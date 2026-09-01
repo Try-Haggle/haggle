@@ -4,11 +4,9 @@ import { compileNegotiationAgentSnapshot, type EngineParamsInput } from "@haggle
 import {
   buildCategoryCriteriaScaffold,
   type CategoryCriterion,
-  criterionAnswered,
   type EngineParameters,
   getNegotiationAgentPreset,
   presetToEngineParameters,
-  requiredCriteria,
 } from "@haggle/shared";
 import { z } from "zod";
 import {
@@ -21,7 +19,11 @@ import {
 } from "../lib/negotiation-fulfillment.js";
 import { isDecideCatalogModel, resolveDecideModel } from "../negotiation/decide-model.js";
 import { projectSellerFacts } from "../negotiation/memory/seller-facts.js";
-import { buyerCriteriaRequiredReject } from "../negotiation/phase/seller-criteria-pause.js";
+import {
+  BUYER_CRITERIA_REQUIRED,
+  buyerCriteriaRequiredReject,
+  buyerHasAnsweredCriteria,
+} from "../negotiation/phase/seller-criteria-pause.js";
 import {
   type AttemptControlSnapshot,
   defaultAttemptControlPolicy,
@@ -33,7 +35,10 @@ import {
   LISTING_CLAIM_HTTP,
   ListingClaimError,
 } from "./listing-claim.service.js";
-import { loadListingStrategyContext } from "./listing-strategy.service.js";
+import {
+  extractSellerRequiredCriteria,
+  loadListingStrategyContext,
+} from "./listing-strategy.service.js";
 import { createNegotiationAutoPlaySetup } from "./negotiation-auto-play.service.js";
 import { createSession, type NegotiationDriver } from "./negotiation-session.service.js";
 
@@ -92,8 +97,6 @@ export type StartBuyerNegotiationResult =
         attempt_control?: AttemptControlSnapshot;
         chat_url?: string;
         driver: NegotiationDriver;
-        buyer_criteria_required?: boolean;
-        required_check_ids?: string[];
       };
     }
   | { ok: false; status: number; body: Record<string, unknown> };
@@ -246,7 +249,8 @@ export async function startBuyerNegotiation(
     published_ask_minor: askMinor,
   };
   const sellerNegotiationAgentPresetId = listingContext.sellerNegotiationAgentPresetId;
-  const listingSnapshot = listing.negotiationAgentSnapshot as Record<string, unknown> | null;
+  const listingSnapshot =
+    (listing.negotiationAgentSnapshot as Record<string, unknown> | null) ?? {};
   const defaultRoute = resolveDecideModel({ publishedAskMinor: askMinor });
   const listingRequestedModel =
     typeof listingSnapshot?.seller_requested_model === "string"
@@ -332,21 +336,21 @@ export async function startBuyerNegotiation(
     buyer_requested_strategy: buyerRequestedStrategy,
     ...fulfillmentFields,
   };
-  const sellerRequiredCriteria = requiredCriteria(
-    (sellerNegotiationAgentBuilderMemory?.categoryCriteria as CategoryCriterion[] | undefined) ??
-      [],
-  )
-    .filter(criterionAnswered)
-    .map((c) => {
-      const projected: CategoryCriterion = {
-        checkId: c.checkId,
-        questionKo: c.questionKo,
-        enforcement: c.enforcement,
-        requirement: "required",
-      };
-      if (c.buyerAskKo !== undefined) projected.buyerAskKo = c.buyerAskKo;
-      return projected;
-    });
+  // Same source as the web wizard: listing.negotiationAgentSnapshot via
+  // extractSellerRequiredCriteria. listingContext memory is not the gate -
+  // required checks without a seller stance on that memory were dropped, the
+  // gate became a no-op, and createSession still ran.
+  const snapshotRequired = extractSellerRequiredCriteria(listingSnapshot);
+  const sellerRequiredCriteria: CategoryCriterion[] = snapshotRequired.map((c) => {
+    const projected: CategoryCriterion = {
+      checkId: c.checkId,
+      questionKo: c.ask,
+      enforcement: "hard",
+      requirement: "required",
+    };
+    if (c.ask) projected.buyerAskKo = c.ask;
+    return projected;
+  });
   const buyerTags = [
     (listingContextSnapshot as { category?: string } | undefined)?.category,
     ...((listingContextSnapshot as { tags?: string[] } | undefined)?.tags ?? []),
@@ -379,6 +383,26 @@ export async function startBuyerNegotiation(
     ...fulfillmentFields,
   };
 
+  // Listing snapshot is the web-wizard source. Required + empty buyerCriteria
+  // rejects with no session — do not 202 after createSession.
+  if (snapshotRequired.length > 0 && !buyerHasAnsweredCriteria(cleanedBuyerCriteria ?? [])) {
+    return {
+      ok: false,
+      status: 409,
+      body: {
+        error: BUYER_CRITERIA_REQUIRED,
+        message:
+          "Answer seller required criteria (IMEI/완납/침수/Find My) in the start wizard via buyerCriteria before play_next. Do not use answer_pause.",
+        required_check_ids: snapshotRequired.map((c) => c.checkId),
+      },
+    };
+  }
+
+  const criteriaReject = buyerCriteriaRequiredReject(buyerSnapshot);
+  if (criteriaReject) {
+    return { ok: false, status: 409, body: criteriaReject };
+  }
+
   const strategyId = sellerStrategy.compiler.selected_playbook;
   const expiresAt = new Date(effectiveDeadlineMs);
   const autoPlay = createNegotiationAutoPlaySetup({
@@ -387,11 +411,6 @@ export async function startBuyerNegotiation(
     buyerTargetMinor: buyerTarget,
     maxRounds: AUTO_PLAY_MAX_ROUNDS,
   });
-
-  const criteriaReject = buyerCriteriaRequiredReject(buyerSnapshot);
-  if (criteriaReject) {
-    return { ok: false, status: 409, body: criteriaReject };
-  }
 
   try {
     await assertListingAcceptsNewSession(db, listing.id);
