@@ -108,7 +108,10 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
 
       // If the model included initial fields, apply them immediately
       if (patch && Object.keys(patch).length > 0) {
-        const patched = await patchDraft(db, draft.id, patch);
+        const patched = await patchDraft(db, draft.id, {
+          ...patch,
+          sellingDeadline: patch.sellingDeadline ? new Date(patch.sellingDeadline) : undefined,
+        });
         if (patched) draft = patched;
       }
 

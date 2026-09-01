@@ -19,14 +19,20 @@ describe("MCP transport routes", () => {
     resetMcpTransportSessionsForTests();
     app = Fastify();
     app.decorateRequest("user", undefined);
-    app.addHook("onRequest", async (request) => {
-      if (request.headers.authorization === `Bearer ${TOKEN_A}`) {
-        request.user = USER_A;
-      }
-      if (request.headers.authorization === `Bearer ${TOKEN_B}`) {
-        request.user = USER_B;
-      }
-    });
+    app.addHook(
+      "onRequest",
+      async (request: {
+        headers: { authorization?: string };
+        user?: { id: string; role: string };
+      }) => {
+        if (request.headers.authorization === `Bearer ${TOKEN_A}`) {
+          request.user = USER_A;
+        }
+        if (request.headers.authorization === `Bearer ${TOKEN_B}`) {
+          request.user = USER_B;
+        }
+      },
+    );
     registerMcpRoutes(app, {} as never);
     await app.ready();
   });
