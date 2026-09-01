@@ -5,8 +5,8 @@ const loadListingStrategyContext = vi.fn();
 const assertListingAcceptsNewSession = vi.fn();
 const evaluateAttemptControl = vi.fn();
 const createSession = vi.fn();
-const compileNegotiationAgentSnapshot = vi.fn(() => ({ compiled: true }));
-const quoteNegotiationCredits = vi.fn(() => ({ quoted: true }));
+const compileNegotiationAgentSnapshot = vi.fn((..._args: unknown[]) => ({ compiled: true }));
+const quoteNegotiationCredits = vi.fn((..._args: unknown[]) => ({ quoted: true }));
 
 vi.mock("../services/draft.service.js", () => ({
   getPublishedListingByRef: (...args: unknown[]) => getPublishedListingByRef(...args),
