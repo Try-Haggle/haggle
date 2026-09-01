@@ -79,6 +79,22 @@ function toPauseChecks(next: AutoPlayNextResponse): PauseCheck[] {
   }));
 }
 
+/**
+ * True when the current round is already on the transcript.
+ *
+ * The stall watchdog keys off "no new round for 210s", so an ACTIVE session that
+ * already has R1/R2 can still raise the Retry banner while waiting on a later
+ * round (tester a9626ebf). Hide that false stall; keep it when this round is
+ * actually missing or has no message yet.
+ */
+function currentRoundAlreadyExists(payload: SessionResponse): boolean {
+  const current = payload.session.current_round;
+  if (current <= 0) return false;
+  return payload.rounds.some(
+    (round) => round.round_no === current && Boolean(round.message?.trim()),
+  );
+}
+
 export function LiveNegotiation({
   initialPayload,
   checkoutHref,
@@ -271,9 +287,13 @@ export function LiveNegotiation({
 
   // A reported failure wins over the watchdog: it says what actually happened. The
   // watchdog only speaks when nothing was reported at all — the silent case.
+  // ACTIVE + current round already on the transcript is not a stall (a9626ebf).
+  const hideActiveStall = payload.session.status === "ACTIVE" && currentRoundAlreadyExists(payload);
   const liveError =
     roundError ??
-    (stalled ? "This round is taking longer than expected. Nothing has been lost." : null);
+    (stalled && !hideActiveStall
+      ? "This round is taking longer than expected. Nothing has been lost."
+      : null);
 
   return (
     <PlaybackArena
