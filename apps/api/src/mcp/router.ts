@@ -7,8 +7,8 @@ import type { EventDispatcher } from "../lib/event-dispatcher.js";
 import { runWithMcpActor } from "../lib/mcp-actor.js";
 import {
   createMcpTransportBinding,
-  mcpTransportOwnerMismatch,
   type McpTransportBinding,
+  mcpTransportOwnerMismatch,
 } from "../lib/mcp-transport-auth.js";
 import { publicApiBaseUrl } from "../lib/public-urls.js";
 import { registerResources } from "./resources.js";

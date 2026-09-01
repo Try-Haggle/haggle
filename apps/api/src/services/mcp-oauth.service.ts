@@ -178,7 +178,7 @@ export async function refreshMcpAccessToken(
       ),
     )
     .limit(1);
-  if (!row || !row.refreshExpiresAt || row.refreshExpiresAt.getTime() <= Date.now()) {
+  if (!row?.refreshExpiresAt || row.refreshExpiresAt.getTime() <= Date.now()) {
     return { ok: false as const, error: "INVALID_GRANT" };
   }
 

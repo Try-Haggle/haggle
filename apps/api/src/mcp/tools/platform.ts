@@ -691,11 +691,7 @@ export function registerPlatformTools(
         return mcpError("SESSION_NOT_ACCEPTED", { session_status: session.status });
       }
       const approval = await getSettlementApprovalById(db, session.id);
-      if (
-        !approval ||
-        approval.approval_state !== "APPROVED" ||
-        approval.terms.buyer_id !== actor.id
-      ) {
+      if (approval?.approval_state !== "APPROVED" || approval.terms.buyer_id !== actor.id) {
         return mcpError("CHECKOUT_NOT_READY");
       }
       return mcpJson({

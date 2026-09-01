@@ -1,6 +1,6 @@
 import { MCP_OAUTH_SCOPES, type McpOauthScope } from "@haggle/db";
-import type { AuthUser } from "../middleware/auth.js";
 import { mcpAuthRequired, mcpError } from "../mcp/tools/responses.js";
+import type { AuthUser } from "../middleware/auth.js";
 import { getMcpActor } from "./mcp-actor.js";
 
 export const MCP_TOOL_SCOPES = MCP_OAUTH_SCOPES.filter(
@@ -16,7 +16,11 @@ export function actorHasScope(actor: AuthUser, scope: McpOauthScope): boolean {
 
 export function effectiveMcpScopes(actor: AuthUser): string[] {
   if (actor.tokenKind !== "mcp") return [...MCP_TOOL_SCOPES];
-  return [...new Set((actor.scopes ?? []).filter((scope) => actorHasScope(actor, scope as McpOauthScope)))];
+  return [
+    ...new Set(
+      (actor.scopes ?? []).filter((scope) => actorHasScope(actor, scope as McpOauthScope)),
+    ),
+  ];
 }
 
 export function requireActorWithScope(scope: McpOauthScope) {

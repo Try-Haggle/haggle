@@ -1,5 +1,5 @@
-import { hashOauthSecret } from "../services/mcp-oauth.service.js";
 import type { AuthUser } from "../middleware/auth.js";
+import { hashOauthSecret } from "../services/mcp-oauth.service.js";
 
 export interface McpTransportBinding {
   userId: string;

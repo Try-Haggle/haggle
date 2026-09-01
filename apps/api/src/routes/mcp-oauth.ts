@@ -63,21 +63,17 @@ export function registerMcpOauthRoutes(app: FastifyInstance, db: Database) {
     };
   });
 
-  app.post(
-    "/oauth/register",
-    { preHandler: [oauthRegisterRateLimit] },
-    async (request, reply) => {
-      const parsed = registerSchema.safeParse(request.body ?? {});
-      if (!parsed.success) {
-        return reply.code(400).send({ error: "invalid_client_metadata" });
-      }
-      const registered = await registerMcpOauthClient(db, parsed.data);
-      if (!registered.ok) {
-        return reply.code(400).send({ error: "invalid_client_metadata" });
-      }
-      return reply.code(201).send(registered.client);
-    },
-  );
+  app.post("/oauth/register", { preHandler: [oauthRegisterRateLimit] }, async (request, reply) => {
+    const parsed = registerSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid_client_metadata" });
+    }
+    const registered = await registerMcpOauthClient(db, parsed.data);
+    if (!registered.ok) {
+      return reply.code(400).send({ error: "invalid_client_metadata" });
+    }
+    return reply.code(201).send(registered.client);
+  });
 
   app.get<{ Params: { clientId: string } }>("/oauth/clients/:clientId", async (request, reply) => {
     const client = await getMcpOauthClient(db, request.params.clientId);

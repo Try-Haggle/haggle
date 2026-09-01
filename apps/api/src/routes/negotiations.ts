@@ -19,10 +19,7 @@ import type { EventDispatcher } from "../lib/event-dispatcher.js";
 import { getExecutor } from "../lib/executor-factory.js";
 import { executeGroupOrchestration, executeGroupTerminal } from "../lib/group-executor.js";
 import { negotiationChatUrl } from "../lib/public-urls.js";
-import {
-  validateSessionParticipant,
-  validateSessionWriteAccess,
-} from "../lib/session-access.js";
+import { validateSessionParticipant, validateSessionWriteAccess } from "../lib/session-access.js";
 import { requireAuth } from "../middleware/require-auth.js";
 import {
   applyBuyerPauseAnswer,

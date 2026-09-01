@@ -59,7 +59,9 @@ describe("Connect consent screen", () => {
     });
     render(<ConnectPage />);
     await waitFor(() => {
-      expect(screen.getByText("This redirect URL is not registered for the client.")).toBeInTheDocument();
+      expect(
+        screen.getByText("This redirect URL is not registered for the client."),
+      ).toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: "Allow access" })).toBeDisabled();
   });
