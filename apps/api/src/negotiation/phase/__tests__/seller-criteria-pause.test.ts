@@ -4,6 +4,7 @@ import {
   applyBuyerPauseAnswer,
   detectSellerCriteriaPause,
   readSellerCriteriaFromSnapshot,
+  sellerCriteriaHoldChatMessage,
 } from "../seller-criteria-pause.js";
 
 function criterion(overrides: Partial<CategoryCriterion> & { checkId: string }): CategoryCriterion {
@@ -205,5 +206,30 @@ describe("Flow 3 resume — readSellerCriteriaFromSnapshot + applyBuyerPauseAnsw
     const unresolved = unresolvedSellerRequirements(sellerRequired, []);
     const { applied } = applyBuyerPauseAnswer(snap, unresolved, new Map(), undefined);
     expect(applied).toBe(0);
+  });
+});
+
+describe("sellerCriteriaHoldChatMessage", () => {
+  it("keeps the incoming counterpart line instead of the pause checklist", () => {
+    expect(
+      sellerCriteriaHoldChatMessage({
+        incomingMessage: "I can do $880 if we close this week.",
+        incomingPriceMinor: 880_00,
+        senderRole: "SELLER",
+        pauseQuestions: ["Is the IMEI clean?", "Any water damage?"],
+      }),
+    ).toBe("I can do $880 if we close this week.");
+  });
+
+  it("falls back to a price line when the incoming text is the pause dump", () => {
+    const questions = ["IMEI clean?", "FRP off?"];
+    expect(
+      sellerCriteriaHoldChatMessage({
+        incomingMessage: questions.join(" "),
+        incomingPriceMinor: 880_00,
+        senderRole: "SELLER",
+        pauseQuestions: questions,
+      }),
+    ).toBe("Seller is at $880.");
   });
 });

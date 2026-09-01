@@ -50,6 +50,35 @@ describe("negotiation live session data", () => {
     expect(isTerminalNegotiationStatus("ACTIVE")).toBe(false);
   });
 
+  it("shows a near-deal price line instead of pause-checklist text", () => {
+    const transformed = transformNegotiationPlayback({
+      session: {
+        id: "33333333-3333-4333-8333-333333333333",
+        status: "WAITING",
+        current_round: 2,
+        last_offer_price_minor: 880_00,
+        buyer_negotiation_agent_preset_id: null,
+        listing: null,
+      },
+      rounds: [
+        round({
+          round_no: 2,
+          sender_role: "SELLER",
+          decision: "NEAR_DEAL",
+          price_minor: 880_00,
+          counter_price_minor: null,
+          message: "IMEI clean? Water damage? FRP off?",
+          held_for_criteria_pause: true,
+          pause_questions: ["IMEI clean?", "Water damage?", "FRP off?"],
+        }),
+      ],
+    });
+    const last = transformed.rounds.at(-1);
+    expect(last?.sender).toBe("SELLER");
+    expect(last?.message).toMatch(/\$880/);
+    expect(last?.message).not.toContain("IMEI");
+  });
+
   it("does not label a zero-round created session as escalated", () => {
     const transformed = transformNegotiationPlayback({
       session: {

@@ -42,9 +42,24 @@ export type ServerRound = {
     stance: string;
     label?: string;
   }> | null;
+  held_for_criteria_pause?: boolean;
+  pause_questions?: string[] | null;
 };
 
-export type SessionResponse = { session: ServerSession; rounds: ServerRound[] };
+export type SessionPauseCheck = {
+  checkId: string;
+  ask: string;
+  options: Array<{ label: string; stance: string }>;
+};
+
+export type SessionResponse = {
+  session: ServerSession;
+  rounds: ServerRound[];
+  paused_for_buyer?: boolean;
+  pause_checks?: SessionPauseCheck[];
+  pause_questions?: string[];
+  pause_check_ids?: string[];
+};
 
 const TERMINAL_STATUSES = new Set([
   "ACCEPTED",
@@ -60,8 +75,20 @@ export function isTerminalNegotiationStatus(status: string): boolean {
 }
 
 export function getRoundSpeaker(round: ServerRound): "BUYER" | "SELLER" {
+  // A criteria HOLD stores the incoming counterpart line (or a price fallback).
+  // Do not flip the speaker — that made pause-checklist text look like dialogue.
+  if (round.held_for_criteria_pause) return round.sender_role;
   if (!round.message?.trim()) return round.sender_role;
   return round.sender_role === "BUYER" ? "SELLER" : "BUYER";
+}
+
+function chatMessageForRound(round: ServerRound, offerMajor: number, currency = "USD"): string {
+  const fallback = fallbackMessage(round, offerMajor, currency);
+  const text = round.message?.trim() ?? "";
+  if (!round.held_for_criteria_pause) return text || fallback;
+  const dump = (round.pause_questions ?? []).filter((q) => q.trim()).join(" ");
+  if (text && text !== dump) return text;
+  return fallback;
 }
 
 function agentCardFor(presetId: string | null | undefined, role: "buyer" | "seller"): AgentCard {
@@ -160,7 +187,7 @@ export function transformNegotiationPlayback(payload: SessionResponse): Playback
       sender: displaySender,
       decision,
       offerPrice: offerMajor,
-      message: round.message?.trim() || fallbackMessage(round, offerMajor),
+      message: chatMessageForRound(round, offerMajor),
       ...(round.pause_answers?.length ? { pauseAnswers: round.pause_answers } : {}),
       factors: {
         utilityScore: round.utility?.u_total,

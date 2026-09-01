@@ -57,6 +57,18 @@ export interface PauseState {
  * options. Rebuild the richer shape from them so a client ahead of the API still renders
  * something answerable (free text) rather than nothing.
  */
+function pauseStateFromSession(payload: SessionResponse): PauseState | null {
+  if (payload.pause_checks?.length) return { checks: payload.pause_checks };
+  if (!payload.paused_for_buyer) return null;
+  const ids = payload.pause_check_ids ?? [];
+  const checks = (payload.pause_questions ?? []).map((ask, index) => ({
+    checkId: ids[index] ?? ask,
+    ask,
+    options: [],
+  }));
+  return checks.length > 0 ? { checks } : null;
+}
+
 function toPauseChecks(next: AutoPlayNextResponse): PauseCheck[] {
   if (next.pause_checks?.length) return next.pause_checks;
   const ids = next.pause_check_ids ?? [];
@@ -84,7 +96,9 @@ export function LiveNegotiation({
   const [updateError, setUpdateError] = useState(false);
   const [roundError, setRoundError] = useState<string | null>(null);
   const [stalled, setStalled] = useState(false);
-  const [pause, setPause] = useState<PauseState | null>(null);
+  const [pause, setPause] = useState<PauseState | null>(() =>
+    pauseStateFromSession(initialPayload),
+  );
   const [runnerAttempt, setRunnerAttempt] = useState(0);
   const isTerminal = isTerminalNegotiationStatus(payload.session.status);
 
@@ -112,6 +126,7 @@ export function LiveNegotiation({
         `/negotiations/sessions/${initialPayload.session.id}`,
       );
       setPayload(next);
+      setPause(pauseStateFromSession(next));
       setUpdateError(false);
     } catch {
       setUpdateError(true);
