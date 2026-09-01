@@ -388,6 +388,11 @@ export async function startBuyerNegotiation(
     maxRounds: AUTO_PLAY_MAX_ROUNDS,
   });
 
+  const criteriaReject = buyerCriteriaRequiredReject(buyerSnapshot);
+  if (criteriaReject) {
+    return { ok: false, status: 409, body: criteriaReject };
+  }
+
   try {
     await assertListingAcceptsNewSession(db, listing.id);
   } catch (error) {
@@ -419,7 +424,6 @@ export async function startBuyerNegotiation(
     });
   }
 
-  const criteriaReject = buyerCriteriaRequiredReject(buyerSnapshot);
   return {
     ok: true,
     status: 202,
@@ -431,12 +435,6 @@ export async function startBuyerNegotiation(
       ...(input.isGuest ? { guest_buyer_id: buyer.id } : {}),
       ...(attemptControl ? { attempt_control: attemptControl } : {}),
       ...(input.chatUrl ? { chat_url: input.chatUrl } : {}),
-      ...(criteriaReject
-        ? {
-            buyer_criteria_required: true,
-            required_check_ids: criteriaReject.required_check_ids,
-          }
-        : {}),
     },
   };
 }
