@@ -44,6 +44,7 @@ import {
   ListingClaimError,
 } from "../services/listing-claim.service.js";
 import {
+  applyUserSpecifiedAutoPlayCounter,
   attachNegotiationAutoPlayContext,
   getNegotiationAutoPlayContext,
   isNegotiationAutoPlayTerminal,
@@ -88,6 +89,8 @@ const startSessionSchema = startBuyerNegotiationSchema;
 
 const runNextAutoPlayRoundSchema = z.object({
   run_token: z.string().min(32).optional(),
+  price_minor: z.number().int().positive().optional(),
+  message: z.string().trim().min(1).max(4000).optional(),
 });
 
 // Phase G Flow 3 resume: the buyer's answer to a mid-negotiation seller-criteria pause.
@@ -1012,10 +1015,23 @@ export function registerNegotiationRoutes(
         }
       }
 
-      const plan = planNegotiationAutoPlayRound(session, rounds, context);
-      if (!plan) {
+      const planned = planNegotiationAutoPlayRound(session, rounds, context);
+      if (!planned) {
         return reply.code(409).send({ error: "AUTO_PLAY_ROUND_UNAVAILABLE" });
       }
+      const userCounter =
+        parsed.data.price_minor !== undefined || parsed.data.message !== undefined;
+      if (userCounter && planned.senderRole !== "BUYER") {
+        return reply.code(409).send({
+          error: "NOT_BUYER_TURN",
+          message:
+            "price_minor/message are a buyer counter. Wait for the buyer round; do not use hnp_submit_offer.",
+        });
+      }
+      const plan = applyUserSpecifiedAutoPlayCounter(planned, {
+        priceMinor: parsed.data.price_minor,
+        message: parsed.data.message,
+      });
 
       const claimed = await setSessionPerspective(
         db,
