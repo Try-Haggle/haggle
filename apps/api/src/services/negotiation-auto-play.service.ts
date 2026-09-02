@@ -216,6 +216,21 @@ export function planNegotiationAutoPlayRound(
   };
 }
 
+/** Overlay a user-specified counter on an autoplay plan. Omit both to keep model-chosen values. */
+export function applyUserSpecifiedAutoPlayCounter(
+  plan: NegotiationAutoPlayPlan,
+  user?: { priceMinor?: number; message?: string },
+): NegotiationAutoPlayPlan {
+  const priceMinor = user?.priceMinor;
+  const message = user?.message?.trim();
+  if ((priceMinor == null || priceMinor <= 0) && !message) return plan;
+  return {
+    ...plan,
+    offerPriceMinor: priceMinor != null && priceMinor > 0 ? priceMinor : plan.offerPriceMinor,
+    messageText: message || plan.messageText,
+  };
+}
+
 function hashRunToken(token: string): string {
   return createHash("sha256").update(token, "utf8").digest("hex");
 }

@@ -821,6 +821,39 @@ describe("Negotiation API", () => {
         }),
       });
     });
+
+    it("uses a user-specified price_minor and message instead of the autoplay price", async () => {
+      const { setup, session } = autoPlayFixture();
+      mockGetSessionById
+        .mockResolvedValueOnce(session)
+        .mockResolvedValueOnce({ ...session, status: "ACTIVE", currentRound: 1, version: 3 });
+      mockExecuteNegotiationRound.mockResolvedValue({
+        idempotent: false,
+        roundId: "round-auto-1",
+        roundNo: 1,
+        decision: "COUNTER",
+        outgoingPrice: 42_000,
+        utility: { u_total: 1, v_p: 1, v_t: 0, v_r: 0, v_s: 0 },
+        sessionStatus: "ACTIVE",
+      });
+
+      const message =
+        "Listing doesn't spec storage or battery, and 14 Plus is a discontinued size. $495 is still asking.";
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/sess-001/auto-play/next",
+        payload: { run_token: setup.runToken, price_minor: 42_000, message },
+      });
+
+      expect(res.statusCode).toBe(201);
+      expect(mockExecuteNegotiationRound).toHaveBeenCalledOnce();
+      expect(mockExecuteNegotiationRound.mock.calls[0]?.[1]).toMatchObject({
+        sessionId: "sess-001",
+        senderRole: "BUYER",
+        offerPriceMinor: 42_000,
+        messageText: message,
+      });
+    });
   });
 
   describe("POST /negotiations/start", () => {

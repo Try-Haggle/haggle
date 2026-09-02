@@ -10,6 +10,7 @@ import {
   SELLER_CRITERIA_PAUSE_MARKER,
 } from "../negotiation/phase/seller-criteria-pause.js";
 import {
+  applyUserSpecifiedAutoPlayCounter,
   attachNegotiationAutoPlayContext,
   getNegotiationAutoPlayContext,
   isNegotiationAutoPlayTerminal,
@@ -34,6 +35,8 @@ export async function executeAutoPlayNext(
     actor: AuthUser;
     expectedDriver: NegotiationDriver;
     eventDispatcher?: EventDispatcher;
+    priceMinor?: number;
+    message?: string;
   },
 ): Promise<AutoPlayNextResult> {
   const session = await getSessionById(db, input.sessionId);
@@ -142,10 +145,27 @@ export async function executeAutoPlayNext(
     }
   }
 
-  const plan = planNegotiationAutoPlayRound(session, rounds, context);
-  if (!plan) {
+  const planned = planNegotiationAutoPlayRound(session, rounds, context);
+  if (!planned) {
     return { ok: false, status: 409, body: { error: "AUTO_PLAY_ROUND_UNAVAILABLE" } };
   }
+
+  const userCounter = input.priceMinor !== undefined || input.message !== undefined;
+  if (userCounter && planned.senderRole !== "BUYER") {
+    return {
+      ok: false,
+      status: 409,
+      body: {
+        error: "NOT_BUYER_TURN",
+        message:
+          "price_minor/message are a buyer counter. Wait for the buyer round; do not use hnp_submit_offer.",
+      },
+    };
+  }
+  const plan = applyUserSpecifiedAutoPlayCounter(planned, {
+    priceMinor: input.priceMinor,
+    message: input.message,
+  });
 
   const claimed = await setSessionPerspective(
     db,
