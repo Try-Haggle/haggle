@@ -164,6 +164,32 @@ export async function startBuyerNegotiation(
     return { ok: false, status: 400, body: { error: "INVALID_PRICE_RANGE" } };
   }
 
+  // Required listing criteria must 409 before ATTEMPT_LIMIT / credit / marketplace-attempt.
+  // Empty start: no session, no attempt consumed (joUdQ7Tw).
+  const listingSnapshot =
+    (listing.negotiationAgentSnapshot as Record<string, unknown> | null) ?? {};
+  const snapshotRequired = extractSellerRequiredCriteria(listingSnapshot);
+  const rawBuyerCriteriaEarly =
+    body.buyerCriteria ?? (advisor as { categoryCriteria?: unknown } | undefined)?.categoryCriteria;
+  if (
+    snapshotRequired.length > 0 &&
+    !buyerHasAnsweredCriteria(
+      Array.isArray(rawBuyerCriteriaEarly) ? (rawBuyerCriteriaEarly as CategoryCriterion[]) : [],
+    )
+  ) {
+    return {
+      ok: false,
+      status: 409,
+      body: {
+        error: BUYER_CRITERIA_REQUIRED,
+        message:
+          "Answer seller required criteria (IMEI/완납/침수/Find My) in the start wizard via buyerCriteria before play_next. Do not use answer_pause.",
+        required_check_ids: snapshotRequired.map((c) => c.checkId),
+        required_criteria: snapshotRequired,
+      },
+    };
+  }
+
   let attemptControl: AttemptControlSnapshot | undefined;
   if (!input.isGuest) {
     const attemptResult = await evaluateAttemptControl(db, {
@@ -249,8 +275,6 @@ export async function startBuyerNegotiation(
     published_ask_minor: askMinor,
   };
   const sellerNegotiationAgentPresetId = listingContext.sellerNegotiationAgentPresetId;
-  const listingSnapshot =
-    (listing.negotiationAgentSnapshot as Record<string, unknown> | null) ?? {};
   const defaultRoute = resolveDecideModel({ publishedAskMinor: askMinor });
   const listingRequestedModel =
     typeof listingSnapshot?.seller_requested_model === "string"
@@ -340,7 +364,6 @@ export async function startBuyerNegotiation(
   // extractSellerRequiredCriteria. listingContext memory is not the gate -
   // required checks without a seller stance on that memory were dropped, the
   // gate became a no-op, and createSession still ran.
-  const snapshotRequired = extractSellerRequiredCriteria(listingSnapshot);
   const sellerRequiredCriteria: CategoryCriterion[] = snapshotRequired.map((c) => {
     const projected: CategoryCriterion = {
       checkId: c.checkId,

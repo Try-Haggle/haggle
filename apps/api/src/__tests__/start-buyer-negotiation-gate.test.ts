@@ -128,6 +128,47 @@ describe("startBuyerNegotiation buyerCriteria gate", () => {
     expect(createSession).not.toHaveBeenCalled();
   });
 
+  it("returns BUYER_CRITERIA_REQUIRED before ATTEMPT_LIMIT_EXCEEDED when remaining attempts are 0", async () => {
+    evaluateAttemptControl.mockResolvedValue({
+      allowed: false,
+      error: "ATTEMPT_LIMIT_EXCEEDED",
+      retryAfterSeconds: 86_400,
+      attemptControl: {
+        remaining_marketplace_attempts: 0,
+        marketplace_daily_attempts: 5,
+        max_rounds_per_session: 8,
+      },
+    });
+    const result = await startBuyerNegotiation({} as never, {
+      body: {
+        listing_public_id: "joUdQ7Tw",
+        negotiation_agent_preset_id: "balancer",
+      },
+      buyerId: "buyer-1",
+      isGuest: false,
+      driver: "mcp",
+      allowGuest: false,
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      status: 409,
+      body: {
+        error: "BUYER_CRITERIA_REQUIRED",
+        required_check_ids: ["imei_verification"],
+        required_criteria: [
+          { checkId: "imei_verification", ask: "Should the agent require a clean IMEI?" },
+        ],
+      },
+    });
+    if (!result.ok) {
+      expect(result.body.error).not.toBe("ATTEMPT_LIMIT_EXCEEDED");
+    }
+    expect(result.body).not.toHaveProperty("session_id");
+    expect(evaluateAttemptControl).not.toHaveBeenCalled();
+    expect(quoteNegotiationCredits).not.toHaveBeenCalled();
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
   it("creates a session when the listing snapshot has no required checks", async () => {
     getPublishedListingByRef.mockResolvedValue({
       id: "listing-1",
