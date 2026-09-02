@@ -31,11 +31,34 @@ export interface AttemptControlSnapshot {
   retry_after_seconds: number | null;
 }
 
+export type AttemptControlBlockRule =
+  | "concurrent_on_listing"
+  | "buyer_listing_window"
+  | "marketplace_daily"
+  | "listing_cooldown";
+
+export type AttemptControlError =
+  | "CONCURRENT_SESSION_LIMIT_EXCEEDED"
+  | "ATTEMPT_LIMIT_EXCEEDED"
+  | "ATTEMPT_WINDOW_EXCEEDED"
+  | "MARKETPLACE_ATTEMPT_LIMIT_EXCEEDED"
+  | "ATTEMPT_COOLDOWN";
+
 export interface AttemptControlResult {
   allowed: boolean;
-  error?: "CONCURRENT_SESSION_LIMIT_EXCEEDED" | "ATTEMPT_LIMIT_EXCEEDED";
+  error?: AttemptControlError;
+  rule?: AttemptControlBlockRule;
   retryAfterSeconds?: number;
   attemptControl: AttemptControlSnapshot;
+}
+
+export function isAttemptControlRateLimited(error: AttemptControlError | undefined): boolean {
+  return (
+    error === "ATTEMPT_LIMIT_EXCEEDED" ||
+    error === "ATTEMPT_WINDOW_EXCEEDED" ||
+    error === "MARKETPLACE_ATTEMPT_LIMIT_EXCEEDED" ||
+    error === "ATTEMPT_COOLDOWN"
+  );
 }
 
 export function defaultAttemptControlPolicy(): AttemptControlPolicy {
@@ -144,23 +167,36 @@ export async function evaluateAttemptControl(
     return {
       allowed: false,
       error: "CONCURRENT_SESSION_LIMIT_EXCEEDED",
+      rule: "concurrent_on_listing",
       attemptControl: snapshot,
     };
   }
 
-  if (
-    sessionsInWindow >= policy.maxSessionsPerWindow ||
-    marketplaceAttemptsToday >= policy.marketplaceDailyAttempts ||
-    cooldownRemaining > 0
-  ) {
+  if (sessionsInWindow >= policy.maxSessionsPerWindow) {
     return {
       allowed: false,
-      error: "ATTEMPT_LIMIT_EXCEEDED",
+      error: "ATTEMPT_WINDOW_EXCEEDED",
+      rule: "buyer_listing_window",
       retryAfterSeconds: cooldownRemaining || policy.windowSeconds,
       attemptControl: snapshot,
     };
   }
 
+  if (marketplaceAttemptsToday >= policy.marketplaceDailyAttempts) {
+    const msUntilUtcDayEnd = dayStart.getTime() + 86_400_000 - now.getTime();
+    return {
+      allowed: false,
+      error: "MARKETPLACE_ATTEMPT_LIMIT_EXCEEDED",
+      rule: "marketplace_daily",
+      retryAfterSeconds: Math.max(1, Math.ceil(msUntilUtcDayEnd / 1000)),
+      attemptControl: snapshot,
+    };
+  }
+
+  // listing_cooldown (HNP_ATTEMPT_COOLDOWN_SECONDS, default 12h) is not an
+  // attempt-count gate. remaining_sessions>0 + remaining_marketplace>0 +
+  // active 0 must start (joUdQ7Tw). Do not 429 ATTEMPT_LIMIT with retry_after
+  // ~3h from leftover last_listing_attempt_at after a rejected CREATED session.
   return { allowed: true, attemptControl: snapshot };
 }
 

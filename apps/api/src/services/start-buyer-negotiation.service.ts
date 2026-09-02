@@ -28,6 +28,7 @@ import {
   type AttemptControlSnapshot,
   defaultAttemptControlPolicy,
   evaluateAttemptControl,
+  isAttemptControlRateLimited,
 } from "./attempt-control.service.js";
 import { getPublishedListingByRef } from "./draft.service.js";
 import {
@@ -200,9 +201,10 @@ export async function startBuyerNegotiation(
     if (!attemptResult.allowed) {
       return {
         ok: false,
-        status: attemptResult.error === "ATTEMPT_LIMIT_EXCEEDED" ? 429 : 409,
+        status: isAttemptControlRateLimited(attemptResult.error) ? 429 : 409,
         body: {
           error: attemptResult.error,
+          rule: attemptResult.rule,
           attempt_control: attemptResult.attemptControl,
           retry_after: attemptResult.retryAfterSeconds,
         },

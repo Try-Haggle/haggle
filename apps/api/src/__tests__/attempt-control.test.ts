@@ -79,6 +79,57 @@ describe("evaluateAttemptControl", () => {
     expect(result).toMatchObject({
       allowed: false,
       error: "CONCURRENT_SESSION_LIMIT_EXCEEDED",
+      rule: "concurrent_on_listing",
     });
+  });
+
+  it("does not 429 ATTEMPT_LIMIT with listing cooldown when remaining_sessions>0, marketplace remaining>0, and active 0", async () => {
+    const nowMs = Date.parse("2026-09-02T12:00:00.000Z");
+    // Default cooldown is 12h. Last attempt 9h ago => retry_after ~3h (joUdQ7Tw).
+    const lastAttemptIso = new Date(nowMs - 9 * 3600 * 1000).toISOString();
+    const result = await evaluateAttemptControl(
+      mockDb({
+        active_sessions: 0,
+        active_sessions_on_listing: 0,
+        sessions_in_window: 1,
+        marketplace_attempts_today: 0,
+        last_listing_attempt_at: lastAttemptIso,
+      }) as never,
+      {
+        buyerPrincipalId: BUYER_ID,
+        listingId: LISTING_ID,
+        nowMs,
+      },
+    );
+    expect(result.allowed).toBe(true);
+    expect(result.error).toBeUndefined();
+    expect(result.error).not.toBe("ATTEMPT_LIMIT_EXCEEDED");
+    expect(result.rule).not.toBe("listing_cooldown");
+    expect(result.retryAfterSeconds).toBeUndefined();
+    expect(result.attemptControl.remaining_sessions).toBe(2);
+    expect(result.attemptControl.remaining_marketplace_attempts).toBe(5);
+    expect(result.attemptControl.active_sessions).toBe(0);
+    expect(result.attemptControl.active_sessions_on_listing).toBe(0);
+    expect(result.attemptControl.retry_after_seconds).toBe(3 * 3600);
+  });
+
+  it("names the buyer listing window when remaining_sessions is 0", async () => {
+    const result = await evaluateAttemptControl(
+      mockDb({
+        sessions_in_window: 3,
+        marketplace_attempts_today: 0,
+        last_listing_attempt_at: null,
+      }) as never,
+      {
+        buyerPrincipalId: BUYER_ID,
+        listingId: LISTING_ID,
+      },
+    );
+    expect(result).toMatchObject({
+      allowed: false,
+      error: "ATTEMPT_WINDOW_EXCEEDED",
+      rule: "buyer_listing_window",
+    });
+    expect(result.error).not.toBe("ATTEMPT_LIMIT_EXCEEDED");
   });
 });
