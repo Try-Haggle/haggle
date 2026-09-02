@@ -35,6 +35,7 @@ import {
   type AttemptControlSnapshot,
   defaultAttemptControlPolicy,
   evaluateAttemptControl,
+  isAttemptControlRateLimited,
 } from "../services/attempt-control.service.js";
 import { getListingPlaybackSummaryByInternalId } from "../services/draft.service.js";
 import { validateHnpIngress } from "../services/hnp-ingress.service.js";
@@ -215,8 +216,9 @@ export function registerNegotiationRoutes(
         if (attemptResult.retryAfterSeconds) {
           reply.header("retry-after", String(attemptResult.retryAfterSeconds));
         }
-        return reply.code(attemptResult.error === "ATTEMPT_LIMIT_EXCEEDED" ? 429 : 409).send({
+        return reply.code(isAttemptControlRateLimited(attemptResult.error) ? 429 : 409).send({
           error: attemptResult.error,
+          rule: attemptResult.rule,
           attempt_control: attemptResult.attemptControl,
         });
       }
