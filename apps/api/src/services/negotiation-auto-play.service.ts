@@ -216,19 +216,53 @@ export function planNegotiationAutoPlayRound(
   };
 }
 
-/** Overlay a user-specified counter on an autoplay plan. Omit both to keep model-chosen values. */
+/**
+ * Overlay a user-specified buyer COUNTER on an autoplay plan.
+ * Omit both fields to keep model-chosen values.
+ *
+ * After a persisted BUYER round, autoplay plans SELLER as the next incoming
+ * sender (buyer responds). A user price_minor must still submit as BUYER
+ * COUNTER — force senderRole BUYER / responderRole SELLER rather than 409.
+ */
 export function applyUserSpecifiedAutoPlayCounter(
   plan: NegotiationAutoPlayPlan,
   user?: { priceMinor?: number; message?: string },
+  snapshots?: {
+    buyerSnapshot: Record<string, unknown>;
+    sellerSnapshot: Record<string, unknown>;
+  },
 ): NegotiationAutoPlayPlan {
   const priceMinor = user?.priceMinor;
   const message = user?.message?.trim();
   if ((priceMinor == null || priceMinor <= 0) && !message) return plan;
+
+  const offerPriceMinor = priceMinor != null && priceMinor > 0 ? priceMinor : plan.offerPriceMinor;
+  const offerDollars = (offerPriceMinor / 100).toFixed(2);
+  const buyerCounterDefault = `I can do $${offerDollars}.`;
+
+  // User price/message is always the buyer's counter (same as the web counter).
+  // If autoplay planned seller-incoming, flip roles so the host envelope is BUYER.
+  if (plan.senderRole === "SELLER" && plan.responderRole === "BUYER") {
+    return {
+      ...plan,
+      senderRole: "BUYER",
+      responderRole: "SELLER",
+      responderSnapshot: snapshots?.sellerSnapshot ?? plan.responderSnapshot,
+      offerPriceMinor,
+      messageText: message || buyerCounterDefault,
+    };
+  }
+
   return {
     ...plan,
-    offerPriceMinor: priceMinor != null && priceMinor > 0 ? priceMinor : plan.offerPriceMinor,
+    offerPriceMinor,
     messageText: message || plan.messageText,
   };
+}
+
+/** True when a user counter can act this round (buyer is sender or responder). */
+export function canApplyBuyerUserCounter(plan: NegotiationAutoPlayPlan): boolean {
+  return plan.senderRole === "BUYER" || plan.responderRole === "BUYER";
 }
 
 function hashRunToken(token: string): string {

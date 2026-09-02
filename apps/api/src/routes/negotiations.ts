@@ -46,6 +46,7 @@ import {
 import {
   applyUserSpecifiedAutoPlayCounter,
   attachNegotiationAutoPlayContext,
+  canApplyBuyerUserCounter,
   getNegotiationAutoPlayContext,
   isNegotiationAutoPlayTerminal,
   planNegotiationAutoPlayRound,
@@ -89,7 +90,7 @@ const startSessionSchema = startBuyerNegotiationSchema;
 
 const runNextAutoPlayRoundSchema = z.object({
   run_token: z.string().min(32).optional(),
-  price_minor: z.number().int().positive().optional(),
+  price_minor: z.coerce.number().int().positive().optional(),
   message: z.string().trim().min(1).max(4000).optional(),
 });
 
@@ -1021,17 +1022,27 @@ export function registerNegotiationRoutes(
       }
       const userCounter =
         parsed.data.price_minor !== undefined || parsed.data.message !== undefined;
-      if (userCounter && planned.senderRole !== "BUYER") {
+      // After a persisted BUYER round autoplay plans SELLER incoming; user price_minor
+      // still forces a BUYER COUNTER. NOT_BUYER_TURN only if buyer has no role this round.
+      if (userCounter && !canApplyBuyerUserCounter(planned)) {
         return reply.code(409).send({
           error: "NOT_BUYER_TURN",
           message:
             "price_minor/message are a buyer counter. Wait for the buyer round; do not use hnp_submit_offer.",
         });
       }
-      const plan = applyUserSpecifiedAutoPlayCounter(planned, {
-        priceMinor: parsed.data.price_minor,
-        message: parsed.data.message,
-      });
+      const plan = applyUserSpecifiedAutoPlayCounter(
+        planned,
+        {
+          priceMinor: parsed.data.price_minor,
+          message: parsed.data.message,
+        },
+        { buyerSnapshot: context.buyerSnapshot, sellerSnapshot: context.sellerSnapshot },
+      );
+      const appliedPriceMinor =
+        parsed.data.price_minor !== undefined && parsed.data.price_minor > 0
+          ? parsed.data.price_minor
+          : undefined;
 
       const claimed = await setSessionPerspective(
         db,
@@ -1088,6 +1099,7 @@ export function registerNegotiationRoutes(
           round_id: result.roundId,
           round_no: result.roundNo,
           decision: result.decision,
+          ...(appliedPriceMinor !== undefined ? { applied_price_minor: appliedPriceMinor } : {}),
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

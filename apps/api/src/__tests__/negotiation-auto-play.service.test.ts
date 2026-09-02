@@ -158,4 +158,56 @@ describe("negotiation auto-play", () => {
       roundNo: 3,
     });
   });
+
+  it("overlays user price over Math.max buyer-incoming autoplan (49500)", () => {
+    const plan = {
+      roundNo: 3,
+      senderRole: "BUYER" as const,
+      responderRole: "SELLER" as const,
+      responderSnapshot: { side: "seller" },
+      offerPriceMinor: 49500, // Math.max(buyerTarget, sellerLast)
+      messageText: "Thanks for the response. I can do $495.00.",
+    };
+    expect(
+      applyUserSpecifiedAutoPlayCounter(plan, { priceMinor: 42000, message: "Counter at $420." }),
+    ).toMatchObject({
+      senderRole: "BUYER",
+      responderRole: "SELLER",
+      offerPriceMinor: 42000,
+      messageText: "Counter at $420.",
+    });
+  });
+
+  it("forces BUYER COUNTER when autoplay planned SELLER incoming (fc14da18)", () => {
+    const plan = {
+      roundNo: 2,
+      senderRole: "SELLER" as const,
+      responderRole: "BUYER" as const,
+      responderSnapshot: { side: "buyer" },
+      offerPriceMinor: 49500,
+      messageText: "Seller last at $495.",
+    };
+    const snapshots = {
+      buyerSnapshot: { side: "buyer" },
+      sellerSnapshot: { side: "seller" },
+    };
+    expect(
+      applyUserSpecifiedAutoPlayCounter(
+        plan,
+        {
+          priceMinor: 42000,
+          message:
+            "Listing doesn't spec storage or battery, and 14 Plus is a discontinued size. $495 is still asking.",
+        },
+        snapshots,
+      ),
+    ).toMatchObject({
+      senderRole: "BUYER",
+      responderRole: "SELLER",
+      responderSnapshot: { side: "seller" },
+      offerPriceMinor: 42000,
+      messageText:
+        "Listing doesn't spec storage or battery, and 14 Plus is a discontinued size. $495 is still asking.",
+    });
+  });
 });

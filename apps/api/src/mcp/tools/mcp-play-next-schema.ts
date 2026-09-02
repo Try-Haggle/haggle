@@ -10,7 +10,7 @@ import { z } from "zod";
  */
 export const hagglePlayNextInputShape = {
   session_id: z.string().uuid().describe("Negotiation session id"),
-  price_minor: z
+  price_minor: z.coerce
     .number()
     .int()
     .positive()

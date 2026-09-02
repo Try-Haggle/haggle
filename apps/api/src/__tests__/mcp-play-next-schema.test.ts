@@ -41,4 +41,16 @@ describe("haggle_play_next published MCP schema", () => {
     expect(schema.properties?.price_minor?.type).toBe("integer");
     expect(schema.properties?.message?.type).toBe("string");
   });
+
+  it("coerces numeric-string price_minor from MCP clients", () => {
+    const parsed = z.object(hagglePlayNextInputShape).safeParse({
+      session_id: "fc14da18-0000-4000-8000-000000000001",
+      price_minor: "42000",
+      message: "Counter at $420.",
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.price_minor).toBe(42000);
+    }
+  });
 });
