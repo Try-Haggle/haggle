@@ -6,6 +6,7 @@ import {
   getNegotiationAutoPlayContext,
   planNegotiationAutoPlayRound,
 } from "../services/negotiation-auto-play.service.js";
+import { getRoundsBySessionId } from "../services/negotiation-round.service.js";
 import { getSessionById, setSessionPerspective } from "../services/negotiation-session.service.js";
 
 vi.mock("../hnp/host-envelope.js", () => ({
@@ -343,5 +344,106 @@ describe("executeAutoPlayNext user-specified counter", () => {
       expect.objectContaining({ priceMinor: 49500, senderRole: "SELLER" }),
       expect.objectContaining({ messageText: "autoplay seller", requireSignature: false }),
     );
+  });
+});
+
+describe("executeAutoPlayNext user price_minor over real planner max", () => {
+  it("forces COUNTER at price_minor 42000 through submitHnpOffer when real planner maxes seller last 49500", async () => {
+    const { planNegotiationAutoPlayRound: realPlan } = await vi.importActual<
+      typeof import("../services/negotiation-auto-play.service.js")
+    >("../services/negotiation-auto-play.service.js");
+    const { buildHostHnpOfferEnvelope: realBuild } =
+      await vi.importActual<typeof import("../hnp/host-envelope.js")>("../hnp/host-envelope.js");
+
+    vi.mocked(planNegotiationAutoPlayRound).mockImplementation(realPlan);
+    vi.mocked(buildHostHnpOfferEnvelope).mockImplementation(realBuild);
+
+    const rounds = [
+      {
+        roundNo: 1,
+        senderRole: "BUYER" as const,
+        priceminor: "45000",
+        counterPriceMinor: null,
+        message: null,
+      },
+      {
+        roundNo: 2,
+        senderRole: "SELLER" as const,
+        priceminor: "49500",
+        counterPriceMinor: "49500",
+        message: "Seller last at $495.",
+      },
+    ];
+    const context = {
+      buyerTargetMinor: 45000,
+      maxRounds: 8,
+      buyerSnapshot: { side: "buyer" },
+      sellerSnapshot: { side: "seller" },
+    };
+    const session = {
+      id: "sess-1",
+      driver: "mcp",
+      buyerId: "buyer-1",
+      sellerId: "seller-1",
+      status: "ACTIVE",
+      currentRound: 2,
+      version: 1,
+      negotiationAgentSnapshot: {},
+    };
+
+    // QA cause: real planner does max(buyerTarget 45000, lastSeller 49500) === 49500.
+    const planned = realPlan(session as never, rounds as never, context as never);
+    expect(planned?.senderRole).toBe("BUYER");
+    expect(planned?.offerPriceMinor).toBe(49500);
+
+    vi.mocked(submitHnpOffer).mockClear();
+    vi.mocked(getSessionById).mockResolvedValue(session as never);
+    vi.mocked(getNegotiationAutoPlayContext).mockReturnValue(context as never);
+    vi.mocked(getRoundsBySessionId).mockResolvedValue(rounds as never);
+    vi.mocked(setSessionPerspective).mockResolvedValue(true);
+
+    try {
+      const result = await executeAutoPlayNext({} as never, {
+        sessionId: "sess-1",
+        actor: { id: "buyer-1", role: "user" },
+        expectedDriver: "mcp",
+        priceMinor: 42000,
+        message: "Listing doesn't spec storage or battery. Counter at $420.",
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.body.decision).not.toBe("ACCEPT");
+      expect(result.body.session_status).not.toBe("ACCEPTED");
+      expect(result.body).toMatchObject({ applied_price_minor: 42000 });
+
+      expect(submitHnpOffer).toHaveBeenCalledOnce();
+      expect(submitHnpOffer).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          type: "COUNTER",
+          sender_role: "BUYER",
+          payload: expect.objectContaining({
+            total_price: expect.objectContaining({ units_minor: 42000 }),
+          }),
+        }),
+        expect.objectContaining({
+          messageText: "Listing doesn't spec storage or battery. Counter at $420.",
+          requireSignature: false,
+        }),
+      );
+      expect(submitHnpOffer).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            total_price: expect.objectContaining({ units_minor: 49500 }),
+          }),
+        }),
+        expect.anything(),
+      );
+    } finally {
+      vi.mocked(planNegotiationAutoPlayRound).mockReset();
+      vi.mocked(buildHostHnpOfferEnvelope).mockImplementation((args: unknown) => args as never);
+      vi.mocked(getRoundsBySessionId).mockResolvedValue([]);
+    }
   });
 });
