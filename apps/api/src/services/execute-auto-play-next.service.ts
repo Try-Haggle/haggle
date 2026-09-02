@@ -12,6 +12,7 @@ import {
 import {
   applyUserSpecifiedAutoPlayCounter,
   attachNegotiationAutoPlayContext,
+  canApplyBuyerUserCounter,
   getNegotiationAutoPlayContext,
   isNegotiationAutoPlayTerminal,
   planNegotiationAutoPlayRound,
@@ -151,7 +152,10 @@ export async function executeAutoPlayNext(
   }
 
   const userCounter = input.priceMinor !== undefined || input.message !== undefined;
-  if (userCounter && planned.senderRole !== "BUYER") {
+  // NOT_BUYER_TURN only when the buyer is neither sender nor responder this round.
+  // After a persisted BUYER round, plan.senderRole is SELLER (buyer responds) — still
+  // allow price_minor as a forced BUYER COUNTER (fc14da18).
+  if (userCounter && !canApplyBuyerUserCounter(planned)) {
     return {
       ok: false,
       status: 409,
@@ -162,10 +166,16 @@ export async function executeAutoPlayNext(
       },
     };
   }
-  const plan = applyUserSpecifiedAutoPlayCounter(planned, {
-    priceMinor: input.priceMinor,
-    message: input.message,
-  });
+  const plan = applyUserSpecifiedAutoPlayCounter(
+    planned,
+    {
+      priceMinor: input.priceMinor,
+      message: input.message,
+    },
+    { buyerSnapshot: context.buyerSnapshot, sellerSnapshot: context.sellerSnapshot },
+  );
+  const appliedPriceMinor =
+    input.priceMinor !== undefined && input.priceMinor > 0 ? input.priceMinor : undefined;
 
   const claimed = await setSessionPerspective(
     db,
@@ -229,6 +239,7 @@ export async function executeAutoPlayNext(
         round_id: result.roundId,
         round_no: result.roundNo,
         decision: result.decision,
+        ...(appliedPriceMinor !== undefined ? { applied_price_minor: appliedPriceMinor } : {}),
       },
     };
   } catch (err) {
