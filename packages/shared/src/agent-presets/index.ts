@@ -1,4 +1,11 @@
 export {
+  AGENT_ANIMALS,
+  type AgentAnimal,
+  isAgentAnimal,
+  type ResolvedAgentAvatar,
+  resolveAgentAvatar,
+} from "./avatar.js";
+export {
   FIELD_DESCRIPTORS,
   type FieldDescriptor,
   type FieldDimension,
@@ -6,7 +13,6 @@ export {
   fieldsByTier,
   getFieldDescriptor,
 } from "./field-descriptions.js";
-
 export {
   getNegotiationAgentPreset,
   NEGOTIATION_AGENT_PRESETS,

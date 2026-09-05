@@ -20,6 +20,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useId } from "react";
+import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { DURATION, EASE } from "@/components/listing-detail/motion";
 import { MotionRadar } from "@/components/listing-detail/motion-radar";
 import { Button, Input } from "@/components/ui";
@@ -132,7 +133,7 @@ export function AgentIdentityPanel({
               }}
               aria-hidden="true"
             >
-              {effective.emoji}
+              <AgentAvatar value={effective.emoji} />
             </motion.span>
             <div className="min-w-0 flex-1">
               <p className="font-bold text-[15px] text-ink leading-tight">{copy.name}</p>

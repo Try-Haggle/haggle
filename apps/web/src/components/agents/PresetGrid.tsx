@@ -5,6 +5,7 @@ import {
   type NegotiationAgentPreset,
   type NegotiationAgentPresetId,
 } from "@haggle/shared";
+import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { SelectableOptionCard } from "@/components/ui";
 
 type Role = "buyer" | "seller";
@@ -46,7 +47,7 @@ export function PresetGrid({
                   color: preset.accentColor,
                 }}
               >
-                {preset.emoji}
+                <AgentAvatar value={preset.emoji} />
               </span>
             }
             title={

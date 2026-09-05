@@ -2,6 +2,7 @@
 
 import { getNegotiationAgentPreset } from "@haggle/shared";
 import { motion } from "framer-motion";
+import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { DURATION, EASE, riseIn, staggerGroup } from "./motion";
 
 /**
@@ -64,7 +65,7 @@ export function OpponentCard({ presetId, isOwner = false, className }: OpponentC
           transition={{ duration: DURATION.base, ease: EASE.select, delay: 0.05 }}
           aria-hidden="true"
         >
-          {preset?.emoji ?? "🤝"}
+          <AgentAvatar value={preset?.emoji} fallback="🤝" />
         </motion.span>
         <div className="min-w-0 flex-1">
           <p className="font-bold text-[15px] text-ink">{copy?.name ?? "Default agent"}</p>

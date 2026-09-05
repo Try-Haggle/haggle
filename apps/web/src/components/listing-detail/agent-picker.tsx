@@ -3,6 +3,7 @@
 import { getNegotiationAgentPreset, type NegotiationAgentPreset } from "@haggle/shared";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, ChevronRight, Pencil, Plus } from "lucide-react";
+import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { Carousel } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { DURATION, EASE, expandPanel, SPRING } from "./motion";
@@ -174,7 +175,7 @@ export function AgentPicker({
                         }}
                         aria-hidden="true"
                       >
-                        {savedEmoji ?? preset.emoji}
+                        <AgentAvatar value={savedEmoji ?? preset.emoji} />
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-bold text-[15px] text-ink">
@@ -344,7 +345,7 @@ export function AgentTile({
         transition={SPRING.snappy}
         aria-hidden="true"
       >
-        {emoji}
+        <AgentAvatar value={emoji} />
       </motion.span>
       {/* Reserve two lines so one-line and two-line labels produce equal
           tile heights — mixed heights in a row read as misalignment. */}

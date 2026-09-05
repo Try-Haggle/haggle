@@ -1,0 +1,107 @@
+{
+  "source": "https://github.com/microsoft/fluentui-emoji",
+  "licence": "MIT",
+  "variant": "Color",
+  "animals": [
+    {
+      "slug": "bear",
+      "name": "Bear",
+      "bytes": 26330
+    },
+    {
+      "slug": "cat",
+      "name": "Cat face",
+      "bytes": 27510
+    },
+    {
+      "slug": "cow",
+      "name": "Cow face",
+      "bytes": 20188
+    },
+    {
+      "slug": "dog",
+      "name": "Dog face",
+      "bytes": 23717
+    },
+    {
+      "slug": "fox",
+      "name": "Fox",
+      "bytes": 35209
+    },
+    {
+      "slug": "frog",
+      "name": "Frog",
+      "bytes": 5062
+    },
+    {
+      "slug": "hamster",
+      "name": "Hamster",
+      "bytes": 29898
+    },
+    {
+      "slug": "koala",
+      "name": "Koala",
+      "bytes": 21564
+    },
+    {
+      "slug": "lion",
+      "name": "Lion",
+      "bytes": 41568
+    },
+    {
+      "slug": "monkey",
+      "name": "Monkey face",
+      "bytes": 20102
+    },
+    {
+      "slug": "mouse",
+      "name": "Mouse face",
+      "bytes": 19719
+    },
+    {
+      "slug": "owl",
+      "name": "Owl",
+      "bytes": 17844
+    },
+    {
+      "slug": "panda",
+      "name": "Panda",
+      "bytes": 21929
+    },
+    {
+      "slug": "penguin",
+      "name": "Penguin",
+      "bytes": 22748
+    },
+    {
+      "slug": "pig",
+      "name": "Pig face",
+      "bytes": 25699
+    },
+    {
+      "slug": "polar-bear",
+      "name": "Polar bear",
+      "bytes": 29236
+    },
+    {
+      "slug": "rabbit",
+      "name": "Rabbit face",
+      "bytes": 28095
+    },
+    {
+      "slug": "raccoon",
+      "name": "Raccoon",
+      "bytes": 31787
+    },
+    {
+      "slug": "tiger",
+      "name": "Tiger face",
+      "bytes": 28340
+    },
+    {
+      "slug": "wolf",
+      "name": "Wolf",
+      "bytes": 33763
+    }
+  ]
+}

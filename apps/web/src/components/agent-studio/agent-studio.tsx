@@ -19,6 +19,7 @@ import {
   type AdvancedOverrides,
   AdvancedSettingsModal,
 } from "@/components/agents/AdvancedSettingsModal";
+import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { DURATION, EASE } from "@/components/listing-detail/motion";
 import { MotionRadar } from "@/components/listing-detail/motion-radar";
 import { Drawer } from "@/components/ui";
@@ -457,7 +458,9 @@ function EmptyCanvas({
               backgroundColor: `color-mix(in srgb, ${preset.accentColor} 8%, transparent)`,
             }}
           >
-            <span aria-hidden="true">{preset.emoji}</span>
+            <span aria-hidden="true">
+              <AgentAvatar value={preset.emoji} />
+            </span>
             <span className="sr-only">{preset.copy[role].name}</span>
           </button>
         ))}

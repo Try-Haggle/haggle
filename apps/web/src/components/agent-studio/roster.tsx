@@ -6,6 +6,7 @@ import {
   type NegotiationAgentPreset,
 } from "@haggle/shared";
 import { motion } from "framer-motion";
+import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { SPRING } from "@/components/listing-detail/motion";
 import { cn } from "@/lib/cn";
 import { type StudioSavedAgent, type StudioSelection, selectionKey } from "./types";
@@ -140,7 +141,7 @@ function RosterRow({
           style={{ backgroundColor: `color-mix(in srgb, ${accent} 14%, transparent)` }}
           aria-hidden="true"
         >
-          {emoji}
+          <AgentAvatar value={emoji} />
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate font-semibold text-[13px]">{name}</span>
@@ -219,7 +220,7 @@ export function AgentAvatarStrip({
                 className="flex size-10 items-center justify-center rounded-full text-[19px]"
                 style={{ backgroundColor: `color-mix(in srgb, ${item.accent} 14%, transparent)` }}
               >
-                {item.emoji}
+                <AgentAvatar value={item.emoji} />
               </span>
             </span>
             <span
