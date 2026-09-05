@@ -29,13 +29,25 @@ import {
   updateCommerceOrderStatus,
   updateStoredPaymentIntent,
 } from "../services/payment-record.service.js";
-import { createSettlementReleaseRecord } from "../services/settlement-release.service.js";
+import {
+  createSettlementReleaseRecord,
+  getSettlementReleaseByOrderId,
+} from "../services/settlement-release.service.js";
 import { createShipmentRecord, getShipmentByOrderId } from "../services/shipment-record.service.js";
 import {
   claimWebhookEvent,
   completeWebhookEvent,
   failWebhookEvent,
 } from "../services/webhook-event-claim.service.js";
+import {
+  assertFakeMoneyStage1Linkage,
+  FAKE_MONEY_STAGE1_AMOUNT,
+  FAKE_MONEY_STAGE1_BUYER_ID,
+  FAKE_MONEY_STAGE1_NOW,
+  FAKE_MONEY_STAGE1_ORDER_ID,
+  FAKE_MONEY_STAGE1_PAYMENT_INTENT_ID,
+  FAKE_MONEY_STAGE1_SELLER_ID,
+} from "./fixtures/fake-money-stage1.js";
 import { ADMIN_HEADERS, AUTH_HEADERS, closeTestApp, getTestApp } from "./helpers.js";
 
 // --- Mock service layers ---
@@ -216,6 +228,7 @@ const mockCreatePaymentOperationIdempotencyRecord = vi.mocked(
   createPaymentOperationIdempotencyRecord,
 );
 const mockCreateSettlementReleaseRecord = vi.mocked(createSettlementReleaseRecord);
+const mockGetSettlementReleaseByOrderId = vi.mocked(getSettlementReleaseByOrderId);
 const mockCreateShipmentRecord = vi.mocked(createShipmentRecord);
 const mockGetShipmentByOrderId = vi.mocked(getShipmentByOrderId);
 const mockCreatePublicClient = vi.mocked(createPublicClient);
@@ -3825,5 +3838,122 @@ describe("Payment routes", () => {
       url: "/payments/some-id/authorize",
     });
     expect(res.statusCode).toBe(401);
+  });
+
+  it("POST /payments/:id/settle links SETTLED mock payment to commerce order and settlement release (Stage1 A2)", async () => {
+    mockGetPaymentIntentById.mockClear();
+    mockGetCommerceOrderByOrderId.mockClear();
+    mockUpdateStoredPaymentIntent.mockClear();
+    mockCreateSettlementReleaseRecord.mockClear();
+    mockGetSettlementReleaseByOrderId.mockClear();
+    mockCreateShipmentRecord.mockClear();
+    mockUpdateCommerceOrderStatus.mockClear();
+    mockGetPaymentSettlementByPaymentIntentId.mockClear();
+
+    mockGetSettlementReleaseByOrderId.mockResolvedValue(null);
+    mockGetPaymentSettlementByPaymentIntentId.mockResolvedValue(null);
+    mockGetCommerceOrderByOrderId.mockResolvedValue({
+      id: FAKE_MONEY_STAGE1_ORDER_ID,
+      status: "PAYMENT_PENDING",
+      listingId: null,
+      settlementApprovalId: null,
+      orderSnapshot: null,
+    } as never);
+
+    mockCreateSettlementReleaseRecord.mockImplementation(async (_db, release) => release);
+
+    const pendingIntent = {
+      id: FAKE_MONEY_STAGE1_PAYMENT_INTENT_ID,
+      order_id: FAKE_MONEY_STAGE1_ORDER_ID,
+      seller_id: FAKE_MONEY_STAGE1_SELLER_ID,
+      buyer_id: FAKE_MONEY_STAGE1_BUYER_ID,
+      selected_rail: "stripe" as const,
+      allowed_rails: ["stripe"] as const,
+      amount: FAKE_MONEY_STAGE1_AMOUNT,
+      status: "SETTLEMENT_PENDING" as const,
+      created_at: FAKE_MONEY_STAGE1_NOW,
+      updated_at: FAKE_MONEY_STAGE1_NOW,
+    };
+    mockGetPaymentIntentById.mockResolvedValue(pendingIntent as never);
+    mockGetPaymentIntentRowById.mockResolvedValue({
+      id: FAKE_MONEY_STAGE1_PAYMENT_INTENT_ID,
+      providerContext: {
+        shipping_execution_mode: "integration_manual",
+        shipping_provider_environment: "test",
+      },
+    } as never);
+
+    const originalJwtSecret = process.env.SUPABASE_JWT_SECRET;
+    process.env.SUPABASE_JWT_SECRET = "test-secret";
+    const token = jwt.sign(
+      {
+        sub: FAKE_MONEY_STAGE1_BUYER_ID,
+        email: "stage1-buyer@haggle.test",
+        role: "authenticated",
+      },
+      "test-secret",
+    );
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: `/payments/${FAKE_MONEY_STAGE1_PAYMENT_INTENT_ID}/settle`,
+        headers: { authorization: `Bearer ${token}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.intent).toMatchObject({
+        id: FAKE_MONEY_STAGE1_PAYMENT_INTENT_ID,
+        order_id: FAKE_MONEY_STAGE1_ORDER_ID,
+        status: "SETTLED",
+      });
+      expect(body.settlement_release).toMatchObject({
+        payment_intent_id: FAKE_MONEY_STAGE1_PAYMENT_INTENT_ID,
+        order_id: FAKE_MONEY_STAGE1_ORDER_ID,
+        product_release_status: "PENDING_DELIVERY",
+      });
+
+      expect(mockCreateSettlementReleaseRecord).toHaveBeenCalledOnce();
+      const releaseArg = mockCreateSettlementReleaseRecord.mock.calls[0]?.[1];
+      expect(releaseArg).toMatchObject({
+        payment_intent_id: FAKE_MONEY_STAGE1_PAYMENT_INTENT_ID,
+        order_id: FAKE_MONEY_STAGE1_ORDER_ID,
+      });
+
+      expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(
+        expect.anything(),
+        FAKE_MONEY_STAGE1_ORDER_ID,
+        "PAID",
+      );
+      expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(
+        expect.anything(),
+        FAKE_MONEY_STAGE1_ORDER_ID,
+        "FULFILLMENT_PENDING",
+      );
+
+      assertFakeMoneyStage1Linkage({
+        payment: {
+          id: body.intent.id,
+          order_id: body.intent.order_id,
+          status: body.intent.status,
+          buyer_id: body.intent.buyer_id,
+          seller_id: body.intent.seller_id,
+        },
+        order: {
+          id: FAKE_MONEY_STAGE1_ORDER_ID,
+          status: "FULFILLMENT_PENDING",
+        },
+        release: {
+          id: body.settlement_release.id,
+          payment_intent_id: body.settlement_release.payment_intent_id,
+          order_id: body.settlement_release.order_id,
+          product_release_status: body.settlement_release.product_release_status,
+        },
+      });
+    } finally {
+      if (originalJwtSecret === undefined) delete process.env.SUPABASE_JWT_SECRET;
+      else process.env.SUPABASE_JWT_SECRET = originalJwtSecret;
+    }
   });
 });
