@@ -177,4 +177,3 @@ When the order is still `PAYMENT_PENDING` or `APPROVED`, open-dispute returns `O
 - Then call MCP `haggle_start_dispute` with `order_id` (suggested reason `ITEM_NOT_AS_DESCRIBED`) and attach file evidence on the web.
 
 Related: `docs/wip/fake-money-fake-address-e2e-test-plan.md`, `STRIPE_MODE=mock`, `HAGGLE_X402_MODE=mock`.
-
