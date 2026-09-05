@@ -121,6 +121,10 @@ import {
   releaseDisputeOperationLease,
 } from "../services/dispute-operation-lease.service.js";
 import {
+  describeDisputeOrderGate,
+  isDisputableOrderStatus,
+} from "../services/dispute-order-gate.service.js";
+import {
   buildDisputePrecedentSnapshot,
   listApprovedDisputePrecedents,
   toResolutionAssessorPrecedentExamples,
@@ -548,13 +552,6 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   const disputeService = new DisputeService();
   const { requireDisputeParty } = createOwnershipMiddleware(db);
 
-  const disputableOrderStatuses = new Set([
-    "PAID",
-    "FULFILLMENT_PENDING",
-    "FULFILLMENT_ACTIVE",
-    "DELIVERED",
-    "IN_DISPUTE",
-  ]);
   const buyerDisputeReasonCodes: DisputeReasonCode[] = [
     "ITEM_NOT_RECEIVED",
     "ITEM_NOT_AS_DESCRIBED",
@@ -1210,18 +1207,24 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       const shipment = await getShipmentByOrderId(db, orderId);
       const reasonCodes = openedBy === "buyer" ? buyerDisputeReasonCodes : sellerDisputeReasonCodes;
       const reasons = reasonCodes.map((reasonCode) => {
-        const eligibility = disputableOrderStatuses.has(order.status)
+        const eligibility = isDisputableOrderStatus(order.status)
           ? evaluateDisputeOpeningEligibility({
               reasonCode,
               openedBy,
               orderStatus: order.status,
               shipment,
             })
-          : {
-              eligible: false,
-              error: "ORDER_NOT_DISPUTABLE",
-              message: "This order is not in a state where a dispute can be opened.",
-            };
+          : (() => {
+              const gate = describeDisputeOrderGate(order.status);
+              return {
+                eligible: false,
+                error: "ORDER_NOT_DISPUTABLE",
+                blocking_gate: gate.blocking_gate,
+                message: gate.message,
+                hint: gate.hint,
+                staging_fixture: gate.staging_fixture,
+              };
+            })();
         return {
           code: reasonCode,
           label: REASON_CODE_REGISTRY[reasonCode].label,
@@ -1298,11 +1301,15 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         });
       }
 
-      if (!disputableOrderStatuses.has(order.status)) {
+      if (!isDisputableOrderStatus(order.status)) {
+        const gate = describeDisputeOrderGate(order.status);
         return reply.code(409).send({
           error: "ORDER_NOT_DISPUTABLE",
-          order_status: order.status,
-          message: "This order is not in a disputable state",
+          order_status: gate.order_status,
+          blocking_gate: gate.blocking_gate,
+          message: gate.message,
+          hint: gate.hint,
+          staging_fixture: gate.staging_fixture,
         });
       }
 
@@ -1584,11 +1591,15 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         .code(400)
         .send({ error: "INVALID_REASON_CODE", reason_code: parsed.data.reason_code });
     }
-    if (!disputableOrderStatuses.has(order.status)) {
+    if (!isDisputableOrderStatus(order.status)) {
+      const gate = describeDisputeOrderGate(order.status);
       return reply.code(409).send({
         error: "ORDER_NOT_DISPUTABLE",
-        order_status: order.status,
-        message: "This order is not in a disputable state",
+        order_status: gate.order_status,
+        blocking_gate: gate.blocking_gate,
+        message: gate.message,
+        hint: gate.hint,
+        staging_fixture: gate.staging_fixture,
       });
     }
     const openingEligibility = await getOpeningEligibility(

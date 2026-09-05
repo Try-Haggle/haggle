@@ -75,6 +75,7 @@ import { runDisputeEvidenceScanRetryFixture } from "../services/dispute-evidence
 import { getDisputeEvidenceScannerCircuitHealth } from "../services/dispute-evidence-scanner-circuit.service.js";
 import { runDisputeEvidenceScannerSecurityFixture } from "../services/dispute-evidence-scanner-fixture.service.js";
 import { runDisputeImageSimilarityFixtureEvaluation } from "../services/dispute-image-similarity-fixture.service.js";
+import { createDisputeReadyOrderFixture } from "../services/dispute-ready-order-fixture.service.js";
 import {
   acquireFinalityAlertFixtureLease,
   PAYMENT_TEST_OPERATION_HEARTBEAT_SECONDS,
@@ -165,6 +166,16 @@ const fulfillmentTypeSchema = z.enum([
   "external_platform_transfer",
   "onchain_transfer",
 ]);
+
+const disputeReadyOrderSchema = z.object({
+  amount_minor: z.number().int().positive().max(10_000_000).default(45_000),
+  currency: z.literal("USDC").default("USDC"),
+  selected_payment_rail: z.enum(["x402", "stripe"]).default("stripe"),
+  order_status: z.enum(["PAID", "DELIVERED"]).default("DELIVERED"),
+  listing_id: z.string().uuid().optional(),
+  seller_id: z.string().uuid().optional(),
+  item_title: z.string().max(120).default("Haggle dispute-after-pay dogfood fixture"),
+});
 
 const paymentTestApprovalSchema = z.object({
   scenario: z.enum(["unit_mock", "integration_real"]).default("unit_mock"),
@@ -3163,6 +3174,62 @@ export function registerPaymentTestToolRoutes(app: FastifyInstance, db: Database
           expected_outcomes: scenario.expected_outcomes,
         })),
       });
+    },
+  );
+
+  app.post(
+    "/tools/payment-test/dispute-ready-order",
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      if (!paymentTestToolsEnabledFor(request.user?.role)) {
+        return reply.code(403).send({
+          error: "PAYMENT_TEST_TOOLS_DISABLED",
+          message:
+            "Dispute-ready order fixture requires non-production or admin with HAGGLE_ENABLE_PAYMENT_TEST_TOOLS=true",
+        });
+      }
+
+      const parsed = disputeReadyOrderSchema.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        return reply.code(400).send({
+          error: "INVALID_DISPUTE_READY_ORDER_REQUEST",
+          issues: parsed.error.issues,
+        });
+      }
+
+      const buyerId = request.user!.id;
+      if (!z.string().uuid().safeParse(buyerId).success) {
+        return reply.code(400).send({
+          error: "PAYMENT_TEST_BUYER_ID_MUST_BE_UUID",
+          message:
+            "Use a Supabase user UUID JWT or the UUID-shaped local test token for payment test fixtures",
+        });
+      }
+
+      try {
+        const fixture = await createDisputeReadyOrderFixture(db, {
+          buyerId,
+          amountMinor: parsed.data.amount_minor,
+          currency: parsed.data.currency,
+          selectedPaymentRail: parsed.data.selected_payment_rail,
+          orderStatus: parsed.data.order_status,
+          itemTitle: parsed.data.item_title,
+          listingId: parsed.data.listing_id,
+          sellerId: parsed.data.seller_id,
+        });
+        return reply.code(201).send({
+          fixture,
+          runtime: currentPaymentRuntime(),
+          message:
+            "Mock paid/delivered order created for dispute dogfood. No real money and no card PAN. Call haggle_start_dispute with fixture.order_id.",
+        });
+      } catch (error) {
+        request.log.error({ err: error }, "dispute-ready-order fixture failed");
+        return reply.code(500).send({
+          error: "DISPUTE_READY_ORDER_FIXTURE_FAILED",
+          message: error instanceof Error ? error.message : "fixture failed",
+        });
+      }
     },
   );
 
