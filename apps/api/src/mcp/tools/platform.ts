@@ -65,6 +65,7 @@ import {
   startBuyerNegotiation,
   startBuyerNegotiationSchema,
 } from "../../services/start-buyer-negotiation.service.js";
+import { lockTestContractForDisputeOpen } from "../../services/test-contract-ledger.service.js";
 import { haggleGetListingInputShape, haggleGetListingOutputShape } from "./mcp-listing-schema.js";
 import { hagglePlayNextInputShape } from "./mcp-play-next-schema.js";
 import { haggleStartNegotiationInputShape } from "./mcp-start-schema.js";
@@ -1097,10 +1098,18 @@ export function registerPlatformTools(
         }
         throw error;
       }
+      const testContractLock = lockTestContractForDisputeOpen(order_id, opened.dispute.id);
       return mcpJson({
         dispute_id: opened.dispute.id,
         evidence_url: `${publicAppBaseUrl()}/disputes/${opened.dispute.id}`,
         message: "Dispute opened. Upload evidence on the web.",
+        test_contract_lock: testContractLock.locked
+          ? {
+              locked: true,
+              idempotent: testContractLock.idempotent,
+              status: testContractLock.entry.status,
+            }
+          : { locked: false, reason: testContractLock.reason },
       });
     },
   );

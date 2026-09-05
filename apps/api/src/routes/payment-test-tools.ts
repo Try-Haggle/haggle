@@ -134,6 +134,14 @@ import { getShipmentApvRetentionAlertFixtureReadiness } from "../services/shipme
 import { runShipmentOrderingChaos } from "../services/shipment-ordering-chaos.service.js";
 import { getSupabaseJwtVerifier } from "../services/supabase-jwt.service.js";
 import {
+  fundTestContract,
+  getTestContractByOrderId,
+  lockTestContractForDisputeOpen,
+  releaseTestContract,
+  resolveTestContract,
+  serializeTestContract,
+} from "../services/test-contract-ledger.service.js";
+import {
   evaluateWebhookClaimAlert,
   getWebhookClaimAlertDeliveryState,
   getWebhookClaimAlertPolicyStatus,
@@ -392,41 +400,6 @@ const testContractResolveSchema = z.object({
   refund_amount_minor: z.number().int().nonnegative().max(10_000_000).optional(),
   summary: z.string().max(1000).optional(),
 });
-
-type TestContractStatus =
-  | "FUNDED"
-  | "DISPUTED"
-  | "RELEASED_TO_SELLER"
-  | "REFUNDED_TO_BUYER"
-  | "PARTIAL_REFUND"
-  | "ESCALATED_MANUAL_REVIEW";
-
-interface TestContractLedgerEntry {
-  settlement_id: string;
-  order_id: string;
-  payment_intent_id?: string;
-  buyer_id?: string;
-  seller_id?: string;
-  amount_minor: number;
-  currency: "USDC";
-  status: TestContractStatus;
-  dispute_id?: string;
-  outcome?: TestContractResolveSchemaInput["outcome"];
-  refund_amount_minor?: number;
-  seller_release_amount_minor?: number;
-  summary?: string;
-  created_at: string;
-  updated_at: string;
-  events: Array<{
-    type: "funded" | "released" | "dispute_locked" | "resolved";
-    at: string;
-    detail: Record<string, unknown>;
-  }>;
-}
-
-type TestContractResolveSchemaInput = z.infer<typeof testContractResolveSchema>;
-
-const testContractLedger = new Map<string, TestContractLedgerEntry>();
 
 interface DisputeAiEvalScenario {
   key: string;
@@ -1079,61 +1052,6 @@ async function runWebhookClaimChaos(db: Database, input: z.infer<typeof webhookC
     ...report,
     pass: report?.pass === true && !cleanupFailed,
     cleanup: { deleted_test_rows: cleanupCount, source, succeeded: !cleanupFailed },
-  };
-}
-
-function testContractSettlementId(orderId: string): string {
-  return `test_settlement_${createHash("sha256").update(orderId).digest("hex").slice(0, 24)}`;
-}
-
-function serializeTestContract(entry: TestContractLedgerEntry) {
-  return {
-    ...entry,
-    invariant_checks: {
-      funded_before_shipping_or_release: true,
-      dispute_blocks_buyer_confirm:
-        entry.status === "DISPUTED" || entry.status === "ESCALATED_MANUAL_REVIEW",
-      terminal_money_effect:
-        entry.status === "RELEASED_TO_SELLER" ||
-        entry.status === "REFUNDED_TO_BUYER" ||
-        entry.status === "PARTIAL_REFUND",
-    },
-  };
-}
-
-function resolveTestContractState(
-  entry: TestContractLedgerEntry,
-  data: TestContractResolveSchemaInput,
-): Pick<TestContractLedgerEntry, "status" | "refund_amount_minor" | "seller_release_amount_minor"> {
-  if (data.outcome === "buyer_favor") {
-    return {
-      status: "REFUNDED_TO_BUYER",
-      refund_amount_minor: entry.amount_minor,
-      seller_release_amount_minor: 0,
-    };
-  }
-  if (data.outcome === "seller_favor" || data.outcome === "no_action") {
-    return {
-      status: "RELEASED_TO_SELLER",
-      refund_amount_minor: 0,
-      seller_release_amount_minor: entry.amount_minor,
-    };
-  }
-  if (data.outcome === "partial_refund") {
-    const refund = Math.min(
-      data.refund_amount_minor ?? Math.floor(entry.amount_minor / 2),
-      entry.amount_minor,
-    );
-    return {
-      status: "PARTIAL_REFUND",
-      refund_amount_minor: refund,
-      seller_release_amount_minor: entry.amount_minor - refund,
-    };
-  }
-  return {
-    status: "ESCALATED_MANUAL_REVIEW",
-    refund_amount_minor: 0,
-    seller_release_amount_minor: 0,
   };
 }
 
@@ -3280,7 +3198,7 @@ export function registerPaymentTestToolRoutes(app: FastifyInstance, db: Database
         });
       }
       const { orderId } = request.params as { orderId: string };
-      const entry = testContractLedger.get(orderId);
+      const entry = getTestContractByOrderId(orderId);
       if (!entry) {
         return reply.code(404).send({ error: "TEST_CONTRACT_NOT_FOUND", order_id: orderId });
       }
@@ -3305,50 +3223,25 @@ export function registerPaymentTestToolRoutes(app: FastifyInstance, db: Database
           .send({ error: "INVALID_TEST_CONTRACT_FUND_REQUEST", issues: parsed.error.issues });
       }
 
-      const existing = testContractLedger.get(parsed.data.order_id);
-      if (existing) {
-        if (
-          existing.amount_minor === parsed.data.amount_minor &&
-          existing.currency === parsed.data.currency &&
-          existing.payment_intent_id === parsed.data.payment_intent_id
-        ) {
-          return reply.send({ test_contract: serializeTestContract(existing), idempotent: true });
-        }
-        return reply.code(409).send({
-          error: "TEST_CONTRACT_ALREADY_FUNDED",
-          message: "This order already has a test contract settlement with different terms",
-          test_contract: serializeTestContract(existing),
-        });
-      }
-
-      const now = new Date().toISOString();
-      const entry: TestContractLedgerEntry = {
-        settlement_id: testContractSettlementId(parsed.data.order_id),
+      const funded = fundTestContract({
         order_id: parsed.data.order_id,
         payment_intent_id: parsed.data.payment_intent_id,
         buyer_id: parsed.data.buyer_id,
         seller_id: parsed.data.seller_id,
         amount_minor: parsed.data.amount_minor,
         currency: parsed.data.currency,
-        status: "FUNDED",
-        created_at: now,
-        updated_at: now,
-        events: [
-          {
-            type: "funded",
-            at: now,
-            detail: {
-              amount_minor: parsed.data.amount_minor,
-              currency: parsed.data.currency,
-              payment_intent_id: parsed.data.payment_intent_id,
-            },
-          },
-        ],
-      };
-      testContractLedger.set(entry.order_id, entry);
-      return reply
-        .code(201)
-        .send({ test_contract: serializeTestContract(entry), idempotent: false });
+      });
+      if (!funded.ok) {
+        return reply.code(409).send({
+          error: "TEST_CONTRACT_ALREADY_FUNDED",
+          message: "This order already has a test contract settlement with different terms",
+          test_contract: serializeTestContract(funded.entry),
+        });
+      }
+      return reply.code(funded.idempotent ? 200 : 201).send({
+        test_contract: serializeTestContract(funded.entry),
+        idempotent: funded.idempotent,
+      });
     },
   );
 
@@ -3369,32 +3262,23 @@ export function registerPaymentTestToolRoutes(app: FastifyInstance, db: Database
           issues: parsed.error.issues,
         });
       }
-      const entry = testContractLedger.get(parsed.data.order_id);
-      if (!entry) {
-        return reply
-          .code(404)
-          .send({ error: "TEST_CONTRACT_NOT_FUNDED", order_id: parsed.data.order_id });
-      }
-      if (entry.status === "DISPUTED" && entry.dispute_id === parsed.data.dispute_id) {
-        return reply.send({ test_contract: serializeTestContract(entry), idempotent: true });
-      }
-      if (entry.status !== "FUNDED") {
+      const locked = lockTestContractForDisputeOpen(parsed.data.order_id, parsed.data.dispute_id);
+      if (!locked.locked) {
+        if (locked.reason === "NO_TEST_CONTRACT") {
+          return reply
+            .code(404)
+            .send({ error: "TEST_CONTRACT_NOT_FUNDED", order_id: parsed.data.order_id });
+        }
         return reply.code(409).send({
           error: "TEST_CONTRACT_NOT_LOCKABLE",
-          message: `Cannot lock dispute from ${entry.status}`,
-          test_contract: serializeTestContract(entry),
+          message: locked.message,
+          test_contract: serializeTestContract(locked.entry),
         });
       }
-      const now = new Date().toISOString();
-      entry.status = "DISPUTED";
-      entry.dispute_id = parsed.data.dispute_id;
-      entry.updated_at = now;
-      entry.events.push({
-        type: "dispute_locked",
-        at: now,
-        detail: { dispute_id: parsed.data.dispute_id },
+      return reply.send({
+        test_contract: serializeTestContract(locked.entry),
+        idempotent: locked.idempotent,
       });
-      return reply.send({ test_contract: serializeTestContract(entry), idempotent: false });
     },
   );
 
@@ -3414,36 +3298,26 @@ export function registerPaymentTestToolRoutes(app: FastifyInstance, db: Database
           .code(400)
           .send({ error: "INVALID_TEST_CONTRACT_RELEASE_REQUEST", issues: parsed.error.issues });
       }
-      const entry = testContractLedger.get(parsed.data.order_id);
-      if (!entry) {
+      const released = releaseTestContract({
+        order_id: parsed.data.order_id,
+        summary: parsed.data.summary,
+      });
+      if (!released.ok && released.error === "TEST_CONTRACT_NOT_FUNDED") {
         return reply
           .code(404)
           .send({ error: "TEST_CONTRACT_NOT_FUNDED", order_id: parsed.data.order_id });
       }
-      if (entry.status === "RELEASED_TO_SELLER") {
-        return reply.send({ test_contract: serializeTestContract(entry), idempotent: true });
-      }
-      if (entry.status !== "FUNDED") {
+      if (!released.ok) {
         return reply.code(409).send({
           error: "TEST_CONTRACT_NOT_RELEASABLE",
-          message: `Cannot release from ${entry.status}`,
-          test_contract: serializeTestContract(entry),
+          message: released.message,
+          test_contract: serializeTestContract(released.entry),
         });
       }
-
-      const now = new Date().toISOString();
-      entry.status = "RELEASED_TO_SELLER";
-      entry.outcome = "seller_favor";
-      entry.refund_amount_minor = 0;
-      entry.seller_release_amount_minor = entry.amount_minor;
-      entry.summary = parsed.data.summary ?? "Buyer confirmed successful delivery";
-      entry.updated_at = now;
-      entry.events.push({
-        type: "released",
-        at: now,
-        detail: { seller_release_amount_minor: entry.amount_minor },
+      return reply.send({
+        test_contract: serializeTestContract(released.entry),
+        idempotent: released.idempotent,
       });
-      return reply.send({ test_contract: serializeTestContract(entry), idempotent: false });
     },
   );
 
@@ -3463,52 +3337,29 @@ export function registerPaymentTestToolRoutes(app: FastifyInstance, db: Database
           .code(400)
           .send({ error: "INVALID_TEST_CONTRACT_RESOLVE_REQUEST", issues: parsed.error.issues });
       }
-      const entry = testContractLedger.get(parsed.data.order_id);
-      if (!entry) {
+      const resolved = resolveTestContract({
+        order_id: parsed.data.order_id,
+        dispute_id: parsed.data.dispute_id,
+        outcome: parsed.data.outcome,
+        refund_amount_minor: parsed.data.refund_amount_minor,
+        summary: parsed.data.summary,
+      });
+      if (!resolved.ok && resolved.error === "TEST_CONTRACT_NOT_FUNDED") {
         return reply
           .code(404)
           .send({ error: "TEST_CONTRACT_NOT_FUNDED", order_id: parsed.data.order_id });
       }
-      if (
-        parsed.data.dispute_id &&
-        entry.dispute_id &&
-        parsed.data.dispute_id !== entry.dispute_id
-      ) {
+      if (!resolved.ok) {
         return reply.code(409).send({
-          error: "TEST_CONTRACT_DISPUTE_MISMATCH",
-          message: "Resolution dispute_id does not match the locked dispute",
-          test_contract: serializeTestContract(entry),
+          error: resolved.error,
+          message: resolved.message,
+          test_contract: serializeTestContract(resolved.entry),
         });
       }
-      if (entry.status !== "DISPUTED") {
-        if (entry.outcome === parsed.data.outcome) {
-          return reply.send({ test_contract: serializeTestContract(entry), idempotent: true });
-        }
-        return reply.code(409).send({
-          error: "TEST_CONTRACT_NOT_RESOLVABLE",
-          message: `Cannot resolve from ${entry.status}`,
-          test_contract: serializeTestContract(entry),
-        });
-      }
-
-      const now = new Date().toISOString();
-      const resolved = resolveTestContractState(entry, parsed.data);
-      entry.status = resolved.status;
-      entry.outcome = parsed.data.outcome;
-      entry.refund_amount_minor = resolved.refund_amount_minor;
-      entry.seller_release_amount_minor = resolved.seller_release_amount_minor;
-      entry.summary = parsed.data.summary;
-      entry.updated_at = now;
-      entry.events.push({
-        type: "resolved",
-        at: now,
-        detail: {
-          outcome: parsed.data.outcome,
-          refund_amount_minor: entry.refund_amount_minor,
-          seller_release_amount_minor: entry.seller_release_amount_minor,
-        },
+      return reply.send({
+        test_contract: serializeTestContract(resolved.entry),
+        idempotent: resolved.idempotent,
       });
-      return reply.send({ test_contract: serializeTestContract(entry), idempotent: false });
     },
   );
 

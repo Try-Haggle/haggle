@@ -8,6 +8,7 @@ export * from "./scaffold-contracts.js";
 export * from "./service.js";
 export * from "./settlement-release.js";
 export * from "./state-machine.js";
+export * from "./test-contract-ledger.js";
 export * from "./trust-events.js";
 export * from "./types.js";
 export * from "./x402-contracts.js";
