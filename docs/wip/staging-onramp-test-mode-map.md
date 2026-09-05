@@ -1,6 +1,6 @@
 # Staging Onramp checkout test-mode map (A1)
 
-Date: 2026-09-06  
+Date: 2026-09-06
 Ticket: CTO A1 — Map staging `ACCEPTED` → checkout → Stripe Onramp test-mode path.
 
 Stripe here is **Crypto Onramp** (fiat/card → USDC on Base), **not** merchant card capture. Haggle APIs and MCP **never** accept or store card PANs.
@@ -89,8 +89,8 @@ Haggle never sees the `4242` digits; the tester types them only into Stripe’s 
 
 ## Dogfood steps (tester)
 
-1. Confirm staging probe:  
-   `curl -sS https://api.staging.tryhaggle.ai/payments/onramp/status`  
+1. Confirm staging probe:
+   `curl -sS https://api.staging.tryhaggle.ai/payments/onramp/status`
    Expect `available=true`, `stripe_mode=real`, `stripe_key_mode=test`, `test_cards_expected=true`.
 2. Reach a buyer negotiation session in `ACCEPTED` with settlement approval `APPROVED`.
 3. MCP (optional): call `haggle_create_checkout` → open returned `checkout_url` while logged in as buyer. Confirm response has **only** URL + message (no card fields).
