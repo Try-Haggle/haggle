@@ -7,9 +7,18 @@ import { AgentAvatar } from "./agent-avatar";
 
 describe("AgentAvatar", () => {
   it("renders a stored emoji glyph as text", () => {
-    render(<AgentAvatar value="🎯" />);
-    expect(screen.getByText("🎯")).toBeInTheDocument();
+    // 🤝 is a non-preset default, so it is never mapped to an animal.
+    render(<AgentAvatar value="🤝" />);
+    expect(screen.getByText("🤝")).toBeInTheDocument();
     expect(document.querySelector("img")).toBeNull();
+  });
+
+  it("renders a pre-animal preset glyph as that preset's animal", () => {
+    // Agents saved before presets had animals hold 🎯 etc. in the DB.
+    const { container } = render(<AgentAvatar value="🎯" />);
+    expect(container.querySelector("img")?.getAttribute("src")).toBe(
+      "/vendor/fluent-emoji/fox.svg",
+    );
   });
 
   it("renders an animal slug as the vendored artwork", () => {

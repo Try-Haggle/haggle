@@ -2,6 +2,7 @@ export {
   AGENT_ANIMALS,
   type AgentAnimal,
   isAgentAnimal,
+  LEGACY_AGENT_EMOJI_ANIMAL,
   type ResolvedAgentAvatar,
   resolveAgentAvatar,
 } from "./avatar.js";

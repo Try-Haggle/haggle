@@ -51,6 +51,21 @@ export function isAgentAnimal(value: unknown): value is AgentAnimal {
   return typeof value === "string" && ANIMAL_SET.has(value);
 }
 
+/**
+ * The glyphs the four presets used before they had animals. An agent saved
+ * back then carries its glyph in `negotiation_agent_config.emoji`; mapping it
+ * here means it changes face with its preset and no row is migrated. Any
+ * other glyph — a user-chosen one, a non-preset default — is left alone.
+ */
+export const LEGACY_AGENT_EMOJI_ANIMAL: Readonly<Record<string, AgentAnimal>> = {
+  "🎯": "fox",
+  "⚡": "rabbit",
+  "🔍": "owl",
+  "⚖️": "bear",
+  // Without the variation selector, as some inputs store it.
+  "⚖": "bear",
+};
+
 export type ResolvedAgentAvatar =
   | { kind: "animal"; animal: AgentAnimal }
   | { kind: "glyph"; glyph: string };
@@ -68,5 +83,7 @@ export function resolveAgentAvatar(
 ): ResolvedAgentAvatar {
   if (isAgentAnimal(value)) return { kind: "animal", animal: value };
   const glyph = value?.trim();
+  const legacy = glyph ? LEGACY_AGENT_EMOJI_ANIMAL[glyph] : undefined;
+  if (legacy) return { kind: "animal", animal: legacy };
   return { kind: "glyph", glyph: glyph ? glyph : fallback };
 }

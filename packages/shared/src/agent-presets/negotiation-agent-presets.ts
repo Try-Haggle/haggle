@@ -13,10 +13,20 @@
 
 import type { NegotiationAgentPreset } from "./types.js";
 
+/*
+ * Avatars are animal slugs (see avatar.ts), each picked for the temperament
+ * the preset's dominant axis produces — not for looks:
+ *   hunter   → fox     price-led, boulware: holds its ground and outwaits you
+ *   closer   → rabbit  time-led: speed over everything
+ *   verifier → owl     risk-led: watches, checks, will not move without proof
+ *   balancer → bear    social-led: steady, unhurried, hard to rattle
+ * The glyphs these replaced (🎯 ⚡ 🔍 ⚖️) still resolve to the same animals
+ * for agents saved before the change — see LEGACY_AGENT_EMOJI_ANIMAL.
+ */
 export const NEGOTIATION_AGENT_PRESETS: readonly NegotiationAgentPreset[] = [
   {
     id: "hunter",
-    emoji: "🎯",
+    emoji: "fox",
     accentColor: "#ef4444",
     weights: { w_p: 0.5, w_t: 0.15, w_r: 0.2, w_s: 0.15 },
     alpha: 0.5,
@@ -49,7 +59,7 @@ export const NEGOTIATION_AGENT_PRESETS: readonly NegotiationAgentPreset[] = [
   },
   {
     id: "closer",
-    emoji: "⚡",
+    emoji: "rabbit",
     accentColor: "#f59e0b",
     weights: { w_p: 0.2, w_t: 0.5, w_r: 0.15, w_s: 0.15 },
     alpha: 2.0,
@@ -82,7 +92,7 @@ export const NEGOTIATION_AGENT_PRESETS: readonly NegotiationAgentPreset[] = [
   },
   {
     id: "verifier",
-    emoji: "🔍",
+    emoji: "owl",
     accentColor: "#3b82f6",
     weights: { w_p: 0.25, w_t: 0.2, w_r: 0.4, w_s: 0.15 },
     alpha: 1.0,
@@ -116,7 +126,7 @@ export const NEGOTIATION_AGENT_PRESETS: readonly NegotiationAgentPreset[] = [
   },
   {
     id: "balancer",
-    emoji: "⚖️",
+    emoji: "bear",
     accentColor: "#10b981",
     weights: { w_p: 0.3, w_t: 0.25, w_r: 0.25, w_s: 0.2 },
     alpha: 1.0,
