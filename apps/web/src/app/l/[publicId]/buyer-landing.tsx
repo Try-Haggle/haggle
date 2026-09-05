@@ -22,7 +22,7 @@ import { BackLink } from "@/components/ui/back-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Price } from "@/components/ui/price";
-import { ApiError, api } from "@/lib/api-client";
+import { ApiError } from "@/lib/api-client";
 import { formatPriceStr } from "@/lib/format";
 import {
   formatListingParcel,
@@ -36,6 +36,7 @@ import {
   NegotiationAgentBuilderChat,
   type NegotiationAgentBuilderMemory,
 } from "./negotiation-agent-builder-chat";
+import { startOrResumeListingNegotiation } from "./negotiation-api";
 
 /* ─── Types ───────────────────────────────────────────────── */
 
@@ -418,50 +419,52 @@ export function BuyerLanding({
                       setNegotiationMessage("Briefing your agent…");
 
                       try {
-                        const res = await api.post<{
-                          session_id: string;
-                          run_token: string;
-                          guest_buyer_id?: string;
-                        }>("/negotiations/start", {
-                          listing_public_id: listing.publicId,
-                          negotiation_agent_preset_id: selectedAgent.id,
-                          agent_weights: { ...selectedAgent.weights },
-                          agent_overrides:
-                            agentValue && isBuilderCustomized(agentValue)
-                              ? {
-                                  weights: { ...selectedAgent.weights },
-                                  ...engineParamsFromPreset(selectedAgent),
-                                }
-                              : undefined,
-                          // Prefer memory captured in this session's builder
-                          // chat; otherwise fall back to the durable memory
-                          // saved on the reused agent so a picked "My Agent"
-                          // still carries its deal-breakers/must-haves/urgency.
-                          negotiation_agent_builder_memory:
-                            negotiationAgentBuilderMemory ??
-                            (agentValue?.agent.builderChatMemory as
-                              | NegotiationAgentBuilderMemory
-                              | undefined) ??
-                            undefined,
-                          fulfillment: {
-                            methods: fulfillment.methods,
-                            preferred: fulfillment.preferred,
-                            ...(fulfillment.methods.includes("carrier") &&
-                            isCompleteShippingAddress(fulfillment.address)
-                              ? { buyer_address: toApiAddress(fulfillment.address) }
-                              : {}),
-                            save_address:
-                              !!user &&
-                              fulfillment.methods.includes("carrier") &&
-                              fulfillment.saveAddress,
-                            constraints: {
-                              travel_radius_miles: fulfillment.travel_radius_miles,
-                              max_pickup_weight_lb: fulfillment.max_pickup_weight_lb,
+                        // Real session path only — never intents/trigger-match.
+                        // Resume reuses an open session; otherwise start applies strategy once.
+                        const res = await startOrResumeListingNegotiation({
+                          userId: user?.id,
+                          listingId: listing.id,
+                          startBody: {
+                            listing_public_id: listing.publicId,
+                            negotiation_agent_preset_id: selectedAgent.id,
+                            agent_weights: { ...selectedAgent.weights },
+                            agent_overrides:
+                              agentValue && isBuilderCustomized(agentValue)
+                                ? {
+                                    weights: { ...selectedAgent.weights },
+                                    ...engineParamsFromPreset(selectedAgent),
+                                  }
+                                : undefined,
+                            // Prefer memory captured in this session's builder
+                            // chat; otherwise fall back to the durable memory
+                            // saved on the reused agent so a picked "My Agent"
+                            // still carries its deal-breakers/must-haves/urgency.
+                            negotiation_agent_builder_memory:
+                              negotiationAgentBuilderMemory ??
+                              (agentValue?.agent.builderChatMemory as
+                                | NegotiationAgentBuilderMemory
+                                | undefined) ??
+                              undefined,
+                            fulfillment: {
+                              methods: fulfillment.methods,
+                              preferred: fulfillment.preferred,
+                              ...(fulfillment.methods.includes("carrier") &&
+                              isCompleteShippingAddress(fulfillment.address)
+                                ? { buyer_address: toApiAddress(fulfillment.address) }
+                                : {}),
+                              save_address:
+                                !!user &&
+                                fulfillment.methods.includes("carrier") &&
+                                fulfillment.saveAddress,
+                              constraints: {
+                                travel_radius_miles: fulfillment.travel_radius_miles,
+                                max_pickup_weight_lb: fulfillment.max_pickup_weight_lb,
+                              },
+                              ...(fulfillment.methods.includes("carrier")
+                                ? { carrier_priority: fulfillment.carrier_priority }
+                                : {}),
+                              ...(sellerOffer ? { seller_offer: sellerOffer } : {}),
                             },
-                            ...(fulfillment.methods.includes("carrier")
-                              ? { carrier_priority: fulfillment.carrier_priority }
-                              : {}),
-                            ...(sellerOffer ? { seller_offer: sellerOffer } : {}),
                           },
                         });
                         // Stash guest buyer id for the post-signup claim step.
@@ -484,10 +487,17 @@ export function BuyerLanding({
                           public_id: listing.publicId,
                           agent_preset: selectedAgent.id,
                           has_negotiation_agent_builder_memory: !!negotiationAgentBuilderMemory,
+                          resumed: !!res.resumed,
                         });
 
-                        setNegotiationMessage("Opening the live negotiation...");
-                        storeNegotiationRunToken(res.session_id, res.run_token);
+                        setNegotiationMessage(
+                          res.resumed
+                            ? "Resuming your negotiation..."
+                            : "Opening the live negotiation...",
+                        );
+                        if (res.run_token) {
+                          storeNegotiationRunToken(res.session_id, res.run_token);
+                        }
                         window.location.href = `/buy/negotiations/${res.session_id}`;
                       } catch (err) {
                         const apiErr = err instanceof ApiError ? err : null;
