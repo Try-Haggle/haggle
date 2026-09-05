@@ -41,10 +41,9 @@ const STAGING_FIXTURE_HINT = {
   ],
 } as const;
 
-function gateForStatus(orderStatus: string): Pick<
-  DisputeOrderGateResult,
-  "blocking_gate" | "message"
-> {
+function gateForStatus(
+  orderStatus: string,
+): Pick<DisputeOrderGateResult, "blocking_gate" | "message"> {
   switch (orderStatus) {
     case "APPROVED":
     case "PAYMENT_PENDING":

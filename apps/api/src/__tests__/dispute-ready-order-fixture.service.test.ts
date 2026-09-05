@@ -23,11 +23,7 @@ describe("createDisputeReadyOrderFixture", () => {
     const approvalId = "11111111-1111-4111-8111-111111111111";
     const orderId = "22222222-2222-4222-8222-222222222222";
     const intentId = "33333333-3333-4333-8333-333333333333";
-    const { db, values } = makeDb([
-      { id: approvalId },
-      { id: orderId },
-      { id: intentId },
-    ]);
+    const { db, values } = makeDb([{ id: approvalId }, { id: orderId }, { id: intentId }]);
 
     const result = await createDisputeReadyOrderFixture(db, {
       buyerId: "00000000-0000-4000-a000-000000000010",

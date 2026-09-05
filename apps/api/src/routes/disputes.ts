@@ -114,16 +114,16 @@ import {
   computeImageSimilarityFingerprint,
 } from "../services/dispute-image-similarity.service.js";
 import { evaluateDisputeOpeningEligibility } from "../services/dispute-opening-eligibility.service.js";
-import {
-  describeDisputeOrderGate,
-  isDisputableOrderStatus,
-} from "../services/dispute-order-gate.service.js";
 import type { DisputeOperation } from "../services/dispute-operation-lease.service.js";
 import {
   acquireDisputeOperationLease,
   disputeOperationLeaseKey,
   releaseDisputeOperationLease,
 } from "../services/dispute-operation-lease.service.js";
+import {
+  describeDisputeOrderGate,
+  isDisputableOrderStatus,
+} from "../services/dispute-order-gate.service.js";
 import {
   buildDisputePrecedentSnapshot,
   listApprovedDisputePrecedents,

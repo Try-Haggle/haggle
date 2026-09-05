@@ -1100,7 +1100,9 @@ describe("Dispute routes", () => {
       order_status: "PAYMENT_PENDING",
       blocking_gate: "payment_not_settled",
     });
-    expect(res.json().staging_fixture.endpoint).toBe("POST /tools/payment-test/dispute-ready-order");
+    expect(res.json().staging_fixture.endpoint).toBe(
+      "POST /tools/payment-test/dispute-ready-order",
+    );
     expect(mockCreateDisputeRecord).not.toHaveBeenCalled();
   });
 

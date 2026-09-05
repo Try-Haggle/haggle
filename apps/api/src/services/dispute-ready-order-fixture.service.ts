@@ -3,7 +3,7 @@
  * so dogfood can call haggle_start_dispute without real Stripe Onramp money or card PANs.
  */
 import { randomUUID } from "node:crypto";
-import { type Database, commerceOrders, paymentIntents, settlementApprovals } from "@haggle/db";
+import { commerceOrders, type Database, paymentIntents, settlementApprovals } from "@haggle/db";
 
 export type DisputeReadyOrderStatus = "PAID" | "DELIVERED";
 

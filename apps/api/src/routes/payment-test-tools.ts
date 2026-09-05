@@ -54,7 +54,6 @@ import {
 } from "../services/conditional-settlement-preflight-alert-verifier.service.js";
 import { createDisputeAiProvider, runResolutionAssessor } from "../services/dispute-ai.service.js";
 import { runDisputeAiAuditArchiveFixture } from "../services/dispute-ai-audit-archive-fixture.service.js";
-import { createDisputeReadyOrderFixture } from "../services/dispute-ready-order-fixture.service.js";
 import { runDisputeEvidenceProvenanceFixture } from "../services/dispute-evidence-provenance-fixture.service.js";
 import { getDisputeEvidenceScannerPolicyStatus } from "../services/dispute-evidence-scan.service.js";
 import { getDisputeEvidenceScanRetryHealth } from "../services/dispute-evidence-scan-retry.service.js";
@@ -76,6 +75,7 @@ import { runDisputeEvidenceScanRetryFixture } from "../services/dispute-evidence
 import { getDisputeEvidenceScannerCircuitHealth } from "../services/dispute-evidence-scanner-circuit.service.js";
 import { runDisputeEvidenceScannerSecurityFixture } from "../services/dispute-evidence-scanner-fixture.service.js";
 import { runDisputeImageSimilarityFixtureEvaluation } from "../services/dispute-image-similarity-fixture.service.js";
+import { createDisputeReadyOrderFixture } from "../services/dispute-ready-order-fixture.service.js";
 import {
   acquireFinalityAlertFixtureLease,
   PAYMENT_TEST_OPERATION_HEARTBEAT_SECONDS,

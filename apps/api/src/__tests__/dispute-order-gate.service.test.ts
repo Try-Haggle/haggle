@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  describeDisputeOrderGate,
   DISPUTABLE_ORDER_STATUSES,
+  describeDisputeOrderGate,
   isDisputableOrderStatus,
 } from "../services/dispute-order-gate.service.js";
 
