@@ -26,6 +26,7 @@ import {
 } from "../../negotiation/phase/seller-criteria-pause.js";
 import { mcpConnectHint } from "../../routes/mcp-oauth.js";
 import { evaluateDisputeOpeningEligibility } from "../../services/dispute-opening-eligibility.service.js";
+import { describeDisputeOrderGate } from "../../services/dispute-order-gate.service.js";
 import { createDisputeRecord, getDisputeByOrderId } from "../../services/dispute-record.service.js";
 import {
   createAndPublishOwnedListing,
@@ -1038,15 +1039,15 @@ export function registerPlatformTools(
       if (!(reason_code in REASON_CODE_REGISTRY)) {
         return mcpError("INVALID_REASON_CODE");
       }
-      const disputable = new Set([
-        "PAID",
-        "FULFILLMENT_PENDING",
-        "FULFILLMENT_ACTIVE",
-        "DELIVERED",
-        "IN_DISPUTE",
-      ]);
-      if (!disputable.has(order.status)) {
-        return mcpError("ORDER_NOT_DISPUTABLE", { order_status: order.status });
+      const orderGate = describeDisputeOrderGate(order.status);
+      if (!orderGate.disputable) {
+        return mcpError("ORDER_NOT_DISPUTABLE", {
+          order_status: orderGate.order_status,
+          blocking_gate: orderGate.blocking_gate,
+          message: orderGate.message,
+          hint: orderGate.hint,
+          staging_fixture: orderGate.staging_fixture,
+        });
       }
       const shipment = await getShipmentByOrderId(db, order_id);
       const eligibility = evaluateDisputeOpeningEligibility({
