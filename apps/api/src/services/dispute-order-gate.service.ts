@@ -39,7 +39,7 @@ const STAGING_FIXTURE_HINT = {
     "Creates a mock SETTLED payment + DELIVERED order for dogfood. No real money, no card PANs.",
     "Then call haggle_start_dispute (MCP) or POST /orders/:orderId/disputes; upload evidence on the web.",
   ],
-} as const;
+};
 
 function gateForStatus(
   orderStatus: string,
