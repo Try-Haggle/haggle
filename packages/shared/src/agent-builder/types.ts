@@ -32,6 +32,12 @@ export interface AgentBuilderAgent {
   presetId: NegotiationAgentPresetId;
   /** User-given name. Optional during build. */
   name?: string;
+  /**
+   * User-chosen face — an animal slug from `AGENT_ANIMALS`. Absent means the
+   * preset's own animal. Like `name`, this is identity rather than strategy:
+   * it never counts as "customized" and survives a reset to the preset.
+   */
+  emoji?: string;
   /** 4D weight vector. Overrides preset weights when present. */
   weights?: NegotiationWeights;
   /** Per-knob overrides for the rest of EngineParameters (weights live above). */

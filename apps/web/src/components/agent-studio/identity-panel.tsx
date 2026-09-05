@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type AgentAnimal,
   type AgentBuilderState,
   isBuilderCustomized,
   type NegotiationAgentPreset,
@@ -21,6 +22,7 @@ import {
 } from "lucide-react";
 import { useId } from "react";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
+import { AgentAvatarPicker } from "@/components/agents/agent-avatar-picker";
 import { DURATION, EASE } from "@/components/listing-detail/motion";
 import { MotionRadar } from "@/components/listing-detail/motion-radar";
 import { Button, Input } from "@/components/ui";
@@ -43,6 +45,12 @@ import { WeightTuner } from "./weight-tuner";
  * panel owns no state of its own except what the parent hands it.
  */
 
+const chipClass = "flex size-12 items-center justify-center rounded-2xl text-[22px]";
+const chipStyle = (accent: string) => ({
+  backgroundColor: `color-mix(in srgb, ${accent} 14%, transparent)`,
+  border: `1px solid color-mix(in srgb, ${accent} 32%, transparent)`,
+});
+
 interface IdentityPanelProps {
   /** Effective preset — base preset with any chat/advanced overrides merged. */
   effective: NegotiationAgentPreset;
@@ -51,6 +59,8 @@ interface IdentityPanelProps {
   memory: NegotiationAgentBuilderMemory | null;
   name: string;
   onNameChange?: (name: string) => void;
+  /** Pick a face. Absent (read-only surfaces) leaves the chip static. */
+  onAvatarChange?: (animal: AgentAnimal) => void;
   /** Live weight edits from the inline tuner. */
   onWeightsChange?: (weights: NegotiationWeights) => void;
   /** Drop all overrides, back to the bare preset. Shown only when customized. */
@@ -77,6 +87,7 @@ export function AgentIdentityPanel({
   memory,
   name,
   onNameChange,
+  onAvatarChange,
   onWeightsChange,
   onResetToPreset,
   onOpenAdvanced,
@@ -126,14 +137,38 @@ export function AgentIdentityPanel({
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ duration: DURATION.base, ease: EASE.select }}
-              className="flex size-12 shrink-0 items-center justify-center rounded-2xl text-[22px]"
-              style={{
-                backgroundColor: `color-mix(in srgb, ${effective.accentColor} 14%, transparent)`,
-                border: `1px solid color-mix(in srgb, ${effective.accentColor} 32%, transparent)`,
-              }}
-              aria-hidden="true"
+              className="shrink-0"
             >
-              <AgentAvatar value={effective.emoji} />
+              {onAvatarChange ? (
+                // The chip is the picker's trigger: tapping the face is the
+                // obvious way to change it, and it costs no extra control.
+                <AgentAvatarPicker
+                  value={effective.emoji}
+                  onChange={onAvatarChange}
+                  trigger={
+                    <button
+                      type="button"
+                      aria-label="Change face"
+                      className={cn(
+                        chipClass,
+                        "cursor-pointer transition-transform hover:scale-105",
+                        "focus-visible:outline-2 focus-visible:outline-focus focus-visible:outline-offset-2",
+                      )}
+                      style={chipStyle(effective.accentColor)}
+                    >
+                      <AgentAvatar value={effective.emoji} />
+                    </button>
+                  }
+                />
+              ) : (
+                <span
+                  className={chipClass}
+                  style={chipStyle(effective.accentColor)}
+                  aria-hidden="true"
+                >
+                  <AgentAvatar value={effective.emoji} />
+                </span>
+              )}
             </motion.span>
             <div className="min-w-0 flex-1">
               <p className="font-bold text-[15px] text-ink leading-tight">{copy.name}</p>

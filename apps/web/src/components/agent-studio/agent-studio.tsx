@@ -238,6 +238,11 @@ export function AgentStudio({
       memory={memory}
       name={state.agent.name ?? ""}
       onNameChange={(name) => updateState((prev) => ({ ...prev, agent: { ...prev.agent, name } }))}
+      onAvatarChange={(animal) =>
+        // Identity, not strategy: no "customized" flag, but it is a change the
+        // user will expect Save to keep, so it dirties the build.
+        updateState((prev) => ({ ...prev, agent: { ...prev.agent, emoji: animal }, dirty: true }))
+      }
       onWeightsChange={(weights) =>
         updateState((prev) => ({
           ...prev,
