@@ -84,10 +84,18 @@ export function classifyStripeKeyMode(
   const publishableTest = publishable.startsWith("pk_test_");
   const publishableLive = publishable.startsWith("pk_live_");
 
-  if ((secretTest || !secret) && (publishableTest || !publishable) && (secretTest || publishableTest)) {
+  if (
+    (secretTest || !secret) &&
+    (publishableTest || !publishable) &&
+    (secretTest || publishableTest)
+  ) {
     return "test";
   }
-  if ((secretLive || !secret) && (publishableLive || !publishable) && (secretLive || publishableLive)) {
+  if (
+    (secretLive || !secret) &&
+    (publishableLive || !publishable) &&
+    (secretLive || publishableLive)
+  ) {
     return "live";
   }
   if ((secretTest && publishableLive) || (secretLive && publishableTest)) {
