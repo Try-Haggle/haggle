@@ -65,12 +65,59 @@ export interface OnrampWebhookEvent {
 
 // ─── Config ───────────────────────────────────────────────────────────
 
+export type StripeKeyMode = "test" | "live" | "missing" | "unknown";
+
+/**
+ * Classify Stripe API keys without exposing secret material.
+ * Staging dogfood expects "test" (sk_test_/pk_test_); production expects "live".
+ */
+export function classifyStripeKeyMode(
+  secretKey: string | undefined,
+  publishableKey: string | undefined,
+): StripeKeyMode {
+  const secret = (secretKey ?? "").trim();
+  const publishable = (publishableKey ?? "").trim();
+  if (!secret && !publishable) return "missing";
+
+  const secretTest = secret.startsWith("sk_test_");
+  const secretLive = secret.startsWith("sk_live_");
+  const publishableTest = publishable.startsWith("pk_test_");
+  const publishableLive = publishable.startsWith("pk_live_");
+
+  if (
+    (secretTest || !secret) &&
+    (publishableTest || !publishable) &&
+    (secretTest || publishableTest)
+  ) {
+    return "test";
+  }
+  if (
+    (secretLive || !secret) &&
+    (publishableLive || !publishable) &&
+    (secretLive || publishableLive)
+  ) {
+    return "live";
+  }
+  if ((secretTest && publishableLive) || (secretLive && publishableTest)) {
+    return "unknown";
+  }
+  if (secretTest || publishableTest) return "test";
+  if (secretLive || publishableLive) return "live";
+  return "unknown";
+}
+
 export function getStripeConfig() {
+  const secretKey = process.env.STRIPE_SECRET_KEY ?? "";
+  const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY ?? "";
   return {
-    secretKey: process.env.STRIPE_SECRET_KEY ?? "",
-    publishableKey: process.env.STRIPE_PUBLISHABLE_KEY ?? "",
+    secretKey,
+    publishableKey,
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
-    enabled: !!process.env.STRIPE_SECRET_KEY,
+    enabled: Boolean(secretKey),
+    /** Adapter toggle from env (mock | real). Independent of key_mode. */
+    stripeMode: process.env.STRIPE_MODE ?? "mock",
+    /** test | live | missing | unknown — derived from key prefixes only. */
+    keyMode: classifyStripeKeyMode(secretKey, publishableKey),
   };
 }
 
