@@ -1095,7 +1095,12 @@ describe("Dispute routes", () => {
     });
 
     expect(res.statusCode).toBe(409);
-    expect(res.json().error).toBe("ORDER_NOT_DISPUTABLE");
+    expect(res.json()).toMatchObject({
+      error: "ORDER_NOT_DISPUTABLE",
+      order_status: "PAYMENT_PENDING",
+      blocking_gate: "payment_not_settled",
+    });
+    expect(res.json().staging_fixture.endpoint).toBe("POST /tools/payment-test/dispute-ready-order");
     expect(mockCreateDisputeRecord).not.toHaveBeenCalled();
   });
 

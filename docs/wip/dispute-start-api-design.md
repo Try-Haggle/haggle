@@ -160,3 +160,21 @@ The model output is accepted only after JSON parsing, schema validation, and pla
 - one-sided verified camera evidence that is ignored, downgraded below high weight, or resolved as `no_action`.
 
 The accepted AI output is stored in dispute metadata as an audit artifact. MVP code still requires a separate resolve call before money movement, so AI assessment alone never releases or refunds funds.
+
+## Staging dogfood: dispute after pay without real money
+
+MCP `haggle_create_checkout` returns a web checkout URL only; it does not settle Stripe Onramp (fiat/card → USDC) and never moves money. `haggle_start_dispute` requires a commerce order in `PAID` / fulfillment / `DELIVERED` / `IN_DISPUTE`.
+
+When the order is still `PAYMENT_PENDING` or `APPROVED`, open-dispute returns `ORDER_NOT_DISPUTABLE` with `blocking_gate: payment_not_settled` and a pointer to the staging fixture.
+
+### Fixture
+
+`POST /tools/payment-test/dispute-ready-order`
+
+- Same gate as other payment-test tools: non-production always on; production requires `role=admin` and `HAGGLE_ENABLE_PAYMENT_TEST_TOOLS=true`.
+- Creates a mock `SETTLED` payment intent + `DELIVERED` (or `PAID`) commerce order for the authenticated buyer.
+- No real money, no card PANs, no Stripe Onramp session.
+- Then call MCP `haggle_start_dispute` with `order_id` (suggested reason `ITEM_NOT_AS_DESCRIBED`) and attach file evidence on the web.
+
+Related: `docs/wip/fake-money-fake-address-e2e-test-plan.md`, `STRIPE_MODE=mock`, `HAGGLE_X402_MODE=mock`.
+
