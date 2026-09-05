@@ -18,7 +18,6 @@ import {
   type PreNegotiationFulfillmentValue,
 } from "@/components/shipping/pre-negotiation-fulfillment";
 import { BackLink } from "@/components/ui/back-link";
-import { ApiError, api } from "@/lib/api-client";
 import { parseListingParcel, parseSellerFulfillmentOffer } from "@/lib/fulfillment-options";
 import { listNegotiationAgents, rowToNegotiationAgent } from "@/lib/negotiation-agents-api";
 import { storeNegotiationRunToken } from "@/lib/negotiation-auto-play-token";
@@ -28,6 +27,7 @@ import {
   NegotiationAgentBuilderChat,
   type NegotiationAgentBuilderMemory,
 } from "./negotiation-agent-builder-chat";
+import { startOrResumeListingNegotiation } from "./negotiation-api";
 
 /**
  * Live host for Listing Detail v2.
@@ -67,29 +67,6 @@ function countHints(memory: NegotiationAgentBuilderMemory | null): number {
     (memory.budgetMax ? 1 : 0) +
     (memory.targetPrice ? 1 : 0)
   );
-}
-
-interface StartResponse {
-  session_id: string;
-  run_token: string;
-  guest_buyer_id?: string;
-}
-
-/**
- * POST /negotiations/start, with the error normalized to something a person
- * can read. `ApiError` carries a machine `code` that is sometimes the only
- * populated field; v2's CTA renders `err.message`, so the fallback has to be
- * resolved before it leaves here.
- */
-async function startNegotiation(body: Record<string, unknown>): Promise<StartResponse> {
-  try {
-    return await api.post<StartResponse>("/negotiations/start", body);
-  } catch (err) {
-    if (err instanceof ApiError && !err.message) {
-      throw new Error(err.code ?? "Couldn't start the negotiation. Try again.");
-    }
-    throw err;
-  }
 }
 
 interface BuyerLandingV2Props {
@@ -183,30 +160,37 @@ export function BuyerLandingV2({ listing, user, isOwner, from, footerSlot }: Buy
       throw new Error("Answer every required question before starting.");
     }
 
-    const res = await startNegotiation({
-      listing_public_id: listing.publicId,
-      negotiation_agent_preset_id: presetId,
-      agent_weights: strategy?.weights,
-      // Sparse by design: absent knobs resolve from the preset server-side, so
-      // an untuned pick sends no overrides at all rather than a full copy of
-      // the preset's own numbers.
-      agent_overrides: strategy ? { ...strategy } : undefined,
-      // This visit's briefing wins; otherwise the memory saved on the reused
-      // agent, so picking "My iPhone hunter" still carries its deal-breakers.
-      negotiation_agent_builder_memory: memory ?? undefined,
-      fulfillment: {
-        methods: fulfillment.methods,
-        preferred: fulfillment.preferred,
-        ...(fulfillment.methods.includes("carrier") &&
-        isCompleteShippingAddress(fulfillment.address)
-          ? { buyer_address: toApiAddress(fulfillment.address) }
-          : {}),
-        save_address: !!user && fulfillment.methods.includes("carrier") && fulfillment.saveAddress,
-        ...(fulfillment.methods.includes("carrier")
-          ? { carrier_priority: fulfillment.carrier_priority }
-          : {}),
-        ...(sellerOffer ? { seller_offer: sellerOffer } : {}),
-        ...(listingParcel ? { parcel: listingParcel } : {}),
+    // Real session path only — never intents/trigger-match. Resume reuses an
+    // open session (strategy already applied); otherwise start applies it once.
+    const res = await startOrResumeListingNegotiation({
+      userId: user?.id,
+      listingId: listing.id,
+      startBody: {
+        listing_public_id: listing.publicId,
+        negotiation_agent_preset_id: presetId,
+        agent_weights: strategy?.weights,
+        // Sparse by design: absent knobs resolve from the preset server-side, so
+        // an untuned pick sends no overrides at all rather than a full copy of
+        // the preset's own numbers.
+        agent_overrides: strategy ? { ...strategy } : undefined,
+        // This visit's briefing wins; otherwise the memory saved on the reused
+        // agent, so picking "My iPhone hunter" still carries its deal-breakers.
+        negotiation_agent_builder_memory: memory ?? undefined,
+        fulfillment: {
+          methods: fulfillment.methods,
+          preferred: fulfillment.preferred,
+          ...(fulfillment.methods.includes("carrier") &&
+          isCompleteShippingAddress(fulfillment.address)
+            ? { buyer_address: toApiAddress(fulfillment.address) }
+            : {}),
+          save_address:
+            !!user && fulfillment.methods.includes("carrier") && fulfillment.saveAddress,
+          ...(fulfillment.methods.includes("carrier")
+            ? { carrier_priority: fulfillment.carrier_priority }
+            : {}),
+          ...(sellerOffer ? { seller_offer: sellerOffer } : {}),
+          ...(listingParcel ? { parcel: listingParcel } : {}),
+        },
       },
     });
 
@@ -230,9 +214,12 @@ export function BuyerLandingV2({ listing, user, isOwner, from, footerSlot }: Buy
       public_id: listing.publicId,
       agent_preset: presetId,
       has_negotiation_agent_builder_memory: !!briefMemory,
+      resumed: !!res.resumed,
     });
 
-    storeNegotiationRunToken(res.session_id, res.run_token);
+    if (res.run_token) {
+      storeNegotiationRunToken(res.session_id, res.run_token);
+    }
     router.push(`/buy/negotiations/${res.session_id}`);
   }
 
