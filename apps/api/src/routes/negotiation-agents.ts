@@ -9,7 +9,7 @@
  * and the DEMO_USER_ID schema default.
  */
 
-import { and, type Database, eq, inArray, negotiationAgents, or } from "@haggle/db";
+import { and, type Database, desc, eq, inArray, negotiationAgents, or } from "@haggle/db";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireAuth } from "../middleware/require-auth.js";
@@ -202,7 +202,17 @@ export function registerNegotiationAgentRoutes(app: FastifyInstance, db: Databas
         ? ownership
         : and(ownership, inArray(negotiationAgents.role, [query.data.role, "both"] as const));
 
-    const rows = await db.select().from(negotiationAgents).where(where);
+    // Most recently touched first: the roster is a working list, and the
+    // agent you just edited is the one you are most likely to want next.
+    // Without an ORDER BY the rows came back in whatever order Postgres found
+    // them, which tracks physical layout — so editing an agent could silently
+    // move it. `createdAt` breaks ties so two rows written in the same
+    // millisecond (seeded presets) cannot swap between requests.
+    const rows = await db
+      .select()
+      .from(negotiationAgents)
+      .where(where)
+      .orderBy(desc(negotiationAgents.updatedAt), desc(negotiationAgents.createdAt));
     return reply.send({ agents: rows });
   });
 

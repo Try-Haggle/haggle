@@ -14,6 +14,7 @@ vi.mock("@haggle/db", () => {
     and: (...conds: unknown[]) => ({ __op: "and", conds }),
     or: (...conds: unknown[]) => ({ __op: "or", conds }),
     inArray: (c: unknown, vs: unknown[]) => ({ __op: "inArray", c, vs }),
+    desc: (c: unknown) => ({ __op: "desc", c }),
     sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({
       raw: strings.join("?"),
       values,
@@ -28,6 +29,8 @@ vi.mock("@haggle/db", () => {
       role: col("role"),
       isSystem: col("is_system"),
       userId: col("user_id"),
+      createdAt: col("created_at"),
+      updatedAt: col("updated_at"),
     },
   };
 });
@@ -68,6 +71,7 @@ function createFakeDb(): FakeDb {
       from: (...a: unknown[]) => Chain;
       where: (cond: unknown) => Chain;
       limit: (n: number) => Chain;
+      orderBy: (...cols: unknown[]) => Chain;
       then: (r: (v: Row[]) => unknown) => Promise<unknown>;
     };
     const chain: Chain = {
@@ -78,6 +82,10 @@ function createFakeDb(): FakeDb {
       },
       limit: (n) => {
         db.calls.push({ op: "select.limit", payload: n });
+        return chain;
+      },
+      orderBy: (...cols) => {
+        db.calls.push({ op: "select.orderBy", payload: cols });
         return chain;
       },
       // biome-ignore lint/suspicious/noThenProperty: intentional thenable mock — production code awaits this query chain
@@ -281,6 +289,22 @@ describe("GET /negotiations/agents", () => {
     const inArrayLeaf = cond.conds[1] as { __op: string; vs: string[] };
     expect(inArrayLeaf.__op).toBe("inArray");
     expect(inArrayLeaf.vs).toEqual(["seller", "both"]);
+    await app.close();
+  });
+
+  it("asks the database for most-recently-updated first", async () => {
+    // Without an ORDER BY the rows arrived in physical order, so editing an
+    // agent could silently move it in the roster. createdAt is the tiebreaker
+    // so rows written in the same millisecond keep a stable order.
+    const app = buildApp(db, USER);
+    db.selectResults.push([]);
+    await app.inject({ method: "GET", url: "/negotiations/agents?role=any" });
+    const order = db.calls.find((c) => c.op === "select.orderBy");
+    expect(order).toBeDefined();
+    expect(order?.payload).toEqual([
+      { __op: "desc", c: { name: "updated_at" } },
+      { __op: "desc", c: { name: "created_at" } },
+    ]);
     await app.close();
   });
 
