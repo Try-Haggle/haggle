@@ -376,7 +376,11 @@ export function ListingDetailV2({
 
               {/* ② Who you're up against — or, for the owner, who represents them */}
               <motion.div variants={riseIn}>
-                <OpponentCard presetId={listing.sellerAgentPreset} isOwner={isOwner} />
+                <OpponentCard
+                  presetId={listing.sellerAgentPreset}
+                  emoji={listing.sellerAgentEmoji ?? null}
+                  isOwner={isOwner}
+                />
               </motion.div>
 
               {/* ②½ What must be settled — a fact about the deal, not the

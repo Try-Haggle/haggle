@@ -19,6 +19,7 @@ import {
   type AdvancedOverrides,
   AdvancedSettingsModal,
 } from "@/components/agents/AdvancedSettingsModal";
+import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { DURATION, EASE } from "@/components/listing-detail/motion";
 import { MotionRadar } from "@/components/listing-detail/motion-radar";
 import { Drawer } from "@/components/ui";
@@ -237,6 +238,11 @@ export function AgentStudio({
       memory={memory}
       name={state.agent.name ?? ""}
       onNameChange={(name) => updateState((prev) => ({ ...prev, agent: { ...prev.agent, name } }))}
+      onAvatarChange={(animal) =>
+        // Identity, not strategy: no "customized" flag, but it is a change the
+        // user will expect Save to keep, so it dirties the build.
+        updateState((prev) => ({ ...prev, agent: { ...prev.agent, emoji: animal }, dirty: true }))
+      }
       onWeightsChange={(weights) =>
         updateState((prev) => ({
           ...prev,
@@ -457,7 +463,9 @@ function EmptyCanvas({
               backgroundColor: `color-mix(in srgb, ${preset.accentColor} 8%, transparent)`,
             }}
           >
-            <span aria-hidden="true">{preset.emoji}</span>
+            <span aria-hidden="true">
+              <AgentAvatar value={preset.emoji} />
+            </span>
             <span className="sr-only">{preset.copy[role].name}</span>
           </button>
         ))}

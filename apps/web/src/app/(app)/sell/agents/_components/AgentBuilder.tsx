@@ -9,6 +9,7 @@
  * touched; moving it now would only add unrelated churn to their diffs.
  */
 
+import type { AgentAnimal } from "@haggle/shared";
 import {
   type AgentBuilderState,
   builderStateFromAgentRow,
@@ -29,6 +30,8 @@ import {
   type AdvancedOverrides,
   AdvancedSettingsModal,
 } from "@/components/agents/AdvancedSettingsModal";
+import { AgentAvatar } from "@/components/agents/agent-avatar";
+import { AgentAvatarPicker } from "@/components/agents/agent-avatar-picker";
 import { StrategyRadar } from "@/components/agents/StrategyRadar";
 import { Button, buttonVariants, Input, PageHeader } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -98,6 +101,9 @@ export function agentStrategySnapshotFromState(
   const effectiveMemory = memory ?? state.agent.builderChatMemory ?? null;
   return {
     preset: state.agent.presetId,
+    // The face the seller chose (or the preset's own). It rides the listing's
+    // snapshot so the buyer-safe view can show it — a face is not posture.
+    emoji: ep.emoji,
     weights: { ...ep.weights },
     source: state.source.kind,
     sourceId: state.source.id,
@@ -166,6 +172,13 @@ export function AgentBuilder({
     onChange(builderStateFromAgentRow(agent, role, value?.item));
   };
 
+  const handleAvatarChange = (animal: AgentAnimal) => {
+    if (!value) return;
+    // Identity, not strategy — same rule as the studio: no "customized", but
+    // a change the user expects to keep, so it dirties the build.
+    onChange({ ...value, agent: { ...value.agent, emoji: animal }, dirty: true });
+  };
+
   const handleOverridesApply = (o: AdvancedOverrides) => {
     if (!value) return;
     // AdvancedOverrides = weights + the 12 engine knobs → split into the
@@ -221,6 +234,7 @@ export function AgentBuilder({
       }
       right={
         <>
+          <FaceCard effective={effective} onAvatarChange={handleAvatarChange} />
           <RightSidebar
             effective={effective}
             hasOverrides={value ? isBuilderCustomized(value) : false}
@@ -271,6 +285,8 @@ export function AgentBuilder({
                 placeholder={copy?.name ?? "Untitled Agent"}
               />
             </div>
+
+            <FaceCard effective={effective} onAvatarChange={handleAvatarChange} />
 
             <RightSidebar
               effective={effective}
@@ -395,6 +411,43 @@ function LeftColumn({
 
       {chatSlot}
     </>
+  );
+}
+
+/* ─── Face — the agent's avatar, tap to change ─────────────── */
+
+function FaceCard({
+  effective,
+  onAvatarChange,
+}: {
+  effective?: NegotiationAgentPreset;
+  onAvatarChange: (animal: AgentAnimal) => void;
+}) {
+  if (!effective) return null;
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-raised p-4">
+      <AgentAvatarPicker
+        value={effective.emoji}
+        onChange={onAvatarChange}
+        trigger={
+          <button
+            type="button"
+            aria-label="Change face"
+            className="flex size-12 shrink-0 cursor-pointer items-center justify-center rounded-2xl text-[22px] transition-transform hover:scale-105 focus-visible:outline-2 focus-visible:outline-focus focus-visible:outline-offset-2"
+            style={{
+              backgroundColor: `color-mix(in srgb, ${effective.accentColor} 14%, transparent)`,
+              border: `1px solid color-mix(in srgb, ${effective.accentColor} 32%, transparent)`,
+            }}
+          >
+            <AgentAvatar value={effective.emoji} />
+          </button>
+        }
+      />
+      <div className="min-w-0">
+        <p className="font-bold text-[11px] text-ink-secondary uppercase tracking-wider">Face</p>
+        <p className="text-[12px] text-ink-muted">Tap to change — buyers see it on your listing.</p>
+      </div>
+    </div>
   );
 }
 

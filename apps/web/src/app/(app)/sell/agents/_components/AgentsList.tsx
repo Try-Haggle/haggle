@@ -9,6 +9,7 @@ import {
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { WeightRadar } from "@/components/agents/WeightRadar";
 import { buttonVariants, EmptyState, PageHeader, SectionHeader } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -136,7 +137,7 @@ export function AgentsList({ role, embedded = false, selectMode }: AgentsListPro
                     className="flex size-11 shrink-0 items-center justify-center rounded-full text-2xl"
                     style={{ backgroundColor: `${preset.accentColor}22` }}
                   >
-                    {preset.emoji}
+                    <AgentAvatar value={preset.emoji} />
                   </span>
                   <div className="min-w-0 flex-1">
                     <h3 className="mb-0.5 font-bold text-ink text-sm">{copy.name}</h3>

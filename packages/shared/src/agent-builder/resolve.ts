@@ -42,6 +42,10 @@ export function resolveEffectivePreset(state: AgentBuilderState): NegotiationAge
     ...base,
     ...(state.agent.weights ? { weights: { ...state.agent.weights } } : {}),
     ...(state.agent.engineParams ?? {}),
+    // A chosen face rides on the effective preset so every consumer that
+    // already reads `effective.emoji` — the panel, the roster, the config
+    // that gets saved — shows it without knowing where it came from.
+    ...(state.agent.emoji ? { emoji: state.agent.emoji } : {}),
   };
 }
 
@@ -110,6 +114,7 @@ export function builderStateFromAgentRow(
     agent: {
       presetId: agent.negotiationAgentPresetId ?? DEFAULT_PRESET_ID,
       name: agent.name,
+      emoji: agent.emoji,
       weights: agent.weights ? { ...agent.weights } : undefined,
       engineParams: agent.engineParams ? { ...agent.engineParams } : undefined,
       categoryAnswers: agent.categoryAnswers,

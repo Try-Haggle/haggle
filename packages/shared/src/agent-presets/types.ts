@@ -46,6 +46,12 @@ export interface NegotiationAgentPresetCopy {
  */
 export interface NegotiationAgentPreset {
   id: NegotiationAgentPresetId;
+  /**
+   * Default avatar — an animal slug from `AGENT_ANIMALS`. Named `emoji`
+   * because that is the persisted key in `negotiation_agent_config`, and rows
+   * written before animals existed hold an emoji glyph there; render through
+   * `resolveAgentAvatar`, never by hand.
+   */
   emoji: string;
   /** Tailwind-friendly accent color (hex). */
   accentColor: string;

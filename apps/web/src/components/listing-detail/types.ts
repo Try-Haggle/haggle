@@ -20,6 +20,8 @@ export interface ListingDetail {
   /** Public hold badge. Never includes the agreed amount. */
   holdState?: "held" | "funding" | "sold" | null;
   sellerAgentPreset: string | null;
+  /** The seller's chosen face for the agent. Absent on older listings. */
+  sellerAgentEmoji?: string | null;
   sellingDeadline: string | null;
   /** The seller's REQUIRED category criteria (buyer-safe: id + ask). */
   sellerRequiredCriteria: Array<{ checkId: string; ask: string }> | null;
