@@ -6,10 +6,7 @@ import {
   readBuyerFulfillmentDefaults,
   type SellerFulfillmentOffer,
 } from "@/lib/fulfillment-options";
-import {
-  EMPTY_SHIPPING_ADDRESS,
-  type ShippingAddressInput,
-} from "@/lib/shipping-address";
+import { EMPTY_SHIPPING_ADDRESS, type ShippingAddressInput } from "@/lib/shipping-address";
 
 export interface PreNegotiationFulfillmentValue {
   methods: FulfillmentMethod[];
