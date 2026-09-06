@@ -10,6 +10,15 @@
  * that the API layer uses to build / validate / qualify paths.
  */
 
+import {
+  HNP_DIGITAL_DISPUTE_EVIDENCE_KINDS,
+  HNP_DISPUTE_EVIDENCE_KINDS,
+  type HnpDigitalDisputeEvidenceKind,
+  type HnpDisputeEvidenceKind,
+  isHnpDigitalDisputeEvidenceKind,
+  isHnpDisputeEvidenceKind,
+} from "@haggle/engine-session";
+
 /** Supabase Storage bucket that holds dispute evidence files. Private. */
 export const DISPUTE_EVIDENCE_BUCKET = "dispute-evidence" as const;
 
@@ -315,4 +324,71 @@ export function evaluateControlledEvidenceUploadGates(input: {
   }
 
   return { ok: true, evidenceType, limits };
+}
+
+// ---------------------------------------------------------------------------
+// Dispute evidence category allowlist (Phase 4 digital scaffold)
+// ---------------------------------------------------------------------------
+
+/**
+ * Digital dispute evidence categories — alias of HNP Phase 4 kinds.
+ * Controlled Evidence path/mime/size gates above stay unchanged; this gate only
+ * allowlists evidence *kind/category* labels for digital dispute packets.
+ *
+ * @see docs/wip/digital-fulfillment-settlement-design.md (Phase 4)
+ */
+export const DIGITAL_DISPUTE_EVIDENCE_CATEGORIES = HNP_DIGITAL_DISPUTE_EVIDENCE_KINDS;
+
+export type DigitalDisputeEvidenceCategory = HnpDigitalDisputeEvidenceKind;
+
+/** Full allowlist: baseline physical/shipping kinds + digital Phase 4 kinds. */
+export const ALLOWED_DISPUTE_EVIDENCE_CATEGORIES = HNP_DISPUTE_EVIDENCE_KINDS;
+
+export type AllowedDisputeEvidenceCategory = HnpDisputeEvidenceKind;
+
+export function isDigitalDisputeEvidenceCategory(
+  category: string,
+): category is DigitalDisputeEvidenceCategory {
+  return isHnpDigitalDisputeEvidenceKind(category);
+}
+
+export function isAllowedDisputeEvidenceCategory(
+  category: string,
+): category is AllowedDisputeEvidenceCategory {
+  return isHnpDisputeEvidenceKind(category);
+}
+
+export type DisputeEvidenceCategoryGateFailure = {
+  ok: false;
+  error: "UNSUPPORTED_EVIDENCE_CATEGORY";
+  message: string;
+};
+
+export type DisputeEvidenceCategoryGateSuccess = {
+  ok: true;
+  category: AllowedDisputeEvidenceCategory;
+  isDigital: boolean;
+};
+
+/**
+ * Category allowlist gate for dispute evidence kinds (incl. Phase 4 digital).
+ * Does not replace Controlled Evidence path/mime/size gates — media uploads
+ * must still pass evaluateControlledEvidenceUploadGates.
+ */
+export function evaluateDisputeEvidenceCategoryGate(input: {
+  category: string;
+}): DisputeEvidenceCategoryGateSuccess | DisputeEvidenceCategoryGateFailure {
+  const category = typeof input.category === "string" ? input.category.trim() : "";
+  if (!isAllowedDisputeEvidenceCategory(category)) {
+    return {
+      ok: false,
+      error: "UNSUPPORTED_EVIDENCE_CATEGORY",
+      message: `Allowed categories: ${ALLOWED_DISPUTE_EVIDENCE_CATEGORIES.join(", ")}`,
+    };
+  }
+  return {
+    ok: true,
+    category,
+    isDigital: isDigitalDisputeEvidenceCategory(category),
+  };
 }

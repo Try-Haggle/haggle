@@ -490,6 +490,11 @@ Acceptance criteria:
   - `revoked_access`
 - Ensure dispute finalizer can sign release/refund for conditional settlements, not only provider refunds.
 
+Scaffold status (B9):
+- `HNP_DIGITAL_DISPUTE_EVIDENCE_KINDS` / full `HNP_DISPUTE_EVIDENCE_KINDS` allowlist extended in `@haggle/engine-session`.
+- Controlled Evidence B4 helpers expose matching category gates in `apps/api/src/lib/dispute-storage-paths.ts` without relaxing path/mime/size gates.
+- Digital reason codes + validators remain follow-up work.
+
 ## Database Migration Sketch
 
 Minimum additive migration:

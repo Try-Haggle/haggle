@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  ALLOWED_DISPUTE_EVIDENCE_CATEGORIES,
   buildDisputeEvidencePath,
   computeEvidenceRemainingLimits,
+  DIGITAL_DISPUTE_EVIDENCE_CATEGORIES,
   DISPUTE_EVIDENCE_BUCKET,
   EVIDENCE_LIMITS,
   evaluateControlledEvidenceUploadGates,
+  evaluateDisputeEvidenceCategoryGate,
   evidenceTypeFromContentType,
+  isAllowedDisputeEvidenceCategory,
+  isDigitalDisputeEvidenceCategory,
   qualifyDisputeEvidencePath,
   sanitizeDisputeFilename,
   stripDisputeEvidenceBucket,
@@ -171,5 +176,49 @@ describe("controlled evidence mime/size/category gates", () => {
         evidenceType: "image",
       }),
     );
+  });
+});
+
+describe("digital dispute evidence category scaffold (Phase 4)", () => {
+  it("extends the allowlist with Phase 4 digital categories", () => {
+    expect(DIGITAL_DISPUTE_EVIDENCE_CATEGORIES).toEqual([
+      "digital_access",
+      "digital_file_hash",
+      "license_terms",
+      "platform_transfer",
+      "onchain_transfer",
+    ]);
+    for (const category of DIGITAL_DISPUTE_EVIDENCE_CATEGORIES) {
+      expect(isDigitalDisputeEvidenceCategory(category)).toBe(true);
+      expect(isAllowedDisputeEvidenceCategory(category)).toBe(true);
+      expect(ALLOWED_DISPUTE_EVIDENCE_CATEGORIES).toContain(category);
+    }
+    expect(isAllowedDisputeEvidenceCategory("message_transcript")).toBe(true);
+    expect(isDigitalDisputeEvidenceCategory("message_transcript")).toBe(false);
+    expect(isAllowedDisputeEvidenceCategory("card_pan")).toBe(false);
+  });
+
+  it("gates unsupported categories without weakening Controlled Evidence path gates", () => {
+    const rejected = evaluateDisputeEvidenceCategoryGate({ category: "card_pan" });
+    expect(rejected.ok).toBe(false);
+    if (!rejected.ok) expect(rejected.error).toBe("UNSUPPORTED_EVIDENCE_CATEGORY");
+
+    const digital = evaluateDisputeEvidenceCategoryGate({ category: "digital_access" });
+    expect(digital).toEqual({ ok: true, category: "digital_access", isDigital: true });
+
+    const baseline = evaluateDisputeEvidenceCategoryGate({ category: "payment_record" });
+    expect(baseline).toEqual({ ok: true, category: "payment_record", isDigital: false });
+
+    // Path / mime Controlled Evidence gates remain independently enforced.
+    expect(() => sanitizeDisputeFilename("../escape.png")).toThrow();
+    const mimeGate = evaluateControlledEvidenceUploadGates({
+      contentType: "application/pdf",
+      fileSizeBytes: 1000,
+      imageCount: 0,
+      videoCount: 0,
+      orderAmountCents: 10_000,
+    });
+    expect(mimeGate.ok).toBe(false);
+    if (!mimeGate.ok) expect(mimeGate.error).toBe("UNSUPPORTED_CONTENT_TYPE");
   });
 });
