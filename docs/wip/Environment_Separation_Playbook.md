@@ -77,7 +77,7 @@
 | 서비스 | LOCAL | STAGING | PRODUCTION | 토글 |
 |--------|-------|---------|------------|------|
 | Supabase | 로컬 스택 | staging 프로젝트 | prod 프로젝트 | — |
-| Stripe | `mock` | **test 키** + staging webhook | live 키 + prod webhook | `STRIPE_MODE` |
+| Stripe | `mock` | **test 키** (`sk_test_`/`pk_test_`) + staging webhook; **live 키 hard-block** (`STAGING_LIVE_STRIPE_KEYS_FORBIDDEN`) | live 키 + prod webhook | `STRIPE_MODE` |
 | x402 (CDP) | `mock` | `real` + **base-sepolia** | `real` + **base mainnet** | `HAGGLE_X402_MODE`, `HAGGLE_X402_NETWORK` |
 | EasyPost | `mock` | 기본은 **test 키**, 승인된 실배송 리허설만 live 키와 Haggle fiat 예산 | live 키와 prefunded fiat 잔액 | `EASYPOST_TEST_API_KEY`, `EASYPOST_LIVE_API_KEY`, `HAGGLE_ENABLE_STAGING_LIVE_SHIPPING`, `HAGGLE_STAGING_LIVE_LABEL_MAX_MINOR` |
 | Resend | NODE_ENV 가드 미발송 | test 도메인 | 인증된 prod 도메인 | `RESEND_API_KEY` |
@@ -86,6 +86,10 @@
 
 > ⚠️ **온체인·결제 prod 전환은 staging 리허설 완료 후 마지막에.** staging에서 base-sepolia로
 > 전체 결제·정산 플로우를 끝까지 통과시킨 뒤에만 mainnet으로. (CLAUDE.md: "안전 > 편리")
+>
+> Stripe Onramp: public `GET /payments/onramp/status`는 capability-only(minimal fingerprint).
+> test vs live 확인은 auth-gated `GET /tools/payment-test/runtime` 또는 Railway env prefix로.
+> 상세: `docs/wip/staging-onramp-test-mode-map.md`.
 
 ### Staging Base Sepolia 고정값
 

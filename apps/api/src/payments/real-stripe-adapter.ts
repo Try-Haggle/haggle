@@ -28,6 +28,7 @@ import type {
   SettlePaymentResult,
 } from "@haggle/payment-core";
 import type Stripe from "stripe";
+import { assertStagingStripeOnrampKeysAllowed, getStripeConfig } from "./stripe-onramp.js";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -87,6 +88,12 @@ export class RealStripeAdapter implements PaymentProvider {
    * Returns the session ID + client_secret for embedding the widget.
    */
   async authorize(intent: PaymentIntent): Promise<AuthorizePaymentResult> {
+    const stripeConfig = getStripeConfig();
+    assertStagingStripeOnrampKeysAllowed(
+      { HAGGLE_ENV: process.env.HAGGLE_ENV },
+      stripeConfig.keyMode,
+    );
+
     const amountUsd = (intent.amount.amount_minor / 100).toFixed(2);
 
     const destinationWallet = this.config.defaultDestinationWallet;

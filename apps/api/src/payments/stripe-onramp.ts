@@ -121,6 +121,49 @@ export function getStripeConfig() {
   };
 }
 
+export const STAGING_LIVE_STRIPE_KEYS_FORBIDDEN = "STAGING_LIVE_STRIPE_KEYS_FORBIDDEN" as const;
+
+export type StagingLiveStripeKeysGateEnv = Partial<Pick<NodeJS.ProcessEnv, "HAGGLE_ENV">>;
+
+/**
+ * Staging must use Stripe test keys only. Live keys on staging are fail-closed
+ * for Onramp session creation (no real charges / live publishable secrets).
+ */
+export function isStagingLiveStripeKeysForbidden(
+  env: StagingLiveStripeKeysGateEnv = { HAGGLE_ENV: process.env.HAGGLE_ENV },
+  keyMode: StripeKeyMode = getStripeConfig().keyMode,
+): boolean {
+  const haggleEnv = (env.HAGGLE_ENV ?? "").trim().toLowerCase();
+  return haggleEnv === "staging" && keyMode === "live";
+}
+
+export function assertStagingStripeOnrampKeysAllowed(
+  env: StagingLiveStripeKeysGateEnv = { HAGGLE_ENV: process.env.HAGGLE_ENV },
+  keyMode: StripeKeyMode = getStripeConfig().keyMode,
+): void {
+  if (!isStagingLiveStripeKeysForbidden(env, keyMode)) return;
+  throw Object.assign(
+    new Error(
+      `${STAGING_LIVE_STRIPE_KEYS_FORBIDDEN}: Staging forbids live Stripe keys for Onramp. Configure sk_test_/pk_test_.`,
+    ),
+    {
+      code: STAGING_LIVE_STRIPE_KEYS_FORBIDDEN,
+      statusCode: 503,
+    },
+  );
+}
+
+export function isStagingLiveStripeKeysForbiddenError(
+  error: unknown,
+): error is Error & { code: typeof STAGING_LIVE_STRIPE_KEYS_FORBIDDEN } {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === STAGING_LIVE_STRIPE_KEYS_FORBIDDEN
+  );
+}
+
 async function withStripeRetries<T>(operation: () => Promise<T>): Promise<T> {
   const maxAttempts = 3;
   let lastError: unknown;
@@ -159,6 +202,7 @@ export async function createOnrampSession(
   if (!config.enabled) {
     throw new Error("STRIPE_NOT_CONFIGURED: Set STRIPE_SECRET_KEY");
   }
+  assertStagingStripeOnrampKeysAllowed({ HAGGLE_ENV: process.env.HAGGLE_ENV }, config.keyMode);
 
   const amountUsd = (params.amountMinor / 100).toFixed(2);
 
