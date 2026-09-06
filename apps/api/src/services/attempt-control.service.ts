@@ -195,8 +195,11 @@ export async function evaluateAttemptControl(
 
   // listing_cooldown (HNP_ATTEMPT_COOLDOWN_SECONDS, default 12h) is not an
   // attempt-count gate. remaining_sessions>0 + remaining_marketplace>0 +
-  // active 0 must start (joUdQ7Tw). Do not 429 ATTEMPT_LIMIT with retry_after
-  // ~3h from leftover last_listing_attempt_at after a rejected CREATED session.
+  // active 0 must start (joUdQ7Tw / #111). Do not 429 ATTEMPT_LIMIT with
+  // retry_after ~3h from leftover last_listing_attempt_at after a rejected
+  // CREATED session. B10: concurrent/overlapping starts in that state must
+  // also never false-block via listing_cooldown; once an active session
+  // exists, the next evaluate names concurrent_on_listing instead.
   return { allowed: true, attemptControl: snapshot };
 }
 
