@@ -3322,6 +3322,11 @@ describe("Dispute routes", () => {
             conclusion: "buyer_favor",
             auto_applied: false,
           }),
+          t1_human_review: expect.objectContaining({
+            status: "PENDING_APPROVAL",
+            required: true,
+            auto_release_enabled: false,
+          }),
         }),
       }),
     );
@@ -3375,6 +3380,10 @@ describe("Dispute routes", () => {
           ai_resolution_assessor: expect.objectContaining({
             auto_applied: false,
             conclusion: "buyer_favor",
+          }),
+          t1_human_review: expect.objectContaining({
+            status: "PENDING_APPROVAL",
+            auto_release_enabled: false,
           }),
         }),
       }),
@@ -4297,6 +4306,119 @@ describe("Dispute routes", () => {
 
     expect(res.statusCode).toBe(409);
     expect(res.json().error).toBe("APPEAL_REVIEW_REQUIRED");
+  });
+
+  it("POST /disputes/:id/resolve blocks money when T1 assess COMPLETED without human approval (E2b)", async () => {
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        status: "UNDER_REVIEW",
+        metadata: {
+          tier: 1,
+          ai_resolution_assessor: {
+            status: "COMPLETED",
+            assessment_id: "assess_1",
+            conclusion: "buyer_favor",
+            auto_applied: false,
+          },
+          t1_human_review: {
+            status: "PENDING_APPROVAL",
+            assessment_id: "assess_1",
+            required: true,
+            auto_release_enabled: false,
+          },
+        },
+      }),
+    );
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/disputes/some-id/resolve",
+      headers: ADMIN_HEADERS,
+      payload: { outcome: "buyer_favor", summary: "Apply AI recommendation." },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe("T1_HUMAN_APPROVAL_REQUIRED");
+    expect(mockFinalizeDisputeResolution).not.toHaveBeenCalled();
+    expect(mockCreateRefundRecord).not.toHaveBeenCalled();
+    expect(mockCreateSettlementReleaseRecord).not.toHaveBeenCalled();
+    expect(mockUpdateCommerceOrderStatus).not.toHaveBeenCalled();
+  });
+
+  it("POST /disputes/:id/ai/assess/approve then resolve allows finalizer money path (E2b)", async () => {
+    const pendingDispute = fakeDispute({
+      status: "UNDER_REVIEW",
+      metadata: {
+        tier: 1,
+        ai_resolution_assessor: {
+          status: "COMPLETED",
+          assessment_id: "assess_1",
+          conclusion: "seller_favor",
+          auto_applied: false,
+          evidence_snapshot_hash: "abc",
+        },
+        t1_human_review: {
+          status: "PENDING_APPROVAL",
+          assessment_id: "assess_1",
+          required: true,
+          auto_release_enabled: false,
+        },
+      },
+    });
+    mockGetDisputeById.mockResolvedValue(pendingDispute);
+    mockUpdateDisputeRecord.mockImplementation(async (_db, dispute) => dispute);
+
+    const approveRes = await app.inject({
+      method: "POST",
+      url: "/disputes/some-id/ai/assess/approve",
+      headers: ADMIN_HEADERS,
+      payload: { notes: "Human reviewed — approve for resolve." },
+    });
+    expect(approveRes.statusCode).toBe(200);
+    expect(approveRes.json()).toMatchObject({
+      money_moved: false,
+      auto_applied: false,
+      t1_human_review: expect.objectContaining({
+        status: "APPROVED",
+        assessment_id: "assess_1",
+        approved_by: "test-admin-001",
+      }),
+    });
+
+    const approvedMeta = mockUpdateDisputeRecord.mock.calls.at(-1)?.[1] as {
+      metadata?: { t1_human_review?: Record<string, unknown> };
+    };
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        status: "UNDER_REVIEW",
+        metadata: {
+          tier: 1,
+          ai_resolution_assessor: {
+            status: "COMPLETED",
+            assessment_id: "assess_1",
+            conclusion: "seller_favor",
+            auto_applied: false,
+          },
+          t1_human_review: approvedMeta?.metadata?.t1_human_review,
+        },
+      }),
+    );
+    mockFinalizeDisputeResolution.mockResolvedValue({
+      dispute: fakeDispute({ status: "RESOLVED_SELLER_FAVOR" }),
+      auto_refund: null,
+      deposit_refund: null,
+      module_settlement_webhook: null,
+    });
+
+    const resolveRes = await app.inject({
+      method: "POST",
+      url: "/disputes/some-id/resolve",
+      headers: ADMIN_HEADERS,
+      payload: { outcome: "seller_favor", summary: "Human-approved T1 outcome." },
+    });
+
+    expect(resolveRes.statusCode).toBe(200);
+    expect(mockFinalizeDisputeResolution).toHaveBeenCalled();
   });
 
   it("PATCH /disputes/:id/appeal/review rejects a review lease held by another API instance", async () => {

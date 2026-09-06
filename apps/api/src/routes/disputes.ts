@@ -37,6 +37,12 @@ import {
   stripDisputeEvidenceBucket,
   validateDisputeStoragePath,
 } from "../lib/dispute-storage-paths.js";
+import {
+  assertT1AutoReleaseForbidden,
+  buildApprovedT1HumanReview,
+  buildPendingT1HumanReview,
+  t1HumanApprovalBlocksMoneyMovement,
+} from "../lib/dispute-t1-human-review-gate.js";
 import { INPUT_LIMITS } from "../lib/input-limits.js";
 import { createOwnershipMiddleware } from "../middleware/ownership.js";
 import { requireAdmin, requireAuth } from "../middleware/require-auth.js";
@@ -545,6 +551,11 @@ const escalateSchema = z.object({
   reason: z.string().max(INPUT_LIMITS.disputeSummaryChars).optional(),
 });
 
+const t1HumanApproveSchema = z.object({
+  notes: z.string().max(INPUT_LIMITS.disputeSummaryChars).optional(),
+  expected_assessment_id: z.string().min(1).max(128).optional(),
+});
+
 const resolveDisputeSchema = z.object({
   outcome: z.enum(["buyer_favor", "seller_favor", "partial_refund"]),
   summary: z.string().min(1).max(INPUT_LIMITS.disputeSummaryChars),
@@ -840,6 +851,24 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   function appealBlocksResolution(dispute: DisputeCase): boolean {
     const appeal = appealReviewFor(dispute);
     return appeal?.status === "OPEN" || appeal?.status === "REOPENED";
+  }
+
+  function t1HumanReviewFor(dispute: DisputeCase) {
+    const review = disputeMetadata(dispute).t1_human_review;
+    return review && typeof review === "object" && !Array.isArray(review)
+      ? (review as Record<string, unknown>)
+      : null;
+  }
+
+  /** E2b: T1 COMPLETED assess requires human approval before money movement. */
+  function t1HumanApprovalBlocksResolution(dispute: DisputeCase): boolean {
+    const metadata = disputeMetadata(dispute);
+    const tier = (metadata.tier as number | undefined) ?? 1;
+    return t1HumanApprovalBlocksMoneyMovement({
+      tier,
+      ai_resolution_assessor: metadata.ai_resolution_assessor,
+      t1_human_review: metadata.t1_human_review,
+    });
   }
 
   function cameraSessionsFor(dispute: DisputeCase): CameraCaptureSessionMap {
@@ -2490,6 +2519,109 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     },
   );
 
+  // POST /disputes/:id/ai/assess/approve — E2b human gate before T1 money movement
+  app.post<{ Params: { id: string } }>(
+    "/disputes/:id/ai/assess/approve",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const { id } = request.params;
+      const parsed = t1HumanApproveSchema.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        return reply.code(400).send({
+          error: "INVALID_T1_HUMAN_APPROVAL",
+          issues: parsed.error.issues,
+        });
+      }
+
+      const dispute = await getDisputeById(db, id);
+      if (!dispute) {
+        return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
+      }
+
+      assertT1AutoReleaseForbidden();
+      const metadata = disputeMetadata(dispute);
+      const tier = (metadata.tier as number | undefined) ?? 1;
+      if (tier !== 1) {
+        return reply.code(409).send({
+          error: "T1_HUMAN_APPROVAL_NOT_APPLICABLE",
+          message: "Human assessment approval gate applies only at Tier 1",
+          tier,
+        });
+      }
+
+      const assessment = metadata.ai_resolution_assessor;
+      if (
+        !assessment ||
+        typeof assessment !== "object" ||
+        Array.isArray(assessment) ||
+        (assessment as Record<string, unknown>).status !== "COMPLETED"
+      ) {
+        return reply.code(409).send({
+          error: "T1_ASSESSMENT_NOT_COMPLETED",
+          message: "A COMPLETED T1 AI assessment is required before human approval",
+        });
+      }
+
+      const assessmentRecord = assessment as Record<string, unknown>;
+      const assessmentId =
+        typeof assessmentRecord.assessment_id === "string" ? assessmentRecord.assessment_id : null;
+      if (
+        parsed.data.expected_assessment_id &&
+        assessmentId &&
+        parsed.data.expected_assessment_id !== assessmentId
+      ) {
+        return reply.code(409).send({
+          error: "T1_ASSESSMENT_ID_MISMATCH",
+          message: "expected_assessment_id does not match the current COMPLETED assessment",
+          current_assessment_id: assessmentId,
+        });
+      }
+
+      const existingReview = t1HumanReviewFor(dispute);
+      if (existingReview?.status === "APPROVED") {
+        const existingAssessmentId =
+          typeof existingReview.assessment_id === "string" ? existingReview.assessment_id : null;
+        if (!assessmentId || !existingAssessmentId || existingAssessmentId === assessmentId) {
+          return reply.send({
+            dispute_id: id,
+            t1_human_review: existingReview,
+            idempotent: true,
+          });
+        }
+      }
+
+      const approvedAt = new Date().toISOString();
+      const approved = buildApprovedT1HumanReview({
+        previous: existingReview,
+        assessment_id: assessmentId,
+        evidence_snapshot_hash:
+          typeof assessmentRecord.evidence_snapshot_hash === "string"
+            ? assessmentRecord.evidence_snapshot_hash
+            : null,
+        approved_by: request.user!.id,
+        approved_at: approvedAt,
+        notes: parsed.data.notes ?? null,
+      });
+
+      await updateDisputeRecord(db, {
+        ...dispute,
+        metadata: {
+          ...metadata,
+          t1_human_review: approved,
+        },
+      });
+
+      return reply.send({
+        dispute_id: id,
+        t1_human_review: approved,
+        idempotent: false,
+        // Money still requires a separate resolve → finalizeDisputeResolution call.
+        money_moved: false,
+        auto_applied: false,
+      });
+    },
+  );
+
   app.post("/disputes/:id/resolve", { preHandler: [requireAdmin] }, async (request, reply) => {
     const disputeId = (request.params as { id: string }).id;
     if (
@@ -2519,6 +2651,22 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         message:
           "Resolve is blocked until the open appeal is dismissed or a reopened case is reassessed",
         appeal: appealReviewFor(dispute),
+      });
+    }
+
+    if (t1HumanApprovalBlocksResolution(dispute)) {
+      assertT1AutoReleaseForbidden();
+      return reply.code(409).send({
+        error: "T1_HUMAN_APPROVAL_REQUIRED",
+        message:
+          "T1 AI assessment is COMPLETED but money movement is blocked until admin/designated reviewer approval (auto-release forbidden)",
+        t1_human_review: t1HumanReviewFor(dispute),
+        ai_assessment_status:
+          typeof disputeMetadata(dispute).ai_resolution_assessor === "object" &&
+          disputeMetadata(dispute).ai_resolution_assessor &&
+          !Array.isArray(disputeMetadata(dispute).ai_resolution_assessor)
+            ? (disputeMetadata(dispute).ai_resolution_assessor as Record<string, unknown>).status
+            : null,
       });
     }
 
@@ -4981,6 +5129,17 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
           appeal?.status === "REOPENED"
             ? { ...appeal, status: "REASSESSED" as const, reassessed_at: assessedAt }
             : appeal;
+        const assessedTier =
+          (disputeMetadata(dispute).tier as DisputeTier | undefined) ??
+          (typeof tier === "number" ? (tier as DisputeTier) : 1);
+        const t1HumanReviewMeta =
+          assessedTier === 1
+            ? buildPendingT1HumanReview({
+                assessment_id: assessmentId,
+                evidence_snapshot_hash: evidenceHash,
+                created_at: assessedAt,
+              })
+            : undefined;
         const assessedDispute = {
           ...dispute,
           metadata: {
@@ -4991,6 +5150,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
             ai_assessment_stale_at: null,
             ai_assessment_previous_evidence_snapshot_hash: null,
             ai_assessment_current_evidence_snapshot_hash: evidenceHash,
+            ...(t1HumanReviewMeta ? { t1_human_review: t1HumanReviewMeta } : {}),
             ...(reassessedAppeal
               ? {
                   appeal_review: reassessedAppeal,

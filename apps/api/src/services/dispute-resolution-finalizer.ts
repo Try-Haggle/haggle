@@ -7,6 +7,7 @@ import {
   computeResolutionHash,
   uuidToBytes32,
 } from "../chain/dispute-anchoring.js";
+import { t1HumanApprovalBlocksMoneyMovement } from "../lib/dispute-t1-human-review-gate.js";
 import type { DepositPaymentRail } from "../payments/deposit-collector.js";
 import { refundDeposit } from "../payments/deposit-refunder.js";
 import { createPaymentServiceFromEnv } from "../payments/providers.js";
@@ -380,6 +381,18 @@ export async function finalizeDisputeResolution(
 ): Promise<FinalizeDisputeResolutionResult> {
   if (isTerminalDisputeStatus(dispute.status)) {
     throw new Error(`DISPUTE_ALREADY_FINALIZED:${dispute.id}`);
+  }
+
+  // E2b defense-in-depth: T1 COMPLETED assess requires human approval before money.
+  const metadata = (dispute.metadata as Record<string, unknown> | null) ?? {};
+  if (
+    t1HumanApprovalBlocksMoneyMovement({
+      tier: typeof metadata.tier === "number" ? metadata.tier : 1,
+      ai_resolution_assessor: metadata.ai_resolution_assessor,
+      t1_human_review: metadata.t1_human_review,
+    })
+  ) {
+    throw new Error("T1_HUMAN_APPROVAL_REQUIRED");
   }
 
   let autoRefund: AutoRefundResult = null;

@@ -8,13 +8,13 @@ import {
   reviewerProfiles,
   sql,
 } from "@haggle/db";
-import type { DisputeResolution, DisputeTier } from "@haggle/dispute-core";
-import { computeDisputeCost, evaluatePanelReview, getReviewerCount } from "@haggle/dispute-core";
+import type { DisputeTier } from "@haggle/dispute-core";
+import { computeDisputeCost, getReviewerCount } from "@haggle/dispute-core";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireAdmin, requireAuth } from "../middleware/require-auth.js";
+import { evaluateDisputePanel } from "../services/dispute-panel-evaluate.service.js";
 import { getDisputeById } from "../services/dispute-record.service.js";
-import { finalizeDisputeResolution } from "../services/dispute-resolution-finalizer.js";
 import { getCommerceOrderByOrderId } from "../services/payment-record.service.js";
 
 // ---------------------------------------------------------------------------
@@ -546,13 +546,13 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
         a.id === assignment.id ? true : a.voteValue !== null,
       );
 
-      // Auto-tally if all voted
+      // Auto-evaluate panel judgment if all voted (money stays on resolve/finalizer — E2)
       if (allVoted) {
         try {
-          await tallyDisputeVotes(db, disputeId);
+          await evaluateDisputePanel(db, disputeId, { persist: true });
         } catch (err) {
           console.error(
-            "[reviewer] Auto-tally failed:",
+            "[reviewer] Auto panel evaluate failed:",
             err instanceof Error ? err.message : String(err),
           );
         }
@@ -571,7 +571,9 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
     },
   );
 
-  // ─── POST /disputes/:id/tally (admin/system) ────────────────────
+  // ─── POST /disputes/:id/tally (admin/system) — judgment only (E2) ─
+  // Alias of panel evaluate: assignment+votes → ready/outcome computation.
+  // Money movement remains on POST /disputes/:id/resolve → finalizeDisputeResolution.
   app.post<{ Params: { id: string } }>(
     "/disputes/:id/tally",
     { preHandler: [requireAdmin] },
@@ -579,12 +581,39 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
       const { id } = request.params;
 
       try {
-        const result = await tallyDisputeVotes(db, id);
-        return reply.send(result);
+        const result = await evaluateDisputePanel(db, id, { persist: true });
+        const { evaluation } = result;
+        if (!evaluation.ready) {
+          return reply.send({
+            dispute_id: result.dispute_id,
+            dispute_status: result.dispute_status,
+            ready: false,
+            issues: evaluation.issues,
+            expected_reviewer_count: evaluation.expected_reviewer_count,
+            assigned_count: evaluation.assigned_count,
+            voted_count: evaluation.voted_count,
+            auto_applied: result.auto_applied,
+          });
+        }
+        return reply.send({
+          dispute_id: result.dispute_id,
+          dispute_status: result.dispute_status,
+          ready: true,
+          outcome: evaluation.outcome,
+          weighted_median: evaluation.aggregation.weighted_median,
+          strength: evaluation.aggregation.strength,
+          refund_amount_minor: evaluation.refund_amount_minor,
+          rewards: evaluation.rewards,
+          auto_applied: result.auto_applied,
+        });
       } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (message === "DISPUTE_NOT_FOUND") {
+          return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
+        }
         return reply.code(400).send({
           error: "TALLY_FAILED",
-          message: err instanceof Error ? err.message : String(err),
+          message,
         });
       }
     },
@@ -683,129 +712,4 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
       case_results: caseResults,
     });
   });
-}
-
-// ---------------------------------------------------------------------------
-// Tally function (used by auto-tally and admin endpoint)
-// ---------------------------------------------------------------------------
-
-async function tallyDisputeVotes(
-  db: Database,
-  disputeId: string,
-): Promise<{
-  outcome: string;
-  weighted_median: number;
-  strength: string;
-  rewards: Array<{ reviewer_id: string; reward_cents: number; in_majority: boolean }>;
-}> {
-  // Get dispute
-  const dispute = await getDisputeById(db, disputeId);
-  if (!dispute) {
-    throw new Error("DISPUTE_NOT_FOUND");
-  }
-
-  // Fetch all assignments
-  const assignments = await db
-    .select()
-    .from(reviewerAssignments)
-    .where(eq(reviewerAssignments.disputeId, disputeId));
-
-  const order = await getCommerceOrderByOrderId(db, dispute.order_id);
-  const amountCents = order?.amountMinor ? parseInt(String(order.amountMinor), 10) : 0;
-  const tier = ((dispute.metadata as Record<string, unknown>)?.tier as number) ?? 2;
-
-  const panel = evaluatePanelReview({
-    dispute_id: disputeId,
-    tier,
-    amount_cents: amountCents,
-    assignments: assignments.map((assignment) => ({
-      reviewer_id: assignment.reviewerId,
-      vote: assignment.voteValue,
-      weight: assignment.voteWeight ? parseFloat(assignment.voteWeight) : 0.63,
-    })),
-  });
-
-  if (!panel.ready) {
-    throw new Error(`PANEL_NOT_READY:${panel.issues.join(",")}`);
-  }
-
-  const unvotedAssignments = assignments.filter((a) => a.voteValue === null);
-
-  // Resolve dispute using the same money-movement finalizer as admin resolution.
-  const resolveStatus =
-    panel.outcome === "buyer_favor"
-      ? "RESOLVED_BUYER_FAVOR"
-      : panel.outcome === "seller_favor"
-        ? "RESOLVED_SELLER_FAVOR"
-        : "PARTIAL_REFUND";
-
-  const resolution: DisputeResolution = {
-    outcome: panel.outcome,
-    summary: `DS Panel vote: weighted median ${panel.aggregation.weighted_median}, strength ${panel.aggregation.strength}, method ${panel.aggregation.method}`,
-    refund_amount_minor: panel.refund_amount_minor,
-    resolved_at: new Date().toISOString(),
-  };
-
-  await finalizeDisputeResolution(db, dispute, resolution, {
-    ...dispute,
-    status: resolveStatus as typeof dispute.status,
-    resolution,
-    metadata: {
-      ...((dispute.metadata as Record<string, unknown>) ?? {}),
-      tally_result: {
-        weighted_median: panel.aggregation.weighted_median,
-        strength: panel.aggregation.strength,
-        method: panel.aggregation.method,
-        outcome: panel.outcome,
-        expected_reviewer_count: panel.expected_reviewer_count,
-        assigned_count: panel.assigned_count,
-        voter_count: panel.voted_count,
-        majority_count: panel.majority_count,
-        total_reward_cents: panel.total_reward_cents,
-      },
-    },
-  });
-
-  // Reviewer accounting is applied only after resolution side effects succeed.
-  for (const a of assignments) {
-    const reward = panel.rewards.find((r) => r.reviewer_id === a.reviewerId)?.reward_cents ?? 0;
-    if (reward > 0) {
-      await db
-        .update(reviewerProfiles)
-        .set({
-          totalEarningsCents: sql`${reviewerProfiles.totalEarningsCents} + ${reward}`,
-          activeSlots: sql`GREATEST(${reviewerProfiles.activeSlots} - 1, 0)`,
-          casesReviewed: sql`${reviewerProfiles.casesReviewed} + 1`,
-          updatedAt: new Date(),
-        })
-        .where(eq(reviewerProfiles.userId, a.reviewerId));
-    } else {
-      await db
-        .update(reviewerProfiles)
-        .set({
-          activeSlots: sql`GREATEST(${reviewerProfiles.activeSlots} - 1, 0)`,
-          casesReviewed: sql`${reviewerProfiles.casesReviewed} + 1`,
-          updatedAt: new Date(),
-        })
-        .where(eq(reviewerProfiles.userId, a.reviewerId));
-    }
-  }
-
-  // Also decrement active_slots for unvoted assignments after finalization.
-  for (const a of unvotedAssignments) {
-    await db
-      .update(reviewerProfiles)
-      .set({
-        activeSlots: sql`GREATEST(${reviewerProfiles.activeSlots} - 1, 0)`,
-        updatedAt: new Date(),
-      })
-      .where(eq(reviewerProfiles.userId, a.reviewerId));
-  }
-
-  return {
-    outcome: panel.outcome,
-    weighted_median: panel.aggregation.weighted_median,
-    strength: panel.aggregation.strength,
-    rewards: panel.rewards,
-  };
 }
