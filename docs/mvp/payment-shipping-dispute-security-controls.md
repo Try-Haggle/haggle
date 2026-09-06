@@ -39,7 +39,7 @@
 | 경보를 통한 민감정보 유출 | 공급자별 집계 수치만 포함하고 event ID, payload hash, 오류 원문, 사용자·주문 식별자를 포함하지 않음 | `apps/api/src/services/webhook-claim-alert.service.ts` |
 | 경보 job 부분 설정으로 무음 실패 | job 활성화 시 `ENABLE_CRON`, URL, 최소 secret을 시작 단계에서 강제. production의 HTTP·사설망 예외 설정은 금지하고 cron registry의 60초 등록을 회귀 테스트 | `apps/api/src/config/runtime.ts`, `apps/api/src/jobs/runner.ts` |
 | 내부 오류 정보 노출 | webhook·provider 실패 응답은 일반화하고 내부 감사 로그는 redaction 적용 | `apps/api/src/routes/payments.ts` |
-| 분쟁 중 자금 해제 | active dispute와 order `IN_DISPUTE` 상태에서 buyer confirmation·자동 release 차단 | `apps/api/src/routes/settlement-releases.ts` |
+| 분쟁 중 자금 해제 | active dispute와 order `IN_DISPUTE` 상태에서 buyer confirmation·명시적 release·자동 release 차단 | `apps/api/src/routes/settlement-releases.ts`, `apps/api/src/jobs/settlement-auto-release.ts` |
 | 다른 계정의 판매대금 release | release instruction·execution 기록·receipt confirmation은 해당 주문 seller 또는 admin만 호출. instruction의 seller wallet은 funding 때 저장된 payout wallet과 정확히 일치해야 함 | `apps/api/src/routes/settlement-releases.ts` |
 | 가짜 tx hash로 정산 완료 | Base RPC receipt finality, 계약 주소, `SettlementReleased` event의 settlement ID·seller/fee wallet·양쪽 금액을 모두 검증한 뒤에만 payment를 `SETTLED`로 기록 | `apps/api/src/routes/settlement-releases.ts` |
 | staging APV 대기 우회가 실자금에 노출 | EasyPost test delivery 증빙, 구매자 수령 확인, adjustment 없음, `HAGGLE_ENV=staging`, Base Sepolia, `base-sepolia-husdc` 자산 프로필, EasyPost test key가 모두 맞을 때만 test buffer를 종료하고 상태 변경과 감사 로그를 한 DB transaction에 기록 | `apps/api/src/routes/settlement-releases.ts`, `packages/payment-core/src/settlement-release.ts` |

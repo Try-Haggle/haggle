@@ -802,4 +802,79 @@ describe("settlement release dispute guard", () => {
     expect(res.json()).toMatchObject({ error: "ORDER_IN_DISPUTE" });
     await app.close();
   });
+
+  it("blocks conditional release execution while the order is in dispute", async () => {
+    const app = makeApp({ id: "buyer_1", role: "authenticated" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/settlement-releases/release_1/conditional-release-execution",
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ error: "ORDER_IN_DISPUTE" });
+    expect(mockUpdateSettlementReleaseRecord).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("blocks admin buffer release while the order is in dispute", async () => {
+    const app = makeApp({ id: "admin_1", role: "admin" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/settlement-releases/release_1/release-buffer",
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ error: "ORDER_IN_DISPUTE" });
+    expect(mockUpdateSettlementReleaseRecord).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("blocks admin complete-buffer while the order is in dispute", async () => {
+    const app = makeApp({ id: "admin_1", role: "admin" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/settlement-releases/by-order/order_1/complete-buffer",
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ error: "ORDER_IN_DISPUTE" });
+    expect(mockUpdateSettlementReleaseRecord).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("blocks verified test buffer completion while the order is in dispute", async () => {
+    const previous = {
+      haggleEnv: process.env.HAGGLE_ENV,
+      network: process.env.HAGGLE_X402_NETWORK,
+      assetProfile: process.env.HAGGLE_SETTLEMENT_ASSET_PROFILE,
+      easypostKey: process.env.EASYPOST_API_KEY,
+    };
+    process.env.HAGGLE_ENV = "staging";
+    process.env.HAGGLE_X402_NETWORK = "base-sepolia";
+    process.env.HAGGLE_SETTLEMENT_ASSET_PROFILE = "base-sepolia-husdc";
+    process.env.EASYPOST_API_KEY = "EZTK_test_key";
+    const app = makeApp({ id: "seller_1", role: "authenticated" });
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/settlement-releases/by-order/order_1/complete-test-buffer",
+      });
+
+      expect(res.statusCode).toBe(409);
+      expect(res.json()).toMatchObject({ error: "ORDER_IN_DISPUTE" });
+      expect(mockUpdateSettlementReleaseRecord).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+      if (previous.haggleEnv === undefined) delete process.env.HAGGLE_ENV;
+      else process.env.HAGGLE_ENV = previous.haggleEnv;
+      if (previous.network === undefined) delete process.env.HAGGLE_X402_NETWORK;
+      else process.env.HAGGLE_X402_NETWORK = previous.network;
+      if (previous.assetProfile === undefined) delete process.env.HAGGLE_SETTLEMENT_ASSET_PROFILE;
+      else process.env.HAGGLE_SETTLEMENT_ASSET_PROFILE = previous.assetProfile;
+      if (previous.easypostKey === undefined) delete process.env.EASYPOST_API_KEY;
+      else process.env.EASYPOST_API_KEY = previous.easypostKey;
+    }
+  });
 });
