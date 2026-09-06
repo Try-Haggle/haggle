@@ -24,6 +24,8 @@ describe("dispute-order-gate", () => {
     expect(gate.message).toContain("haggle_create_checkout");
     expect(gate.staging_fixture?.endpoint).toBe("POST /tools/payment-test/dispute-ready-order");
     expect(gate.staging_fixture?.env_flag).toBe("HAGGLE_ENABLE_PAYMENT_TEST_TOOLS");
+    expect(gate.staging_fixture?.notes?.join(" ")).toContain("Authorization: Bearer");
+    expect(gate.staging_fixture?.notes?.join(" ")).toContain("HAGGLE_ENV=staging");
     expect(gate.hint).toContain("dispute-ready-order");
   });
 

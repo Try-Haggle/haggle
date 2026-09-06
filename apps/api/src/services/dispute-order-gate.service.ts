@@ -34,8 +34,10 @@ const STAGING_FIXTURE_HINT = {
   endpoint: "POST /tools/payment-test/dispute-ready-order",
   env_flag: "HAGGLE_ENABLE_PAYMENT_TEST_TOOLS",
   notes: [
+    "Requires Authorization: Bearer <staging Supabase access_token or MCP OAuth access token> (same buyer UUID as haggle_start_dispute).",
     "Non-production: fixture is available to any authenticated UUID user.",
-    "Production/staging with NODE_ENV=production: requires admin + HAGGLE_ENABLE_PAYMENT_TEST_TOOLS=true.",
+    "Staging (HAGGLE_ENV=staging, NODE_ENV=production): any authenticated UUID user when HAGGLE_ENABLE_PAYMENT_TEST_TOOLS=true.",
+    "Production: requires admin + HAGGLE_ENABLE_PAYMENT_TEST_TOOLS=true.",
     "Creates a mock SETTLED payment + DELIVERED order for dogfood. No real money, no card PANs.",
     "Then call haggle_start_dispute (MCP) or POST /orders/:orderId/disputes; upload evidence on the web.",
   ],

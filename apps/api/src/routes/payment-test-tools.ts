@@ -959,7 +959,11 @@ function summarizeDisputeAiEval(args: {
 
 function paymentTestToolsEnabledFor(role: string | undefined) {
   if (!isProductionRuntime()) return true;
-  return role === "admin" && process.env.HAGGLE_ENABLE_PAYMENT_TEST_TOOLS === "true";
+  if (process.env.HAGGLE_ENABLE_PAYMENT_TEST_TOOLS !== "true") return false;
+  // Staging runs NODE_ENV=production but dogfood uses buyer/MCP JWTs (role=user),
+  // not admin. Callers still pass requireAuth. Chaos routes keep an explicit admin check.
+  if (process.env.HAGGLE_ENV?.trim().toLowerCase() === "staging") return true;
+  return role === "admin";
 }
 
 function percentile(values: number[], ratio: number): number {
@@ -3103,7 +3107,7 @@ export function registerPaymentTestToolRoutes(app: FastifyInstance, db: Database
         return reply.code(403).send({
           error: "PAYMENT_TEST_TOOLS_DISABLED",
           message:
-            "Dispute-ready order fixture requires non-production or admin with HAGGLE_ENABLE_PAYMENT_TEST_TOOLS=true",
+            "Dispute-ready order fixture requires non-production, or HAGGLE_ENABLE_PAYMENT_TEST_TOOLS=true on staging (any authenticated UUID buyer) / production (admin). See docs/wip/dispute-ready-order-staging-auth.md",
         });
       }
 

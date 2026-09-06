@@ -171,9 +171,10 @@ When the order is still `PAYMENT_PENDING` or `APPROVED`, open-dispute returns `O
 
 `POST /tools/payment-test/dispute-ready-order`
 
-- Same gate as other payment-test tools: non-production always on; production requires `role=admin` and `HAGGLE_ENABLE_PAYMENT_TEST_TOOLS=true`.
+- **Auth required:** `Authorization: Bearer <staging Supabase access_token or MCP OAuth access token>` for the buyer UUID that will open the dispute. Missing bearer → `401 AUTH_REQUIRED`. See `docs/wip/dispute-ready-order-staging-auth.md`.
+- Gate: non-production always on; **staging** (`HAGGLE_ENV=staging` + `HAGGLE_ENABLE_PAYMENT_TEST_TOOLS=true`) allows any authenticated UUID user (including MCP `role=user`); **production** still requires `role=admin` and the same flag.
 - Creates a mock `SETTLED` payment intent + `DELIVERED` (or `PAID`) commerce order for the authenticated buyer.
 - No real money, no card PANs, no Stripe Onramp session.
 - Then call MCP `haggle_start_dispute` with `order_id` (suggested reason `ITEM_NOT_AS_DESCRIBED`) and attach file evidence on the web.
 
-Related: `docs/wip/fake-money-fake-address-e2e-test-plan.md`, `STRIPE_MODE=mock`, `HAGGLE_X402_MODE=mock`.
+Related: `docs/wip/dispute-ready-order-staging-auth.md`, `docs/wip/fake-money-fake-address-e2e-test-plan.md`, `STRIPE_MODE=mock`, `HAGGLE_X402_MODE=mock`.
