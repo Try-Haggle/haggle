@@ -17,6 +17,7 @@ import {
   DISPUTE_EVIDENCE_BUCKET,
   DISPUTE_UPLOAD_URL_TTL_SECONDS,
   DISPUTE_VIEW_URL_TTL_SECONDS,
+  qualifyDisputeEvidencePath,
 } from "../lib/dispute-storage-paths.js";
 
 let _client: SupabaseClient | null = null;
@@ -66,7 +67,7 @@ export async function createDisputeUploadUrl(objectPath: string): Promise<Presig
   }
   return {
     uploadUrl: data.signedUrl,
-    storagePath: `${DISPUTE_EVIDENCE_BUCKET}/${objectPath}`,
+    storagePath: qualifyDisputeEvidencePath(objectPath),
     token: data.token,
     expiresIn: DISPUTE_UPLOAD_URL_TTL_SECONDS,
   };

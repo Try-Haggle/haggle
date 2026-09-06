@@ -117,6 +117,14 @@ Behavior:
 - The uploaded object must exist in private storage.
 - Commit and intent status change happen in one transaction.
 
+### Path Ownership
+
+Canonical helpers live in `apps/api/src/lib/dispute-storage-paths.ts`:
+
+- `buildDisputeEvidencePath` / `qualifyDisputeEvidencePath` — upload-url issues the path
+- `validateDisputeStoragePath` / `stripDisputeEvidenceBucket` — commit and view only accept that path
+- Clients never invent storage locations; they echo the issued `storage_path`
+
 ### Security Decisions
 
 - Commit cannot introduce an unissued storage path.
