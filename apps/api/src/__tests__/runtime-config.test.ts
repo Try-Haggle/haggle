@@ -148,6 +148,8 @@ const originalEnv = {
   CONDITIONAL_SETTLEMENT_FINALITY_ALERT_TIMEOUT_MS:
     process.env.CONDITIONAL_SETTLEMENT_FINALITY_ALERT_TIMEOUT_MS,
   WEBHOOK_EVENT_CLAIM_LEASE_SECONDS: process.env.WEBHOOK_EVENT_CLAIM_LEASE_SECONDS,
+  GUEST_BUYER_CLAIM_POP_SECRET: process.env.GUEST_BUYER_CLAIM_POP_SECRET,
+  HAGGLE_ENV: process.env.HAGGLE_ENV,
 };
 
 const { publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -158,6 +160,7 @@ const validDisputeAuditPrivateKeyBase64 = disputeAuditPrivateKey
 const validTrustedJwks = JSON.stringify({
   keys: [{ ...publicKey.export({ format: "jwk" }), kid: "runtime-test-key", alg: "RS256" }],
 });
+const validGuestBuyerClaimPopSecret = "runtime-test-guest-buyer-claim-pop-secret!!";
 
 afterEach(() => {
   for (const key of Object.keys(originalEnv) as Array<keyof typeof originalEnv>) {
@@ -205,6 +208,7 @@ describe("runtime config", () => {
     process.env.NODE_ENV = "production";
     process.env.DATABASE_URL = "postgres://test";
     process.env.SUPABASE_JWT_SECRET = "test-secret";
+    process.env.GUEST_BUYER_CLAIM_POP_SECRET = validGuestBuyerClaimPopSecret;
     process.env.DISPUTE_EVIDENCE_SCANNER_URL = "http://scanner.example.test/scan";
     process.env.DISPUTE_EVIDENCE_SCANNER_TOKEN = "scanner-secret-123";
     process.env.DISPUTE_EVIDENCE_SCANNER_ALLOW_INSECURE_HTTP = "true";
@@ -279,6 +283,7 @@ describe("runtime config", () => {
     process.env.NODE_ENV = "production";
     process.env.DATABASE_URL = "postgres://test";
     process.env.SUPABASE_JWT_SECRET = "test-secret";
+    process.env.GUEST_BUYER_CLAIM_POP_SECRET = validGuestBuyerClaimPopSecret;
     process.env.ENABLE_CRON = "true";
     process.env.ENABLE_DISPUTE_EVIDENCE_SCAN_RETRY_JOB = "true";
     process.env.DISPUTE_EVIDENCE_SCANNER_URL = "https://scanner.example.test/v1/scan";
@@ -308,6 +313,7 @@ describe("runtime config", () => {
     process.env.NODE_ENV = "production";
     process.env.DATABASE_URL = "postgres://test";
     process.env.SUPABASE_JWT_SECRET = "test-secret";
+    process.env.GUEST_BUYER_CLAIM_POP_SECRET = validGuestBuyerClaimPopSecret;
     process.env.ENABLE_CRON = "true";
     process.env.ENABLE_CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_JOB = "true";
     process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_URL = "https://ops.example/alerts";
@@ -387,6 +393,7 @@ describe("runtime config", () => {
     process.env.NODE_ENV = "production";
     process.env.DATABASE_URL = "postgresql://example";
     process.env.SUPABASE_JWT_SECRET = "secret";
+    process.env.GUEST_BUYER_CLAIM_POP_SECRET = validGuestBuyerClaimPopSecret;
     delete process.env.HNP_REQUIRE_SIGNATURE;
     delete process.env.HNP_TRUSTED_JWKS;
 
@@ -397,6 +404,7 @@ describe("runtime config", () => {
     process.env.NODE_ENV = "production";
     process.env.DATABASE_URL = "postgresql://example";
     process.env.SUPABASE_JWT_SECRET = "secret";
+    process.env.GUEST_BUYER_CLAIM_POP_SECRET = validGuestBuyerClaimPopSecret;
     process.env.HNP_REQUIRE_SIGNATURE = "true";
     delete process.env.HNP_TRUSTED_JWKS;
 
@@ -407,6 +415,7 @@ describe("runtime config", () => {
     process.env.NODE_ENV = "production";
     process.env.DATABASE_URL = "postgresql://example";
     process.env.SUPABASE_JWT_SECRET = "secret";
+    process.env.GUEST_BUYER_CLAIM_POP_SECRET = validGuestBuyerClaimPopSecret;
     delete process.env.HNP_REQUIRE_SIGNATURE;
     process.env.HNP_TRUSTED_JWKS = "{not-json";
 
@@ -417,6 +426,7 @@ describe("runtime config", () => {
     process.env.NODE_ENV = "production";
     process.env.DATABASE_URL = "postgresql://example";
     process.env.SUPABASE_JWT_SECRET = "secret";
+    process.env.GUEST_BUYER_CLAIM_POP_SECRET = validGuestBuyerClaimPopSecret;
     delete process.env.HNP_REQUIRE_SIGNATURE;
     process.env.HNP_TRUSTED_JWKS = JSON.stringify({ keys: [] });
 
@@ -427,10 +437,50 @@ describe("runtime config", () => {
     process.env.NODE_ENV = "production";
     process.env.DATABASE_URL = "postgresql://example";
     process.env.SUPABASE_JWT_SECRET = "secret";
+    process.env.GUEST_BUYER_CLAIM_POP_SECRET = validGuestBuyerClaimPopSecret;
     delete process.env.HNP_REQUIRE_SIGNATURE;
     process.env.HNP_TRUSTED_JWKS = validTrustedJwks;
 
     expect(getRuntimeConfig().isProduction).toBe(true);
+  });
+
+  it("requires GUEST_BUYER_CLAIM_POP_SECRET in production", () => {
+    process.env.NODE_ENV = "production";
+    process.env.DATABASE_URL = "postgresql://example";
+    process.env.SUPABASE_JWT_SECRET = "secret";
+    delete process.env.HAGGLE_ENV;
+    delete process.env.GUEST_BUYER_CLAIM_POP_SECRET;
+
+    expect(() => getRuntimeConfig()).toThrow(/GUEST_BUYER_CLAIM_POP_SECRET is required/);
+  });
+
+  it("requires GUEST_BUYER_CLAIM_POP_SECRET in staging", () => {
+    process.env.NODE_ENV = "development";
+    process.env.HAGGLE_ENV = "staging";
+    process.env.DATABASE_URL = "postgresql://example";
+    process.env.SUPABASE_JWT_SECRET = "secret";
+    delete process.env.GUEST_BUYER_CLAIM_POP_SECRET;
+
+    expect(() => getRuntimeConfig()).toThrow(/GUEST_BUYER_CLAIM_POP_SECRET is required/);
+  });
+
+  it("allows missing GUEST_BUYER_CLAIM_POP_SECRET outside staging and production", () => {
+    process.env.NODE_ENV = "development";
+    process.env.DATABASE_URL = "postgresql://example";
+    delete process.env.HAGGLE_ENV;
+    delete process.env.GUEST_BUYER_CLAIM_POP_SECRET;
+
+    expect(getRuntimeConfig().isProduction).toBe(false);
+  });
+
+  it("rejects a short GUEST_BUYER_CLAIM_POP_SECRET", () => {
+    process.env.NODE_ENV = "development";
+    process.env.DATABASE_URL = "postgresql://example";
+    process.env.GUEST_BUYER_CLAIM_POP_SECRET = "too-short";
+
+    expect(() => getRuntimeConfig()).toThrow(
+      /GUEST_BUYER_CLAIM_POP_SECRET must be 32 to 512 bytes/,
+    );
   });
 
   it("requires the main cron runner when webhook claim alerts are enabled", () => {
@@ -476,6 +526,7 @@ describe("runtime config", () => {
     process.env.NODE_ENV = "production";
     process.env.DATABASE_URL = "postgresql://example";
     process.env.SUPABASE_JWT_SECRET = "secret";
+    process.env.GUEST_BUYER_CLAIM_POP_SECRET = validGuestBuyerClaimPopSecret;
     process.env.ENABLE_CRON = "true";
     process.env.ENABLE_WEBHOOK_CLAIM_HEALTH_ALERT_JOB = "true";
     process.env.WEBHOOK_CLAIM_ALERT_URL = "http://127.0.0.1/alerts";
@@ -491,6 +542,7 @@ describe("runtime config", () => {
     process.env.NODE_ENV = "production";
     process.env.DATABASE_URL = "postgresql://example";
     process.env.SUPABASE_JWT_SECRET = "secret";
+    process.env.GUEST_BUYER_CLAIM_POP_SECRET = validGuestBuyerClaimPopSecret;
     process.env.HNP_REQUIRE_SIGNATURE = "false";
     delete process.env.HNP_TRUSTED_JWKS;
 
