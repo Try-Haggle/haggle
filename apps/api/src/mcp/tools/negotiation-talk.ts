@@ -212,10 +212,12 @@ export function mcpNegotiationTranscript(
 }
 
 /**
- * Fold/expand contract for haggle_get_negotiation:
- * - default (no expand): recent_messages only (last N), no transcript/offers keys
+ * Fold/expand view builder for haggle_get_negotiation:
  * - expand includes "transcript": full OPENING-aware transcript
  * - expand includes "offers": price/decision offer rows from that transcript
+ * - empty expand: recent_messages only (last N) — used by internal helpers
+ *   (mcpNegotiationTranscript). MCP tool default goes through
+ *   normalizeGetNegotiationExpand, which supplies transcript+offers (E1).
  */
 export function buildMcpGetNegotiationExpandView(
   rounds: McpTranscriptRound[],

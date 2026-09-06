@@ -52,6 +52,14 @@ Compatibility rule:
 
 MVP should support `digital_delivery` first, then `external_platform_transfer`, then `onchain_transfer`.
 
+## Negotiation start gates (physical vs digital) — 2026-09-07
+
+**Physical (`physical_shipping` / carrier):** delivery address **and** a successful test/mock shipping quote are required **before** negotiation start (D1/D2). No session is created until both pass.
+
+**Digital / no-shipment fulfillment types:** exempt from address + quote start gates.
+
+**Supersedes #120 / A3** for physical: older wording that address is checkout-only and must not block start no longer applies to carrier listings. See [product-decisions-2026-09-07.md](./product-decisions-2026-09-07.md).
+
 ## Current Gap
 
 The smart contract can support digital deals today:

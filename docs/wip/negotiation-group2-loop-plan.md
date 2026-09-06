@@ -35,8 +35,10 @@
   clothing                            → [사이즈, 정품(필수), 외관]      aliases: fashion·패션·의류
   vehicles                            → [주행거리, 명의(필수), 정비이력]
   (매칭 = 태그/하이픈-토큰 vs path·leaf·alias · 하위는 상위 상속)
-  확장 예정: 폰 브랜드(galaxy·pixel) · fashion/shoes · home·sports·music · IMEI를 phones로 상향
+  ~~확장 예정: 폰 브랜드(galaxy·pixel) · fashion/shoes~~ → **D3 done for galaxy/pixel HARD; shoes HARD removed** · home·sports·music still expand later
 ```
+> **D3 (2026-09-06 / #141, SoT in [product-decisions-2026-09-07.md](./product-decisions-2026-09-07.md)):** shoes/sneaker authenticity **HARD removed** (`sneaker_authenticity` gone; aliases cleared). Electronics **galaxy/pixel/phone HARD kept**. `dead-pixel` / `no-dead-pixel` remain **ambiguous** (do not open Pixel phone gates). Older “확장 예정: fashion/shoes HARD” / “galaxy 미매칭” open items below are superseded where they conflict.
+
 
 - **한 개의 "카테고리 → 질문/특징 세트" 소스**가 3접점 공통 backbone.
 - 현재 조각들: `FEATURE_SCHEMA.category`(L2, 특징별 카테고리) + Tag Garden `TAG_REQUIREMENTS`(태그별 슬롯, **현재 iPhone 하나뿐**). → 이 둘을 **계층 taxonomy로 통합·확장**하는 게 backbone 작업.
@@ -406,7 +408,7 @@ L4가 커서 서브슬라이스로 분할. **L4a만 완료**, 나머지는 후�
 **교훈:** 골든 테스트는 **실제 프로덕션 입력 형식**(bare category + 하이픈 태그)으로. 합성 토큰은 배선을 못 검증함.
 
 **남은 후속:**
-- ⬜ 비-Apple 폰(galaxy-s24)은 아직 phones/IMEI 미매칭 → 폰 브랜드 aliases + IMEI를 phones 노드로 올리기(콘텐츠).
+- ✅ 비-Apple 폰(galaxy/pixel) HARD — D3/#141: galaxy·pixel phone HARD kept; shoes authenticity HARD removed; dead-pixel ambiguous kept.
 - ⬜ `resolveItemTags`가 `subtype`("phone") 무시(skill-stack) → subtype 배선하면 매칭 견고(L1 영역).
 - ⬜ out-of-path no-arg 2곳(`llm-negotiation-executor:74`·`routes/negotiation-stages:40`)은 여전히 전 품목 아이폰 프로필 — pre-existing, L4d/정리 때.
 - ⬜ furniture/collectibles/sports/books/other는 taxonomy 노드 없음 → 중립(콘텐츠 확장).

@@ -1,5 +1,7 @@
 # A2 — Dispute Detail Page · Claude Design Prompt
 
+> **Implementation status (E4):** Case Guide Chat, Specialist Verification, per-evidence on-chain anchor badges, and Phase2+ panel extras are **Planned/Not wired** in production. Prefer [../product-decisions-2026-09-07.md](../product-decisions-2026-09-07.md) and [../design-prompt-dispute.md](../design-prompt-dispute.md) status table. T1: assess ≠ money; human-before-resolve; auto-release not default-on.
+
 > For Claude Design Tool. Single HTML page with multiple states.
 > 가장 복잡한 페이지 — buyer/seller 역할 + 5가지 상태 조합으로 보이는 내용이 달라짐.
 > 디자인 시스템: dispute-buyer.html, dispute-seller.html과 동일 톤.
@@ -139,7 +141,7 @@ Apr 19         Apr 19          ~8 min          Pending          Pending
 ```
 T1 → T2로 에스컬레이션되면 노드가 6개로 확장.
 
-### 4. Case Guide Chat
+### 4. Case Guide Chat — **Planned/Not wired**
 
 **이 페이지의 핵심 인터랙션.** 사용자와 AI가 실시간으로 대화.
 
@@ -204,7 +206,7 @@ T1 → T2로 에스컬레이션되면 노드가 6개로 확장.
 증거 카드 그리드. 사진/동영상/텍스트.
 
 ```
-┌─ Supporting materials · 3 items ──── All hashes anchored ────┐
+┌─ Supporting materials · 3 items ──── All hashes anchored (**Planned/Not wired**) ────┐
 │                                                               │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌ - - - - ┐     │
 │  │  📸      │  │  📸      │  │  📝      │  │         │     │
@@ -394,7 +396,7 @@ Seller 사이드바:
 | Case Header | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Deadline Banner (seller) | ✅ | ❌ | ✅ | ❌ | ❌ |
 | Timeline | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Case Guide Chat | ✅ | ✅ | ✅ | ✅ (read-only) | ✅ (read-only) |
+| Case Guide Chat (**Planned/Not wired**) | design | design | design | design | design |
 | Evidence Grid | ✅ (editable) | ✅ (editable) | ✅ (editable) | ✅ (read-only) | ✅ (read-only) |
 | Cost Breakdown | ✅ | ✅ | ✅ | ✅ | ✅ |
 | T1 Decision | ❌ | ❌ | ❌ | ✅ | ✅ |
@@ -433,7 +435,7 @@ Seller 사이드바:
 
 - 경로: `apps/web/src/app/(app)/disputes/[id]/page.tsx`
 - API에서 사용자 역할(buyer/seller) 판단 → UI 자동 전환
-- Case Guide 채팅: WebSocket 또는 SSE 연결 (초기에는 REST polling)
+- Case Guide 채팅: WebSocket 또는 SSE 연결 (초기에는 REST polling) — **Planned/Not wired** as Case Guide; production uses AI Advisor today
 - 증거 업로드: presigned URL → Supabase Storage
 - 실시간 카운트다운: JS setInterval
 - 상태 변경: API polling (30초) 또는 WebSocket push

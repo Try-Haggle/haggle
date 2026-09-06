@@ -30,6 +30,8 @@ Haggle에서는 오픈 루프보다 닫힌 루프가 우선이다. 에이전트�
 - Smart contract는 MVP에서 asset type을 알 필요가 없다. fulfillment type은 agreement, approval, fulfillment record, release policy 입력에 둔다.
 - Digital fulfillment는 shipment를 만들지 않는다.
 - Physical shipping은 기존 shipment path를 유지하되 상위 fulfillment model 아래에 둔다.
+- Physical negotiation start requires delivery address + shipping quote (D1/D2); digital is exempt. PR #120 “address is checkout-only / must not block start” is superseded for physical — see [product-decisions-2026-09-07.md](./product-decisions-2026-09-07.md).
+- T1 AI assess COMPLETED does not resolve/refund/release without human review; `auto_applied: false` (B5); later auto-release is not default-on.
 - Payment state 변경은 tx hash만 보고 하지 않는다. expected contract, event, settlement id, wallet, amount를 확인한 뒤 DB 상태를 바꾼다.
 - Refunded, disputed, released 같은 terminal state는 active intent로 다시 노출하지 않는다.
 - Dispute creation은 money movement를 먼저 멈추고, duplicate active dispute를 허용하지 않는다.

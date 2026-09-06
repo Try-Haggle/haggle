@@ -1,17 +1,18 @@
 /**
- * A8 goldens: haggle_get_negotiation fold/expand(transcript/offers) + cross-user reject.
+ * A8/E1 goldens: haggle_get_negotiation default full transcript+offers + cross-user reject.
  *
  * Fixtures cover:
- * 1. folded (no expand) — recent_messages only; no transcript/offers keys
- * 2. expand transcript — full OPENING-aware chat
+ * 1. MCP default (omit expand) — full transcript + offers (E1; no longer folded)
+ * 2. expand transcript — full OPENING-aware chat (subset still works)
  * 3. expand offers — price/decision history
- * 4. expand combined
+ * 4. expand combined (redundant with default, still valid)
  * 5. cross-user (other buyer/seller) reject before any expand payload
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { validateSessionParticipant } from "../lib/session-access.js";
 import {
+  GET_NEGOTIATION_EXPAND_DEFAULT,
   GET_NEGOTIATION_EXPAND_VALUES,
   haggleGetNegotiationInputShape,
   normalizeGetNegotiationExpand,
@@ -47,17 +48,36 @@ function longExchangeFixture(): McpTranscriptRound[] {
 
 const SESSION = { buyerId: "buyer-1", sellerId: "seller-1" };
 
-describe("A8 get_negotiation expand goldens", () => {
-  it("folded: default response does not leak transcript/offers keys", () => {
+describe("A8/E1 get_negotiation expand goldens", () => {
+  it("default: MCP omit/empty expand returns full transcript + offers", () => {
     const rounds = longExchangeFixture();
-    const view = buildMcpGetNegotiationExpandView(rounds, 4, []);
+    const expand = normalizeGetNegotiationExpand(undefined);
+    const view = buildMcpGetNegotiationExpandView(rounds, 4, expand);
+
+    expect(expand).toEqual(GET_NEGOTIATION_EXPAND_DEFAULT);
+    expect(normalizeGetNegotiationExpand([])).toEqual(GET_NEGOTIATION_EXPAND_DEFAULT);
 
     expect(view.recent_messages).toHaveLength(MCP_GET_NEGOTIATION_RECENT_LIMIT);
     expect(view.recent_messages.map((m) => m.round_no)).toEqual([2, 3, 4, 5]);
     expect(view.recent_messages[0]?.decision).not.toBe("OPENING");
-    expect(view).not.toHaveProperty("transcript");
-    expect(view).not.toHaveProperty("offers");
-    expect(Object.keys(view).sort()).toEqual(["current_round", "recent_messages"]);
+
+    expect(view.transcript).toBeDefined();
+    expect(view.offers).toBeDefined();
+    expect(view.transcript!.length).toBeGreaterThan(view.recent_messages.length);
+    expect(view.transcript!.length).toEqual(view.offers!.length);
+    expect(view.transcript![0]).toMatchObject({
+      round_no: 1,
+      speaker: "BUYER",
+      decision: "OPENING",
+      price_minor: "36000",
+    });
+    expect(view.offers![0]).toMatchObject({
+      round_no: 1,
+      speaker: "BUYER",
+      decision: "OPENING",
+      price_minor: "36000",
+    });
+    expect(view.offers![0]).not.toHaveProperty("message");
   });
 
   it("expanded transcript: returns full OPENING-aware chat when authorized", () => {
@@ -142,9 +162,11 @@ describe("A8 get_negotiation expand goldens", () => {
     expect(access).not.toHaveProperty("offers");
   });
 
-  it("schema: expand accepts transcript/offers and normalizes unknown values out", () => {
+  it("schema: expand accepts transcript/offers; omit/empty normalizes to full default", () => {
     expect(GET_NEGOTIATION_EXPAND_VALUES).toEqual(["transcript", "offers"]);
-    expect(normalizeGetNegotiationExpand(undefined)).toEqual([]);
+    expect(GET_NEGOTIATION_EXPAND_DEFAULT).toEqual(["transcript", "offers"]);
+    expect(normalizeGetNegotiationExpand(undefined)).toEqual(["transcript", "offers"]);
+    expect(normalizeGetNegotiationExpand([])).toEqual(["transcript", "offers"]);
     expect(normalizeGetNegotiationExpand(["transcript", "offers", "transcript"])).toEqual([
       "transcript",
       "offers",
@@ -157,10 +179,10 @@ describe("A8 get_negotiation expand goldens", () => {
     });
     expect(parsed.success).toBe(true);
 
-    const folded = z.object(haggleGetNegotiationInputShape).safeParse({
+    const omitted = z.object(haggleGetNegotiationInputShape).safeParse({
       session_id: "fc14da18-0000-4000-8000-000000000001",
     });
-    expect(folded.success).toBe(true);
+    expect(omitted.success).toBe(true);
 
     const bad = z.object(haggleGetNegotiationInputShape).safeParse({
       session_id: "fc14da18-0000-4000-8000-000000000001",

@@ -605,7 +605,7 @@ export function registerPlatformTools(
 
   server.tool(
     "haggle_get_negotiation",
-    'Read the live negotiation. Immediately quote say_to_user to the human — that is the counterpart\'s line. If pause_questions are present, ask those next; do not treat them as the seller\'s bargain line. Do not stop silently. Default response is folded (recent_messages only). Pass expand=["transcript"] and/or expand=["offers"] when you need the full chat or price history.',
+    "Read the live negotiation. Immediately quote say_to_user to the human — that is the counterpart's line. If pause_questions are present, ask those next; do not treat them as the seller's bargain line. Do not stop silently. Default response includes full transcript + offers (plus recent_messages). expand is optional if you only need a subset.",
     haggleGetNegotiationInputShape,
     async ({ session_id, expand }) => {
       const scoped = requireScopedActor("negotiate");
