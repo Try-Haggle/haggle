@@ -1344,6 +1344,27 @@ describe("Dispute routes", () => {
     expect(res.json().error).toBe("DISPUTE_NOT_FOUND");
   });
 
+  it("POST /disputes/:id/evidence/upload-url rejects unsafe filenames", async () => {
+    mockGetDisputeById.mockResolvedValue(fakeDispute());
+    mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/disputes/some-id/evidence/upload-url",
+      headers: AUTH_HEADERS,
+      payload: {
+        filename: "../escape.png",
+        content_type: "image/png",
+        file_size_bytes: 1234,
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("INVALID_PATH");
+    expect(mockCreateDisputeEvidenceUploadRecord).not.toHaveBeenCalled();
+    expect(mockCreateDisputeUploadUrl).not.toHaveBeenCalled();
+  });
+
   it("POST /disputes/:id/evidence/upload-url records a pending upload intent", async () => {
     mockGetDisputeById.mockResolvedValue(fakeDispute());
     mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
@@ -1372,6 +1393,73 @@ describe("Dispute routes", () => {
         fileSizeBytes: 1234,
       }),
     );
+    // Controlled Evidence intent stores media metadata only — never card PAN.
+    expect(mockCreateDisputeEvidenceUploadRecord.mock.calls[0][1]).not.toHaveProperty("pan");
+    expect(JSON.stringify(res.json())).not.toMatch(/\bpan\b/i);
+  });
+
+  it("POST /disputes/:id/evidence/upload-url rejects unsupported mime types", async () => {
+    mockGetDisputeById.mockResolvedValue(fakeDispute());
+    mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/disputes/some-id/evidence/upload-url",
+      headers: AUTH_HEADERS,
+      payload: {
+        filename: "receipt.pdf",
+        content_type: "application/pdf",
+        file_size_bytes: 1234,
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("UNSUPPORTED_CONTENT_TYPE");
+    expect(mockCreateDisputeEvidenceUploadRecord).not.toHaveBeenCalled();
+    expect(mockCreateDisputeUploadUrl).not.toHaveBeenCalled();
+  });
+
+  it("POST /disputes/:id/evidence/upload-url rejects oversized images", async () => {
+    mockGetDisputeById.mockResolvedValue(fakeDispute());
+    mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/disputes/some-id/evidence/upload-url",
+      headers: AUTH_HEADERS,
+      payload: {
+        filename: "huge.png",
+        content_type: "image/png",
+        file_size_bytes: 10 * 1024 * 1024 + 1,
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("FILE_TOO_LARGE");
+    expect(mockCreateDisputeEvidenceUploadRecord).not.toHaveBeenCalled();
+  });
+
+  it("POST /disputes/:id/evidence/upload-url rejects non-party callers", async () => {
+    mockGetDisputeById.mockResolvedValue(fakeDispute());
+    mockGetCommerceOrderByOrderId.mockResolvedValue(
+      fakeOrder({ buyerId: "other-buyer", sellerId: "other-seller" }),
+    );
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/disputes/some-id/evidence/upload-url",
+      headers: AUTH_HEADERS,
+      payload: {
+        filename: "battery.png",
+        content_type: "image/png",
+        file_size_bytes: 1234,
+      },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe("FORBIDDEN");
+    expect(mockCreateDisputeEvidenceUploadRecord).not.toHaveBeenCalled();
+    expect(mockCreateDisputeUploadUrl).not.toHaveBeenCalled();
   });
 
   it("POST /disputes/:id/evidence marks a completed AI assessment stale", async () => {
@@ -1722,6 +1810,37 @@ describe("Dispute routes", () => {
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toBe("CAMERA_SESSION_IMAGE_ONLY");
     expect(mockCreateDisputeEvidenceUploadRecord).not.toHaveBeenCalled();
+  });
+
+  it("POST /disputes/:id/evidence/commit rejects cross-dispute or traversal storage paths", async () => {
+    mockGetDisputeById.mockResolvedValue(fakeDispute());
+    mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
+
+    const cross = await app.inject({
+      method: "POST",
+      url: "/disputes/some-id/evidence/commit",
+      headers: AUTH_HEADERS,
+      payload: {
+        storage_path: "dispute-evidence/other-id/uploaded.png",
+        type: "image",
+      },
+    });
+    expect(cross.statusCode).toBe(400);
+    expect(cross.json().error).toBe("INVALID_STORAGE_PATH");
+
+    const traversal = await app.inject({
+      method: "POST",
+      url: "/disputes/some-id/evidence/commit",
+      headers: AUTH_HEADERS,
+      payload: {
+        storage_path: "dispute-evidence/some-id/../other-id/uploaded.png",
+        type: "image",
+      },
+    });
+    expect(traversal.statusCode).toBe(400);
+    expect(traversal.json().error).toBe("INVALID_STORAGE_PATH");
+    expect(mockGetDisputeEvidenceUploadByPath).not.toHaveBeenCalled();
+    expect(mockAddDisputeEvidenceRecord).not.toHaveBeenCalled();
   });
 
   it("POST /disputes/:id/evidence/commit rejects unissued storage paths", async () => {

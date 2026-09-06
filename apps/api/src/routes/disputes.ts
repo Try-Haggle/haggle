@@ -22,11 +22,15 @@ import { runDisputeEvidenceRetention } from "../jobs/dispute-evidence-retention.
 import {
   ALLOWED_EVIDENCE_TYPES,
   buildDisputeEvidencePath,
-  DISPUTE_EVIDENCE_BUCKET,
+  computeEvidenceRemainingLimits,
   DISPUTE_VIEW_URL_TTL_SECONDS,
-  EVIDENCE_LIMITS,
+  evaluateControlledEvidenceUploadGates,
+  evidenceTypeFromContentType,
   isImageType,
   isVideoType,
+  qualifyDisputeEvidencePath,
+  sanitizeDisputeFilename,
+  stripDisputeEvidenceBucket,
   validateDisputeStoragePath,
 } from "../lib/dispute-storage-paths.js";
 import { INPUT_LIMITS } from "../lib/input-limits.js";
@@ -655,16 +659,6 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     return typeof globalThis.crypto?.randomUUID === "function"
       ? globalThis.crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  }
-
-  function evidenceTypeFromContentType(contentType: string): "image" | "video" {
-    if (isImageType(contentType)) return "image";
-    if (isVideoType(contentType)) return "video";
-    throw new Error("unsupported evidence content type");
-  }
-
-  function qualifiedDisputeStoragePath(objectPath: string): string {
-    return `${DISPUTE_EVIDENCE_BUCKET}/${objectPath}`;
   }
 
   function isExpired(value: Date | string): boolean {
@@ -2856,26 +2850,13 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     return { imageCount, videoCount };
   }
 
-  /**
-   * Compute remaining upload limits for a dispute given its current evidence
-   * and the associated order amount.
-   */
+  /** Remaining Controlled Evidence slots — shared mime/size/category policy. */
   function computeRemainingLimits(
     imageCount: number,
     videoCount: number,
     orderAmountCents: number,
   ) {
-    const isHighValue = orderAmountCents >= EVIDENCE_LIMITS.high_value_threshold_cents;
-    const videoLimits = isHighValue
-      ? EVIDENCE_LIMITS.video_high_value
-      : EVIDENCE_LIMITS.video_standard;
-
-    return {
-      remaining_images: Math.max(0, EVIDENCE_LIMITS.image.maxCount - imageCount),
-      remaining_videos: Math.max(0, videoLimits.maxCount - videoCount),
-      max_video_size_bytes: videoLimits.maxSizeBytes,
-      max_video_duration_sec: videoLimits.maxDurationSec,
-    };
+    return computeEvidenceRemainingLimits(imageCount, videoCount, orderAmountCents);
   }
 
   // GET /disputes/:id/camera-capture — Minimal mobile camera capture page for QR handoff
@@ -3129,53 +3110,38 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
 
       const orderAmountCents = order?.amountMinor ? parseInt(String(order.amountMinor), 10) : 0;
 
-      // 5. Count existing evidence and check limits
+      // 5. Count existing evidence and enforce mime/size/category gates.
+      // Controlled Evidence never accepts card PAN / payment instrument bytes —
+      // only allowlisted image/video evidence for dispute parties.
       const { imageCount, videoCount } = await countEvidenceByType(id);
       const pendingCounts = await countPendingUploadsByType(id);
-      const limits = computeRemainingLimits(
-        imageCount + pendingCounts.imageCount,
-        videoCount + pendingCounts.videoCount,
+      const gate = evaluateControlledEvidenceUploadGates({
+        contentType: content_type,
+        fileSizeBytes: file_size_bytes,
+        imageCount: imageCount + pendingCounts.imageCount,
+        videoCount: videoCount + pendingCounts.videoCount,
         orderAmountCents,
-      );
-
-      if (isImage) {
-        if (limits.remaining_images <= 0) {
-          return reply.code(400).send({
-            error: "IMAGE_LIMIT_REACHED",
-            message: `Maximum ${EVIDENCE_LIMITS.image.maxCount} images allowed`,
-          });
-        }
-        if (file_size_bytes > EVIDENCE_LIMITS.image.maxSizeBytes) {
-          return reply.code(400).send({
-            error: "FILE_TOO_LARGE",
-            message: `Image max size: ${EVIDENCE_LIMITS.image.maxSizeBytes} bytes`,
-          });
-        }
+      });
+      if (!gate.ok) {
+        return reply.code(400).send({
+          error: gate.error,
+          message: gate.message,
+        });
       }
 
-      if (isVideo) {
-        if (limits.remaining_videos <= 0) {
-          const isHighValue = orderAmountCents >= EVIDENCE_LIMITS.high_value_threshold_cents;
-          const maxCount = isHighValue
-            ? EVIDENCE_LIMITS.video_high_value.maxCount
-            : EVIDENCE_LIMITS.video_standard.maxCount;
-          return reply.code(400).send({
-            error: "VIDEO_LIMIT_REACHED",
-            message: `Maximum ${maxCount} video(s) allowed for this transaction`,
-          });
-        }
-        if (file_size_bytes > limits.max_video_size_bytes) {
-          return reply.code(400).send({
-            error: "FILE_TOO_LARGE",
-            message: `Video max size: ${limits.max_video_size_bytes} bytes`,
-          });
-        }
-      }
-
-      // 6. Generate presigned upload URL
+      // 6. Generate presigned upload URL (Controlled Evidence path)
       const uploadId = createUuid();
 
-      const objectPath = buildDisputeEvidencePath(id, `${uploadId}_${filename}`);
+      let objectPath: string;
+      try {
+        sanitizeDisputeFilename(filename);
+        objectPath = buildDisputeEvidencePath(id, `${uploadId}_${filename}`);
+      } catch (err) {
+        return reply.code(400).send({
+          error: "INVALID_PATH",
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
       const result = await createDisputeUploadUrl(objectPath);
       await createDisputeEvidenceUploadRecord(db, {
         id: uploadId,
@@ -3310,7 +3276,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
           message: err instanceof Error ? err.message : String(err),
         });
       }
-      const qualifiedStoragePath = qualifiedDisputeStoragePath(normalizedPath);
+      const qualifiedStoragePath = qualifyDisputeEvidencePath(normalizedPath);
 
       // 3. Validate the upload intent created by the upload-url endpoint
       const upload = await getDisputeEvidenceUploadByPath(db, id, qualifiedStoragePath);
@@ -5112,11 +5078,16 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         });
       }
 
-      // Strip bucket prefix if present to get the inner object path
-      const BUCKET_PREFIX = "dispute-evidence/";
-      const objectPath = evidenceRow.uri.startsWith(BUCKET_PREFIX)
-        ? evidenceRow.uri.slice(BUCKET_PREFIX.length)
-        : evidenceRow.uri;
+      // Controlled Evidence: only Haggle-owned dispute paths get signed view URLs.
+      let objectPath: string;
+      try {
+        objectPath = stripDisputeEvidenceBucket(evidenceRow.uri);
+      } catch (err) {
+        return reply.code(400).send({
+          error: "INVALID_STORAGE_PATH",
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
 
       const viewUrl = await createDisputeViewUrl(objectPath);
 
