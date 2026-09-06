@@ -7,8 +7,9 @@ import type {
   NegotiationAgentPreset,
 } from "@haggle/shared";
 import { buildBuyerChoiceQuestions, buildSellerChoiceQuestions } from "@haggle/shared";
-import { ChevronLeft, ChevronRight, MessageSquare, RotateCcw, Send } from "lucide-react";
+import { ChevronLeft, ChevronRight, RotateCcw, Send } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AgentAvatar } from "@/components/agents/agent-avatar";
 import {
   Badge,
   Button,
@@ -425,13 +426,20 @@ const CHIP_TONE: Record<
 
 /* ─── Agent avatar chip (accent-tinted) ───────────────────── */
 
-function AgentIcon({ accent }: { accent: string }) {
+/**
+ * The speaker's mark on an agent message.
+ *
+ * This was a generic 🤖 for every agent, which read as "some bot" next to a
+ * name that says otherwise. The agent has a face; wear it. Falls back to the
+ * robot only before a preset is resolved, where there is no face to show.
+ */
+function AgentIcon({ accent, emoji }: { accent: string; emoji?: string }) {
   return (
     <span
-      className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px]"
+      className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px]"
       style={{ backgroundColor: `${accent}22`, color: accent }}
     >
-      🤖
+      {emoji ? <AgentAvatar value={emoji} /> : "🤖"}
     </span>
   );
 }
@@ -1145,7 +1153,18 @@ export function NegotiationAgentBuilderChat({
     >
       {/* Header */}
       <div className="flex shrink-0 items-center gap-2 border-line border-b px-4 py-3">
-        <MessageSquare size={16} style={{ color: accent }} aria-hidden="true" />
+        {/* The agent's own face, not a speech bubble: the header names who is
+            talking, and that it is a conversation is already obvious from the
+            conversation. Before an agent is picked there is nobody to show. */}
+        {agent && (
+          <span
+            className="flex size-5 shrink-0 items-center justify-center rounded-full text-[13px]"
+            style={{ backgroundColor: `color-mix(in srgb, ${accent} 16%, transparent)` }}
+            aria-hidden="true"
+          >
+            <AgentAvatar value={agent.emoji} />
+          </span>
+        )}
         <span className="flex-1 font-semibold text-[13px]" style={{ color: accent }}>
           {agent ? agent.copy[role].name : role === "seller" ? "Selling Agent" : "Buying Agent"}
         </span>
@@ -1180,7 +1199,7 @@ export function NegotiationAgentBuilderChat({
             author={
               msg.role === "agent" ? (
                 <span className="flex items-center gap-1.5">
-                  <AgentIcon accent={accent} />
+                  <AgentIcon accent={accent} emoji={agent?.emoji} />
                   <span className="font-semibold text-[10px]" style={{ color: accent }}>
                     {agent?.copy[role].name ?? "Agent"}
                   </span>
@@ -1229,7 +1248,7 @@ export function NegotiationAgentBuilderChat({
         {isLoading && (
           <ChatBubble side="left" className="msg-anim">
             <span className="flex items-center gap-1.5">
-              <AgentIcon accent={accent} />
+              <AgentIcon accent={accent} emoji={agent?.emoji} />
               <TypingIndicator />
             </span>
           </ChatBubble>
