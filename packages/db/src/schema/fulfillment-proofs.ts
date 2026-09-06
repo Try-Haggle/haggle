@@ -1,12 +1,4 @@
-import {
-  foreignKey,
-  index,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { foreignKey, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { fulfillments } from "./fulfillments.js";
 
 /**

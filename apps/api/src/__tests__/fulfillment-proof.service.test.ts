@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { FulfillmentRecord } from "../services/fulfillment-record.service.js";
 import {
   FulfillmentProofError,
   submitSellerFulfillmentProof,
   transitionFulfillmentForSellerProofSubmit,
 } from "../services/fulfillment-proof.service.js";
+import type { FulfillmentRecord } from "../services/fulfillment-record.service.js";
 
 const mockGetFulfillmentByOrderId = vi.fn();
 const mockUpdateFulfillmentRecord = vi.fn();
@@ -26,8 +26,7 @@ vi.mock("@haggle/payment-core", () => ({
 
 vi.mock("../services/settlement-release.service.js", () => ({
   getSettlementReleaseByOrderId: vi.fn(),
-  updateSettlementReleaseRecord: (...args: unknown[]) =>
-    mockUpdateSettlementReleaseRecord(...args),
+  updateSettlementReleaseRecord: (...args: unknown[]) => mockUpdateSettlementReleaseRecord(...args),
 }));
 
 const NOW = "2026-09-06T00:00:00.000Z";
