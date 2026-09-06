@@ -46,6 +46,22 @@ export function isEasyPostTestApiKey(apiKey: string): boolean {
   return apiKey.startsWith("EZTK") || apiKey.startsWith("EZTEST");
 }
 
+/** EasyPost production/live keys use EZAK. */
+export function isEasyPostLiveApiKey(apiKey: string): boolean {
+  return apiKey.startsWith("EZAK");
+}
+
+export type EasyPostKeyMode = "test" | "live" | "missing" | "unknown";
+
+/** Classify an EasyPost API key by prefix only (never logs the secret). */
+export function classifyEasyPostApiKey(apiKey: string | null | undefined): EasyPostKeyMode {
+  const value = apiKey?.trim() ?? "";
+  if (!value) return "missing";
+  if (isEasyPostTestApiKey(value)) return "test";
+  if (isEasyPostLiveApiKey(value)) return "live";
+  return "unknown";
+}
+
 export type EasyPostTestTrackerStatus =
   | "pre_transit"
   | "in_transit"

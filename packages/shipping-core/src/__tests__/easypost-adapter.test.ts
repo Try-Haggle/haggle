@@ -376,6 +376,16 @@ describe("EasyPost test key detection", () => {
     const { isEasyPostTestApiKey } = await import("../easypost-adapter.js");
     expect(isEasyPostTestApiKey(apiKey)).toBe(expected);
   });
+
+  it("classifies live keys and mode prefixes", async () => {
+    const { classifyEasyPostApiKey, isEasyPostLiveApiKey } = await import("../easypost-adapter.js");
+    expect(isEasyPostLiveApiKey("EZAK_production_key")).toBe(true);
+    expect(isEasyPostLiveApiKey("EZTK_test_key")).toBe(false);
+    expect(classifyEasyPostApiKey("EZTK_x")).toBe("test");
+    expect(classifyEasyPostApiKey("EZAK_x")).toBe("live");
+    expect(classifyEasyPostApiKey("")).toBe("missing");
+    expect(classifyEasyPostApiKey("weird")).toBe("unknown");
+  });
 });
 
 describe("EasyPostCarrierAdapter label generation", () => {
