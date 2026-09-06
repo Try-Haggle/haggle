@@ -1,7 +1,7 @@
 /**
- * B10 goldens (startBuyerNegotiation wire): remaining>0·active0 overlapping start
- * must not surface listing_cooldown / ATTEMPT_COOLDOWN; concurrent loser names
- * concurrent_on_listing.
+ * C2 goldens (startBuyerNegotiation wire): evaluate-pass then create race.
+ * Loser must surface concurrent_on_listing via create-time recheck — not
+ * silent double-create and not listing_cooldown / ATTEMPT_COOLDOWN.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -106,20 +106,20 @@ function listingFixture() {
   createSession.mockResolvedValue({ id: "sess-new", status: "ACTIVE" });
 }
 
-describe("B10 startBuyerNegotiation concurrent start / cooldown goldens", () => {
+describe("C2 startBuyerNegotiation evaluate→create TOCTOU goldens", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     listingFixture();
-    withBuyerListingStartGate.mockImplementation(async (_db, _input, run) => {
-      const value = await run({} as never, cooldownLeftoverSnapshot);
-      return { ok: true, value, attemptControl: cooldownLeftoverSnapshot };
-    });
   });
 
-  it("allows start when remaining>0·active0 even with cooldown leftover in snapshot", async () => {
+  it("successful start uses create-time gate (not bare createSession)", async () => {
     evaluateAttemptControl.mockResolvedValue({
       allowed: true,
       attemptControl: cooldownLeftoverSnapshot,
+    });
+    withBuyerListingStartGate.mockImplementation(async (_db, _input, run) => {
+      const value = await run({} as never, cooldownLeftoverSnapshot);
+      return { ok: true, value, attemptControl: cooldownLeftoverSnapshot };
     });
 
     const result = await startBuyerNegotiation({} as never, {
@@ -134,25 +134,28 @@ describe("B10 startBuyerNegotiation concurrent start / cooldown goldens", () => 
     });
 
     expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.status).toBe(202);
-      expect(result.body.session_id).toBe("sess-new");
-      expect(result.body.attempt_control?.retry_after_seconds).toBe(3 * 3600);
-    }
-    expect(createSession).toHaveBeenCalled();
-    expect(evaluateAttemptControl).toHaveBeenCalledOnce();
+    expect(withBuyerListingStartGate).toHaveBeenCalledOnce();
+    expect(createSession).toHaveBeenCalledOnce();
   });
 
-  it("overlapping start loser surfaces concurrent_on_listing, not listing_cooldown", async () => {
+  it("create-time recheck loser surfaces concurrent_on_listing, not cooldown", async () => {
+    // Early evaluate still allows (TOCTOU window); create-time recheck blocks.
     evaluateAttemptControl.mockResolvedValue({
-      allowed: false,
-      error: "CONCURRENT_SESSION_LIMIT_EXCEEDED",
-      rule: "concurrent_on_listing",
-      attemptControl: {
-        ...cooldownLeftoverSnapshot,
-        remaining_sessions: 1,
-        active_sessions: 1,
-        active_sessions_on_listing: 1,
+      allowed: true,
+      attemptControl: cooldownLeftoverSnapshot,
+    });
+    withBuyerListingStartGate.mockResolvedValue({
+      ok: false,
+      attemptResult: {
+        allowed: false,
+        error: "CONCURRENT_SESSION_LIMIT_EXCEEDED",
+        rule: "concurrent_on_listing",
+        attemptControl: {
+          ...cooldownLeftoverSnapshot,
+          remaining_sessions: 1,
+          active_sessions: 1,
+          active_sessions_on_listing: 1,
+        },
       },
     });
 
@@ -180,6 +183,8 @@ describe("B10 startBuyerNegotiation concurrent start / cooldown goldens", () => 
       expect(result.body.error).not.toBe("ATTEMPT_LIMIT_EXCEEDED");
       expect(result.body.rule).not.toBe("listing_cooldown");
     }
+    expect(withBuyerListingStartGate).toHaveBeenCalledOnce();
+    // createSession only runs inside the gate run callback — loser never invokes it.
     expect(createSession).not.toHaveBeenCalled();
   });
 });

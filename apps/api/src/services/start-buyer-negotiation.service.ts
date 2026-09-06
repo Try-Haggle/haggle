@@ -29,6 +29,7 @@ import {
   defaultAttemptControlPolicy,
   evaluateAttemptControl,
   isAttemptControlRateLimited,
+  withBuyerListingStartGate,
 } from "./attempt-control.service.js";
 import { getPublishedListingByRef } from "./draft.service.js";
 import { mintGuestBuyerClaimPop } from "./guest-buyer-claim-pop.service.js";
@@ -505,17 +506,46 @@ export async function startBuyerNegotiation(
     }
     throw error;
   }
-  const session = await createSession(db, {
+  const sessionInput = {
     listingId: listing.id,
     strategyId,
-    role: "SELLER",
+    role: "SELLER" as const,
     buyerId: buyer.id,
     sellerId: listing.sellerId,
     counterpartyId: buyer.id,
     negotiationAgentSnapshot: autoPlay.sellerSnapshot,
     expiresAt,
     driver: input.driver,
-  });
+  };
+
+  // C2: authenticated path re-checks attempt control under advisory lock at
+  // create time so evaluate→createSession TOCTOU cannot double-create; loser
+  // gets concurrent_on_listing (or the live recheck rule), never silent create.
+  let session: Awaited<ReturnType<typeof createSession>>;
+  if (!input.isGuest) {
+    const gated = await withBuyerListingStartGate(
+      db,
+      { buyerPrincipalId: buyer.id, listingId: listing.id },
+      async (tx) => createSession(tx, sessionInput),
+    );
+    if (!gated.ok) {
+      const attemptResult = gated.attemptResult;
+      return {
+        ok: false,
+        status: isAttemptControlRateLimited(attemptResult.error) ? 429 : 409,
+        body: {
+          error: attemptResult.error,
+          rule: attemptResult.rule,
+          attempt_control: attemptResult.attemptControl,
+          retry_after: attemptResult.retryAfterSeconds,
+        },
+      };
+    }
+    session = gated.value;
+    attemptControl = gated.attemptControl;
+  } else {
+    session = await createSession(db, sessionInput);
+  }
 
   if (!input.isGuest && body.fulfillment?.save_address && body.fulfillment.buyer_address) {
     await saveBuyerDefaultAddress(db, buyer.id, body.fulfillment.buyer_address).catch((err) => {

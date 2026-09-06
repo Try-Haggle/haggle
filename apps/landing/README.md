@@ -76,6 +76,16 @@ After the first successful deploy:
 3. Wait a few minutes for DNS propagation + SSL issuance.
 4. Vercel will mark the domain as "Valid Configuration" once it can verify.
 
+
+
+### PR previews (C3)
+
+`vercel.json` sets `ignoreCommand` to **skip Pull Request preview builds** for
+`haggle-landing` so Vercel rate-limit does not fire on every Eng PR. Production /
+non-PR git deployments still build (`ignoreCommand` exits 1 when
+`VERCEL_GIT_PULL_REQUEST_ID` is empty). Landing content PRs can temporarily clear
+the ignore or deploy from the Vercel dashboard if a preview is needed.
+
 ### Incremental deploys
 
 Vercel watches the GitHub repo. Every push to `main` triggers a build if the

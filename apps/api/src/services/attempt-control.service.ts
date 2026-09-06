@@ -75,8 +75,11 @@ export function defaultAttemptControlPolicy(): AttemptControlPolicy {
   };
 }
 
+/** Drizzle db or transaction — both expose execute; tx lacks Database.$client. */
+type AttemptControlDb = Pick<Database, "execute">;
+
 export async function evaluateAttemptControl(
-  db: Database,
+  db: AttemptControlDb,
   input: {
     buyerPrincipalId: string;
     listingId: string;
@@ -201,6 +204,47 @@ export async function evaluateAttemptControl(
   // also never false-block via listing_cooldown; once an active session
   // exists, the next evaluate names concurrent_on_listing instead.
   return { allowed: true, attemptControl: snapshot };
+}
+
+/**
+ * C2: close evaluate→createSession TOCTOU.
+ * Serialize buyer+listing start under a transaction-scoped advisory lock, then
+ * re-evaluate before the caller inserts. Race loser surfaces the recheck block
+ * (typically concurrent_on_listing) instead of silent double-create / wrong cooldown.
+ */
+export async function withBuyerListingStartGate<T>(
+  db: Database,
+  input: {
+    buyerPrincipalId: string;
+    listingId: string;
+    nowMs?: number;
+    policy?: AttemptControlPolicy;
+  },
+  run: (tx: Database, attemptControl: AttemptControlSnapshot) => Promise<T>,
+): Promise<
+  | { ok: true; value: T; attemptControl: AttemptControlSnapshot }
+  | { ok: false; attemptResult: AttemptControlResult }
+> {
+  return db.transaction(async (tx) => {
+    const lockKey = `haggle.buyer-listing-start.v1:${input.buyerPrincipalId}:${input.listingId}`;
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
+
+    // tx is PgTransaction (has execute; no $client) — AttemptControlDb accepts both.
+    const recheck = await evaluateAttemptControl(tx, {
+      buyerPrincipalId: input.buyerPrincipalId,
+      listingId: input.listingId,
+      nowMs: input.nowMs,
+      policy: input.policy,
+    });
+    if (!recheck.allowed) {
+      return { ok: false as const, attemptResult: recheck };
+    }
+
+    // createSession callers still type Database (= PostgresJsDatabase & { $client }).
+    // Match existing repo pattern (platform.ts): bridge via unknown, not a direct cast.
+    const value = await run(tx as unknown as Database, recheck.attemptControl);
+    return { ok: true as const, value, attemptControl: recheck.attemptControl };
+  });
 }
 
 function intEnv(name: string, fallback: number): number {
