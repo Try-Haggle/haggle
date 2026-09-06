@@ -49,6 +49,7 @@ export {
   emailDeliveries,
 } from "./email-deliveries.js";
 export { fulfillments } from "./fulfillments.js";
+export { fulfillmentProofs } from "./fulfillment-proofs.js";
 export { hfmiModelCoefficients } from "./hfmi-model-coefficients.js";
 export { hfmiPriceObservations } from "./hfmi-price-observations.js";
 export {

@@ -2,8 +2,13 @@ import { and, commerceOrders, type Database, desc, eq, or, sql } from "@haggle/d
 import { buyerConfirmReceipt, computeReleasePhase } from "@haggle/payment-core";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { INPUT_LIMITS } from "../lib/input-limits.js";
 import { createOwnershipMiddleware } from "../middleware/ownership.js";
 import { requireAuth } from "../middleware/require-auth.js";
+import {
+  FulfillmentProofError,
+  submitSellerFulfillmentProof,
+} from "../services/fulfillment-proof.service.js";
 import {
   getCommerceOrderByOrderId,
   updateCommerceOrderStatus,
@@ -21,6 +26,24 @@ const confirmDeliverySchema = z.object({
   confirmed: z.literal(true),
   notes: z.string().max(2000).optional(),
 });
+
+const submitFulfillmentProofSchema = z
+  .object({
+    kind: z.string().min(1).max(INPUT_LIMITS.shortTextChars),
+    uri: z.string().min(1).max(INPUT_LIMITS.uriChars).optional(),
+    sha256: z.string().min(1).max(INPUT_LIMITS.mediumTextChars).optional(),
+    external_reference: z.string().min(1).max(INPUT_LIMITS.mediumTextChars).optional(),
+    metadata: z.record(z.unknown()).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (!value.uri && !value.sha256 && !value.external_reference) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "At least one of uri, sha256, or external_reference is required",
+        path: ["uri"],
+      });
+    }
+  });
 
 // ---------------------------------------------------------------------------
 // Routes
@@ -221,6 +244,87 @@ export function registerOrderRoutes(app: FastifyInstance, db: Database) {
         },
         already_confirmed: false,
       });
+    },
+  );
+
+  /**
+   * POST /orders/:orderId/fulfillment/proofs
+   *
+   * Seller submits untrusted digital fulfillment evidence.
+   * Updates fulfillment to PROOF_SUBMITTED / proof_status SUBMITTED.
+   * Does NOT confirmFulfillment, start buyer review, or release funds (A5).
+   *
+   * Auth: seller only (order.sellerId === user.id)
+   */
+  app.post<{ Params: { orderId: string } }>(
+    "/orders/:orderId/fulfillment/proofs",
+    { preHandler: [requireAuth, requireOrderOwner({ role: "seller" })] },
+    async (request, reply) => {
+      const { orderId } = request.params;
+
+      const parsed = submitFulfillmentProofSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({
+          error: "INVALID_REQUEST",
+          issues: parsed.error.issues,
+        });
+      }
+
+      // Capture settlement release snapshot before proof so callers/tests can
+      // assert proof submit never mutates release / money movement.
+      const releaseBefore = await getSettlementReleaseByOrderId(db, orderId);
+
+      try {
+        const result = await submitSellerFulfillmentProof(db, {
+          order_id: orderId,
+          submitted_by: request.user!.id,
+          kind: parsed.data.kind,
+          uri: parsed.data.uri,
+          sha256: parsed.data.sha256,
+          external_reference: parsed.data.external_reference,
+          metadata: parsed.data.metadata,
+        });
+
+        const releaseAfter = await getSettlementReleaseByOrderId(db, orderId);
+
+        return reply.code(201).send({
+          proof: result.proof,
+          fulfillment: {
+            id: result.fulfillment.id,
+            order_id: result.fulfillment.order_id,
+            status: result.fulfillment.status,
+            proof_status: result.fulfillment.proof_status,
+            fulfilled_at: result.fulfillment.fulfilled_at ?? null,
+            review_window_hours: result.fulfillment.review_window_hours,
+          },
+          settlement_release: releaseAfter
+            ? {
+                id: releaseAfter.id,
+                product_release_status: releaseAfter.product_release_status,
+                product_released_at: releaseAfter.product_released_at ?? null,
+                phase: computeReleasePhase(releaseAfter),
+              }
+            : null,
+          release_unchanged:
+            (releaseBefore?.product_release_status ?? null) ===
+              (releaseAfter?.product_release_status ?? null) &&
+            (releaseBefore?.product_released_at ?? null) ===
+              (releaseAfter?.product_released_at ?? null),
+          buyer_review_started: false,
+          auto_released: false,
+        });
+      } catch (error) {
+        if (error instanceof FulfillmentProofError) {
+          const status =
+            error.code === "FULFILLMENT_NOT_FOUND"
+              ? 404
+              : error.code === "INVALID_FULFILLMENT_STATUS"
+                ? 409
+                : 400;
+          return reply.code(status).send({ error: error.code, message: error.message });
+        }
+        throw error;
+      }
     },
   );
 }
