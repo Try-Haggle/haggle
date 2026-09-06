@@ -289,8 +289,25 @@ export const CATEGORY_TAXONOMY: readonly CategoryNode[] = [
   {
     path: "electronics/phones/pixel",
     // Bare "pixel" is an inference stopword ("no dead pixel" appears in monitor/TV/laptop
-    // listings), so Pixel phones are reached through unambiguous multi-word forms.
-    aliases: ["pixel", "google-pixel", "pixel-phone", "구글 픽셀"],
+    // listings), so Pixel phones are reached through unambiguous multi-word forms
+    // ("google-pixel", "pixel-phone", "pixel 8"/"pixel-8", …). Keep bare "pixel" as an
+    // alias for exact/model-child tag matching; matchedCategoryPaths treats it as an
+    // ambiguous token so "dead-pixel" does not open phone gates.
+    aliases: [
+      "pixel",
+      "google-pixel",
+      "pixel-phone",
+      "pixel-8",
+      "pixel-9",
+      "pixel-7",
+      "pixel-6",
+      "pixel 8",
+      "pixel 9",
+      "pixel 7",
+      "pixel 6",
+      "구글 픽셀",
+      "픽셀폰",
+    ],
     checks: [
       {
         id: "google_frp_lock",
@@ -2098,7 +2115,21 @@ export const CATEGORY_TAXONOMY: readonly CategoryNode[] = [
   // ── clothing: luxury / resale subtypes ───────────────────────────────────
   {
     path: "clothing/sneakers",
-    aliases: ["sneakers", "sneaker", "jordan", "yeezy", "dunk", "스니커즈", "운동화"],
+    // "shoes"/"shoe"/"footwear"/"신발" map here — A10 shoes taxonomy. Boat shoes then
+    // correctly get sneaker authenticity (not a vehicle/boat title spine).
+    aliases: [
+      "sneakers",
+      "sneaker",
+      "shoes",
+      "shoe",
+      "footwear",
+      "jordan",
+      "yeezy",
+      "dunk",
+      "스니커즈",
+      "운동화",
+      "신발",
+    ],
     checks: [
       {
         id: "sneaker_authenticity",
@@ -4640,11 +4671,38 @@ export function isTaxonomyCheckId(id: string): boolean {
  * Exposed so the dynamic-learning overlay (resolveChecksWithLearned) can decide
  * which learned checks apply to a tag set with the same matching + inheritance rules.
  */
+/**
+ * Leaves/aliases that are ordinary English words. Matching them from a *token* of a
+ * longer hyphenated tag ("dead-pixel", "no-dead-pixel") would open the wrong node's
+ * HARD gates. These only match as an exact whole tag or a model-child prefix
+ * ("pixel-8-pro"), plus any non-ambiguous multi-word alias ("google-pixel").
+ * Kept in sync with inference GENERIC_STOPWORDS that are also taxonomy leaves.
+ */
+const AMBIGUOUS_MATCH_TOKENS = new Set(["pixel"]);
+
+/** Model-child tag: "pixel-8-pro" for leaf "pixel"; not "dead-pixel". */
+function isAmbiguousModelChildTag(tag: string, token: string): boolean {
+  if (token.length < 3 || !tag.startsWith(`${token}-`)) return false;
+  const rest = tag.slice(token.length + 1);
+  if (!rest) return false;
+  // Require a digit somewhere in the suffix — real Pixel/Galaxy model tags.
+  return /\d/.test(rest);
+}
+
+function ambiguousTokenHit(wholeTags: ReadonlySet<string>, token: string): boolean {
+  for (const tag of wholeTags) {
+    if (tag === token || isAmbiguousModelChildTag(tag, token)) return true;
+  }
+  return false;
+}
+
 export function matchedCategoryPaths(tags: readonly string[]): string[] {
   const candidates = new Set<string>();
+  const wholeTags = new Set<string>();
   for (const raw of tags) {
     const t = raw.trim().toLowerCase();
     if (!t) continue;
+    wholeTags.add(t);
     candidates.add(t); // whole tag (preserves path-form tags like "electronics/phones")
     for (const seg of t.split(/[\s-]+/)) {
       if (seg) candidates.add(seg); // tokens of hyphenated/spaced tags
@@ -4654,10 +4712,18 @@ export function matchedCategoryPaths(tags: readonly string[]): string[] {
   const matchedPaths = new Set<string>();
   for (const node of CATEGORY_TAXONOMY) {
     const leaf = node.path.split("/").pop() ?? node.path;
-    const hit =
-      candidates.has(node.path) ||
-      candidates.has(leaf) ||
-      (node.aliases?.some((a) => candidates.has(a)) ?? false);
+    const leafHit = AMBIGUOUS_MATCH_TOKENS.has(leaf)
+      ? ambiguousTokenHit(wholeTags, leaf)
+      : candidates.has(leaf);
+    const aliasHit =
+      node.aliases?.some((a) => {
+        const alias = a.trim().toLowerCase();
+        if (!alias) return false;
+        if (AMBIGUOUS_MATCH_TOKENS.has(alias)) return ambiguousTokenHit(wholeTags, alias);
+        // Multi-word / hyphenated aliases match as whole tags or exact candidate terms.
+        return candidates.has(alias) || wholeTags.has(alias);
+      }) ?? false;
+    const hit = candidates.has(node.path) || leafHit || aliasHit;
     if (hit) {
       for (const p of pathChain(node.path)) matchedPaths.add(p);
     }

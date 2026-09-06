@@ -204,6 +204,8 @@ describe("coverage gaps found by the real-path probe (must stay closed)", () => 
   // is (or contains) an inference stopword, or the node did not exist.
   const nowCovered: Array<[string, string, string]> = [
     ["Google Pixel 8 Pro", "electronics", "imei_verification"],
+    // A10: bare "Pixel N" (no Google) must still classify via "pixel N" / "pixel-N" aliases.
+    ["Pixel 8 Pro 128GB Unlocked", "electronics", "google_frp_lock"],
     ["Dell 27 inch gaming monitor 144Hz", "electronics", "panel_cracked"],
     ["Weber Genesis gas grill", "other", "grill_gas_rust_safe"],
     ["1921 Morgan silver dollar coins", "collectibles", "counterfeit_coin"],
@@ -225,10 +227,12 @@ describe("coverage gaps found by the real-path probe (must stay closed)", () => 
     expect(inferTaxonomyTags("Honda Civic front grill cover")).toEqual([]);
     // "coin operated" is not a collectible coin.
     expect(inferTaxonomyTags("Coin operated laundry machine")).not.toContain("coins");
-    // Boat shoes are not a boat.
-    expect(
-      hardGates(enrichTagsWithTaxonomy(["clothing"], "Sperry boat shoes size 10").tags),
-    ).not.toContain("hin_match");
+    // Boat shoes are not a boat — but A10 shoes taxonomy still opens sneaker authenticity.
+    const boatShoeGates = hardGates(
+      enrichTagsWithTaxonomy(["clothing"], "Sperry boat shoes size 10").tags,
+    );
+    expect(boatShoeGates).not.toContain("hin_match");
+    expect(boatShoeGates).toContain("sneaker_authenticity");
   });
 });
 
