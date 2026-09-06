@@ -1,10 +1,9 @@
 /**
  * A10/D3 goldens — galaxy / pixel taxonomy: classification + HARD gate reject/pass.
  *
- * D3 (CTO correction): shoe-family taxonomy/HARD entirely no-op. Remove ALL explicit
- * sneaker HARD paths (jordan/yeezy/dunk/스니커즈/운동화 aliases + sneaker_authenticity HARD).
- * Electronics only — galaxy/pixel/phone HARD remain. dead-pixel / no-dead-pixel must not
- * open phone gates (AMBIGUOUS_MATCH_TOKENS).
+ * D3 (CTO correction): shoe-family taxonomy HARD+SOFT authenticity removed entirely
+ * (no sneaker_authenticity; aliases cleared). Electronics only — galaxy/pixel/phone HARD
+ * remain. dead-pixel / no-dead-pixel must not open phone gates (AMBIGUOUS_MATCH_TOKENS).
  *
  * Classification = enrichTagsWithTaxonomy / inferTaxonomyTags → resolveChecks.
  * Gate = unansweredHardCriteria (reject when HARD unanswered; pass when answered).
@@ -72,13 +71,20 @@ describe("A10/D3 classify — galaxy / pixel (electronics); shoe-family HARD no-
     expect(hardIds(tags)).toContain("imei_verification");
   });
 
-  it("shoes title does NOT classify to sneakers HARD / unansweredHard sneaker authenticity", () => {
+  it("shoes title does NOT surface sneaker_authenticity (HARD or SOFT removed)", () => {
     const inferred = inferTaxonomyTags("Nike Air Force 1 shoes size 10");
     expect(inferred).not.toEqual(expect.arrayContaining(["shoes"]));
     const { tags } = enrichTagsWithTaxonomy(["clothing"], "Nike Air Force 1 shoes size 10");
     expect(hardIds(tags)).not.toContain("sneaker_authenticity");
     expect(hardIds(["clothing", "shoes"])).not.toContain("sneaker_authenticity");
     expect(hardIds(["shoes"])).not.toContain("sneaker_authenticity");
+    // Full removal: soft residual must not remain either (parity / PAUSE fallout).
+    expect(resolveChecks(["clothing", "sneakers"]).map((c) => c.id)).not.toContain(
+      "sneaker_authenticity",
+    );
+    expect(resolveChecks(["fashion", "sneakers"]).map((c) => c.id)).not.toContain(
+      "sneaker_authenticity",
+    );
     const unanswered = unansweredHardCriteria(["clothing", "shoes"], []).map((c) => c.checkId);
     expect(unanswered).not.toContain("sneaker_authenticity");
     // shoes→sneakers authenticity HARD path must stay closed.

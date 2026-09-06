@@ -2115,48 +2115,10 @@ export const CATEGORY_TAXONOMY: readonly CategoryNode[] = [
   // ── clothing: luxury / resale subtypes ───────────────────────────────────
   {
     path: "clothing/sneakers",
-    // D3 CTO: shoe-family taxonomy/HARD entirely no-op. No aliases (incl. jordan/yeezy/dunk/
-    // 스니커즈/운동화/sneakers) open sneaker HARD. Keep electronics galaxy/pixel/phone HARD only.
+    // D3 CTO: shoe-family HARD+SOFT authenticity removed (no sneaker_authenticity).
+    // No aliases. Electronics galaxy/pixel/phone HARD only. Leaf may match deadstock/box soft.
     aliases: [],
     checks: [
-      {
-        id: "sneaker_authenticity",
-        questionKo: "정품(레플리카/UA 아님)인가요? (StockX/GOAT 인증 포함)",
-        buyerAskKo: "Should the agent require authenticity (platform-verified / not replica)?",
-        enforcement: "soft",
-        answerHints: [
-          "정품",
-          "레플리카",
-          "replica",
-          "ua",
-          "fake",
-          "stockx",
-          "goat",
-          "legit check",
-          "가품",
-        ],
-        answerOptions: [
-          {
-            label: "Authentic only",
-            stance: "authentic only — platform-verified or verified legit",
-            requirement: "required",
-          },
-          { label: "Not required", stance: "no authenticity preference", requirement: "optional" },
-        ],
-        sellerAsk: "Authenticity?",
-        sellerOptions: [
-          {
-            label: "Platform-verified",
-            stance: "StockX/GOAT verified authentic",
-            requirement: "required",
-          },
-          {
-            label: "Unverified",
-            stance: "authentic but not platform-verified",
-            requirement: "required",
-          },
-        ],
-      },
       {
         id: "deadstock_condition",
         questionKo: "상태(데드스탁/사용감)는 어떤가요?",
