@@ -59,6 +59,13 @@ const PRODUCTS: ProductCase[] = [
     ownsSignatures: ["phones"],
   },
   {
+    name: "Google Pixel",
+    tags: ["electronics", "pixel-8-pro"],
+    expectHardGates: ["imei_verification", "google_frp_lock", "financing_paid_off", "water_damage"],
+    expectChecks: ["battery_health"],
+    ownsSignatures: ["phones"],
+  },
+  {
     name: "MacBook Pro 14",
     tags: ["electronics", "macbook-pro-14"],
     expectHardGates: ["boots_ok", "activation_lock", "liquid_damage"],
@@ -118,6 +125,13 @@ const PRODUCTS: ProductCase[] = [
   {
     name: "Sneakers (fashion alias)",
     tags: ["fashion", "sneakers"],
+    expectHardGates: ["authenticity", "sneaker_authenticity"],
+    expectChecks: ["size", "cosmetic_grade"],
+    ownsSignatures: ["clothing"],
+  },
+  {
+    name: "Shoes (shoes alias → sneakers)",
+    tags: ["clothing", "shoes"],
     expectHardGates: ["authenticity", "sneaker_authenticity"],
     expectChecks: ["size", "cosmetic_grade"],
     ownsSignatures: ["clothing"],
