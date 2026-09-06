@@ -18,9 +18,13 @@ const denver = {
 };
 
 describe("fulfillmentPreferenceSchema", () => {
-  it("requires an address when the seller ships", () => {
+  it("allows carrier shipping without a delivery address at negotiation start", () => {
     const parsed = fulfillmentPreferenceSchema.safeParse({ method: "carrier" });
-    expect(parsed.success).toBe(false);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.methods).toEqual(["carrier"]);
+      expect(parsed.data.buyer_address).toBeUndefined();
+    }
   });
 
   it("rejects pickup until in-person methods reconnect", () => {
@@ -61,6 +65,14 @@ describe("parseSellerFulfillmentOffer", () => {
 });
 
 describe("toFulfillmentContext", () => {
+  it("builds prompt-safe context without destination when address is deferred", () => {
+    const preference = fulfillmentPreferenceSchema.parse({ method: "carrier" });
+    const context = toFulfillmentContext(preference);
+    expect(context.fulfillment_type).toBe("physical_shipping");
+    expect(context.methods).toEqual(["carrier"]);
+    expect(context.destination).toBeUndefined();
+  });
+
   it("keeps street address off the prompt-safe context", () => {
     const preference = fulfillmentPreferenceSchema.parse({
       method: "carrier",

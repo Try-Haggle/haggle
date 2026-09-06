@@ -168,4 +168,31 @@ describe("listing → session API (A3)", () => {
     expect(res).toEqual({ session_id: "sess-fb", run_token: "tok-fb", resumed: false });
     expect(mocks.post).toHaveBeenCalledTimes(1);
   });
+
+  it("starts with carrier fulfillment and no delivery address", async () => {
+    mocks.post.mockResolvedValueOnce({
+      session_id: "sess-no-addr",
+      run_token: "tok-na",
+    });
+
+    const startBody = {
+      listing_public_id: "eV9delRa",
+      negotiation_agent_preset_id: "balancer",
+      fulfillment: {
+        methods: ["carrier"] as const,
+        preferred: "carrier" as const,
+        // buyer_address intentionally omitted — address is checkout-stage
+      },
+    };
+    const res = await startOrResumeListingNegotiation({
+      userId: null,
+      listingId: "list-1",
+      startBody,
+    });
+
+    expect(res.session_id).toBe("sess-no-addr");
+    expect(res.resumed).toBe(false);
+    expect(mocks.post).toHaveBeenCalledWith("/negotiations/start", startBody);
+    expect(startBody.fulfillment).not.toHaveProperty("buyer_address");
+  });
 });

@@ -521,7 +521,7 @@ export function BuyerLanding({
                   </Button>
                   {selectedAgent && !canStartWithFulfillment(fulfillment) && (
                     <p className="mt-3 text-center text-ink-muted text-sm">
-                      Add a delivery address to start.
+                      Choose at least one delivery option to start.
                     </p>
                   )}
                   {negotiationState === "error" && (
