@@ -18,7 +18,7 @@ const denver = {
 };
 
 describe("fulfillmentPreferenceSchema", () => {
-  it("allows carrier shipping without a delivery address at negotiation start", () => {
+  it("schema allows carrier without address (D1 enforces 409 in start service)", () => {
     const parsed = fulfillmentPreferenceSchema.safeParse({ method: "carrier" });
     expect(parsed.success).toBe(true);
     if (parsed.success) {
@@ -65,7 +65,7 @@ describe("parseSellerFulfillmentOffer", () => {
 });
 
 describe("toFulfillmentContext", () => {
-  it("builds prompt-safe context without destination when address is deferred", () => {
+  it("builds prompt-safe context without destination when address omitted on preference", () => {
     const preference = fulfillmentPreferenceSchema.parse({ method: "carrier" });
     const context = toFulfillmentContext(preference);
     expect(context.fulfillment_type).toBe("physical_shipping");

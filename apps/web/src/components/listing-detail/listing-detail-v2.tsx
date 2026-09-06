@@ -81,7 +81,7 @@ interface ListingDetailV2Props {
   briefHintCount?: number;
   /** Delivery address / carrier setup, rendered in the decision rail. */
   setupSlot?: React.ReactNode;
-  /** When false, Start scrolls to fulfillment setup (e.g. no method yet) instead of posting. */
+  /** When false, Start scrolls to the delivery setup instead of posting. */
   canStart?: boolean;
   /** Starts the negotiation with whatever the buyer tuned on top of the
    *  preset (drawer dials or chat) — null when the preset is untouched. */
@@ -562,7 +562,7 @@ export function ListingDetailV2({
                       ? "Pick an agent"
                       : canStart
                         ? "Start negotiation"
-                        : "Choose delivery options"}
+                        : "Add a delivery address"}
                   {!sold && <ArrowRight className="size-4" aria-hidden="true" />}
                 </Button>
               </div>

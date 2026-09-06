@@ -169,10 +169,10 @@ describe("listing → session API (A3)", () => {
     expect(mocks.post).toHaveBeenCalledTimes(1);
   });
 
-  it("starts with carrier fulfillment and no delivery address", async () => {
+  it("starts with carrier fulfillment and delivery address (D1 physical)", async () => {
     mocks.post.mockResolvedValueOnce({
-      session_id: "sess-no-addr",
-      run_token: "tok-na",
+      session_id: "sess-with-addr",
+      run_token: "tok-addr",
     });
 
     const startBody = {
@@ -181,7 +181,14 @@ describe("listing → session API (A3)", () => {
       fulfillment: {
         methods: ["carrier"] as const,
         preferred: "carrier" as const,
-        // buyer_address intentionally omitted — address is checkout-stage
+        buyer_address: {
+          name: "Alex Buyer",
+          street1: "1600 Blake St",
+          city: "Denver",
+          state: "CO",
+          zip: "80202",
+          country: "US",
+        },
       },
     };
     const res = await startOrResumeListingNegotiation({
@@ -190,9 +197,9 @@ describe("listing → session API (A3)", () => {
       startBody,
     });
 
-    expect(res.session_id).toBe("sess-no-addr");
+    expect(res.session_id).toBe("sess-with-addr");
     expect(res.resumed).toBe(false);
     expect(mocks.post).toHaveBeenCalledWith("/negotiations/start", startBody);
-    expect(startBody.fulfillment).not.toHaveProperty("buyer_address");
+    expect(startBody.fulfillment).toHaveProperty("buyer_address");
   });
 });

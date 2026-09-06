@@ -6,7 +6,11 @@ import {
   readBuyerFulfillmentDefaults,
   type SellerFulfillmentOffer,
 } from "@/lib/fulfillment-options";
-import { EMPTY_SHIPPING_ADDRESS, type ShippingAddressInput } from "@/lib/shipping-address";
+import {
+  EMPTY_SHIPPING_ADDRESS,
+  isCompleteShippingAddress,
+  type ShippingAddressInput,
+} from "@/lib/shipping-address";
 
 export interface PreNegotiationFulfillmentValue {
   methods: FulfillmentMethod[];
@@ -39,8 +43,9 @@ export function emptyFulfillmentValue(
 }
 
 export function canStartWithFulfillment(value: PreNegotiationFulfillmentValue): boolean {
-  // Address belongs to checkout/shipping. Listing CTA must call
-  // POST /negotiations/start (or resume) after agent pick even when the
-  // buyer left delivery address empty (digital/local/no-address-yet).
-  return value.methods.length > 0;
+  // D1: physical (carrier) needs a complete delivery address before start.
+  // Non-carrier / digital no-shipment paths stay exempt.
+  if (value.methods.length === 0) return false;
+  if (!value.methods.includes("carrier")) return true;
+  return isCompleteShippingAddress(value.address);
 }
