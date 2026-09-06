@@ -24,6 +24,7 @@ import {
   createConditionalReleaseSigner,
   createConditionalSettlementSigner,
 } from "../payments/settlement-signer.js";
+import { getStripeConfig } from "../payments/stripe-onramp.js";
 import { runApiRateLimitFixture } from "../services/api-rate-limit-fixture.service.js";
 import {
   getConditionalSettlementRequiredConfirmations,
@@ -430,6 +431,11 @@ interface DisputeAiEvalScenario {
 function currentPaymentRuntime() {
   const x402Mode = process.env.HAGGLE_X402_MODE ?? "mock";
   const stripeMode = process.env.STRIPE_MODE ?? "mock";
+  const stripeConfig = getStripeConfig();
+  const stagingMockOptIn =
+    process.env.HAGGLE_ENV === "staging" &&
+    process.env.HAGGLE_ENABLE_STAGING_MOCK_PAYMENTS === "true";
+  const testCardsExpected = stripeConfig.enabled && stripeConfig.keyMode === "test";
   const usdcAssetAddress = process.env.HAGGLE_X402_USDC_ASSET_ADDRESS ?? "USDC";
   const conditionalSettlementAddress = process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS ?? null;
   const relayerPrivateKey = process.env.HAGGLE_ROUTER_RELAYER_PRIVATE_KEY ?? null;
@@ -475,6 +481,11 @@ function currentPaymentRuntime() {
     websocket_ticket_retention: getWebSocketAuthTicketRetentionPolicyStatus(),
     x402_mode: x402Mode,
     stripe_mode: stripeMode,
+    // Auth-gated Onramp dogfood diagnostics (not on public GET /payments/onramp/status).
+    stripe_key_mode: stripeConfig.keyMode,
+    stripe_mode_real: stripeConfig.stripeMode === "real",
+    staging_mock_payments_opt_in: stagingMockOptIn,
+    test_cards_expected: testCardsExpected,
     settlement_asset: "USDC",
     x402_network: network,
     usdc_asset_address: usdcAssetAddress,

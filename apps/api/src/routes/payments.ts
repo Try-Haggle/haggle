@@ -82,8 +82,11 @@ import {
   createConditionalSettlementSigner,
 } from "../payments/settlement-signer.js";
 import {
+  assertStagingStripeOnrampKeysAllowed,
   createOnrampSession,
   getStripeConfig,
+  isStagingLiveStripeKeysForbiddenError,
+  STAGING_LIVE_STRIPE_KEYS_FORBIDDEN,
   verifyStripeWebhook,
 } from "../payments/stripe-onramp.js";
 import { createX402PaymentRequirement } from "../payments/x402-requirements.js";
@@ -5580,6 +5583,20 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
           message: "Stripe onramp is not available. Use x402 direct USDC payment.",
         });
       }
+      try {
+        assertStagingStripeOnrampKeysAllowed(
+          { HAGGLE_ENV: process.env.HAGGLE_ENV },
+          stripeConfig.keyMode,
+        );
+      } catch (error) {
+        if (isStagingLiveStripeKeysForbiddenError(error)) {
+          return reply.code(503).send({
+            error: STAGING_LIVE_STRIPE_KEYS_FORBIDDEN,
+            message: "Staging forbids live Stripe keys for Onramp. Configure sk_test_/pk_test_.",
+          });
+        }
+        throw error;
+      }
 
       const { id } = request.params;
       const parsed = onrampSchema.safeParse(request.body);
@@ -5708,6 +5725,21 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         );
         return reply.send(responseBody);
       } catch (err) {
+        if (isStagingLiveStripeKeysForbiddenError(err)) {
+          const responseBody = {
+            error: STAGING_LIVE_STRIPE_KEYS_FORBIDDEN,
+            message: "Staging forbids live Stripe keys for Onramp. Configure sk_test_/pk_test_.",
+          };
+          await recordPaymentOperationIdempotency(
+            db,
+            "payment.stripe_onramp_session",
+            idempotency,
+            intent.id,
+            503,
+            responseBody,
+          );
+          return reply.code(503).send(responseBody);
+        }
         console.error("Stripe onramp session creation failed:", safeRedactPaymentLog(err));
         const responseBody = {
           error: "ONRAMP_SESSION_FAILED",
@@ -5730,40 +5762,20 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
   // GET /payments/onramp/status
   // Returns whether Stripe onramp is available + supported currencies.
 
+  // Public probe: minimal product capability only — no key-mode / mock-opt-in fingerprint.
+  // Dogfood diagnostics (stripe_key_mode, test_cards_expected, etc.) live on
+  // GET /tools/payment-test/runtime (auth-gated).
   app.get("/payments/onramp/status", async (_request, reply) => {
     const config = getStripeConfig();
-    const stagingMockOptIn =
-      process.env.HAGGLE_ENV === "staging" &&
-      process.env.HAGGLE_ENABLE_STAGING_MOCK_PAYMENTS === "true";
-    const stripeModeReal = config.stripeMode === "real";
-    // Onramp session creation hits Stripe Crypto Onramp when STRIPE_SECRET_KEY is set.
-    // Test cards (4242…) only work when keys are test-mode; live keys reject them.
-    const testCardsExpected = config.enabled && config.keyMode === "test";
     return reply.send({
       available: config.enabled,
       provider: "stripe",
-      stripe_mode: config.stripeMode,
-      stripe_key_mode: config.keyMode,
-      staging_mock_payments_opt_in: stagingMockOptIn,
-      // Dogfood hint: true only when sk_test_/pk_test_ are configured.
-      test_cards_expected: testCardsExpected,
-      stripe_mode_real: stripeModeReal,
       supported_destination: {
         currency: "usdc",
         network: "base",
       },
       supported_source: ["usd"],
-      fee_info: {
-        stripe_fee_pct: 1.5,
-        haggle_fee_pct: 1.5,
-        total_buyer_fee_pct: 3.0,
-        note: "Stripe 1.5% + Haggle 1.5% = 3% total. No hidden fees.",
-      },
-      notes: [
-        "Haggle never accepts or stores card PANs; card entry is Stripe Onramp only.",
-        "MCP haggle_create_checkout returns a web checkout_url only.",
-        "Staging dogfood: STRIPE_MODE=real + sk_test_/pk_test_ + staging webhook.",
-      ],
+      pci_note: "Haggle never accepts or stores card PANs; card entry is Stripe Onramp only.",
     });
   });
 }
