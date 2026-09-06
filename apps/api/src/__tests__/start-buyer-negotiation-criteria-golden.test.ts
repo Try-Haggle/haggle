@@ -56,6 +56,15 @@ const IMEI_REQUIRED = {
   stance: "clean IMEI, seller confirmed",
 };
 
+const FIND_MY_REQUIRED = {
+  checkId: "find_my_status",
+  questionKo: "Find My가 꺼져 있나요?",
+  buyerAskKo: "Must Find My be turned off?",
+  enforcement: "hard" as const,
+  requirement: "required" as const,
+  stance: "Find My off, seller confirmed",
+};
+
 function listingFixture() {
   getPublishedListingByRef.mockResolvedValue({
     id: "listing-1",
@@ -96,8 +105,8 @@ function listingFixture() {
 }
 
 /**
- * A7 golden fixtures — exactly three regressions:
- * pass / missing / type for buyerCriteria on negotiation start.
+ * A7 golden fixtures — pass / missing / type / partial for buyerCriteria on start.
+ * Partial: every listing required key must be present + non-empty (fake keys do not count).
  */
 describe("A7 buyerCriteria golden fixtures", () => {
   beforeEach(() => {
@@ -165,6 +174,89 @@ describe("A7 buyerCriteria golden fixtures", () => {
     expect(parsed.body.error).toBe("BUYER_CRITERIA_TYPE_INVALID");
     expect(parsed.body.error).not.toBe("BUYER_CRITERIA_REQUIRED");
     expect(parsed.body.error).not.toBe("INVALID_START_REQUEST");
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  it("partial: imei + fake checkId with other required missing rejects without session", async () => {
+    getPublishedListingByRef.mockResolvedValue({
+      id: "listing-1",
+      publicId: "joUdQ7Tw",
+      sellerId: "seller-1",
+      negotiationAgentSnapshot: {
+        negotiationAgentBuilderMemory: {
+          categoryCriteria: [IMEI_REQUIRED, FIND_MY_REQUIRED],
+        },
+      },
+    });
+
+    const parsed = parseStartBuyerNegotiationBody({
+      listing_public_id: "joUdQ7Tw",
+      negotiation_agent_preset_id: "balancer",
+      buyerCriteria: [
+        { checkId: "imei_verification", stance: "clean IMEI required" },
+        { checkId: "fake_check_id", stance: "not a real required key" },
+      ],
+    });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+
+    const result = await startBuyerNegotiation({} as never, {
+      body: parsed.data,
+      buyerId: "buyer-1",
+      isGuest: false,
+      driver: "mcp",
+      allowGuest: false,
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      status: 409,
+      body: {
+        error: "BUYER_CRITERIA_REQUIRED",
+        required_check_ids: ["find_my_status"],
+      },
+    });
+    expect(result.body).not.toHaveProperty("session_id");
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  it("partial: empty stance on a required key rejects without session", async () => {
+    getPublishedListingByRef.mockResolvedValue({
+      id: "listing-1",
+      publicId: "joUdQ7Tw",
+      sellerId: "seller-1",
+      negotiationAgentSnapshot: {
+        negotiationAgentBuilderMemory: {
+          categoryCriteria: [IMEI_REQUIRED, FIND_MY_REQUIRED],
+        },
+      },
+    });
+
+    const parsed = parseStartBuyerNegotiationBody({
+      listing_public_id: "joUdQ7Tw",
+      negotiation_agent_preset_id: "balancer",
+      buyerCriteria: [
+        { checkId: "imei_verification", stance: "clean IMEI required" },
+        { checkId: "find_my_status", stance: "   " },
+      ],
+    });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+
+    const result = await startBuyerNegotiation({} as never, {
+      body: parsed.data,
+      buyerId: "buyer-1",
+      isGuest: false,
+      driver: "mcp",
+      allowGuest: false,
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      status: 409,
+      body: {
+        error: "BUYER_CRITERIA_REQUIRED",
+        required_check_ids: ["find_my_status"],
+      },
+    });
     expect(createSession).not.toHaveBeenCalled();
   });
 });

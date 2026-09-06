@@ -77,18 +77,36 @@ export function buyerHasAnsweredCriteria(buyerCriteria: readonly CategoryCriteri
 }
 
 /**
- * Start/play wizard-gate: seller required criteria exist and the buyer has not
- * answered any of them. Do not treat listing_context.seller_facts as answers.
- * Returns unresolved asks when play_next must reject — not a mid-session pause.
+ * Listing required keys that lack a non-empty buyer stance (by checkId).
+ * Unknown/fake checkIds do not satisfy a required key. Empty/blank stance = missing.
+ */
+export function missingRequiredBuyerCriteria(
+  required: readonly BuyerPauseAsk[],
+  buyerCriteria: readonly { checkId?: unknown; stance?: unknown }[],
+): BuyerPauseAsk[] {
+  if (required.length === 0) return [];
+  const answered = new Set<string>();
+  for (const c of buyerCriteria) {
+    if (typeof c?.checkId !== "string") continue;
+    if (typeof c?.stance !== "string" || c.stance.trim().length === 0) continue;
+    answered.add(c.checkId);
+  }
+  return required.filter((r) => !answered.has(r.checkId));
+}
+
+/**
+ * Start/play wizard-gate: every seller required criterion must have a non-empty
+ * buyer stance keyed by checkId. Partial answers still reject. Do not treat
+ * listing_context.seller_facts as answers. Returns unresolved asks when start /
+ * play_next must reject — not a mid-session pause.
  */
 export function buyerCriteriaStartGate(snapshot: Record<string, unknown>): BuyerPauseAsk[] {
-  const { sellerRequired, buyerCriteria } = readSellerCriteriaFromSnapshot(snapshot);
+  const { sellerRequired } = readSellerCriteriaFromSnapshot(snapshot);
   if (sellerRequired.length === 0) return [];
-  if (buyerHasAnsweredCriteria(buyerCriteria)) return [];
   return unresolvedBuyerPauseAsks(snapshot);
 }
 
-/** Reject play_next / auto-play when the start wizard never answered seller required criteria. */
+/** Reject play_next / auto-play when any seller required criterion lacks a non-empty buyer stance. */
 export function buyerCriteriaRequiredReject(snapshot: Record<string, unknown>): {
   error: typeof BUYER_CRITERIA_REQUIRED;
   message: string;

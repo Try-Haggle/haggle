@@ -5,6 +5,7 @@ import {
   buyerCriteriaRequiredReject,
   buyerCriteriaStartGate,
   detectSellerCriteriaPause,
+  missingRequiredBuyerCriteria,
   readSellerCriteriaFromSnapshot,
   sellerCriteriaHoldChatMessage,
 } from "../seller-criteria-pause.js";
@@ -300,5 +301,43 @@ describe("buyerCriteriaStartGate", () => {
         buyer_negotiation_agent_builder_memory: { categoryCriteria: [] },
       }),
     ).toEqual([]);
+  });
+
+  it("rejects when only a subset of required criteria are answered (fake keys ignored)", () => {
+    const findMy = {
+      checkId: "find_my_status",
+      questionKo: "Find My가 꺼져 있나요?",
+      buyerAskKo: "Must Find My be turned off?",
+      enforcement: "hard" as const,
+      requirement: "required" as const,
+    };
+    const snapshot = {
+      pause_seller_required_criteria: [sellerRequired, findMy],
+      buyer_negotiation_agent_builder_memory: {
+        categoryCriteria: [
+          { ...sellerRequired, stance: "clean IMEI required" },
+          { checkId: "fake_check_id", stance: "noise" },
+        ],
+      },
+    };
+    expect(buyerCriteriaStartGate(snapshot).map((a) => a.checkId)).toEqual(["find_my_status"]);
+    expect(buyerCriteriaRequiredReject(snapshot)?.error).toBe("BUYER_CRITERIA_REQUIRED");
+    expect(buyerCriteriaRequiredReject(snapshot)?.required_check_ids).toEqual(["find_my_status"]);
+  });
+});
+
+describe("missingRequiredBuyerCriteria", () => {
+  it("treats blank stance and unknown checkIds as uncovered", () => {
+    const required = [
+      { checkId: "imei_verification", ask: "IMEI?" },
+      { checkId: "find_my_status", ask: "Find My?" },
+    ];
+    expect(
+      missingRequiredBuyerCriteria(required, [
+        { checkId: "imei_verification", stance: "ok" },
+        { checkId: "fake_check_id", stance: "noise" },
+        { checkId: "find_my_status", stance: "  " },
+      ]).map((c) => c.checkId),
+    ).toEqual(["find_my_status"]);
   });
 });
