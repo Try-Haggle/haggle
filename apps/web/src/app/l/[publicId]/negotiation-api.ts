@@ -12,6 +12,8 @@ export interface StartListingNegotiationResponse {
   session_id: string;
   run_token: string;
   guest_buyer_id?: string;
+  /** Proof-of-possession minted with guest_buyer_id; required to claim. */
+  guest_claim_pop?: string;
   /** True when an open session for this listing was reused (no new start). */
   resumed?: boolean;
 }

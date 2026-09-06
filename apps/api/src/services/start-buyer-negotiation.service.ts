@@ -31,6 +31,7 @@ import {
   isAttemptControlRateLimited,
 } from "./attempt-control.service.js";
 import { getPublishedListingByRef } from "./draft.service.js";
+import { mintGuestBuyerClaimPop } from "./guest-buyer-claim-pop.service.js";
 import {
   assertListingAcceptsNewSession,
   LISTING_CLAIM_HTTP,
@@ -142,6 +143,7 @@ export type StartBuyerNegotiationResult =
         status: string;
         run_token: string;
         guest_buyer_id?: string;
+        guest_claim_pop?: string;
         attempt_control?: AttemptControlSnapshot;
         chat_url?: string;
         driver: NegotiationDriver;
@@ -529,7 +531,12 @@ export async function startBuyerNegotiation(
       status: session.status,
       run_token: autoPlay.runToken,
       driver: input.driver,
-      ...(input.isGuest ? { guest_buyer_id: buyer.id } : {}),
+      ...(input.isGuest
+        ? {
+            guest_buyer_id: buyer.id,
+            guest_claim_pop: mintGuestBuyerClaimPop(buyer.id),
+          }
+        : {}),
       ...(attemptControl ? { attempt_control: attemptControl } : {}),
       ...(input.chatUrl ? { chat_url: input.chatUrl } : {}),
     },

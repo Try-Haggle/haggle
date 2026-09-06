@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthUser } from "../middleware/auth.js";
+import { mintGuestBuyerClaimPop } from "../services/guest-buyer-claim-pop.service.js";
 
 vi.mock("@haggle/db", () => {
   const join = (parts: unknown[], sep: { raw: string }) => ({
@@ -45,10 +46,27 @@ const USER: AuthUser = {
 
 const VALID_GUEST_A = "33333333-3333-4333-8333-333333333333";
 const VALID_GUEST_B = "44444444-4444-4444-8444-444444444444";
+const POP_SECRET = "t".repeat(32);
+
+function popFor(guestBuyerId: string): string {
+  return mintGuestBuyerClaimPop(guestBuyerId, POP_SECRET);
+}
+
+function claimsPayload(entries: Array<{ guest_buyer_id: string; pop?: string }>): {
+  guest_buyer_claims: Array<{ guest_buyer_id: string; pop: string }>;
+} {
+  return {
+    guest_buyer_claims: entries.map((e) => ({
+      guest_buyer_id: e.guest_buyer_id,
+      pop: e.pop ?? popFor(e.guest_buyer_id),
+    })),
+  };
+}
 
 let db: FakeDb;
 beforeEach(() => {
   db = { execute: vi.fn() };
+  process.env.GUEST_BUYER_CLAIM_POP_SECRET = POP_SECRET;
 });
 
 describe("POST /claim/negotiation-sessions", () => {
@@ -57,13 +75,13 @@ describe("POST /claim/negotiation-sessions", () => {
     const res = await app.inject({
       method: "POST",
       url: "/claim/negotiation-sessions",
-      payload: { guest_buyer_ids: [VALID_GUEST_A] },
+      payload: claimsPayload([{ guest_buyer_id: VALID_GUEST_A }]),
     });
     expect(res.statusCode).toBe(401);
     await app.close();
   });
 
-  it("rejects body without guest_buyer_ids array", async () => {
+  it("rejects body without guest_buyer_claims array", async () => {
     const app = buildApp(db, USER);
     const res = await app.inject({
       method: "POST",
@@ -75,12 +93,53 @@ describe("POST /claim/negotiation-sessions", () => {
     await app.close();
   });
 
+  it("rejects guest_buyer_ids-only body (knowledge alone must not claim)", async () => {
+    const app = buildApp(db, USER);
+    const res = await app.inject({
+      method: "POST",
+      url: "/claim/negotiation-sessions",
+      payload: { guest_buyer_ids: [VALID_GUEST_A] },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("INVALID_BODY");
+    expect(db.execute).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("rejects claim without PoP field", async () => {
+    const app = buildApp(db, USER);
+    const res = await app.inject({
+      method: "POST",
+      url: "/claim/negotiation-sessions",
+      payload: {
+        guest_buyer_claims: [{ guest_buyer_id: VALID_GUEST_A }],
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("INVALID_BODY");
+    expect(db.execute).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("rejects claim with invalid PoP (reject-without-valid-PoP)", async () => {
+    const app = buildApp(db, USER);
+    const res = await app.inject({
+      method: "POST",
+      url: "/claim/negotiation-sessions",
+      payload: claimsPayload([{ guest_buyer_id: VALID_GUEST_A, pop: "x".repeat(43) }]),
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe("POP_REQUIRED");
+    expect(db.execute).not.toHaveBeenCalled();
+    await app.close();
+  });
+
   it("rejects non-uuid entries", async () => {
     const app = buildApp(db, USER);
     const res = await app.inject({
       method: "POST",
       url: "/claim/negotiation-sessions",
-      payload: { guest_buyer_ids: ["not-a-uuid"] },
+      payload: claimsPayload([{ guest_buyer_id: "not-a-uuid", pop: "x".repeat(43) }]),
     });
     expect(res.statusCode).toBe(400);
     await app.close();
@@ -91,7 +150,7 @@ describe("POST /claim/negotiation-sessions", () => {
     const res = await app.inject({
       method: "POST",
       url: "/claim/negotiation-sessions",
-      payload: { guest_buyer_ids: [USER.id] },
+      payload: claimsPayload([{ guest_buyer_id: USER.id }]),
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ ok: true, claimed_count: 0 });
@@ -100,13 +159,16 @@ describe("POST /claim/negotiation-sessions", () => {
     await app.close();
   });
 
-  it("executes an UPDATE and returns the rowCount on success", async () => {
+  it("executes an UPDATE and returns the rowCount on success-with-PoP", async () => {
     db.execute.mockResolvedValueOnce({ rowCount: 2 });
     const app = buildApp(db, USER);
     const res = await app.inject({
       method: "POST",
       url: "/claim/negotiation-sessions",
-      payload: { guest_buyer_ids: [VALID_GUEST_A, VALID_GUEST_B] },
+      payload: claimsPayload([
+        { guest_buyer_id: VALID_GUEST_A },
+        { guest_buyer_id: VALID_GUEST_B },
+      ]),
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ ok: true, claimed_count: 2 });
@@ -125,7 +187,10 @@ describe("POST /claim/negotiation-sessions", () => {
     const res = await app.inject({
       method: "POST",
       url: "/claim/negotiation-sessions",
-      payload: { guest_buyer_ids: [VALID_GUEST_A, VALID_GUEST_B] },
+      payload: claimsPayload([
+        { guest_buyer_id: VALID_GUEST_A },
+        { guest_buyer_id: VALID_GUEST_B },
+      ]),
     });
 
     expect(res.statusCode).toBe(200);
@@ -133,7 +198,7 @@ describe("POST /claim/negotiation-sessions", () => {
     await app.close();
   });
 
-  it("rejects more than 64 ids", async () => {
+  it("rejects more than 64 claims", async () => {
     const ids = Array.from(
       { length: 65 },
       (_, i) => `${"0".repeat(8 - String(i).length)}${i}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`,
@@ -142,7 +207,7 @@ describe("POST /claim/negotiation-sessions", () => {
     const res = await app.inject({
       method: "POST",
       url: "/claim/negotiation-sessions",
-      payload: { guest_buyer_ids: ids },
+      payload: claimsPayload(ids.map((guest_buyer_id) => ({ guest_buyer_id }))),
     });
     expect(res.statusCode).toBe(400);
     await app.close();

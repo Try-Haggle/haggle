@@ -3,12 +3,17 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireAuth } from "../middleware/require-auth.js";
 import { claimListing } from "../services/draft.service.js";
+import { verifyGuestBuyerClaimPop } from "../services/guest-buyer-claim-pop.service.js";
 
 /**
  * Claim flow — wire ownership of guest-created entities to a real user account.
  *
  *  • POST /api/claim                — MCP-created listing draft claim (legacy)
  *  • POST /claim/negotiation-sessions — guest buyer's auto-played sessions
+ *
+ * Guest negotiation claim requires proof-of-possession (PoP). Knowing a
+ * `guest_buyer_id` UUID alone must not transfer sessions; the client must
+ * present the `guest_claim_pop` minted with that id at guest start.
  */
 export function registerClaimRoutes(app: FastifyInstance, db: Database) {
   app.post<{
@@ -42,18 +47,31 @@ export function registerClaimRoutes(app: FastifyInstance, db: Database) {
   // ─── POST /claim/negotiation-sessions ──────────────────────────────────
   //
   // Buyer ran negotiations as a guest (`POST /negotiations/start` minted a
-  // random UUID for buyer_id). After sign-up, the web app collects those
-  // guest UUIDs from localStorage and POSTs them here so the new user owns
-  // the resulting sessions.
+  // random UUID for buyer_id + a PoP capability). After sign-up, the web app
+  // collects those {guest_buyer_id, pop} pairs from localStorage and POSTs
+  // them here so the new user owns the resulting sessions.
   app.post("/claim/negotiation-sessions", { preHandler: [requireAuth] }, async (request, reply) => {
     const userId = request.user!.id;
     const parsed = claimSessionsSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "INVALID_BODY", issues: parsed.error.issues });
     }
-    const guestIds = parsed.data.guest_buyer_ids.filter((id) => id !== userId);
-    if (guestIds.length === 0) {
+
+    const claims = parsed.data.guest_buyer_claims.filter((c) => c.guest_buyer_id !== userId);
+    if (claims.length === 0) {
       return reply.send({ ok: true, claimed_count: 0 });
+    }
+
+    const verifiedIds: string[] = [];
+    for (const claim of claims) {
+      if (!verifyGuestBuyerClaimPop(claim.guest_buyer_id, claim.pop)) {
+        return reply.code(403).send({
+          error: "POP_REQUIRED",
+          message: "guest_buyer_id claim requires a valid proof-of-possession",
+          guest_buyer_id: claim.guest_buyer_id,
+        });
+      }
+      verifiedIds.push(claim.guest_buyer_id);
     }
 
     // Claim every accepted downstream record in the same statement. An
@@ -63,7 +81,7 @@ export function registerClaimRoutes(app: FastifyInstance, db: Database) {
     // claimable because transferring a funded payment requires a separate,
     // audited ownership-transfer flow.
     const placeholders = sql.join(
-      guestIds.map((id) => sql`${id}::uuid`),
+      verifiedIds.map((id) => sql`${id}::uuid`),
       sql`, `,
     );
     const result = await db.execute(sql`
@@ -122,6 +140,12 @@ export function registerClaimRoutes(app: FastifyInstance, db: Database) {
   });
 }
 
+const guestBuyerClaimSchema = z.object({
+  guest_buyer_id: z.string().uuid(),
+  /** Proof-of-possession minted at guest start (`guest_claim_pop`). */
+  pop: z.string().min(32).max(128),
+});
+
 const claimSessionsSchema = z.object({
-  guest_buyer_ids: z.array(z.string().uuid()).min(1).max(64),
+  guest_buyer_claims: z.array(guestBuyerClaimSchema).min(1).max(64),
 });

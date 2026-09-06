@@ -896,6 +896,7 @@ export function registerNegotiationRoutes(
       status: started.body.status,
       run_token: started.body.run_token,
       ...(started.body.guest_buyer_id ? { guest_buyer_id: started.body.guest_buyer_id } : {}),
+      ...(started.body.guest_claim_pop ? { guest_claim_pop: started.body.guest_claim_pop } : {}),
       ...(started.body.attempt_control ? { attempt_control: started.body.attempt_control } : {}),
     });
   });
