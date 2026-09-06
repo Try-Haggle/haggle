@@ -4,7 +4,7 @@ import type { HnpMoney } from "./core.js";
 /**
  * Phase 4 digital dispute evidence kinds
  * (`docs/wip/digital-fulfillment-settlement-design.md` section Dispute Evidence Expansion).
- * Scaffold only — validators / reason-code wiring land in later slices.
+ * Category allowlist (B9) + content validators (C1). Digital reason-code wiring remains later.
  */
 export const HNP_DIGITAL_DISPUTE_EVIDENCE_KINDS = [
   "digital_access",
@@ -337,4 +337,276 @@ function canonicalize(value: unknown): unknown {
       acc[key] = canonicalize(record[key]);
       return acc;
     }, {});
+}
+
+// ---------------------------------------------------------------------------
+// Digital evidence content validation (C1)
+// ---------------------------------------------------------------------------
+
+const SHA256_DIGEST_RE = /^sha256:[a-f0-9]{64}$/;
+const ETH_ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
+const ETH_TX_HASH_RE = /^0x[a-fA-F0-9]{64}$/;
+/** Access grant URI: http(s), ipfs, or haggle scheme with non-space body. */
+const ACCESS_URI_RE = /^(https?:\/\/|ipfs:\/\/|haggle:\/\/)\S+$/i;
+const PLATFORM_SLUG_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/i;
+const LICENSE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const RECEIPT_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+const CHAIN_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+export type HnpDigitalAccessContent = {
+  access_uri: string;
+};
+
+export type HnpDigitalFileHashContent = {
+  file_hash: string;
+};
+
+export type HnpLicenseTermsContent = {
+  license_id: string;
+  terms_hash?: string;
+};
+
+export type HnpPlatformTransferContent = {
+  platform: string;
+  receipt_id: string;
+};
+
+export type HnpOnchainTransferContent = {
+  address: string;
+  tx_hash?: string;
+  chain?: string;
+};
+
+export type HnpDigitalDisputeEvidenceContent =
+  | HnpDigitalAccessContent
+  | HnpDigitalFileHashContent
+  | HnpLicenseTermsContent
+  | HnpPlatformTransferContent
+  | HnpOnchainTransferContent;
+
+export type HnpDigitalDisputeEvidenceContentIssueCode =
+  | "UNSUPPORTED_EVIDENCE_KIND"
+  | "MISSING_CONTENT"
+  | "INVALID_ACCESS_URI"
+  | "INVALID_FILE_HASH"
+  | "INVALID_LICENSE_ID"
+  | "INVALID_TERMS_HASH"
+  | "INVALID_PLATFORM"
+  | "INVALID_RECEIPT_ID"
+  | "INVALID_ONCHAIN_ADDRESS"
+  | "INVALID_TX_HASH"
+  | "INVALID_CHAIN";
+
+export interface HnpDigitalDisputeEvidenceContentIssue {
+  code: HnpDigitalDisputeEvidenceContentIssueCode;
+  field: string;
+  message: string;
+}
+
+export type HnpDigitalDisputeEvidenceContentValidationResult =
+  | { ok: true; kind: HnpDigitalDisputeEvidenceKind; content: HnpDigitalDisputeEvidenceContent }
+  | { ok: false; issues: HnpDigitalDisputeEvidenceContentIssue[] };
+
+function contentIssue(
+  code: HnpDigitalDisputeEvidenceContentIssueCode,
+  field: string,
+  message: string,
+): HnpDigitalDisputeEvidenceContentIssue {
+  return { code, field, message };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function readOptionalString(record: Record<string, unknown>, key: string): string | undefined {
+  if (!(key in record) || record[key] === undefined || record[key] === null) return undefined;
+  return typeof record[key] === "string" ? (record[key] as string).trim() : "";
+}
+
+function readRequiredString(
+  record: Record<string, unknown>,
+  key: string,
+): { ok: true; value: string } | { ok: false; value: string } {
+  const raw = record[key];
+  if (typeof raw !== "string") return { ok: false, value: "" };
+  const value = raw.trim();
+  if (!value) return { ok: false, value: "" };
+  return { ok: true, value };
+}
+
+/**
+ * Format validators for Phase 4 digital dispute evidence content.
+ * Rejects non-digital kinds (including `card_pan`) — category allowlist is separate.
+ */
+export function validateDigitalDisputeEvidenceContent(input: {
+  kind: string;
+  content: unknown;
+}): HnpDigitalDisputeEvidenceContentValidationResult {
+  const kind = typeof input.kind === "string" ? input.kind.trim() : "";
+  if (!isHnpDigitalDisputeEvidenceKind(kind)) {
+    return {
+      ok: false,
+      issues: [
+        contentIssue(
+          "UNSUPPORTED_EVIDENCE_KIND",
+          "kind",
+          `Digital content validation only accepts: ${HNP_DIGITAL_DISPUTE_EVIDENCE_KINDS.join(", ")}`,
+        ),
+      ],
+    };
+  }
+
+  const record = asRecord(input.content);
+  if (!record) {
+    return {
+      ok: false,
+      issues: [
+        contentIssue("MISSING_CONTENT", "content", "Digital evidence content object is required."),
+      ],
+    };
+  }
+
+  switch (kind) {
+    case "digital_access": {
+      const accessUri = readRequiredString(record, "access_uri");
+      if (!accessUri.ok || !ACCESS_URI_RE.test(accessUri.value)) {
+        return {
+          ok: false,
+          issues: [
+            contentIssue(
+              "INVALID_ACCESS_URI",
+              "content.access_uri",
+              "digital_access requires access_uri with https://, http://, ipfs://, or haggle:// scheme.",
+            ),
+          ],
+        };
+      }
+      return { ok: true, kind, content: { access_uri: accessUri.value } };
+    }
+    case "digital_file_hash": {
+      const fileHash = readRequiredString(record, "file_hash");
+      if (!fileHash.ok || !SHA256_DIGEST_RE.test(fileHash.value)) {
+        return {
+          ok: false,
+          issues: [
+            contentIssue(
+              "INVALID_FILE_HASH",
+              "content.file_hash",
+              "digital_file_hash requires file_hash as sha256:<64 lowercase hex>.",
+            ),
+          ],
+        };
+      }
+      return { ok: true, kind, content: { file_hash: fileHash.value } };
+    }
+    case "license_terms": {
+      const issues: HnpDigitalDisputeEvidenceContentIssue[] = [];
+      const licenseId = readRequiredString(record, "license_id");
+      if (!licenseId.ok || !LICENSE_ID_RE.test(licenseId.value)) {
+        issues.push(
+          contentIssue(
+            "INVALID_LICENSE_ID",
+            "content.license_id",
+            "license_terms requires a non-empty license_id (alphanumeric, . _ : -).",
+          ),
+        );
+      }
+      const termsHash = readOptionalString(record, "terms_hash");
+      if (termsHash !== undefined && !SHA256_DIGEST_RE.test(termsHash)) {
+        issues.push(
+          contentIssue(
+            "INVALID_TERMS_HASH",
+            "content.terms_hash",
+            "license_terms.terms_hash must be sha256:<64 lowercase hex> when provided.",
+          ),
+        );
+      }
+      if (issues.length > 0) return { ok: false, issues };
+      const content: HnpLicenseTermsContent = { license_id: licenseId.value };
+      if (termsHash) content.terms_hash = termsHash;
+      return { ok: true, kind, content };
+    }
+    case "platform_transfer": {
+      const issues: HnpDigitalDisputeEvidenceContentIssue[] = [];
+      const platform = readRequiredString(record, "platform");
+      if (!platform.ok || !PLATFORM_SLUG_RE.test(platform.value)) {
+        issues.push(
+          contentIssue(
+            "INVALID_PLATFORM",
+            "content.platform",
+            "platform_transfer requires platform slug (alphanumeric, . _ -).",
+          ),
+        );
+      }
+      const receiptId = readRequiredString(record, "receipt_id");
+      if (!receiptId.ok || !RECEIPT_ID_RE.test(receiptId.value)) {
+        issues.push(
+          contentIssue(
+            "INVALID_RECEIPT_ID",
+            "content.receipt_id",
+            "platform_transfer requires receipt_id (alphanumeric, . _ : -).",
+          ),
+        );
+      }
+      if (issues.length > 0) return { ok: false, issues };
+      return {
+        ok: true,
+        kind,
+        content: { platform: platform.value, receipt_id: receiptId.value },
+      };
+    }
+    case "onchain_transfer": {
+      const issues: HnpDigitalDisputeEvidenceContentIssue[] = [];
+      const address = readRequiredString(record, "address");
+      if (!address.ok || !ETH_ADDRESS_RE.test(address.value)) {
+        issues.push(
+          contentIssue(
+            "INVALID_ONCHAIN_ADDRESS",
+            "content.address",
+            "onchain_transfer requires address as 0x + 40 hex characters.",
+          ),
+        );
+      }
+      const txHash = readOptionalString(record, "tx_hash");
+      if (txHash !== undefined && !ETH_TX_HASH_RE.test(txHash)) {
+        issues.push(
+          contentIssue(
+            "INVALID_TX_HASH",
+            "content.tx_hash",
+            "onchain_transfer.tx_hash must be 0x + 64 hex characters when provided.",
+          ),
+        );
+      }
+      const chain = readOptionalString(record, "chain");
+      if (chain !== undefined && !CHAIN_ID_RE.test(chain)) {
+        issues.push(
+          contentIssue(
+            "INVALID_CHAIN",
+            "content.chain",
+            "onchain_transfer.chain must be a non-empty chain id slug when provided.",
+          ),
+        );
+      }
+      if (issues.length > 0) return { ok: false, issues };
+      const content: HnpOnchainTransferContent = { address: address.value };
+      if (txHash) content.tx_hash = txHash;
+      if (chain) content.chain = chain;
+      return { ok: true, kind, content };
+    }
+    default: {
+      const _exhaustive: never = kind;
+      return {
+        ok: false,
+        issues: [
+          contentIssue(
+            "UNSUPPORTED_EVIDENCE_KIND",
+            "kind",
+            `Unhandled digital kind: ${String(_exhaustive)}`,
+          ),
+        ],
+      };
+    }
+  }
 }

@@ -13,10 +13,13 @@
 import {
   HNP_DIGITAL_DISPUTE_EVIDENCE_KINDS,
   HNP_DISPUTE_EVIDENCE_KINDS,
+  type HnpDigitalDisputeEvidenceContent,
+  type HnpDigitalDisputeEvidenceContentIssue,
   type HnpDigitalDisputeEvidenceKind,
   type HnpDisputeEvidenceKind,
   isHnpDigitalDisputeEvidenceKind,
   isHnpDisputeEvidenceKind,
+  validateDigitalDisputeEvidenceContent,
 } from "@haggle/engine-session";
 
 /** Supabase Storage bucket that holds dispute evidence files. Private. */
@@ -390,5 +393,116 @@ export function evaluateDisputeEvidenceCategoryGate(input: {
     ok: true,
     category,
     isDigital: isDigitalDisputeEvidenceCategory(category),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Digital evidence content gate + upload route wiring scaffold (C1)
+// ---------------------------------------------------------------------------
+
+export type DigitalDisputeEvidenceContentGateFailure = {
+  ok: false;
+  error: "INVALID_DIGITAL_EVIDENCE_CONTENT" | "UNSUPPORTED_EVIDENCE_KIND";
+  message: string;
+  issues: HnpDigitalDisputeEvidenceContentIssue[];
+};
+
+export type DigitalDisputeEvidenceContentGateSuccess = {
+  ok: true;
+  kind: HnpDigitalDisputeEvidenceKind;
+  content: HnpDigitalDisputeEvidenceContent;
+};
+
+/**
+ * Content-format gate for the five Phase 4 digital dispute evidence kinds.
+ * `card_pan` and other non-digital kinds fail as UNSUPPORTED_EVIDENCE_KIND.
+ */
+export function evaluateDigitalDisputeEvidenceContentGate(input: {
+  kind: string;
+  content: unknown;
+}): DigitalDisputeEvidenceContentGateSuccess | DigitalDisputeEvidenceContentGateFailure {
+  const result = validateDigitalDisputeEvidenceContent(input);
+  if (!result.ok) {
+    const primary = result.issues[0];
+    const error =
+      primary?.code === "UNSUPPORTED_EVIDENCE_KIND"
+        ? "UNSUPPORTED_EVIDENCE_KIND"
+        : "INVALID_DIGITAL_EVIDENCE_CONTENT";
+    return {
+      ok: false,
+      error,
+      message: primary?.message ?? "Invalid digital evidence content",
+      issues: result.issues,
+    };
+  }
+  return { ok: true, kind: result.kind, content: result.content };
+}
+
+export type ControlledEvidenceUploadScaffoldFailure =
+  | DisputeEvidenceCategoryGateFailure
+  | DigitalDisputeEvidenceContentGateFailure
+  | ControlledEvidenceUploadGateFailure;
+
+export type ControlledEvidenceUploadScaffoldSuccess = {
+  ok: true;
+  evidenceType: "image" | "video";
+  limits: EvidenceRemainingLimits;
+  category?: AllowedDisputeEvidenceCategory;
+  isDigital: boolean;
+  digitalContent?: HnpDigitalDisputeEvidenceContent;
+};
+
+/**
+ * HTTP upload-path wiring scaffold: optional category allowlist + digital content
+ * validation, then unchanged B4 Controlled Evidence mime/size/count gates.
+ * Does not weaken path helpers — callers still sanitize filenames / storage paths.
+ */
+export function evaluateControlledEvidenceUploadScaffold(input: {
+  category?: string | null;
+  content?: unknown;
+  contentType: string;
+  fileSizeBytes: number;
+  imageCount: number;
+  videoCount: number;
+  orderAmountCents: number;
+}): ControlledEvidenceUploadScaffoldSuccess | ControlledEvidenceUploadScaffoldFailure {
+  let category: AllowedDisputeEvidenceCategory | undefined;
+  let isDigital = false;
+  let digitalContent: HnpDigitalDisputeEvidenceContent | undefined;
+
+  const rawCategory = typeof input.category === "string" ? input.category.trim() : "";
+  if (rawCategory) {
+    const categoryGate = evaluateDisputeEvidenceCategoryGate({ category: rawCategory });
+    if (!categoryGate.ok) return categoryGate;
+
+    category = categoryGate.category;
+    isDigital = categoryGate.isDigital;
+
+    if (isDigital) {
+      const contentGate = evaluateDigitalDisputeEvidenceContentGate({
+        kind: category,
+        content: input.content,
+      });
+      if (!contentGate.ok) return contentGate;
+      digitalContent = contentGate.content;
+    }
+  }
+
+  const mediaGate = evaluateControlledEvidenceUploadGates({
+    contentType: input.contentType,
+    fileSizeBytes: input.fileSizeBytes,
+    imageCount: input.imageCount,
+    videoCount: input.videoCount,
+    orderAmountCents: input.orderAmountCents,
+  });
+  if (!mediaGate.ok) return mediaGate;
+
+  return {
+    ok: true,
+    evidenceType: mediaGate.evidenceType,
+    limits: mediaGate.limits,
+    category,
+    isDigital,
+    digitalContent,
   };
 }
