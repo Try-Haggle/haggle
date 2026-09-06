@@ -2755,7 +2755,9 @@ describe("Payment routes", () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
     mockGetPaymentIntentById.mockClear();
-    mockGetPaymentIntentById.mockResolvedValue({
+    // Use Once + restore: a lingering QUOTED intent would make later x402 webhook
+    // tests hit settlement_confirmed_before_authorization (409) instead of unknown_intent.
+    mockGetPaymentIntentById.mockResolvedValueOnce({
       id: "pi_onramp_live_gate",
       order_id: "order_123",
       seller_id: "seller_123",
@@ -2784,6 +2786,9 @@ describe("Payment routes", () => {
       expect(fetchSpy).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
+      // Restore default null so later x402 webhook tests still see unknown intents.
+      mockGetPaymentIntentById.mockReset();
+      mockGetPaymentIntentById.mockResolvedValue(null);
       if (previousSecret === undefined) delete process.env.STRIPE_SECRET_KEY;
       else process.env.STRIPE_SECRET_KEY = previousSecret;
       if (previousPublishable === undefined) delete process.env.STRIPE_PUBLISHABLE_KEY;
