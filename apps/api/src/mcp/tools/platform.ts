@@ -67,10 +67,15 @@ import {
   startBuyerNegotiation,
 } from "../../services/start-buyer-negotiation.service.js";
 import { lockTestContractForDisputeOpen } from "../../services/test-contract-ledger.service.js";
+import {
+  haggleGetNegotiationInputShape,
+  normalizeGetNegotiationExpand,
+} from "./mcp-get-negotiation-schema.js";
 import { haggleGetListingInputShape, haggleGetListingOutputShape } from "./mcp-listing-schema.js";
 import { hagglePlayNextInputShape } from "./mcp-play-next-schema.js";
 import { haggleStartNegotiationInputShape } from "./mcp-start-schema.js";
 import {
+  buildMcpGetNegotiationExpandView,
   mcpNegotiationTranscript,
   mcpStartNextActions,
   negotiationSayToUser,
@@ -600,9 +605,9 @@ export function registerPlatformTools(
 
   server.tool(
     "haggle_get_negotiation",
-    "Read the live negotiation. Immediately quote say_to_user to the human — that is the counterpart's line. If pause_questions are present, ask those next; do not treat them as the seller's bargain line. Do not stop silently.",
-    { session_id: z.string().uuid() },
-    async ({ session_id }) => {
+    'Read the live negotiation. Immediately quote say_to_user to the human — that is the counterpart\'s line. If pause_questions are present, ask those next; do not treat them as the seller\'s bargain line. Do not stop silently. Default response is folded (recent_messages only). Pass expand=["transcript"] and/or expand=["offers"] when you need the full chat or price history.',
+    haggleGetNegotiationInputShape,
+    async ({ session_id, expand }) => {
       const scoped = requireScopedActor("negotiate");
       if (!scoped.ok) return scoped.error;
       const actor = scoped.actor;
@@ -620,7 +625,8 @@ export function registerPlatformTools(
         isSellerCriteriaPauseReasoning(latestMeta?.reasoning) && !latestMeta?.buyer_pause_answers
           ? unresolvedBuyerPauseAsks(pauseSnapshot)
           : [];
-      const transcript = mcpNegotiationTranscript(
+      const expandFields = normalizeGetNegotiationExpand(expand);
+      const foldView = buildMcpGetNegotiationExpandView(
         rounds.map((round) => {
           const meta = (round.metadata as Record<string, unknown> | null) ?? null;
           const pauseQuestions = Array.isArray(meta?.pause_questions)
@@ -638,8 +644,9 @@ export function registerPlatformTools(
           };
         }),
         session.currentRound,
+        expandFields,
       );
-      const recent = transcript.recent_messages;
+      const recent = foldView.recent_messages;
       const lastMsg = recent.at(-1);
       const driver = session.driver === "mcp" ? "mcp" : "web";
       const nextActions: string[] = [];
@@ -675,13 +682,15 @@ export function registerPlatformTools(
       return mcpJson({
         session_id: session.id,
         status: session.status,
-        current_round: transcript.current_round,
+        current_round: foldView.current_round,
         driver,
         chat_url: negotiationChatUrl(session.id),
         speaker: latestSpeaker,
         spoken_price_minor: latestSpokenPrice,
         last_offer_price_minor: session.lastOfferPriceMinor,
         recent_messages: recent,
+        ...(foldView.transcript ? { transcript: foldView.transcript } : {}),
+        ...(foldView.offers ? { offers: foldView.offers } : {}),
         pause_questions: pauseAsks.map((c) => c.ask),
         pause_check_ids: pauseAsks.map((c) => c.checkId),
         next_actions: nextActions,
