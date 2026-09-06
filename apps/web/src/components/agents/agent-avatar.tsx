@@ -14,10 +14,14 @@ interface AgentAvatarProps {
 /**
  * The one way an agent's face is drawn.
  *
- * Callers keep their own chip — the coloured circle, its size, its font-size —
- * and drop this in where the bare `{emoji}` used to be. Both branches size
+ * Callers keep their own chip — its size, its background, its font-size — and
+ * drop this in where the bare `{emoji}` used to be. Both branches size
  * themselves in `em`, so the animal scales with the chip's font-size exactly
  * as the glyph did, and no call site needs to know which kind it got.
+ *
+ * **That chip is always `rounded-full`.** A face in a circle reads as *who*; a
+ * face in a rounded square reads as an app icon. The size-12 chips drifted to
+ * `rounded-2xl` once, and the panels stopped matching the rosters beside them.
  */
 export function AgentAvatar({ value, fallback, className }: AgentAvatarProps) {
   const avatar = resolveAgentAvatar(value, fallback);

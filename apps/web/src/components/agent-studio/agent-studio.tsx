@@ -463,7 +463,7 @@ function EmptyCanvas({
             type="button"
             onClick={() => onSelect({ kind: "preset", id: preset.id })}
             title={preset.copy[role].name}
-            className="flex size-12 items-center justify-center rounded-2xl border border-line text-[20px] transition-all hover:scale-105 hover:border-line-strong"
+            className="flex size-12 items-center justify-center rounded-full border border-line text-[20px] transition-all hover:scale-105 hover:border-line-strong"
             style={{
               backgroundColor: `color-mix(in srgb, ${preset.accentColor} 8%, transparent)`,
             }}

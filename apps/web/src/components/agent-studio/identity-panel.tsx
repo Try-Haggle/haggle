@@ -45,7 +45,7 @@ import { WeightTuner } from "./weight-tuner";
  * panel owns no state of its own except what the parent hands it.
  */
 
-const chipClass = "flex size-12 items-center justify-center rounded-2xl text-[22px]";
+const chipClass = "flex size-12 items-center justify-center rounded-full text-[22px]";
 const chipStyle = (accent: string) => ({
   backgroundColor: `color-mix(in srgb, ${accent} 14%, transparent)`,
   border: `1px solid color-mix(in srgb, ${accent} 32%, transparent)`,
