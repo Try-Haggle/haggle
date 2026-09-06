@@ -6,6 +6,10 @@ import { INPUT_LIMITS } from "../lib/input-limits.js";
 import { createOwnershipMiddleware } from "../middleware/ownership.js";
 import { requireAuth } from "../middleware/require-auth.js";
 import {
+  confirmBuyerAccess,
+  FulfillmentConfirmError,
+} from "../services/fulfillment-confirm.service.js";
+import {
   FulfillmentProofError,
   submitSellerFulfillmentProof,
 } from "../services/fulfillment-proof.service.js";
@@ -44,6 +48,11 @@ const submitFulfillmentProofSchema = z
       });
     }
   });
+
+const confirmFulfillmentAccessSchema = z.object({
+  confirmation: z.literal("access_received"),
+  proof_id: z.string().uuid().optional(),
+});
 
 // ---------------------------------------------------------------------------
 // Routes
@@ -319,6 +328,89 @@ export function registerOrderRoutes(app: FastifyInstance, db: Database) {
             error.code === "FULFILLMENT_NOT_FOUND"
               ? 404
               : error.code === "INVALID_FULFILLMENT_STATUS"
+                ? 409
+                : 400;
+          return reply.code(status).send({ error: error.code, message: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  /**
+   * POST /orders/:orderId/fulfillment/confirm
+   *
+   * Buyer confirms digital access received (A6).
+   * Sets fulfilled_at / FULFILLED and starts buyer review via confirmFulfillment.
+   * HARD GUARD: does NOT auto-release or set RELEASED / move money.
+   *
+   * Auth: buyer only (order.buyerId === user.id)
+   */
+  app.post<{ Params: { orderId: string } }>(
+    "/orders/:orderId/fulfillment/confirm",
+    { preHandler: [requireAuth, requireOrderOwner({ role: "buyer" })] },
+    async (request, reply) => {
+      const { orderId } = request.params;
+
+      const parsed = confirmFulfillmentAccessSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({
+          error: "INVALID_REQUEST",
+          issues: parsed.error.issues,
+        });
+      }
+
+      const releaseBefore = await getSettlementReleaseByOrderId(db, orderId);
+
+      try {
+        const result = await confirmBuyerAccess(db, {
+          order_id: orderId,
+          confirmation: parsed.data.confirmation,
+          proof_id: parsed.data.proof_id,
+        });
+
+        const releaseAfter = result.settlement_release;
+        const amountBefore = releaseBefore?.product_amount.amount_minor ?? null;
+        const amountAfter = releaseAfter?.product_amount.amount_minor ?? null;
+        const releasedAtBefore = releaseBefore?.product_released_at ?? null;
+        const releasedAtAfter = releaseAfter?.product_released_at ?? null;
+
+        return reply.send({
+          fulfillment: {
+            id: result.fulfillment.id,
+            order_id: result.fulfillment.order_id,
+            status: result.fulfillment.status,
+            proof_status: result.fulfillment.proof_status,
+            fulfilled_at: result.fulfillment.fulfilled_at ?? null,
+            review_window_hours: result.fulfillment.review_window_hours,
+          },
+          settlement_release: releaseAfter
+            ? {
+                id: releaseAfter.id,
+                product_release_status: releaseAfter.product_release_status,
+                product_released_at: releaseAfter.product_released_at ?? null,
+                delivery_confirmed_at: releaseAfter.delivery_confirmed_at ?? null,
+                buyer_review_deadline: releaseAfter.buyer_review_deadline ?? null,
+                phase: computeReleasePhase(releaseAfter),
+              }
+            : null,
+          buyer_review_started: result.buyer_review_started,
+          already_confirmed: result.already_confirmed,
+          auto_released: false,
+          // Money-move guard: product must not become RELEASED; amounts / released_at unchanged.
+          release_not_auto_released:
+            (releaseAfter?.product_release_status ?? null) !== "RELEASED" &&
+            releasedAtBefore === releasedAtAfter &&
+            amountBefore === amountAfter,
+        });
+      } catch (error) {
+        if (error instanceof FulfillmentConfirmError) {
+          const status =
+            error.code === "FULFILLMENT_NOT_FOUND" || error.code === "PROOF_NOT_FOUND"
+              ? 404
+              : error.code === "INVALID_FULFILLMENT_STATUS" ||
+                  error.code === "ORDER_IN_DISPUTE" ||
+                  error.code === "INVALID_RELEASE_STATUS"
                 ? 409
                 : 400;
           return reply.code(status).send({ error: error.code, message: error.message });
