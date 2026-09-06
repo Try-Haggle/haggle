@@ -95,18 +95,21 @@ export function missingRequiredBuyerCriteria(
 }
 
 /**
- * Start/play wizard-gate: every seller required criterion must have a non-empty
- * buyer stance keyed by checkId. Partial answers still reject. Do not treat
- * listing_context.seller_facts as answers. Returns unresolved asks when start /
- * play_next must reject — not a mid-session pause.
+ * Play wizard-gate (play_next / auto-play): seller required criteria exist and the
+ * buyer has not answered any of them. Once the buyer has at least one stance,
+ * remaining unresolved required keys are a mid-session HOLD pause — not a 409.
+ * Start completeness (every required key) is enforced separately via
+ * missingRequiredBuyerCriteria in startBuyerNegotiation. Do not treat
+ * listing_context.seller_facts as answers.
  */
 export function buyerCriteriaStartGate(snapshot: Record<string, unknown>): BuyerPauseAsk[] {
-  const { sellerRequired } = readSellerCriteriaFromSnapshot(snapshot);
+  const { sellerRequired, buyerCriteria } = readSellerCriteriaFromSnapshot(snapshot);
   if (sellerRequired.length === 0) return [];
+  if (buyerHasAnsweredCriteria(buyerCriteria)) return [];
   return unresolvedBuyerPauseAsks(snapshot);
 }
 
-/** Reject play_next / auto-play when any seller required criterion lacks a non-empty buyer stance. */
+/** Reject play_next / auto-play when the start wizard never answered seller required criteria. */
 export function buyerCriteriaRequiredReject(snapshot: Record<string, unknown>): {
   error: typeof BUYER_CRITERIA_REQUIRED;
   message: string;

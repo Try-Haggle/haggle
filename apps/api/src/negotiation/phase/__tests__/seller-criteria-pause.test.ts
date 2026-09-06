@@ -303,7 +303,7 @@ describe("buyerCriteriaStartGate", () => {
     ).toEqual([]);
   });
 
-  it("rejects when only a subset of required criteria are answered (fake keys ignored)", () => {
+  it("allows play with partial answers; remaining keys are mid-session HOLD not 409", () => {
     const findMy = {
       checkId: "find_my_status",
       questionKo: "Find My가 꺼져 있나요?",
@@ -320,9 +320,22 @@ describe("buyerCriteriaStartGate", () => {
         ],
       },
     };
-    expect(buyerCriteriaStartGate(snapshot).map((a) => a.checkId)).toEqual(["find_my_status"]);
-    expect(buyerCriteriaRequiredReject(snapshot)?.error).toBe("BUYER_CRITERIA_REQUIRED");
-    expect(buyerCriteriaRequiredReject(snapshot)?.required_check_ids).toEqual(["find_my_status"]);
+    // Play gate: any answered stance clears BUYER_CRITERIA_REQUIRED for play_next.
+    expect(buyerCriteriaStartGate(snapshot)).toEqual([]);
+    expect(buyerCriteriaRequiredReject(snapshot)).toBeNull();
+    // Start completeness (A7) still flags uncovered required keys.
+    expect(
+      missingRequiredBuyerCriteria(
+        [
+          { checkId: "imei_verification", ask: "Should the agent require a clean IMEI?" },
+          { checkId: "find_my_status", ask: "Must Find My be turned off?" },
+        ],
+        [
+          { ...sellerRequired, stance: "clean IMEI required" },
+          { checkId: "fake_check_id", stance: "noise" },
+        ],
+      ).map((c) => c.checkId),
+    ).toEqual(["find_my_status"]);
   });
 });
 
