@@ -214,22 +214,61 @@ export function parseListingParcel(raw: unknown): ListingParcel | undefined {
   return parsed.success ? parsed.data : undefined;
 }
 
+export interface ShippingQuoteSnapshot {
+  rate_minor: number;
+  carrier: string;
+  service: string;
+  source: string;
+  carrier_priority: CarrierPriority;
+  quoted_at: string;
+  money_charged: false;
+  label_purchased: false;
+  est_delivery_days?: number | null;
+}
+
 export function snapshotFulfillmentFields(
   preference?: FulfillmentPreference,
+  shippingQuote?: ShippingQuoteSnapshot,
 ): Record<string, unknown> {
   if (!preference) return {};
+  const context = toFulfillmentContext(preference, shippingQuote);
   return {
-    fulfillment_context: toFulfillmentContext(preference),
+    fulfillment_context: context,
     ...(preference.buyer_address ? { buyer_shipping_address: preference.buyer_address } : {}),
+    ...(shippingQuote
+      ? {
+          shipping_quote: {
+            rate_minor: shippingQuote.rate_minor,
+            carrier: shippingQuote.carrier,
+            service: shippingQuote.service,
+            source: shippingQuote.source,
+            carrier_priority: shippingQuote.carrier_priority,
+            quoted_at: shippingQuote.quoted_at,
+            money_charged: false as const,
+            label_purchased: false as const,
+            ...(shippingQuote.est_delivery_days !== undefined
+              ? { est_delivery_days: shippingQuote.est_delivery_days }
+              : {}),
+          },
+        }
+      : {}),
   };
 }
 
-export function toFulfillmentContext(preference: FulfillmentPreference): FulfillmentContext {
+export function toFulfillmentContext(
+  preference: FulfillmentPreference,
+  shippingQuote?: Pick<ShippingQuoteSnapshot, "rate_minor" | "carrier" | "service" | "source">,
+): FulfillmentContext {
   const methods = preference.methods;
   const method = preference.preferred ?? methods[0] ?? "carrier";
   const address = preference.buyer_address;
   const includesCarrier = methods.includes("carrier");
   const carrierPriority = includesCarrier ? (preference.carrier_priority ?? "balanced") : undefined;
+  const quoteKnown =
+    includesCarrier &&
+    shippingQuote !== undefined &&
+    Number.isFinite(shippingQuote.rate_minor) &&
+    shippingQuote.rate_minor >= 0;
 
   return {
     method,
@@ -237,8 +276,12 @@ export function toFulfillmentContext(preference: FulfillmentPreference): Fulfill
     fulfillment_type: fulfillmentTypeForMethod(method),
     negotiable: true,
     shipping_included_in_total: true,
-    shipping_cost_known: !includesCarrier,
-    ...(includesCarrier ? {} : { shipping_cost_minor: 0 }),
+    shipping_cost_known: quoteKnown || !includesCarrier,
+    ...(quoteKnown
+      ? { shipping_cost_minor: shippingQuote!.rate_minor }
+      : includesCarrier
+        ? {}
+        : { shipping_cost_minor: 0 }),
     ...(address
       ? {
           destination: {
@@ -262,7 +305,9 @@ export function toFulfillmentContext(preference: FulfillmentPreference): Fulfill
     ...(carrierPriority ? { carrier_priority: carrierPriority } : {}),
     ...(preference.parcel ? { parcel: preference.parcel } : {}),
     rate_note: includesCarrier
-      ? `Negotiate inside the buyer's selected methods. Buyer carrier priority: ${carrierPriority}. Carrier rate is confirmed when the seller prepares the parcel. Inaccurate parcel size or weight is the seller's responsibility. Include shipping in the all-in total.`
+      ? quoteKnown
+        ? `Negotiate inside the buyer's selected methods. Buyer carrier priority: ${carrierPriority}. Confirmed shipping quote ${shippingQuote!.rate_minor} minor (${shippingQuote!.carrier} ${shippingQuote!.service}, source=${shippingQuote!.source}) is the basis for negotiation/checkout. Include shipping in the all-in total.`
+        : `Negotiate inside the buyer's selected methods. Buyer carrier priority: ${carrierPriority}. Carrier rate is confirmed when the seller prepares the parcel. Inaccurate parcel size or weight is the seller's responsibility. Include shipping in the all-in total.`
       : "Negotiate inside the buyer's selected no-carrier methods. The payable amount is the agreed item total unless both sides add shipping.",
   };
 }
@@ -347,14 +392,26 @@ export function extractFulfillmentContext(
       ? src.carrier_priority
       : undefined;
 
+  const storedCostKnown =
+    typeof src.shipping_cost_known === "boolean" ? src.shipping_cost_known : null;
+  const storedCostMinor =
+    typeof src.shipping_cost_minor === "number" && Number.isFinite(src.shipping_cost_minor)
+      ? src.shipping_cost_minor
+      : undefined;
+  const includesCarrier = methods.includes("carrier") || method === "carrier";
+  const shippingCostKnown = storedCostKnown ?? !includesCarrier;
   return {
     method,
     methods: methods.length > 0 ? methods : [method],
     fulfillment_type: fulfillmentTypeForMethod(method),
     negotiable: true,
     shipping_included_in_total: true,
-    shipping_cost_known: !methods.includes("carrier") && method !== "carrier",
-    ...(method === "carrier" || methods.includes("carrier") ? {} : { shipping_cost_minor: 0 }),
+    shipping_cost_known: shippingCostKnown,
+    ...(storedCostMinor !== undefined
+      ? { shipping_cost_minor: storedCostMinor }
+      : includesCarrier
+        ? {}
+        : { shipping_cost_minor: 0 }),
     ...(destination?.city && destination.state && destination.zip ? { destination } : {}),
     ...(constraints && Object.keys(constraints).length > 0 ? { constraints } : {}),
     ...(sellerOptions.length > 0 ? { seller_options: sellerOptions } : {}),

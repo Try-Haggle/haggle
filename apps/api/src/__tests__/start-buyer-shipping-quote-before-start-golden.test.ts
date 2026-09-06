@@ -1,3 +1,7 @@
+/**
+ * D2 goldens: physical carrier start requires successful test/mock shipping quote
+ * before createSession; digital / A4 no-shipment skips; quote amount is exposed.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getPublishedListingByRef = vi.fn();
@@ -7,6 +11,7 @@ const evaluateAttemptControl = vi.fn();
 const createSession = vi.fn();
 const compileNegotiationAgentSnapshot = vi.fn((..._args: unknown[]) => ({ compiled: true }));
 const quoteNegotiationCredits = vi.fn((..._args: unknown[]) => ({ quoted: true }));
+const quoteShippingBeforeStart = vi.fn();
 
 vi.mock("../services/draft.service.js", () => ({
   getPublishedListingByRef: (...args: unknown[]) => getPublishedListingByRef(...args),
@@ -28,13 +33,8 @@ vi.mock("../services/listing-claim.service.js", () => ({
 
 vi.mock("../services/attempt-control.service.js", () => ({
   defaultAttemptControlPolicy: () => ({ maxRoundsPerSession: 8 }),
-  isAttemptControlRateLimited: (error: string | undefined) =>
-    error === "ATTEMPT_LIMIT_EXCEEDED" ||
-    error === "ATTEMPT_WINDOW_EXCEEDED" ||
-    error === "MARKETPLACE_ATTEMPT_LIMIT_EXCEEDED" ||
-    error === "ATTEMPT_COOLDOWN",
+  isAttemptControlRateLimited: () => false,
   evaluateAttemptControl: (...args: unknown[]) => evaluateAttemptControl(...args),
-  // Pass-through: unit tests mock evaluate/create; gate just runs the callback.
   withBuyerListingStartGate: async (
     _db: unknown,
     _input: unknown,
@@ -67,25 +67,38 @@ vi.mock("@haggle/commerce-core", async (importOriginal) => {
   };
 });
 
-const { startBuyerNegotiation } = await import("../services/start-buyer-negotiation.service.js");
+vi.mock("../shipping/shipping-quote-before-start.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../shipping/shipping-quote-before-start.js")>();
+  return {
+    ...actual,
+    quoteShippingBeforeStart: (...args: unknown[]) => quoteShippingBeforeStart(...args),
+  };
+});
 
-const IMEI_REQUIRED = {
-  checkId: "imei_verification",
-  questionKo: "IMEI가 깨끗한지 확인 가능한가요?",
-  buyerAskKo: "Should the agent require a clean IMEI?",
-  enforcement: "hard" as const,
-  requirement: "required" as const,
-  stance: "clean IMEI, seller confirmed",
+const { startBuyerNegotiation } = await import("../services/start-buyer-negotiation.service.js");
+const { ShippingQuoteBeforeStartError, SHIPPING_QUOTE_INCOMPLETE } = await import(
+  "../shipping/shipping-quote-before-start.js"
+);
+
+const denver = {
+  name: "Alex Buyer",
+  street1: "1600 Blake St",
+  city: "Denver",
+  state: "CO",
+  zip: "80202",
+  country: "US",
 };
 
-function listingFixture() {
+function listingFixture(snapshot: Record<string, unknown> = {}) {
   getPublishedListingByRef.mockResolvedValue({
     id: "listing-1",
     publicId: "jc6r2T3d",
     sellerId: "seller-1",
-    // Web wizard reads extractSellerRequiredCriteria(listing.negotiationAgentSnapshot).
     negotiationAgentSnapshot: {
-      negotiationAgentBuilderMemory: { categoryCriteria: [IMEI_REQUIRED] },
+      negotiationAgentBuilderMemory: { categoryCriteria: [] },
+      parcel: { weight_oz: 16, length_in: 10, width_in: 8, height_in: 4 },
+      ...snapshot,
     },
   });
   loadListingStrategyContext.mockResolvedValue({
@@ -95,7 +108,6 @@ function listingFixture() {
     deadlineAtMs: Date.now() + 86_400_000,
     sellerNegotiationAgentPresetId: "balancer",
     listingContext: { category: "electronics", tags: ["iphone"] },
-    // Empty memory: a memory-only mock must not make this gate pass with a session.
     sellerNegotiationAgentBuilderMemory: {},
     sellerStrategy: {
       compiler: { selected_playbook: "default" },
@@ -119,123 +131,163 @@ function listingFixture() {
   createSession.mockResolvedValue({ id: "sess-new", status: "ACTIVE" });
 }
 
-describe("startBuyerNegotiation buyerCriteria gate", () => {
+describe("D2 startBuyerNegotiation shipping quote before start", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     listingFixture();
+    quoteShippingBeforeStart.mockResolvedValue({
+      source: "mock",
+      key_mode: "missing",
+      money_charged: false,
+      label_purchased: false,
+      rate_minor: 825,
+      carrier: "USPS",
+      service: "Priority",
+      est_delivery_days: 3,
+      carrier_priority: "balanced",
+      rates: [],
+      quoted_at: "2026-09-06T13:00:00.000Z",
+    });
   });
 
-  it("rejects MCP start from listing snapshot required checks when buyerCriteria is empty", async () => {
+  it("physical carrier success: quotes before create and exposes amount", async () => {
     const result = await startBuyerNegotiation({} as never, {
       body: {
         listing_public_id: "jc6r2T3d",
         negotiation_agent_preset_id: "balancer",
+        fulfillment: {
+          methods: ["carrier"],
+          preferred: "carrier",
+          buyer_address: denver,
+          carrier_priority: "balanced",
+        },
       },
       buyerId: "buyer-1",
       isGuest: false,
-      driver: "mcp",
+      driver: "web",
       allowGuest: false,
     });
-    expect(result).toMatchObject({
-      ok: false,
-      status: 409,
-      body: {
-        error: "BUYER_CRITERIA_REQUIRED",
-        required_check_ids: ["imei_verification"],
-        required_criteria: [
-          { checkId: "imei_verification", ask: "Should the agent require a clean IMEI?" },
-        ],
-      },
+
+    expect(quoteShippingBeforeStart).toHaveBeenCalledOnce();
+    expect(createSession).toHaveBeenCalledOnce();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.body.shipping_quote).toMatchObject({
+      rate_minor: 825,
+      carrier: "USPS",
+      service: "Priority",
+      source: "mock",
+      money_charged: false,
+      label_purchased: false,
     });
-    expect(result.status).not.toBe(202);
-    expect(result.body).not.toHaveProperty("session_id");
-    expect(createSession).not.toHaveBeenCalled();
+
+    const snapshot = createSession.mock.calls[0]?.[1]?.negotiationAgentSnapshot as Record<
+      string,
+      unknown
+    >;
+    const fulfillmentContext = snapshot?.fulfillment_context as Record<string, unknown>;
+    expect(fulfillmentContext).toMatchObject({
+      shipping_cost_known: true,
+      shipping_cost_minor: 825,
+    });
+    expect(snapshot?.shipping_quote).toMatchObject({
+      rate_minor: 825,
+      money_charged: false,
+      label_purchased: false,
+    });
   });
 
-  it("returns BUYER_CRITERIA_REQUIRED before ATTEMPT_LIMIT_EXCEEDED when remaining attempts are 0", async () => {
-    evaluateAttemptControl.mockResolvedValue({
-      allowed: false,
-      error: "ATTEMPT_LIMIT_EXCEEDED",
-      retryAfterSeconds: 86_400,
-      attemptControl: {
-        remaining_marketplace_attempts: 0,
-        marketplace_daily_attempts: 5,
-        max_rounds_per_session: 8,
-      },
-    });
+  it("physical carrier without address rejects via D1 before quote (address gate first)", async () => {
     const result = await startBuyerNegotiation({} as never, {
       body: {
-        listing_public_id: "joUdQ7Tw",
+        listing_public_id: "jc6r2T3d",
         negotiation_agent_preset_id: "balancer",
+        fulfillment: {
+          methods: ["carrier"],
+          preferred: "carrier",
+          carrier_priority: "balanced",
+        },
       },
       buyerId: "buyer-1",
       isGuest: false,
-      driver: "mcp",
+      driver: "web",
       allowGuest: false,
     });
+
     expect(result).toMatchObject({
       ok: false,
       status: 409,
       body: {
-        error: "BUYER_CRITERIA_REQUIRED",
-        required_check_ids: ["imei_verification"],
-        required_criteria: [
-          { checkId: "imei_verification", ask: "Should the agent require a clean IMEI?" },
-        ],
+        error: "DELIVERY_ADDRESS_REQUIRED",
       },
     });
     if (!result.ok) {
-      expect(result.body.error).not.toBe("ATTEMPT_LIMIT_EXCEEDED");
+      expect(result.body.error).toBe("DELIVERY_ADDRESS_REQUIRED");
+      expect(result.body.error).not.toBe("SHIPPING_QUOTE_ADDRESS_REQUIRED");
     }
-    expect(result.body).not.toHaveProperty("session_id");
-    expect(evaluateAttemptControl).not.toHaveBeenCalled();
-    expect(quoteNegotiationCredits).not.toHaveBeenCalled();
+    expect(quoteShippingBeforeStart).not.toHaveBeenCalled();
     expect(createSession).not.toHaveBeenCalled();
   });
 
-  it("creates a session when the listing snapshot has no required checks", async () => {
-    getPublishedListingByRef.mockResolvedValue({
-      id: "listing-1",
-      publicId: "jc6r2T3d",
-      sellerId: "seller-1",
-      negotiationAgentSnapshot: {
-        negotiationAgentBuilderMemory: { categoryCriteria: [] },
-      },
-    });
+  it("physical carrier incomplete quote rejects start", async () => {
+    quoteShippingBeforeStart.mockRejectedValue(
+      new ShippingQuoteBeforeStartError(
+        SHIPPING_QUOTE_INCOMPLETE,
+        "Shipping quote returned no rates",
+      ),
+    );
+
     const result = await startBuyerNegotiation({} as never, {
       body: {
         listing_public_id: "jc6r2T3d",
         negotiation_agent_preset_id: "balancer",
+        fulfillment: {
+          methods: ["carrier"],
+          preferred: "carrier",
+          buyer_address: denver,
+        },
       },
       buyerId: "buyer-1",
       isGuest: false,
-      driver: "mcp",
+      driver: "web",
       allowGuest: false,
     });
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.body.session_id).toBe("sess-new");
-    }
-    expect(createSession).toHaveBeenCalled();
+
+    expect(result).toMatchObject({
+      ok: false,
+      status: 409,
+      body: {
+        error: "SHIPPING_QUOTE_INCOMPLETE",
+        money_charged: false,
+        label_purchased: false,
+      },
+    });
+    expect(createSession).not.toHaveBeenCalled();
   });
 
-  it("creates a session when buyerCriteria answers the listing snapshot required checks", async () => {
+  it("digital A4 no-shipment path skips quote", async () => {
+    listingFixture({ fulfillment_type: "digital_delivery" });
+
     const result = await startBuyerNegotiation({} as never, {
       body: {
         listing_public_id: "jc6r2T3d",
         negotiation_agent_preset_id: "balancer",
-        buyerCriteria: [{ checkId: "imei_verification", stance: "clean IMEI required" }],
+        fulfillment: {
+          methods: ["carrier"],
+          preferred: "carrier",
+          buyer_address: denver,
+        },
       },
       buyerId: "buyer-1",
       isGuest: false,
-      driver: "mcp",
+      driver: "web",
       allowGuest: false,
     });
+
+    expect(quoteShippingBeforeStart).not.toHaveBeenCalled();
     expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.body).not.toHaveProperty("buyer_criteria_required");
-      expect(result.body.session_id).toBe("sess-new");
-    }
-    expect(createSession).toHaveBeenCalled();
+    if (!result.ok) return;
+    expect(result.body).not.toHaveProperty("shipping_quote");
+    expect(createSession).toHaveBeenCalledOnce();
   });
 });
