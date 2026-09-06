@@ -4,15 +4,14 @@
  * Post-signup landing for buyer guest sessions.
  *
  * The result page CTA redirects here after sign-up. We pick up the guest
- * buyer UUIDs that buyer-landing stashed in localStorage and POST them to
- * /claim/negotiation-sessions so the new user owns the sessions.
+ * buyer id + PoP pairs that buyer-landing stashed in localStorage and POST
+ * them to /claim/negotiation-sessions so the new user owns the sessions.
  */
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { ApiError, api } from "@/lib/api-client";
-
-const STORAGE_KEY = "haggle:guest-buyer-ids";
+import { clearGuestBuyerClaims, readGuestBuyerClaims } from "@/lib/guest-buyer-claim-storage";
 
 type State =
   | { kind: "idle" }
@@ -52,29 +51,19 @@ function ClaimBuyerInner() {
     const sessionId = search?.get("session_id") ?? null;
     const redirectTo = sessionId ? `/buy/negotiations/${sessionId}/checkout` : "/buy/dashboard";
 
-    let guestIds: string[] = [];
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      guestIds = raw ? (JSON.parse(raw) as string[]) : [];
-    } catch {
-      guestIds = [];
-    }
+    const claims = readGuestBuyerClaims();
 
-    if (guestIds.length === 0) {
+    if (claims.length === 0) {
       setState({ kind: "done", count: 0, redirect: redirectTo });
       return;
     }
 
     api
       .post<{ ok: boolean; claimed_count: number }>("/claim/negotiation-sessions", {
-        guest_buyer_ids: guestIds,
+        guest_buyer_claims: claims,
       })
       .then((res) => {
-        try {
-          window.localStorage.removeItem(STORAGE_KEY);
-        } catch {
-          // ignore
-        }
+        clearGuestBuyerClaims();
         setState({
           kind: "done",
           count: res.claimed_count ?? 0,

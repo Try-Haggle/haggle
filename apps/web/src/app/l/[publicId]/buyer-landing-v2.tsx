@@ -19,6 +19,7 @@ import {
 } from "@/components/shipping/pre-negotiation-fulfillment";
 import { BackLink } from "@/components/ui/back-link";
 import { parseListingParcel, parseSellerFulfillmentOffer } from "@/lib/fulfillment-options";
+import { stashGuestBuyerClaim } from "@/lib/guest-buyer-claim-storage";
 import { listNegotiationAgents, rowToNegotiationAgent } from "@/lib/negotiation-agents-api";
 import { storeNegotiationRunToken } from "@/lib/negotiation-auto-play-token";
 import { isCompleteShippingAddress, toApiAddress } from "@/lib/shipping-address";
@@ -202,20 +203,10 @@ export function BuyerLandingV2({ listing, user, isOwner, from, footerSlot }: Buy
       },
     });
 
-    // Stash the guest buyer id for the post-signup claim step. Logged-in
+    // Stash guest buyer id + PoP for the post-signup claim step. Logged-in
     // callers never receive one, so this is a no-op for them.
-    if (res.guest_buyer_id) {
-      try {
-        const KEY = "haggle:guest-buyer-ids";
-        const raw = window.localStorage.getItem(KEY);
-        const list: string[] = raw ? JSON.parse(raw) : [];
-        if (!list.includes(res.guest_buyer_id)) {
-          list.push(res.guest_buyer_id);
-          window.localStorage.setItem(KEY, JSON.stringify(list));
-        }
-      } catch {
-        // localStorage full or disabled — fall through.
-      }
+    if (res.guest_buyer_id && res.guest_claim_pop) {
+      stashGuestBuyerClaim(res.guest_buyer_id, res.guest_claim_pop);
     }
 
     track("Negotiation Started", {

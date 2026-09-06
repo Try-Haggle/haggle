@@ -13,6 +13,7 @@ import { resolveDisputeEvidenceScannerCircuitConfigFromEnv } from "../services/d
 import { resolveDisputeSimilarityReviewAlertConfigFromEnv } from "../services/dispute-similarity-review-alert.service.js";
 import { resolveDisputeSimilarityReviewAuditArchiveConfigFromEnv } from "../services/dispute-similarity-review-audit-archive.service.js";
 import { resolveDisputeSimilarityReviewAuditArchiveAlertConfigFromEnv } from "../services/dispute-similarity-review-audit-archive-alert.service.js";
+import { resolveGuestBuyerClaimPopSecret } from "../services/guest-buyer-claim-pop.service.js";
 import { validateTrustedHnpJwks } from "../services/hnp-jwks.service.js";
 import { resolveShipmentApvPayoutAlertConfigFromEnv } from "../services/shipment-apv-payout-alert.service.js";
 import { resolveShipmentApvCancellationAuditArchiveConfigFromEnv } from "../services/shipment-apv-payout-cancellation-audit-archive.service.js";
@@ -116,6 +117,16 @@ export function getRuntimeConfig(): RuntimeConfig {
   } catch (error) {
     throw new Error(
       `[CONFIG] Invalid Supabase JWT configuration: ${error instanceof Error ? error.message : "unknown error"}`,
+    );
+  }
+
+  try {
+    resolveGuestBuyerClaimPopSecret();
+  } catch (error) {
+    throw new Error(
+      `[CONFIG] Invalid guest buyer claim PoP configuration: ${
+        error instanceof Error ? error.message : "unknown error"
+      }`,
     );
   }
 

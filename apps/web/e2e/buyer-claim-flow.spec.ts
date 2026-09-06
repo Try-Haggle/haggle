@@ -35,11 +35,13 @@ test.describe("Buyer guest claim flow", () => {
     const banner = page.getByText(/sign up to (buy|lock in|save)/i);
     await expect(banner).toBeVisible();
 
-    // The guest_buyer_id should have been written to localStorage.
+    // The guest_buyer_id + PoP should have been written to localStorage.
     const stored = await page.evaluate(() => window.localStorage.getItem("haggle:guest-buyer-ids"));
     expect(stored).toBeTruthy();
-    const ids = JSON.parse(stored as string) as string[];
-    expect(ids.length).toBeGreaterThan(0);
+    const claims = JSON.parse(stored as string) as Array<{ guest_buyer_id: string; pop: string }>;
+    expect(claims.length).toBeGreaterThan(0);
+    expect(claims[0]?.guest_buyer_id).toBeTruthy();
+    expect(claims[0]?.pop?.length).toBeGreaterThanOrEqual(32);
 
     // 4. Click the sign-up CTA and complete the form using BUYER_USER.
     await page.getByRole("link", { name: /sign up/i }).click();
