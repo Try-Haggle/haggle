@@ -56,9 +56,13 @@ vi.mock("@haggle/engine-session", async (importOriginal) => {
   };
 });
 
-vi.mock("@haggle/commerce-core", () => ({
-  quoteNegotiationCredits: (...args: unknown[]) => quoteNegotiationCredits(...args),
-}));
+vi.mock("@haggle/commerce-core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@haggle/commerce-core")>();
+  return {
+    ...actual,
+    quoteNegotiationCredits: (...args: unknown[]) => quoteNegotiationCredits(...args),
+  };
+});
 
 const { startBuyerNegotiation } = await import("../services/start-buyer-negotiation.service.js");
 

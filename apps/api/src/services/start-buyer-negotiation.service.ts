@@ -29,6 +29,14 @@ import {
   missingRequiredBuyerCriteria,
 } from "../negotiation/phase/seller-criteria-pause.js";
 import {
+  quoteShippingBeforeStart,
+  SHIPPING_QUOTE_ADDRESS_REQUIRED,
+  ShippingQuoteBeforeStartError,
+  type ShippingQuoteBeforeStartResult,
+  shippingQuoteRejectBody,
+  startRequiresShippingQuote,
+} from "../shipping/shipping-quote-before-start.js";
+import {
   type AttemptControlSnapshot,
   defaultAttemptControlPolicy,
   evaluateAttemptControl,
@@ -154,6 +162,18 @@ export type StartBuyerNegotiationResult =
         attempt_control?: AttemptControlSnapshot;
         chat_url?: string;
         driver: NegotiationDriver;
+        /** Confirmed shipping fee basis for negotiation/checkout (physical only). */
+        shipping_quote?: {
+          rate_minor: number;
+          carrier: string;
+          service: string;
+          source: string;
+          carrier_priority: string;
+          quoted_at: string;
+          money_charged: false;
+          label_purchased: false;
+          est_delivery_days: number | null;
+        };
       };
     }
   | { ok: false; status: number; body: Record<string, unknown> };
@@ -408,7 +428,60 @@ export async function startBuyerNegotiation(
       body: addressReject,
     };
   }
-  const fulfillmentFields = snapshotFulfillmentFields(fulfillment);
+
+  // D2: physical carrier start requires a successful test/mock shipping quote
+  // before createSession. Digital / A4 no-shipment skips. Address already
+  // enforced by D1 above; defensive SHIPPING_QUOTE_ADDRESS_REQUIRED remains.
+  let shippingQuote: ShippingQuoteBeforeStartResult | undefined;
+  if (startRequiresShippingQuote({ listingSnapshot, fulfillment })) {
+    const buyerAddress = fulfillment?.buyer_address;
+    if (!buyerAddress) {
+      return {
+        ok: false,
+        status: 409,
+        body: {
+          error: SHIPPING_QUOTE_ADDRESS_REQUIRED,
+          message:
+            "Physical carrier start requires a delivery address so shipping can be quoted before negotiation begins.",
+          money_charged: false,
+          label_purchased: false,
+        },
+      };
+    }
+    try {
+      shippingQuote = await quoteShippingBeforeStart({
+        to_address: buyerAddress,
+        parcel: fulfillment?.parcel ?? listingParcel,
+        carrier_priority: fulfillment?.carrier_priority ?? "balanced",
+      });
+    } catch (error) {
+      if (error instanceof ShippingQuoteBeforeStartError) {
+        return {
+          ok: false,
+          status: error.statusCode,
+          body: shippingQuoteRejectBody(error),
+        };
+      }
+      throw error;
+    }
+  }
+
+  const fulfillmentFields = snapshotFulfillmentFields(
+    fulfillment,
+    shippingQuote
+      ? {
+          rate_minor: shippingQuote.rate_minor,
+          carrier: shippingQuote.carrier,
+          service: shippingQuote.service,
+          source: shippingQuote.source,
+          carrier_priority: shippingQuote.carrier_priority,
+          quoted_at: shippingQuote.quoted_at,
+          money_charged: false,
+          label_purchased: false,
+          est_delivery_days: shippingQuote.est_delivery_days,
+        }
+      : undefined,
+  );
   const sellerSnapshot: Record<string, unknown> = {
     ...sellerStrategy,
     max_rounds: AUTO_PLAY_MAX_ROUNDS,
@@ -589,6 +662,21 @@ export async function startBuyerNegotiation(
         : {}),
       ...(attemptControl ? { attempt_control: attemptControl } : {}),
       ...(input.chatUrl ? { chat_url: input.chatUrl } : {}),
+      ...(shippingQuote
+        ? {
+            shipping_quote: {
+              rate_minor: shippingQuote.rate_minor,
+              carrier: shippingQuote.carrier,
+              service: shippingQuote.service,
+              source: shippingQuote.source,
+              carrier_priority: shippingQuote.carrier_priority,
+              quoted_at: shippingQuote.quoted_at,
+              money_charged: false as const,
+              label_purchased: false as const,
+              est_delivery_days: shippingQuote.est_delivery_days,
+            },
+          }
+        : {}),
     },
   };
 }

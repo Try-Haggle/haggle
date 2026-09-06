@@ -110,6 +110,25 @@ describe("toFulfillmentContext", () => {
     expect(context.rate_note).toContain("fastest");
   });
 
+  it("exposes confirmed shipping quote as negotiation/checkout basis", () => {
+    const preference = fulfillmentPreferenceSchema.parse({
+      methods: ["carrier"],
+      preferred: "carrier",
+      buyer_address: denver,
+      carrier_priority: "balanced",
+    });
+    const context = toFulfillmentContext(preference, {
+      rate_minor: 825,
+      carrier: "USPS",
+      service: "Priority",
+      source: "mock",
+    });
+    expect(context.shipping_cost_known).toBe(true);
+    expect(context.shipping_cost_minor).toBe(825);
+    expect(context.rate_note).toContain("825");
+    expect(context.rate_note).toContain("basis for negotiation/checkout");
+  });
+
   it("rejects the legacy buyer_arranged alias while pickup is off", () => {
     expect(fulfillmentPreferenceSchema.safeParse({ method: "buyer_arranged" }).success).toBe(false);
   });
