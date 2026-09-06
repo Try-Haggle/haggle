@@ -98,10 +98,73 @@ const metricDimensionKeys: Record<PaymentMetricName, ReadonlySet<PaymentMetricDi
   "payment.admin_override": new Set(["operation", "environment"]),
 };
 
+const ALLOWED_PROVIDERS = new Set<string>(["stripe", "x402"]);
+const ALLOWED_RAILS = new Set<string>(["stripe", "x402"]);
+const ALLOWED_ENVIRONMENTS = new Set<string>(["test", "live"]);
+const ALLOWED_OPERATIONS = new Set<string>([
+  "prepare",
+  "authorize",
+  "capture",
+  "settlement_pending",
+  "cancel",
+  "refund",
+  "fail",
+  "webhook",
+  "reconciliation",
+]);
+const ALLOWED_FAILURE_TYPES = new Set<string>([
+  "signature_invalid",
+  "signature_missing",
+  "timestamp_invalid",
+  "timestamp_expired",
+  "environment_mismatch",
+  "malformed",
+  "config_missing",
+  "provider_timeout",
+  "provider_retryable",
+  "provider_non_retryable",
+  "state_transition_invalid",
+  "idempotency_required",
+  "idempotency_conflict",
+  "idempotency_in_progress",
+  "processing_error",
+  "unknown",
+]);
+const ALLOWED_IDEMPOTENCY_RESULTS = new Set<string>([
+  "new",
+  "duplicate",
+  "conflict",
+  "in_progress",
+  "required_missing",
+]);
+const ALLOWED_STATUSES = new Set<string>(["pending", "authorized", "unknown"]);
+const ALLOWED_RECONCILIATION_TYPES = new Set<string>([
+  "order_paid_like_intent_not_settled",
+  "intent_settled_order_not_paid_like",
+  "order_refunded_without_completed_refund",
+  "completed_refund_exceeds_intent_amount",
+  "settled_intent_missing_settlement_release",
+  "product_released_order_not_terminal",
+  "release_intent_order_mismatch",
+  "local_captured_provider_not_captured",
+  "provider_captured_local_not_captured",
+  "refund_mismatch",
+  "orphan_provider_payment",
+  "amount_mismatch",
+]);
+
+/** Reject PAN/PII/secret-looking and high-cardinality metric label values. */
 const sensitiveMetricValuePatterns = [
   /\b(?:\d[ -]?){13,19}\b/,
   /\b(?:cvv|cvc|card|pan|expiry|expiration|bank|account|routing|secret|token|signature|authorization|client_secret)\b/i,
   /\b(?:pi|pm|seti|cs|evt|ch|re|txn|ord|pay|wallet|grant|dep|disp|ship)_[A-Za-z0-9_-]{6,}\b/,
+  /\b(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]+/i,
+  /\bwhsec_[A-Za-z0-9]+/i,
+  /\buser_[A-Za-z0-9_-]{6,}\b/i,
+  /^Bearer\s+/i,
+  /\beyJ[A-Za-z0-9_-]{10,}\./,
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  /^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/,
   /^0x[a-fA-F0-9]{40,}$/,
   /@/,
 ];
@@ -251,8 +314,34 @@ function assertPaymentMetricValue(value: number): void {
 }
 
 function assertSafePaymentMetricDimension(key: PaymentMetricDimensionKey, value: string): void {
-  if (!isSafeMetricValue(value)) {
+  if (!isSafeMetricValue(value) || !isAllowedDimensionValue(key, value)) {
     throw new Error(`Unsafe payment metric value for "${key}"`);
+  }
+}
+
+function isAllowedDimensionValue(key: PaymentMetricDimensionKey, value: string): boolean {
+  switch (key) {
+    case "provider":
+      return ALLOWED_PROVIDERS.has(value);
+    case "rail":
+      return ALLOWED_RAILS.has(value);
+    case "environment":
+      return ALLOWED_ENVIRONMENTS.has(value);
+    case "operation":
+      return ALLOWED_OPERATIONS.has(value);
+    case "failure_type":
+      return ALLOWED_FAILURE_TYPES.has(value);
+    case "idempotency_result":
+      return ALLOWED_IDEMPOTENCY_RESULTS.has(value);
+    case "status":
+      return ALLOWED_STATUSES.has(value);
+    case "reconciliation_type":
+      return ALLOWED_RECONCILIATION_TYPES.has(value);
+    case "event_type":
+      // Coarse provider event types only; still must pass isSafeMetricValue.
+      return /^[a-z0-9][a-z0-9_.:-]{0,79}$/.test(value);
+    default:
+      return false;
   }
 }
 

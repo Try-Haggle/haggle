@@ -5,6 +5,7 @@ import {
   emitPaymentMetricSafely,
   normalizePaymentMetricEventType,
   normalizePaymentMetricFailureType,
+  type PaymentMetricDimensions,
   type PaymentMetricEvent,
   setPaymentMetricSink,
   toPaymentMetricOperation,
@@ -54,6 +55,33 @@ describe("payment observability", () => {
     ).toThrow('Unsafe payment metric dimension "event_type"');
   });
 
+  it("rejects PII or secret-looking dimension keys even when cast in", () => {
+    const unsafeKeys = [
+      "client_secret",
+      "pan",
+      "card_number",
+      "cvv",
+      "email",
+      "user_id",
+      "order_id",
+      "payment_intent_id",
+      "wallet_address",
+      "authorization",
+      "signature",
+    ] as const;
+
+    for (const key of unsafeKeys) {
+      expect(() =>
+        createPaymentMetricEvent("payment.webhook.received", {
+          provider: "stripe",
+          event_type: "crypto.onramp_session.fulfillment_complete",
+          environment: "live",
+          [key]: "placeholder",
+        } as PaymentMetricDimensions),
+      ).toThrow(`Unsafe payment metric dimension "${key}"`);
+    }
+  });
+
   it("rejects sensitive or high-cardinality metric values", () => {
     expect(() =>
       createPaymentMetricEvent("payment.webhook.received", {
@@ -78,6 +106,96 @@ describe("payment observability", () => {
         environment: "live",
       }),
     ).toThrow("Unsafe payment metric value");
+
+    expect(() =>
+      createPaymentMetricEvent("payment.webhook.received", {
+        provider: "stripe",
+        event_type: "550e8400-e29b-41d4-a716-446655440000",
+        environment: "live",
+      }),
+    ).toThrow("Unsafe payment metric value");
+
+    expect(() =>
+      createPaymentMetricEvent("payment.webhook.received", {
+        provider: "stripe",
+        event_type: "user_00aabbccddee",
+        environment: "live",
+      }),
+    ).toThrow("Unsafe payment metric value");
+
+    expect(() =>
+      createPaymentMetricEvent("payment.webhook.received", {
+        provider: "stripe",
+        event_type: "sk_live_51AbCdEfGhIjKlMn",
+        environment: "live",
+      }),
+    ).toThrow("Unsafe payment metric value");
+
+    expect(() =>
+      createPaymentMetricEvent("payment.webhook.received", {
+        provider: "stripe",
+        event_type: "whsec_abc123def456ghi789",
+        environment: "live",
+      }),
+    ).toThrow("Unsafe payment metric value");
+
+    expect(() =>
+      createPaymentMetricEvent("payment.webhook.received", {
+        provider: "stripe",
+        event_type: "Bearer eyJhbGciOiJIUzI1NiJ9",
+        environment: "live",
+      }),
+    ).toThrow("Unsafe payment metric value");
+
+    expect(() =>
+      createPaymentMetricEvent("payment.webhook.received", {
+        provider: "stripe",
+        event_type: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0",
+        environment: "live",
+      }),
+    ).toThrow("Unsafe payment metric value");
+
+    expect(() =>
+      createPaymentMetricEvent("payment.webhook.received", {
+        provider: "stripe",
+        event_type: "x".repeat(81),
+        environment: "live",
+      }),
+    ).toThrow("Unsafe payment metric value");
+  });
+
+  it("rejects non-allowlisted enum and reconciliation label values", () => {
+    expect(() =>
+      createPaymentMetricEvent("payment.webhook.received", {
+        provider: "evil_provider" as "stripe",
+        event_type: "crypto.onramp_session.fulfillment_complete",
+        environment: "live",
+      }),
+    ).toThrow("Unsafe payment metric value");
+
+    expect(() =>
+      createPaymentMetricEvent("payment.idempotency.result", {
+        operation: "capture",
+        idempotency_result: "replayed" as "duplicate",
+        environment: "live",
+      }),
+    ).toThrow("Unsafe payment metric value");
+
+    expect(() =>
+      createPaymentMetricEvent("payment.reconciliation.finding", {
+        provider: "stripe",
+        reconciliation_type: "order_paid_like_intent_not_settled_for_abc123",
+        environment: "live",
+      }),
+    ).toThrow("Unsafe payment metric value");
+
+    expect(() =>
+      createPaymentMetricEvent("payment.reconciliation.finding", {
+        provider: "stripe",
+        reconciliation_type: "amount_mismatch",
+        environment: "live",
+      }),
+    ).not.toThrow();
   });
 
   it("drops unsafe metric events without logging the unsafe value", async () => {
@@ -107,5 +225,7 @@ describe("payment observability", () => {
       "crypto.onramp_session.fulfillment_complete",
     );
     expect(normalizePaymentMetricEventType("evt_123456789abcdef")).toBe("unknown");
+    expect(normalizePaymentMetricEventType("550e8400-e29b-41d4-a716-446655440000")).toBe("unknown");
+    expect(normalizePaymentMetricEventType("sk_live_51AbCdEfGhIjKlMn")).toBe("unknown");
   });
 });
