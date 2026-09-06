@@ -35,9 +35,14 @@ vi.mock("../services/negotiation-session.service.js", () => ({
   createSession: (...args: unknown[]) => createSession(...args),
 }));
 
-vi.mock("@haggle/engine-session", () => ({
-  compileNegotiationAgentSnapshot: (...args: unknown[]) => compileNegotiationAgentSnapshot(...args),
-}));
+vi.mock("@haggle/engine-session", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@haggle/engine-session")>();
+  return {
+    ...actual,
+    compileNegotiationAgentSnapshot: (...args: unknown[]) =>
+      compileNegotiationAgentSnapshot(...args),
+  };
+});
 
 vi.mock("@haggle/commerce-core", () => ({
   quoteNegotiationCredits: (...args: unknown[]) => quoteNegotiationCredits(...args),
