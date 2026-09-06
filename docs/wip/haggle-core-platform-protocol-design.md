@@ -596,7 +596,7 @@ search listings
 - `haggle_get_listing`
 - `haggle_set_buyer_authority`
 - `haggle_start_negotiation`
-- `haggle_get_negotiation`
+- `haggle_get_negotiation` — MCP default (omit/`[]` expand) returns **full transcript + offers** (E1); web SoT unchanged. See [product-decisions-2026-09-07.md](./product-decisions-2026-09-07.md).
 - `haggle_review_agreement`
 - `haggle_approve_agreement`
 - `haggle_create_checkout`
