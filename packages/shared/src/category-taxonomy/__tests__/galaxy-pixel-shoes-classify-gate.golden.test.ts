@@ -1,5 +1,9 @@
 /**
- * A10 goldens — galaxy / pixel / shoes taxonomy: classification + HARD gate reject/pass.
+ * A10/D3 goldens — galaxy / pixel taxonomy: classification + HARD gate reject/pass.
+ *
+ * D3 (CTO correction): shoe-family taxonomy HARD+SOFT authenticity removed entirely
+ * (no sneaker_authenticity; aliases cleared). Electronics only — galaxy/pixel/phone HARD
+ * remain. dead-pixel / no-dead-pixel must not open phone gates (AMBIGUOUS_MATCH_TOKENS).
  *
  * Classification = enrichTagsWithTaxonomy / inferTaxonomyTags → resolveChecks.
  * Gate = unansweredHardCriteria (reject when HARD unanswered; pass when answered).
@@ -30,7 +34,7 @@ function answered(checkId: string, stance = "confirmed"): CategoryCriterion {
   };
 }
 
-describe("A10 classify — galaxy / pixel / shoes", () => {
+describe("A10/D3 classify — galaxy / pixel (electronics); shoe-family HARD no-op", () => {
   it("Galaxy S24 title classifies into samsung phone HARD gates", () => {
     const { tags, inferred } = enrichTagsWithTaxonomy(
       ["electronics"],
@@ -67,13 +71,71 @@ describe("A10 classify — galaxy / pixel / shoes", () => {
     expect(hardIds(tags)).toContain("imei_verification");
   });
 
-  it("shoes title classifies into sneakers authenticity HARD gate", () => {
+  it("shoes title does NOT surface sneaker_authenticity (HARD or SOFT removed)", () => {
     const inferred = inferTaxonomyTags("Nike Air Force 1 shoes size 10");
-    expect(inferred).toEqual(expect.arrayContaining(["shoes"]));
+    expect(inferred).not.toEqual(expect.arrayContaining(["shoes"]));
     const { tags } = enrichTagsWithTaxonomy(["clothing"], "Nike Air Force 1 shoes size 10");
-    expect(hardIds(tags)).toEqual(expect.arrayContaining(["authenticity", "sneaker_authenticity"]));
-    expect(hardIds(tags)).not.toContain("imei_verification");
-    expect(hardIds(tags)).not.toContain("hin_match");
+    expect(hardIds(tags)).not.toContain("sneaker_authenticity");
+    expect(hardIds(["clothing", "shoes"])).not.toContain("sneaker_authenticity");
+    expect(hardIds(["shoes"])).not.toContain("sneaker_authenticity");
+    // Full removal: soft residual must not remain either (parity / PAUSE fallout).
+    expect(resolveChecks(["clothing", "sneakers"]).map((c) => c.id)).not.toContain(
+      "sneaker_authenticity",
+    );
+    expect(resolveChecks(["fashion", "sneakers"]).map((c) => c.id)).not.toContain(
+      "sneaker_authenticity",
+    );
+    const unanswered = unansweredHardCriteria(["clothing", "shoes"], []).map((c) => c.checkId);
+    expect(unanswered).not.toContain("sneaker_authenticity");
+    // shoes→sneakers authenticity HARD path must stay closed.
+    expect(unansweredHardCriteria(["shoes"], []).map((c) => c.checkId)).not.toContain(
+      "sneaker_authenticity",
+    );
+    expect(unansweredHardCriteria(["shoes"], []).map((c) => c.checkId)).not.toContain(
+      "authenticity",
+    );
+  });
+
+  it("explicit sneaker brands/aliases do NOT open sneaker HARD (jordan/yeezy/dunk/스니커즈/운동화)", () => {
+    // Brand/KR titles must not infer removed aliases; HARD must stay closed even if the
+    // path leaf "sneakers" is present in a title or explicit tags.
+    const brandTitles = [
+      "Air Jordan 1 Retro High OG size 10",
+      "Adidas Yeezy Boost 350 V2",
+      "Nike Dunk Low Panda",
+      "스니커즈 나이키 에어포스 사이즈 270",
+      "운동화 뉴발란스 993",
+    ];
+    for (const title of brandTitles) {
+      const inferred = inferTaxonomyTags(title);
+      expect(inferred, title).not.toEqual(
+        expect.arrayContaining(["jordan", "yeezy", "dunk", "스니커즈", "운동화", "sneaker"]),
+      );
+      const { tags } = enrichTagsWithTaxonomy(["clothing"], title);
+      expect(hardIds(tags), title).not.toContain("sneaker_authenticity");
+      expect(
+        unansweredHardCriteria(tags, []).map((c) => c.checkId),
+        title,
+      ).not.toContain("sneaker_authenticity");
+    }
+    // Direct former-alias / leaf tags also must not surface sneaker HARD.
+    for (const tags of [
+      ["jordan"],
+      ["yeezy"],
+      ["dunk"],
+      ["스니커즈"],
+      ["운동화"],
+      ["sneakers"],
+      ["sneaker"],
+      ["clothing", "sneakers"],
+      ["fashion", "sneakers"],
+    ] as const) {
+      expect(hardIds(tags), String(tags)).not.toContain("sneaker_authenticity");
+      expect(
+        unansweredHardCriteria(tags, []).map((c) => c.checkId),
+        String(tags),
+      ).not.toContain("sneaker_authenticity");
+    }
   });
 
   it("dead-pixel monitor tags do NOT open Pixel phone gates (ambiguous-token hardening)", () => {
@@ -86,7 +148,7 @@ describe("A10 classify — galaxy / pixel / shoes", () => {
   });
 });
 
-describe("A10 gate — reject / pass for galaxy / pixel / shoes HARD criteria", () => {
+describe("A10/D3 gate — reject / pass for galaxy / pixel HARD criteria (no shoes)", () => {
   const cases: Array<{ name: string; tags: string[]; signatureHard: string[] }> = [
     {
       name: "galaxy",
@@ -97,11 +159,6 @@ describe("A10 gate — reject / pass for galaxy / pixel / shoes HARD criteria", 
       name: "pixel",
       tags: ["electronics", "pixel-8-pro"],
       signatureHard: ["imei_verification", "google_frp_lock"],
-    },
-    {
-      name: "shoes",
-      tags: ["clothing", "shoes"],
-      signatureHard: ["authenticity", "sneaker_authenticity"],
     },
   ];
 
