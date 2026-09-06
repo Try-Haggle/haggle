@@ -141,6 +141,7 @@ export {
 } from "./protocol/core.js";
 export type {
   CreateHnpDisputeEvidencePacketInput,
+  HnpDigitalDisputeEvidenceKind,
   HnpDisputeEvidenceItem,
   HnpDisputeEvidenceKind,
   HnpDisputeEvidencePacket,
@@ -153,7 +154,10 @@ export type {
 export {
   computeHnpDisputeEvidencePacketHash,
   createHnpDisputeEvidencePacket,
+  HNP_DIGITAL_DISPUTE_EVIDENCE_KINDS,
   HNP_DISPUTE_EVIDENCE_KINDS,
+  isHnpDigitalDisputeEvidenceKind,
+  isHnpDisputeEvidenceKind,
   validateHnpDisputeEvidencePacket,
 } from "./protocol/dispute-evidence.js";
 export type { HnpCoreIssueId } from "./protocol/issue-registry.js";
