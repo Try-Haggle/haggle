@@ -75,8 +75,11 @@ export function defaultAttemptControlPolicy(): AttemptControlPolicy {
   };
 }
 
+/** Drizzle db or transaction — both expose execute; tx lacks Database.$client. */
+type AttemptControlDb = Pick<Database, "execute">;
+
 export async function evaluateAttemptControl(
-  db: Database,
+  db: AttemptControlDb,
   input: {
     buyerPrincipalId: string;
     listingId: string;
@@ -226,7 +229,8 @@ export async function withBuyerListingStartGate<T>(
     const lockKey = `haggle.buyer-listing-start.v1:${input.buyerPrincipalId}:${input.listingId}`;
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
 
-    const recheck = await evaluateAttemptControl(tx as Database, {
+    // tx is PgTransaction (has execute; no $client) — AttemptControlDb accepts both.
+    const recheck = await evaluateAttemptControl(tx, {
       buyerPrincipalId: input.buyerPrincipalId,
       listingId: input.listingId,
       nowMs: input.nowMs,
@@ -236,7 +240,9 @@ export async function withBuyerListingStartGate<T>(
       return { ok: false as const, attemptResult: recheck };
     }
 
-    const value = await run(tx as Database, recheck.attemptControl);
+    // createSession callers still type Database (= PostgresJsDatabase & { $client }).
+    // Match existing repo pattern (platform.ts): bridge via unknown, not a direct cast.
+    const value = await run(tx as unknown as Database, recheck.attemptControl);
     return { ok: true as const, value, attemptControl: recheck.attemptControl };
   });
 }
