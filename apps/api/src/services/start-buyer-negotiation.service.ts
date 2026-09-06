@@ -86,6 +86,50 @@ export const startBuyerNegotiationSchema = z.object({
 
 export type StartBuyerNegotiationBody = z.infer<typeof startBuyerNegotiationSchema>;
 
+/** Distinct from BUYER_CRITERIA_REQUIRED (missing answers) and INVALID_START_REQUEST. */
+export const BUYER_CRITERIA_TYPE_INVALID = "BUYER_CRITERIA_TYPE_INVALID";
+
+function isBuyerCriteriaZodIssue(issue: z.ZodIssue): boolean {
+  return issue.path[0] === "buyerCriteria";
+}
+
+/**
+ * Parse start body for REST + MCP. buyerCriteria type/shape failures return
+ * BUYER_CRITERIA_TYPE_INVALID (400, no session) — not the missing-answers 409.
+ */
+export function parseStartBuyerNegotiationBody(raw: unknown):
+  | { ok: true; data: StartBuyerNegotiationBody }
+  | {
+      ok: false;
+      status: 400;
+      body: {
+        error: typeof BUYER_CRITERIA_TYPE_INVALID | "INVALID_START_REQUEST";
+        message?: string;
+        issues: z.ZodIssue[];
+      };
+    } {
+  const parsed = startBuyerNegotiationSchema.safeParse(raw);
+  if (parsed.success) return { ok: true, data: parsed.data };
+  const criteriaIssues = parsed.error.issues.filter(isBuyerCriteriaZodIssue);
+  if (criteriaIssues.length > 0) {
+    return {
+      ok: false,
+      status: 400,
+      body: {
+        error: BUYER_CRITERIA_TYPE_INVALID,
+        message:
+          "buyerCriteria entries must be { checkId: string, stance?: string }. Fix types before start; no session was created.",
+        issues: criteriaIssues,
+      },
+    };
+  }
+  return {
+    ok: false,
+    status: 400,
+    body: { error: "INVALID_START_REQUEST", issues: parsed.error.issues },
+  };
+}
+
 export type StartBuyerNegotiationResult =
   | {
       ok: true;

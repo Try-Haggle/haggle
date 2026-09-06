@@ -63,8 +63,8 @@ import {
 import { buyerVisibleRequiredCriteria } from "../../services/public-listing-view.js";
 import { getShipmentByOrderId } from "../../services/shipment-record.service.js";
 import {
+  parseStartBuyerNegotiationBody,
   startBuyerNegotiation,
-  startBuyerNegotiationSchema,
 } from "../../services/start-buyer-negotiation.service.js";
 import { lockTestContractForDisputeOpen } from "../../services/test-contract-ledger.service.js";
 import { haggleGetListingInputShape, haggleGetListingOutputShape } from "./mcp-listing-schema.js";
@@ -543,14 +543,17 @@ export function registerPlatformTools(
       const actor = scoped.actor;
       try {
         const presetId = await resolveBuyerPresetId(db, actor, agent_id);
-        const parsed = startBuyerNegotiationSchema.safeParse({
+        const parsed = parseStartBuyerNegotiationBody({
           listing_public_id: public_id,
           negotiation_agent_preset_id: presetId,
           deadline_hours,
           ...(buyerCriteria ? { buyerCriteria } : {}),
         });
-        if (!parsed.success) {
-          return mcpError("INVALID_START_REQUEST", { issues: parsed.error.issues });
+        if (!parsed.ok) {
+          return mcpError(parsed.body.error, {
+            ...(parsed.body.message ? { message: parsed.body.message } : {}),
+            issues: parsed.body.issues,
+          });
         }
         const started = await startBuyerNegotiation(db, {
           body: parsed.data,
