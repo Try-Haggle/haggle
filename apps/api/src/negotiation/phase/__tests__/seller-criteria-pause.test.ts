@@ -5,6 +5,7 @@ import {
   buyerCriteriaRequiredReject,
   buyerCriteriaStartGate,
   detectSellerCriteriaPause,
+  missingRequiredBuyerCriteria,
   readSellerCriteriaFromSnapshot,
   sellerCriteriaHoldChatMessage,
 } from "../seller-criteria-pause.js";
@@ -300,5 +301,56 @@ describe("buyerCriteriaStartGate", () => {
         buyer_negotiation_agent_builder_memory: { categoryCriteria: [] },
       }),
     ).toEqual([]);
+  });
+
+  it("allows play with partial answers; remaining keys are mid-session HOLD not 409", () => {
+    const findMy = {
+      checkId: "find_my_status",
+      questionKo: "Find My가 꺼져 있나요?",
+      buyerAskKo: "Must Find My be turned off?",
+      enforcement: "hard" as const,
+      requirement: "required" as const,
+    };
+    const snapshot = {
+      pause_seller_required_criteria: [sellerRequired, findMy],
+      buyer_negotiation_agent_builder_memory: {
+        categoryCriteria: [
+          { ...sellerRequired, stance: "clean IMEI required" },
+          { checkId: "fake_check_id", stance: "noise" },
+        ],
+      },
+    };
+    // Play gate: any answered stance clears BUYER_CRITERIA_REQUIRED for play_next.
+    expect(buyerCriteriaStartGate(snapshot)).toEqual([]);
+    expect(buyerCriteriaRequiredReject(snapshot)).toBeNull();
+    // Start completeness (A7) still flags uncovered required keys.
+    expect(
+      missingRequiredBuyerCriteria(
+        [
+          { checkId: "imei_verification", ask: "Should the agent require a clean IMEI?" },
+          { checkId: "find_my_status", ask: "Must Find My be turned off?" },
+        ],
+        [
+          { ...sellerRequired, stance: "clean IMEI required" },
+          { checkId: "fake_check_id", stance: "noise" },
+        ],
+      ).map((c) => c.checkId),
+    ).toEqual(["find_my_status"]);
+  });
+});
+
+describe("missingRequiredBuyerCriteria", () => {
+  it("treats blank stance and unknown checkIds as uncovered", () => {
+    const required = [
+      { checkId: "imei_verification", ask: "IMEI?" },
+      { checkId: "find_my_status", ask: "Find My?" },
+    ];
+    expect(
+      missingRequiredBuyerCriteria(required, [
+        { checkId: "imei_verification", stance: "ok" },
+        { checkId: "fake_check_id", stance: "noise" },
+        { checkId: "find_my_status", stance: "  " },
+      ]).map((c) => c.checkId),
+    ).toEqual(["find_my_status"]);
   });
 });

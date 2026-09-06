@@ -77,9 +77,30 @@ export function buyerHasAnsweredCriteria(buyerCriteria: readonly CategoryCriteri
 }
 
 /**
- * Start/play wizard-gate: seller required criteria exist and the buyer has not
- * answered any of them. Do not treat listing_context.seller_facts as answers.
- * Returns unresolved asks when play_next must reject — not a mid-session pause.
+ * Listing required keys that lack a non-empty buyer stance (by checkId).
+ * Unknown/fake checkIds do not satisfy a required key. Empty/blank stance = missing.
+ */
+export function missingRequiredBuyerCriteria(
+  required: readonly BuyerPauseAsk[],
+  buyerCriteria: readonly { checkId?: unknown; stance?: unknown }[],
+): BuyerPauseAsk[] {
+  if (required.length === 0) return [];
+  const answered = new Set<string>();
+  for (const c of buyerCriteria) {
+    if (typeof c?.checkId !== "string") continue;
+    if (typeof c?.stance !== "string" || c.stance.trim().length === 0) continue;
+    answered.add(c.checkId);
+  }
+  return required.filter((r) => !answered.has(r.checkId));
+}
+
+/**
+ * Play wizard-gate (play_next / auto-play): seller required criteria exist and the
+ * buyer has not answered any of them. Once the buyer has at least one stance,
+ * remaining unresolved required keys are a mid-session HOLD pause — not a 409.
+ * Start completeness (every required key) is enforced separately via
+ * missingRequiredBuyerCriteria in startBuyerNegotiation. Do not treat
+ * listing_context.seller_facts as answers.
  */
 export function buyerCriteriaStartGate(snapshot: Record<string, unknown>): BuyerPauseAsk[] {
   const { sellerRequired, buyerCriteria } = readSellerCriteriaFromSnapshot(snapshot);

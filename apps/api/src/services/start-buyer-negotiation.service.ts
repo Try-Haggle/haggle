@@ -22,7 +22,7 @@ import { projectSellerFacts } from "../negotiation/memory/seller-facts.js";
 import {
   BUYER_CRITERIA_REQUIRED,
   buyerCriteriaRequiredReject,
-  buyerHasAnsweredCriteria,
+  missingRequiredBuyerCriteria,
 } from "../negotiation/phase/seller-criteria-pause.js";
 import {
   type AttemptControlSnapshot,
@@ -219,12 +219,15 @@ export async function startBuyerNegotiation(
   const snapshotRequired = extractSellerRequiredCriteria(listingSnapshot);
   const rawBuyerCriteriaEarly =
     body.buyerCriteria ?? (advisor as { categoryCriteria?: unknown } | undefined)?.categoryCriteria;
-  if (
-    snapshotRequired.length > 0 &&
-    !buyerHasAnsweredCriteria(
-      Array.isArray(rawBuyerCriteriaEarly) ? (rawBuyerCriteriaEarly as CategoryCriterion[]) : [],
-    )
-  ) {
+  // Every listing required checkId must be present with a non-empty stance.
+  // Partial answers (e.g. imei + fake checkId) must not create a session.
+  const earlyMissing = missingRequiredBuyerCriteria(
+    snapshotRequired,
+    Array.isArray(rawBuyerCriteriaEarly)
+      ? (rawBuyerCriteriaEarly as Array<{ checkId?: unknown; stance?: unknown }>)
+      : [],
+  );
+  if (earlyMissing.length > 0) {
     return {
       ok: false,
       status: 409,
@@ -232,8 +235,8 @@ export async function startBuyerNegotiation(
         error: BUYER_CRITERIA_REQUIRED,
         message:
           "Answer seller required criteria (IMEI/완납/침수/Find My) in the start wizard via buyerCriteria before play_next. Do not use answer_pause.",
-        required_check_ids: snapshotRequired.map((c) => c.checkId),
-        required_criteria: snapshotRequired,
+        required_check_ids: earlyMissing.map((c) => c.checkId),
+        required_criteria: earlyMissing,
       },
     };
   }
@@ -456,9 +459,10 @@ export async function startBuyerNegotiation(
     ...fulfillmentFields,
   };
 
-  // Listing snapshot is the web-wizard source. Required + empty buyerCriteria
-  // rejects with no session; do not 202 after createSession.
-  if (snapshotRequired.length > 0 && !buyerHasAnsweredCriteria(cleanedBuyerCriteria ?? [])) {
+  // Listing snapshot is the web-wizard source. Every required key must be
+  // present + non-empty; partial / empty rejects with no session.
+  const lateMissing = missingRequiredBuyerCriteria(snapshotRequired, cleanedBuyerCriteria ?? []);
+  if (lateMissing.length > 0) {
     return {
       ok: false,
       status: 409,
@@ -466,8 +470,8 @@ export async function startBuyerNegotiation(
         error: BUYER_CRITERIA_REQUIRED,
         message:
           "Answer seller required criteria (IMEI/완납/침수/Find My) in the start wizard via buyerCriteria before play_next. Do not use answer_pause.",
-        required_check_ids: snapshotRequired.map((c) => c.checkId),
-        required_criteria: snapshotRequired,
+        required_check_ids: lateMissing.map((c) => c.checkId),
+        required_criteria: lateMissing,
       },
     };
   }
