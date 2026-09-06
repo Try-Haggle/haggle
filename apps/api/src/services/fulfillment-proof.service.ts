@@ -157,4 +157,3 @@ export async function listFulfillmentProofsByFulfillmentId(
     .where(eq(fulfillmentProofs.fulfillmentId, fulfillmentId));
   return rows.map(mapProof);
 }
-
