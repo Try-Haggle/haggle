@@ -1,4 +1,11 @@
-import { isEasyPostTestApiKey } from "@haggle/shipping-core";
+import {
+  classifyEasyPostApiKey,
+  type EasyPostKeyMode,
+  isEasyPostLiveApiKey,
+  isEasyPostTestApiKey,
+} from "@haggle/shipping-core";
+
+export type { EasyPostKeyMode } from "@haggle/shipping-core";
 
 export const SHIPPING_EXECUTION_MODES = ["integration_manual", "physical_live"] as const;
 
@@ -12,10 +19,6 @@ const ABSOLUTE_STAGING_LIVE_LABEL_MAX_MINOR = 50_000;
 
 function normalized(value: string | undefined): string {
   return value?.trim() ?? "";
-}
-
-function isEasyPostLiveApiKey(value: string): boolean {
-  return value.startsWith("EZAK");
 }
 
 export function defaultShippingExecutionMode(): ShippingExecutionMode {
@@ -137,4 +140,70 @@ export function integrationShippingReadiness() {
     test_api_key_configured: testApiKey,
     missing,
   };
+}
+
+// ---------------------------------------------------------------------------
+// A9: staging EasyPost test-label key gate (R4 Stripe spirit)
+// ---------------------------------------------------------------------------
+
+export const STAGING_LIVE_EASYPOST_KEYS_FORBIDDEN = "STAGING_LIVE_EASYPOST_KEYS_FORBIDDEN" as const;
+
+export type StagingLiveEasyPostKeysGateEnv = Partial<Pick<NodeJS.ProcessEnv, "HAGGLE_ENV">>;
+
+/**
+ * Classify an EasyPost API key without exposing secret material.
+ * Test keys: EZTK / EZTEST. Live keys: EZAK.
+ */
+export function classifyEasyPostKeyMode(apiKey: string | null | undefined): EasyPostKeyMode {
+  return classifyEasyPostApiKey(apiKey);
+}
+
+/**
+ * Candidate key for the one-step EasyPost **test** label path.
+ * Never reads EASYPOST_LIVE_API_KEY — live/prod keys cannot purchase via this path.
+ */
+export function resolveEasyPostTestLabelCandidateKey(
+  env: Partial<NodeJS.ProcessEnv> = process.env,
+): string | null {
+  const candidate = normalized(env.EASYPOST_TEST_API_KEY) || normalized(env.EASYPOST_API_KEY);
+  return candidate.length > 0 ? candidate : null;
+}
+
+/**
+ * Staging must use EasyPost test/mock keys only for the one-step test-label dogfood path.
+ * Live (EZAK) keys on staging fail closed — no real paid label purchase.
+ */
+export function isStagingLiveEasyPostKeysForbidden(
+  env: StagingLiveEasyPostKeysGateEnv = { HAGGLE_ENV: process.env.HAGGLE_ENV },
+  keyMode: EasyPostKeyMode = classifyEasyPostKeyMode(resolveEasyPostTestLabelCandidateKey()),
+): boolean {
+  const haggleEnv = normalized(env.HAGGLE_ENV).toLowerCase();
+  return haggleEnv === "staging" && keyMode === "live";
+}
+
+export function assertStagingEasyPostTestLabelKeysAllowed(
+  env: StagingLiveEasyPostKeysGateEnv = { HAGGLE_ENV: process.env.HAGGLE_ENV },
+  keyMode: EasyPostKeyMode = classifyEasyPostKeyMode(resolveEasyPostTestLabelCandidateKey()),
+): void {
+  if (!isStagingLiveEasyPostKeysForbidden(env, keyMode)) return;
+  throw Object.assign(
+    new Error(
+      `${STAGING_LIVE_EASYPOST_KEYS_FORBIDDEN}: Staging forbids live EasyPost keys for the one-step test label path. Configure EASYPOST_TEST_API_KEY (EZTK/EZTEST) or omit for mock.`,
+    ),
+    {
+      code: STAGING_LIVE_EASYPOST_KEYS_FORBIDDEN,
+      statusCode: 503,
+    },
+  );
+}
+
+export function isStagingLiveEasyPostKeysForbiddenError(
+  error: unknown,
+): error is Error & { code: typeof STAGING_LIVE_EASYPOST_KEYS_FORBIDDEN } {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === STAGING_LIVE_EASYPOST_KEYS_FORBIDDEN
+  );
 }

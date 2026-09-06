@@ -123,6 +123,13 @@ import {
   webhookPayloadSha256,
 } from "../services/webhook-event-claim.service.js";
 import {
+  createEasyPostTestLabelOneStep,
+  isStagingLiveEasyPostKeysForbiddenError,
+  STAGING_LIVE_EASYPOST_KEYS_FORBIDDEN,
+} from "../shipping/easypost-test-label.js";
+import {
+  assertStagingEasyPostTestLabelKeysAllowed,
+  classifyEasyPostKeyMode,
   easyPostApiKeyForMode,
   easyPostWebhookSecrets,
   integrationShippingReadiness,
@@ -130,6 +137,7 @@ import {
   physicalShippingReadiness,
   providerEnvironmentForMode,
   readShippingExecutionMode,
+  resolveEasyPostTestLabelCandidateKey,
   SHIPPING_EXECUTION_MODES,
   type ShippingExecutionMode,
   stagingLiveLabelCostLimit,
@@ -2527,6 +2535,227 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
         weight_buffer_minor: weightBuffer.buffer_amount_minor,
         source: "mock",
       });
+    },
+  );
+
+  // POST /shipments/:id/test-label — A9 one-step EasyPost test/mock label (staging dogfood)
+  const testLabelSchema = z
+    .object({
+      from_address: z
+        .object({
+          name: z.string().min(1).max(INPUT_LIMITS.mediumTextChars),
+          street1: z.string().min(1).max(INPUT_LIMITS.mediumTextChars),
+          street2: z.string().max(INPUT_LIMITS.mediumTextChars).optional(),
+          city: z.string().min(1).max(INPUT_LIMITS.mediumTextChars),
+          state: z.string().min(2).max(32),
+          zip: z.string().min(3).max(16),
+          country: z.string().max(2).default("US"),
+          phone: z.string().max(32).optional(),
+        })
+        .optional(),
+      to_address: z
+        .object({
+          name: z.string().min(1).max(INPUT_LIMITS.mediumTextChars),
+          street1: z.string().min(1).max(INPUT_LIMITS.mediumTextChars),
+          street2: z.string().max(INPUT_LIMITS.mediumTextChars).optional(),
+          city: z.string().min(1).max(INPUT_LIMITS.mediumTextChars),
+          state: z.string().min(2).max(32),
+          zip: z.string().min(3).max(16),
+          country: z.string().max(2).default("US"),
+          phone: z.string().max(32).optional(),
+        })
+        .optional(),
+      parcel: z
+        .object({
+          length_in: z.number().positive(),
+          width_in: z.number().positive(),
+          height_in: z.number().positive(),
+          weight_oz: z.number().positive(),
+        })
+        .optional(),
+      service_level: z.string().max(INPUT_LIMITS.shortTextChars).optional(),
+    })
+    .strict();
+
+  app.post(
+    "/shipments/:id/test-label",
+    { preHandler: [requireAuth, requireShipmentOwner({ role: "seller" })] },
+    async (request, reply) => {
+      const shipmentId = (request.params as { id: string }).id;
+      const shipment = await getShipmentById(db, shipmentId);
+      if (!shipment) {
+        return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
+      }
+
+      const executionMode = modeForShipment(shipment);
+      if (executionMode === "physical_live") {
+        return reply.code(409).send({
+          error: "TEST_LABEL_FORBIDDEN_FOR_PHYSICAL_LIVE",
+          message:
+            "One-step test-label is for EasyPost test/mock keys only. Use prepare + purchase-label for physical_live.",
+        });
+      }
+
+      if (shipment.status !== "LABEL_PENDING") {
+        return reply.code(400).send({
+          error: "INVALID_STATUS",
+          message: "Shipment must be in LABEL_PENDING status (label not yet created)",
+        });
+      }
+
+      const parsed = testLabelSchema.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send({ error: "INVALID_TEST_LABEL_REQUEST", issues: parsed.error.issues });
+      }
+
+      // Fail-closed before idempotency / provider calls when live EasyPost keys would be used.
+      try {
+        const candidateKey = resolveEasyPostTestLabelCandidateKey();
+        const keyMode = classifyEasyPostKeyMode(candidateKey ?? undefined);
+        assertStagingEasyPostTestLabelKeysAllowed({ HAGGLE_ENV: process.env.HAGGLE_ENV }, keyMode);
+        // One-step test-label never purchases with live keys in any env.
+        if (keyMode === "live") {
+          throw Object.assign(
+            new Error(
+              `${STAGING_LIVE_EASYPOST_KEYS_FORBIDDEN}: EasyPost test-label one-step forbids live (EZAK) keys.`,
+            ),
+            { code: STAGING_LIVE_EASYPOST_KEYS_FORBIDDEN, statusCode: 503 },
+          );
+        }
+      } catch (error) {
+        if (isStagingLiveEasyPostKeysForbiddenError(error)) {
+          return reply.code(503).send({
+            error: STAGING_LIVE_EASYPOST_KEYS_FORBIDDEN,
+            message: error.message,
+          });
+        }
+        throw error;
+      }
+
+      const idempotency = await beginShipmentOperationIdempotency(
+        db,
+        request,
+        reply,
+        "shipment.test_label",
+        shipmentId,
+      );
+      if (idempotency.replayed) return;
+
+      try {
+        const label = await createEasyPostTestLabelOneStep({
+          shipment_id: shipmentId,
+          from_address: parsed.data.from_address,
+          to_address: parsed.data.to_address,
+          parcel: parsed.data.parcel,
+          service_level: parsed.data.service_level,
+        });
+
+        const shipmentRow = await db.query.shipments.findFirst({
+          where: (fields, ops) => ops.eq(fields.id, shipmentId),
+        });
+
+        await db
+          .update(shipmentsTable)
+          .set({
+            status: "LABEL_CREATED",
+            carrier: label.carrier,
+            trackingNumber: label.tracking_number,
+            labelUrl: label.label_url,
+            rateMinor: String(label.rate_minor),
+            selectedRateId:
+              label.source === "mock" ? "rate_mock_ground" : `rate_test_one_step_${shipmentId}`,
+            metadata: {
+              ...(shipmentRow?.metadata ?? {}),
+              ...metadataForShippingExecutionMode("integration_manual", shipmentRow?.metadata),
+              ...label.metadata,
+              label_qr_code_status: label.label_qr_code_url ? "created" : "skipped",
+              label_qr_code_url: label.label_qr_code_url,
+              label_print_methods: label.label_qr_code_url
+                ? ["pdf", "usps_label_broker_qr"]
+                : ["pdf"],
+              prepared_rate_quote_source: label.source === "easypost_test" ? "easypost" : "mock",
+            },
+            parcelWeightOz: String(parsed.data.parcel?.weight_oz ?? 16),
+            declaredWeightOz: String(parsed.data.parcel?.weight_oz ?? 16),
+            labelRefundStatus: "NONE",
+            labelRefundClaimId: null,
+            labelRefundLeaseExpiresAt: null,
+            labelRefundUpdatedAt: null,
+            labelCreatedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eqOp(shipmentsTable.id, shipmentId));
+
+        await insertShipmentEvent(db, {
+          id: `evt_${Date.now()}`,
+          shipment_id: shipmentId,
+          status: "LABEL_CREATED",
+          occurred_at: new Date().toISOString(),
+          carrier_raw_status: label.carrier_raw_status,
+          message: `One-step EasyPost ${label.label_environment} label created (A9)`,
+        });
+
+        await updateCommerceOrderStatus(db, shipment.order_id, "FULFILLMENT_ACTIVE");
+
+        const finalShipment = await getShipmentById(db, shipmentId);
+        const responseBody = {
+          shipment: finalShipment,
+          label_url: label.label_url,
+          label_qr_code_url: label.label_qr_code_url,
+          label_qr_code_available: Boolean(label.label_qr_code_url),
+          tracking_number: label.tracking_number,
+          source: label.source,
+          label_environment: label.label_environment,
+          money_charged: label.money_charged,
+          one_step: label.one_step,
+          key_mode: label.key_mode,
+          rate_minor: label.rate_minor,
+          carrier: label.carrier,
+          service: label.service,
+        };
+
+        await auditShipmentAction(db, request, "shipment.label_purchase", {
+          shipmentId,
+          orderId: shipment.order_id,
+          reason: `one-step ${label.label_environment} label (A9)`,
+          metadata: {
+            source: label.source,
+            money_charged: false,
+            label_environment: label.label_environment,
+          },
+        });
+        await completeShipmentOperation(
+          db,
+          "shipment.test_label",
+          idempotency,
+          200,
+          responseBody as Record<string, unknown>,
+        );
+        return reply.send(responseBody);
+      } catch (error) {
+        if (isStagingLiveEasyPostKeysForbiddenError(error)) {
+          const responseBody = {
+            error: STAGING_LIVE_EASYPOST_KEYS_FORBIDDEN,
+            message: error.message,
+          };
+          await completeShipmentOperation(
+            db,
+            "shipment.test_label",
+            idempotency,
+            503,
+            responseBody,
+          );
+          return reply.code(503).send(responseBody);
+        }
+        const responseBody = {
+          error: "TEST_LABEL_CREATION_FAILED",
+          message: error instanceof Error ? error.message : String(error),
+        };
+        await completeShipmentOperation(db, "shipment.test_label", idempotency, 400, responseBody);
+        return reply.code(400).send(responseBody);
+      }
     },
   );
 
