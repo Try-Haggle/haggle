@@ -123,9 +123,9 @@ const PRODUCTS: ProductCase[] = [
     ownsSignatures: ["clothing"],
   },
   {
-    name: "Sneakers (fashion alias)",
+    name: "Sneakers (fashion alias — D3 shoe HARD no-op)",
     tags: ["fashion", "sneakers"],
-    expectHardGates: ["authenticity", "sneaker_authenticity"],
+    expectHardGates: ["authenticity"],
     expectChecks: ["size", "cosmetic_grade"],
     ownsSignatures: ["clothing"],
   },

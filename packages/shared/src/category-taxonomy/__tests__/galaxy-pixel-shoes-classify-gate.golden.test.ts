@@ -1,10 +1,10 @@
 /**
  * A10/D3 goldens — galaxy / pixel taxonomy: classification + HARD gate reject/pass.
  *
- * D3 (CTO feedback): shoes/sneakers HARD authenticity path removed. Electronics only —
- * galaxy/pixel/phone HARD remain. dead-pixel / no-dead-pixel must not open phone gates
- * (AMBIGUOUS_MATCH_TOKENS). Shoes must NOT classify to sneakers HARD / unansweredHard
- * authenticity (sneaker_authenticity).
+ * D3 (CTO correction): shoe-family taxonomy/HARD entirely no-op. Remove ALL explicit
+ * sneaker HARD paths (jordan/yeezy/dunk/스니커즈/운동화 aliases + sneaker_authenticity HARD).
+ * Electronics only — galaxy/pixel/phone HARD remain. dead-pixel / no-dead-pixel must not
+ * open phone gates (AMBIGUOUS_MATCH_TOKENS).
  *
  * Classification = enrichTagsWithTaxonomy / inferTaxonomyTags → resolveChecks.
  * Gate = unansweredHardCriteria (reject when HARD unanswered; pass when answered).
@@ -35,7 +35,7 @@ function answered(checkId: string, stance = "confirmed"): CategoryCriterion {
   };
 }
 
-describe("A10/D3 classify — galaxy / pixel (electronics); shoes must not open sneakers HARD", () => {
+describe("A10/D3 classify — galaxy / pixel (electronics); shoe-family HARD no-op", () => {
   it("Galaxy S24 title classifies into samsung phone HARD gates", () => {
     const { tags, inferred } = enrichTagsWithTaxonomy(
       ["electronics"],
@@ -81,7 +81,6 @@ describe("A10/D3 classify — galaxy / pixel (electronics); shoes must not open 
     expect(hardIds(["shoes"])).not.toContain("sneaker_authenticity");
     const unanswered = unansweredHardCriteria(["clothing", "shoes"], []).map((c) => c.checkId);
     expect(unanswered).not.toContain("sneaker_authenticity");
-    // clothing-level authenticity may still apply via the clothing tag, but the A10
     // shoes→sneakers authenticity HARD path must stay closed.
     expect(unansweredHardCriteria(["shoes"], []).map((c) => c.checkId)).not.toContain(
       "sneaker_authenticity",
@@ -89,6 +88,48 @@ describe("A10/D3 classify — galaxy / pixel (electronics); shoes must not open 
     expect(unansweredHardCriteria(["shoes"], []).map((c) => c.checkId)).not.toContain(
       "authenticity",
     );
+  });
+
+  it("explicit sneaker brands/aliases do NOT open sneaker HARD (jordan/yeezy/dunk/스니커즈/운동화)", () => {
+    // Brand/KR titles must not infer removed aliases; HARD must stay closed even if the
+    // path leaf "sneakers" is present in a title or explicit tags.
+    const brandTitles = [
+      "Air Jordan 1 Retro High OG size 10",
+      "Adidas Yeezy Boost 350 V2",
+      "Nike Dunk Low Panda",
+      "스니커즈 나이키 에어포스 사이즈 270",
+      "운동화 뉴발란스 993",
+    ];
+    for (const title of brandTitles) {
+      const inferred = inferTaxonomyTags(title);
+      expect(inferred, title).not.toEqual(
+        expect.arrayContaining(["jordan", "yeezy", "dunk", "스니커즈", "운동화", "sneaker"]),
+      );
+      const { tags } = enrichTagsWithTaxonomy(["clothing"], title);
+      expect(hardIds(tags), title).not.toContain("sneaker_authenticity");
+      expect(
+        unansweredHardCriteria(tags, []).map((c) => c.checkId),
+        title,
+      ).not.toContain("sneaker_authenticity");
+    }
+    // Direct former-alias / leaf tags also must not surface sneaker HARD.
+    for (const tags of [
+      ["jordan"],
+      ["yeezy"],
+      ["dunk"],
+      ["스니커즈"],
+      ["운동화"],
+      ["sneakers"],
+      ["sneaker"],
+      ["clothing", "sneakers"],
+      ["fashion", "sneakers"],
+    ] as const) {
+      expect(hardIds(tags), String(tags)).not.toContain("sneaker_authenticity");
+      expect(
+        unansweredHardCriteria(tags, []).map((c) => c.checkId),
+        String(tags),
+      ).not.toContain("sneaker_authenticity");
+    }
   });
 
   it("dead-pixel monitor tags do NOT open Pixel phone gates (ambiguous-token hardening)", () => {

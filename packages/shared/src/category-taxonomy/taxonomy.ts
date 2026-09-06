@@ -2115,15 +2115,15 @@ export const CATEGORY_TAXONOMY: readonly CategoryNode[] = [
   // ── clothing: luxury / resale subtypes ───────────────────────────────────
   {
     path: "clothing/sneakers",
-    // D3: do not map generic shoes/footwear/신발 here — A10 shoes→sneakers HARD path removed.
-    // Explicit sneaker brands (jordan/yeezy/dunk) and 스니커즈/운동화 remain.
-    aliases: ["sneakers", "sneaker", "jordan", "yeezy", "dunk", "스니커즈", "운동화"],
+    // D3 CTO: shoe-family taxonomy/HARD entirely no-op. No aliases (incl. jordan/yeezy/dunk/
+    // 스니커즈/운동화/sneakers) open sneaker HARD. Keep electronics galaxy/pixel/phone HARD only.
+    aliases: [],
     checks: [
       {
         id: "sneaker_authenticity",
         questionKo: "정품(레플리카/UA 아님)인가요? (StockX/GOAT 인증 포함)",
         buyerAskKo: "Should the agent require authenticity (platform-verified / not replica)?",
-        enforcement: "hard",
+        enforcement: "soft",
         answerHints: [
           "정품",
           "레플리카",
