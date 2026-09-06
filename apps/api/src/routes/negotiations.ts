@@ -66,8 +66,8 @@ import {
   updateSessionState,
 } from "../services/negotiation-session.service.js";
 import {
+  parseStartBuyerNegotiationBody,
   startBuyerNegotiation,
-  startBuyerNegotiationSchema,
 } from "../services/start-buyer-negotiation.service.js";
 import { loadUserMemoryBrief } from "../services/user-memory-card.service.js";
 import { projectLastUtility, projectRoundEngineFields } from "./session-projection.js";
@@ -86,8 +86,6 @@ const createSessionSchema = z.object({
   intent_id: z.string().uuid().optional(),
   expires_at: z.string().datetime().optional(),
 });
-
-const startSessionSchema = startBuyerNegotiationSchema;
 
 const runNextAutoPlayRoundSchema = z.object({
   run_token: z.string().min(32).optional(),
@@ -866,9 +864,9 @@ export function registerNegotiationRoutes(
   // 서버가 판매자 전략 + 구매자 전략을 합성해 실제 세션을 생성하고 sessionId를
   // 반환한다. 클라이언트는 이 sessionId로 협상 페이지에 진입한다.
   app.post("/negotiations/start", async (request, reply) => {
-    const parsed = startSessionSchema.safeParse(request.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ error: "INVALID_START_REQUEST", issues: parsed.error.issues });
+    const parsed = parseStartBuyerNegotiationBody(request.body);
+    if (!parsed.ok) {
+      return reply.code(parsed.status).send(parsed.body);
     }
     const isGuest = !request.user;
     const buyerId = request.user?.id ?? crypto.randomUUID();
