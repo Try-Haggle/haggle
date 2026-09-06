@@ -5702,9 +5702,22 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
   app.get("/payments/onramp/status", async (_request, reply) => {
     const config = getStripeConfig();
+    const stagingMockOptIn =
+      process.env.HAGGLE_ENV === "staging" &&
+      process.env.HAGGLE_ENABLE_STAGING_MOCK_PAYMENTS === "true";
+    const stripeModeReal = config.stripeMode === "real";
+    // Onramp session creation hits Stripe Crypto Onramp when STRIPE_SECRET_KEY is set.
+    // Test cards (4242…) only work when keys are test-mode; live keys reject them.
+    const testCardsExpected = config.enabled && config.keyMode === "test";
     return reply.send({
       available: config.enabled,
       provider: "stripe",
+      stripe_mode: config.stripeMode,
+      stripe_key_mode: config.keyMode,
+      staging_mock_payments_opt_in: stagingMockOptIn,
+      // Dogfood hint: true only when sk_test_/pk_test_ are configured.
+      test_cards_expected: testCardsExpected,
+      stripe_mode_real: stripeModeReal,
       supported_destination: {
         currency: "usdc",
         network: "base",
@@ -5716,6 +5729,11 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         total_buyer_fee_pct: 3.0,
         note: "Stripe 1.5% + Haggle 1.5% = 3% total. No hidden fees.",
       },
+      notes: [
+        "Haggle never accepts or stores card PANs; card entry is Stripe Onramp only.",
+        "MCP haggle_create_checkout returns a web checkout_url only.",
+        "Staging dogfood: STRIPE_MODE=real + sk_test_/pk_test_ + staging webhook.",
+      ],
     });
   });
 }

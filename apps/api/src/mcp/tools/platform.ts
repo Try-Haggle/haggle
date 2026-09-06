@@ -26,6 +26,7 @@ import {
 } from "../../negotiation/phase/seller-criteria-pause.js";
 import { mcpConnectHint } from "../../routes/mcp-oauth.js";
 import { evaluateDisputeOpeningEligibility } from "../../services/dispute-opening-eligibility.service.js";
+import { describeDisputeOrderGate } from "../../services/dispute-order-gate.service.js";
 import { createDisputeRecord, getDisputeByOrderId } from "../../services/dispute-record.service.js";
 import {
   createAndPublishOwnedListing,
@@ -65,6 +66,7 @@ import {
   startBuyerNegotiation,
   startBuyerNegotiationSchema,
 } from "../../services/start-buyer-negotiation.service.js";
+import { lockTestContractForDisputeOpen } from "../../services/test-contract-ledger.service.js";
 import { haggleGetListingInputShape, haggleGetListingOutputShape } from "./mcp-listing-schema.js";
 import { hagglePlayNextInputShape } from "./mcp-play-next-schema.js";
 import { haggleStartNegotiationInputShape } from "./mcp-start-schema.js";
@@ -1038,15 +1040,15 @@ export function registerPlatformTools(
       if (!(reason_code in REASON_CODE_REGISTRY)) {
         return mcpError("INVALID_REASON_CODE");
       }
-      const disputable = new Set([
-        "PAID",
-        "FULFILLMENT_PENDING",
-        "FULFILLMENT_ACTIVE",
-        "DELIVERED",
-        "IN_DISPUTE",
-      ]);
-      if (!disputable.has(order.status)) {
-        return mcpError("ORDER_NOT_DISPUTABLE", { order_status: order.status });
+      const orderGate = describeDisputeOrderGate(order.status);
+      if (!orderGate.disputable) {
+        return mcpError("ORDER_NOT_DISPUTABLE", {
+          order_status: orderGate.order_status,
+          blocking_gate: orderGate.blocking_gate,
+          message: orderGate.message,
+          hint: orderGate.hint,
+          staging_fixture: orderGate.staging_fixture,
+        });
       }
       const shipment = await getShipmentByOrderId(db, order_id);
       const eligibility = evaluateDisputeOpeningEligibility({
@@ -1097,10 +1099,18 @@ export function registerPlatformTools(
         }
         throw error;
       }
+      const testContractLock = lockTestContractForDisputeOpen(order_id, opened.dispute.id);
       return mcpJson({
         dispute_id: opened.dispute.id,
         evidence_url: `${publicAppBaseUrl()}/disputes/${opened.dispute.id}`,
         message: "Dispute opened. Upload evidence on the web.",
+        test_contract_lock: testContractLock.locked
+          ? {
+              locked: true,
+              idempotent: testContractLock.idempotent,
+              status: testContractLock.entry.status,
+            }
+          : { locked: false, reason: testContractLock.reason },
       });
     },
   );

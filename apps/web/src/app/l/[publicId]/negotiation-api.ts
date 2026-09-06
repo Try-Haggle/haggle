@@ -1,72 +1,90 @@
-import { api } from "@/lib/api-client";
+/**
+ * Listing CTA → real negotiation session.
+ *
+ * `/l/{publicId}` must open (or resume) a durable buyer session via
+ * `POST /negotiations/start` — never the old intent/match path (`/api/intents`,
+ * `trigger-match`). Strategy knobs are sent only on that start call; resuming
+ * an already-open session reuses it without re-applying strategy.
+ */
+import { ApiError, api } from "@/lib/api-client";
 
-export interface CreateIntentResponse {
-  intent: {
-    id: string;
-    status: string;
-  };
+export interface StartListingNegotiationResponse {
+  session_id: string;
+  run_token: string;
+  guest_buyer_id?: string;
+  /** True when an open session for this listing was reused (no new start). */
+  resumed?: boolean;
 }
 
-export async function getBuyerSessions(userId: string, listingId: string) {
-  const data = await api.get<{
-    sessions: Array<{
-      id: string;
-      listing_id: string;
-      status: string;
-      current_round: number;
-    }>;
-  }>(`/negotiations/sessions?user_id=${userId}&role=BUYER`);
-  return (data.sessions ?? []).filter((s) => s.listing_id === listingId);
+export interface BuyerSessionSummary {
+  id: string;
+  listing_id: string;
+  status: string;
+  current_round: number;
 }
 
-export async function createBuyerIntent(params: {
-  userId: string;
-  category: string;
-  keywords: string[];
+/** Session statuses that mean "still in flight" — resume rather than start again. */
+export const OPEN_BUYER_SESSION_STATUSES = new Set([
+  "CREATED",
+  "ACTIVE",
+  "NEAR_DEAL",
+  "STALLED",
+  "WAITING",
+  "NEGOTIATING_VERSION",
+]);
+
+export async function findOpenBuyerSessionForListing(
+  userId: string,
+  listingId: string,
+): Promise<BuyerSessionSummary | null> {
+  const data = await api.get<{ sessions: BuyerSessionSummary[] }>(
+    `/negotiations/sessions?user_id=${encodeURIComponent(userId)}&role=BUYER`,
+  );
+  const open = (data.sessions ?? []).filter(
+    (s) => s.listing_id === listingId && OPEN_BUYER_SESSION_STATUSES.has(s.status),
+  );
+  if (open.length === 0) return null;
+  // Prefer the furthest-along open session if several exist.
+  return open.reduce((best, s) => (s.current_round > best.current_round ? s : best));
+}
+
+/**
+ * POST /negotiations/start — compiles buyer strategy once into the session snapshot.
+ * Do not call this for browse/product clicks; only when the buyer commits to negotiate.
+ */
+export async function startListingNegotiation(
+  body: Record<string, unknown>,
+): Promise<StartListingNegotiationResponse> {
+  try {
+    const res = await api.post<StartListingNegotiationResponse>("/negotiations/start", body);
+    return { ...res, resumed: false };
+  } catch (err) {
+    if (err instanceof ApiError && !err.message) {
+      throw new Error(err.code ?? "Couldn't start the negotiation. Try again.");
+    }
+    throw err;
+  }
+}
+
+/**
+ * Listing page entry: resume an open buyer session for this listing when one
+ * exists (strategy already applied at its original start); otherwise start a
+ * new real session with the tuned strategy exactly once.
+ */
+export async function startOrResumeListingNegotiation(params: {
+  userId?: string | null;
   listingId: string;
-  agentPreset: string;
-  targetPrice?: number;
-}) {
-  const strategy = buildStrategyFromPreset(params.agentPreset, params.targetPrice);
-
-  return api.post<CreateIntentResponse>("/api/intents", {
-    user_id: params.userId,
-    role: "BUYER",
-    category: params.category || "general",
-    keywords: params.keywords || [],
-    strategy,
-    min_u_total: 0.3,
-    max_active_sessions: 5,
-    expires_in_days: 30,
-  });
-}
-
-export async function triggerMatch(category: string, listingId: string) {
-  return api.post<{
-    match_result: { matched: unknown[]; rejected: unknown[]; total_evaluated: number };
-  }>("/api/intents/trigger-match", {
-    category,
-    listing_id: listingId,
-    context_template: {
-      price: { current: 0, target: 0, limit: 0, opening: 0 },
-      time: { round: 1, max_rounds: 10, deadline_pressure: 0 },
-      risk: { trust_score: 0.5, escrow_active: true, dispute_rate: 0, is_first_transaction: false },
-      relationship: { repeat_partner: false, total_history: 0, avg_concession: 0 },
-    },
-  });
-}
-
-function buildStrategyFromPreset(presetId: string, targetPrice?: number) {
-  const presets: Record<string, Record<string, unknown>> = {
-    "price-hunter": { aggression: 0.7, patience: 0.5, risk: 0.6, style: "aggressive" },
-    "smart-trader": { aggression: 0.3, patience: 0.9, risk: 0.3, style: "analytical" },
-    "fast-closer": { aggression: 0.5, patience: 0.7, risk: 0.4, style: "collaborative" },
-    "spec-analyst": { aggression: 0.9, patience: 0.3, risk: 0.8, style: "hardball" },
-  };
-
-  return {
-    preset: presetId,
-    params: presets[presetId] || presets["price-hunter"],
-    target_price: targetPrice,
-  };
+  startBody: Record<string, unknown>;
+}): Promise<StartListingNegotiationResponse> {
+  if (params.userId) {
+    try {
+      const existing = await findOpenBuyerSessionForListing(params.userId, params.listingId);
+      if (existing) {
+        return { session_id: existing.id, run_token: "", resumed: true };
+      }
+    } catch {
+      // Session list is best-effort — the CTA must still be able to start.
+    }
+  }
+  return startListingNegotiation(params.startBody);
 }

@@ -5343,6 +5343,63 @@ describe("payment test tool routes", () => {
     expect(res.json()).toMatchObject({ error: "PAYMENT_TEST_TOOLS_DISABLED" });
   });
 
+  it("creates a dispute-ready paid/delivered order fixture without real money", async () => {
+    process.env.NODE_ENV = "test";
+    const approvalId = "11111111-1111-4111-8111-111111111111";
+    const orderId = "22222222-2222-4222-8222-222222222222";
+    const intentId = "33333333-3333-4333-8333-333333333333";
+    let insertCount = 0;
+    const values = vi.fn().mockImplementation((payload: Record<string, unknown>) => {
+      const ids = [approvalId, orderId, intentId];
+      const id = ids[Math.min(insertCount, ids.length - 1)];
+      insertCount += 1;
+      return {
+        returning: vi.fn().mockResolvedValue([{ ...payload, id }]),
+      };
+    });
+    const insert = vi.fn().mockReturnValue({ values });
+    const db = { insert } as unknown as Database;
+    const app = makeApp(db);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/tools/payment-test/dispute-ready-order",
+      payload: {
+        order_status: "DELIVERED",
+        selected_payment_rail: "stripe",
+        amount_minor: 45000,
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.fixture).toMatchObject({
+      order_id: orderId,
+      order_status: "DELIVERED",
+      payment_intent_status: "SETTLED",
+      money_moved: false,
+      card_pan_used: false,
+      next: { mcp_tool: "haggle_start_dispute" },
+    });
+    expect(JSON.stringify(body)).not.toMatch(/\b4[0-9]{12}(?:[0-9]{3})?\b/);
+    expect(insert).toHaveBeenCalledTimes(3);
+  });
+
+  it("blocks production dispute-ready fixture for non-admin users", async () => {
+    process.env.NODE_ENV = "production";
+    const { db } = makeDb({});
+    const app = makeApp(db);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/tools/payment-test/dispute-ready-order",
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe("PAYMENT_TEST_TOOLS_DISABLED");
+  });
+
   it("rejects unknown dispute AI evaluation scenarios before calling a provider", async () => {
     process.env.NODE_ENV = "test";
     const { db } = makeDb({});

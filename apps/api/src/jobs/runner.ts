@@ -31,6 +31,7 @@ import { runDisputeSimilarityReviewAuditArchiveAlert } from "./dispute-similarit
 import { runDisputeSimilarityReviewExpiry } from "./dispute-similarity-review-expiry.js";
 import { runListingWithdrawRetention } from "./listing-withdraw-retention.js";
 import { runPaymentIntentExpiry } from "./payment-intent-expiry.js";
+import { runPaymentReconciliationReport } from "./payment-reconciliation-report.js";
 import { runProductionReconciliationReport } from "./production-reconciliation-report.js";
 import { runRetryFailedEmails } from "./retry-failed-emails.js";
 import { runSettlementAutoRelease } from "./settlement-auto-release.js";
@@ -180,6 +181,12 @@ export function buildJobRegistry(): CronJob[] {
       intervalMs: 60 * 60 * 1000, // every hour
       handler: runProductionReconciliationReport,
       enabled: process.env.ENABLE_PRODUCTION_RECONCILIATION_JOB === "true",
+    },
+    {
+      name: "payment-reconciliation-report",
+      intervalMs: 60 * 60 * 1000, // every hour
+      handler: runPaymentReconciliationReport,
+      enabled: process.env.ENABLE_PAYMENT_RECONCILIATION_REPORT_JOB === "true",
     },
     {
       name: "webhook-claim-health-alert",

@@ -4,6 +4,11 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetRateLimitsForTests } from "../middleware/rate-limit.js";
 import { deriveAppealSlaState, registerDisputeRoutes } from "../routes/disputes.js";
+import {
+  fundTestContract,
+  getTestContractByOrderId,
+  resetTestContractLedgerForTests,
+} from "../services/test-contract-ledger.service.js";
 import { ADMIN_HEADERS, AUTH_HEADERS, closeTestApp, getTestApp } from "./helpers.js";
 
 // --- Mock service layers ---
@@ -818,6 +823,7 @@ describe("Dispute routes", () => {
 
   beforeEach(() => {
     resetRateLimitsForTests();
+    resetTestContractLedgerForTests();
     vi.clearAllMocks();
     delete (globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] })
       .__HAGGLE_TEST_DB_SELECT_ROWS__;
@@ -980,6 +986,45 @@ describe("Dispute routes", () => {
       "ord_123",
       "IN_DISPUTE",
     );
+    expect(body.test_contract_lock).toEqual({
+      locked: false,
+      reason: "NO_TEST_CONTRACT",
+    });
+  });
+
+  it("POST /orders/:orderId/disputes auto-locks fake-money test-contract ledger at L1 open", async () => {
+    mockGetCommerceOrderByOrderId.mockResolvedValueOnce(fakeOrder());
+    mockGetDisputeByOrderId.mockResolvedValueOnce(null);
+    fundTestContract({
+      order_id: "ord_123",
+      payment_intent_id: "pi_fake_b2",
+      amount_minor: 50_000,
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/orders/ord_123/disputes",
+      headers: AUTH_HEADERS,
+      payload: {
+        reason_code: "ITEM_NOT_AS_DESCRIBED",
+        summary: "Battery health mismatch — lock fake-money escrow",
+        client_request_id: "b2-lock-open-001",
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.order_status).toBe("IN_DISPUTE");
+    expect(body.test_contract_lock).toMatchObject({
+      locked: true,
+      idempotent: false,
+      test_contract: {
+        order_id: "ord_123",
+        status: "DISPUTED",
+        invariant_checks: { dispute_blocks_buyer_confirm: true },
+      },
+    });
+    expect(getTestContractByOrderId("ord_123")?.dispute_id).toBe(body.dispute.id);
   });
 
   it("GET /orders/:orderId/dispute-eligibility explains why delivery is not due", async () => {
@@ -1095,7 +1140,14 @@ describe("Dispute routes", () => {
     });
 
     expect(res.statusCode).toBe(409);
-    expect(res.json().error).toBe("ORDER_NOT_DISPUTABLE");
+    expect(res.json()).toMatchObject({
+      error: "ORDER_NOT_DISPUTABLE",
+      order_status: "PAYMENT_PENDING",
+      blocking_gate: "payment_not_settled",
+    });
+    expect(res.json().staging_fixture.endpoint).toBe(
+      "POST /tools/payment-test/dispute-ready-order",
+    );
     expect(mockCreateDisputeRecord).not.toHaveBeenCalled();
   });
 

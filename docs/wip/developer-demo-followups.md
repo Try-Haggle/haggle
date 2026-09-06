@@ -16,9 +16,9 @@ Show this flow in the developer demo:
 
 ## Production bridge
 
-- Public listing CTA currently routes through intent creation. Close the gap so `/l/{publicId}` can create or retrieve a real negotiation session and redirect to `/buy/negotiations/{sessionId}`.
-- Fix the web/API path mismatch around intent routes: the web client calls `/api/intents`, while the API route is registered as `/intents`.
-- Decide whether `trigger-match` should create sessions directly or whether a dedicated "start negotiation from listing" endpoint should own that behavior.
+- [x] Public listing CTA routes through `POST /negotiations/start` (A3, 2026-09-06). `/l/{publicId}` creates or resumes a real negotiation session and redirects to `/buy/negotiations/{sessionId}`. Dead `/api/intents` + `trigger-match` helpers removed from the listing path; strategy is applied only once at start (resume reuses the open session).
+- Fix the web/API path mismatch around intent routes: the web client calls `/api/intents`, while the API route is registered as `/intents`. (Listing CTA no longer uses intents; remaining callers should still be audited.)
+- Decide whether `trigger-match` should create sessions directly or whether a dedicated "start negotiation from listing" endpoint should own that behavior. (`POST /negotiations/start` owns listing→session.)
 - Move advisor memory restore from the developer demo into the production buyer path:
   - Load buyer memory once when the listing page or buyer dashboard opens.
   - Use the memory for ranking/recommendation copy.

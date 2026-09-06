@@ -121,6 +121,10 @@ import {
   releaseDisputeOperationLease,
 } from "../services/dispute-operation-lease.service.js";
 import {
+  describeDisputeOrderGate,
+  isDisputableOrderStatus,
+} from "../services/dispute-order-gate.service.js";
+import {
   buildDisputePrecedentSnapshot,
   listApprovedDisputePrecedents,
   toResolutionAssessorPrecedentExamples,
@@ -179,6 +183,10 @@ import {
   updateCommerceOrderStatus,
 } from "../services/payment-record.service.js";
 import { getShipmentByOrderId } from "../services/shipment-record.service.js";
+import {
+  lockTestContractForDisputeOpen,
+  serializeTestContract,
+} from "../services/test-contract-ledger.service.js";
 import { applyTrustTriggers } from "../services/trust-ledger.service.js";
 import { assignReviewersToDispute } from "./reviewer.js";
 
@@ -548,13 +556,6 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   const disputeService = new DisputeService();
   const { requireDisputeParty } = createOwnershipMiddleware(db);
 
-  const disputableOrderStatuses = new Set([
-    "PAID",
-    "FULFILLMENT_PENDING",
-    "FULFILLMENT_ACTIVE",
-    "DELIVERED",
-    "IN_DISPUTE",
-  ]);
   const buyerDisputeReasonCodes: DisputeReasonCode[] = [
     "ITEM_NOT_RECEIVED",
     "ITEM_NOT_AS_DESCRIBED",
@@ -599,7 +600,20 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     });
   }
 
-  async function writeDisputeOpen(dispute: DisputeCase, orderId: string): Promise<void> {
+  type TestContractLockResult =
+    | { locked: false; reason: "NO_TEST_CONTRACT" }
+    | { locked: true; idempotent: boolean; test_contract: ReturnType<typeof serializeTestContract> }
+    | {
+        locked: false;
+        reason: "NOT_LOCKABLE";
+        message: string;
+        test_contract: ReturnType<typeof serializeTestContract>;
+      };
+
+  async function writeDisputeOpen(
+    dispute: DisputeCase,
+    orderId: string,
+  ): Promise<{ test_contract_lock: TestContractLockResult }> {
     const persist = async (tx: unknown) => {
       const txDb = tx as Database;
       await createDisputeRecord(txDb, dispute);
@@ -608,9 +622,33 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
 
     if (typeof db.transaction === "function") {
       await db.transaction(persist);
-      return;
+    } else {
+      await persist(db);
     }
-    await persist(db);
+
+    // Fake-money Stage 1: lock in-memory test-contract ledger when funded.
+    // No-op outside the fake-money path (no ledger entry). Does not touch real money/PAN.
+    const lock = lockTestContractForDisputeOpen(orderId, dispute.id);
+    if (!lock.locked) {
+      if (lock.reason === "NO_TEST_CONTRACT") {
+        return { test_contract_lock: { locked: false, reason: "NO_TEST_CONTRACT" } };
+      }
+      return {
+        test_contract_lock: {
+          locked: false,
+          reason: "NOT_LOCKABLE",
+          message: lock.message,
+          test_contract: serializeTestContract(lock.entry),
+        },
+      };
+    }
+    return {
+      test_contract_lock: {
+        locked: true,
+        idempotent: lock.idempotent,
+        test_contract: serializeTestContract(lock.entry),
+      },
+    };
   }
 
   function createUuid(): string {
@@ -1210,18 +1248,24 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       const shipment = await getShipmentByOrderId(db, orderId);
       const reasonCodes = openedBy === "buyer" ? buyerDisputeReasonCodes : sellerDisputeReasonCodes;
       const reasons = reasonCodes.map((reasonCode) => {
-        const eligibility = disputableOrderStatuses.has(order.status)
+        const eligibility = isDisputableOrderStatus(order.status)
           ? evaluateDisputeOpeningEligibility({
               reasonCode,
               openedBy,
               orderStatus: order.status,
               shipment,
             })
-          : {
-              eligible: false,
-              error: "ORDER_NOT_DISPUTABLE",
-              message: "This order is not in a state where a dispute can be opened.",
-            };
+          : (() => {
+              const gate = describeDisputeOrderGate(order.status);
+              return {
+                eligible: false,
+                error: "ORDER_NOT_DISPUTABLE",
+                blocking_gate: gate.blocking_gate,
+                message: gate.message,
+                hint: gate.hint,
+                staging_fixture: gate.staging_fixture,
+              };
+            })();
         return {
           code: reasonCode,
           label: REASON_CODE_REGISTRY[reasonCode].label,
@@ -1298,11 +1342,15 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         });
       }
 
-      if (!disputableOrderStatuses.has(order.status)) {
+      if (!isDisputableOrderStatus(order.status)) {
+        const gate = describeDisputeOrderGate(order.status);
         return reply.code(409).send({
           error: "ORDER_NOT_DISPUTABLE",
-          order_status: order.status,
-          message: "This order is not in a disputable state",
+          order_status: gate.order_status,
+          blocking_gate: gate.blocking_gate,
+          message: gate.message,
+          hint: gate.hint,
+          staging_fixture: gate.staging_fixture,
         });
       }
 
@@ -1349,8 +1397,10 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         order_status_at_open: order.status,
       };
 
+      let testContractLock: TestContractLockResult;
       try {
-        await writeDisputeOpen(result.dispute, orderId);
+        const opened = await writeDisputeOpen(result.dispute, orderId);
+        testContractLock = opened.test_contract_lock;
       } catch (error) {
         if (
           error instanceof Error &&
@@ -1378,6 +1428,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         opened_by: openedBy,
         order_status: "IN_DISPUTE",
         idempotent: false,
+        test_contract_lock: testContractLock,
       });
     },
   );
@@ -1584,11 +1635,15 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         .code(400)
         .send({ error: "INVALID_REASON_CODE", reason_code: parsed.data.reason_code });
     }
-    if (!disputableOrderStatuses.has(order.status)) {
+    if (!isDisputableOrderStatus(order.status)) {
+      const gate = describeDisputeOrderGate(order.status);
       return reply.code(409).send({
         error: "ORDER_NOT_DISPUTABLE",
-        order_status: order.status,
-        message: "This order is not in a disputable state",
+        order_status: gate.order_status,
+        blocking_gate: gate.blocking_gate,
+        message: gate.message,
+        hint: gate.hint,
+        staging_fixture: gate.staging_fixture,
       });
     }
     const openingEligibility = await getOpeningEligibility(
@@ -1619,8 +1674,10 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       initial_evidence: evidence,
     });
 
+    let testContractLock: TestContractLockResult;
     try {
-      await writeDisputeOpen(result.dispute, parsed.data.order_id);
+      const opened = await writeDisputeOpen(result.dispute, parsed.data.order_id);
+      testContractLock = opened.test_contract_lock;
     } catch (error) {
       if (error instanceof Error && /dispute_cases_active_order_uidx|unique/i.test(error.message)) {
         return reply.code(409).send({
@@ -1631,7 +1688,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       throw error;
     }
 
-    return reply.code(201).send(result);
+    return reply.code(201).send({ ...result, test_contract_lock: testContractLock });
   });
 
   // POST /disputes/deposits/expire — admin/cron: forfeit expired deposits
