@@ -17,11 +17,9 @@ import {
   clearPendingDefaultAddress,
   EMPTY_SHIPPING_ADDRESS,
   formatAddressLine,
-  isCompleteShippingAddress,
   isDefaultSavedAddress,
   readPendingDefaultAddress,
   type SavedAddress,
-  type ShippingAddressInput,
   savedAddressToInput,
   toApiAddress,
 } from "@/lib/shipping-address";
