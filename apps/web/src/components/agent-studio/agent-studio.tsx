@@ -278,7 +278,7 @@ export function AgentStudio({
     <MotionConfig reducedMotion="user">
       <div className={cn("flex h-full min-h-0 flex-col bg-surface", className)}>
         {/* ── Mobile: roster as avatar strip ── */}
-        <div className="shrink-0 border-line-subtle border-b lg:hidden">
+        <div className="shrink-0 border-line border-b lg:hidden">
           <AgentAvatarStrip
             role={role}
             savedAgents={savedAgents}
@@ -292,10 +292,15 @@ export function AgentStudio({
             of on the panes. Shortening the row here — rather than padding the
             panes — is also what stops the roster and identity dividers short
             of the window edge, since those lines are those panes' own borders.
-            The three together close the workspace on all four sides. */}
-        <div className="mb-4 flex min-h-0 flex-1 border-line-subtle border-b">
+            The three together close the workspace on all four sides.
+
+            They are `border-line`, not `border-line-subtle`: subtle is #f0ede5
+            on a #fbf9f5 surface, which vanished — with both panes empty there
+            was no content edge left to imply the division either. The same
+            docked-aside pattern in messaging already uses `border-line`. */}
+        <div className="mb-4 flex min-h-0 flex-1 border-line border-b">
           {/* ── Desktop: roster sidebar ── */}
-          <aside className="hidden w-[264px] shrink-0 border-line-subtle border-r lg:block">
+          <aside className="hidden w-[264px] shrink-0 border-line border-r lg:block">
             <AgentRoster
               role={role}
               savedAgents={savedAgents}
@@ -351,7 +356,7 @@ export function AgentStudio({
               <button
                 type="button"
                 onClick={() => setSheetOpen(true)}
-                className="flex shrink-0 items-center gap-2.5 border-line-subtle border-t px-4 py-2.5 text-left transition-colors hover:bg-surface-sunken lg:hidden"
+                className="flex shrink-0 items-center gap-2.5 border-line border-t px-4 py-2.5 text-left transition-colors hover:bg-surface-sunken lg:hidden"
               >
                 <span className="size-9 shrink-0" aria-hidden="true">
                   <MotionRadar preset={effective} size={36} showLabels={false} />
@@ -371,7 +376,7 @@ export function AgentStudio({
           </main>
 
           {/* ── Desktop: identity panel ── */}
-          <aside className="hidden w-[336px] shrink-0 border-line-subtle border-l lg:block">
+          <aside className="hidden w-[336px] shrink-0 border-line border-l lg:block">
             {identityPanel ?? (
               <div className="flex h-full items-center justify-center p-6">
                 <p className="text-center text-[12px] text-ink-muted leading-relaxed">
