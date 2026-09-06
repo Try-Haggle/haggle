@@ -20,6 +20,10 @@ import { isAddress } from "viem";
 import { z } from "zod";
 import { runDisputeEvidenceRetention } from "../jobs/dispute-evidence-retention.js";
 import {
+  assertDisputeAiAssessmentDoesNotMoveMoney,
+  buildDisputeAiAssessmentMoneySafetyFields,
+} from "../lib/dispute-ai-assessment-money-guard.js";
+import {
   ALLOWED_EVIDENCE_TYPES,
   buildDisputeEvidencePath,
   computeEvidenceRemainingLimits,
@@ -4959,8 +4963,9 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
           confidence: result.output.confidence,
           judgment: buildReadableDisputeJudgment(result.output),
           output: result.output,
-          auto_applied: false,
+          ...buildDisputeAiAssessmentMoneySafetyFields(),
         };
+        assertDisputeAiAssessmentDoesNotMoveMoney(aiAssessment);
         const reassessedAppeal =
           appeal?.status === "REOPENED"
             ? { ...appeal, status: "REASSESSED" as const, reassessed_at: assessedAt }
