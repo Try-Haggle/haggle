@@ -62,16 +62,42 @@ Related (not Stripe Onramp, but checkout often needs them after funding):
 - `HAGGLE_X402_MODE=real` + base-sepolia / USDC test assets for conditional settlement after Onramp funds the buyer wallet.
 - `HAGGLE_X402_*` wallet maps / fee wallet as documented in `.env.example`.
 
-Probe (no secrets): `GET https://api.staging.tryhaggle.ai/payments/onramp/status`
+### Public probe (minimal fingerprint)
 
-Fields added for dogfood:
+`GET https://api.staging.tryhaggle.ai/payments/onramp/status` is **unauthenticated** and intentionally minimal:
 
-- `stripe_mode` — `mock` \| `real`
-- `stripe_key_mode` — `test` \| `live` \| `missing` \| `unknown` (from key prefixes only)
-- `test_cards_expected` — `true` when secret key is present and keys look like test mode
+- `available` — secret key present (Onramp can be attempted)
+- `provider` — `"stripe"`
+- `supported_destination` / `supported_source` — product capability
+- `pci_note` — Haggle never takes PANs
+
+It does **not** expose `stripe_key_mode`, `test_cards_expected`, `staging_mock_payments_opt_in`, `stripe_mode`, `stripe_mode_real`, `fee_info`, or staging dogfood notes.
+
+### Auth-gated diagnostics (how to verify test vs live)
+
+Use the existing payment-test runtime probe (requires auth):
+
+```bash
+curl -sS -H "Authorization: Bearer $TOKEN" \
+  https://api.staging.tryhaggle.ai/tools/payment-test/runtime
+```
+
+Look under `runtime` for:
+
+- `stripe_mode` / `stripe_mode_real`
+- `stripe_key_mode` — expect `test` on staging
+- `test_cards_expected` — expect `true` when `sk_test_` / `pk_test_` are set
 - `staging_mock_payments_opt_in`
 
-Observed 2026-09-06 before this PR: staging reported `available: true` (secret key present). After deploy, confirm `stripe_key_mode=test` and `stripe_mode=real`.
+Operators can also confirm key prefixes directly in Railway env (never paste secrets into chat/tickets).
+
+### Staging live-key hard gate
+
+When `HAGGLE_ENV=staging` and Stripe keys classify as `live` (`sk_live_` / `pk_live_`):
+
+- Onramp session creation **fail-closes** with `503 STAGING_LIVE_STRIPE_KEYS_FORBIDDEN`
+- Applies to `POST /payments/:id/onramp/session`, `createOnrampSession`, and `RealStripeAdapter.authorize`
+- Do **not** put live Stripe keys on staging — use `sk_test_` / `pk_test_` only
 
 ## 4242 verdict
 
@@ -80,7 +106,8 @@ Observed 2026-09-06 before this PR: staging reported `available: true` (secret k
 | Condition | 4242 in Onramp widget |
 | --- | --- |
 | `STRIPE_SECRET_KEY=sk_test_…` + `STRIPE_PUBLISHABLE_KEY=pk_test_…` + Onramp available | **Yes** — Stripe Onramp sandbox documents Visa `4242 4242 4242 4242` (OTP `000000`, SSN `000000000`, address line `address_full_match`; keep amount ≤ \$100 in sandbox). |
-| Live keys (`sk_live_` / `pk_live_`) | **No / blocked** — test cards rejected; real charges. |
+| Live keys (`sk_live_` / `pk_live_`) on staging | **Hard-blocked** — `503 STAGING_LIVE_STRIPE_KEYS_FORBIDDEN` (no session / no live publishable key to clients). |
+| Live keys in production | Real charges only; test cards rejected by Stripe. |
 | `STRIPE_SECRET_KEY` unset | **Blocked** — `503 STRIPE_NOT_CONFIGURED`. |
 | `STRIPE_MODE≠real` while `requiresRealPaymentProviders()` | **Blocked** — `PAYMENT_RAIL_NOT_CONFIGURED` on Onramp session. |
 | Expecting Haggle API to accept raw card numbers | **Blocked by design** — no such API; PCI. |
@@ -89,15 +116,17 @@ Haggle never sees the `4242` digits; the tester types them only into Stripe’s 
 
 ## Dogfood steps (tester)
 
-1. Confirm staging probe:
+1. Confirm public probe is up (minimal):
    `curl -sS https://api.staging.tryhaggle.ai/payments/onramp/status`
-   Expect `available=true`, `stripe_mode=real`, `stripe_key_mode=test`, `test_cards_expected=true`.
-2. Reach a buyer negotiation session in `ACCEPTED` with settlement approval `APPROVED`.
-3. MCP (optional): call `haggle_create_checkout` → open returned `checkout_url` while logged in as buyer. Confirm response has **only** URL + message (no card fields).
-4. Or open `https://app.staging.tryhaggle.ai/buy/negotiations/{sessionId}/checkout` directly.
-5. Choose **card**, connect buyer wallet (destination for USDC).
-6. Complete Stripe Onramp sandbox KYC/OTP using Stripe’s documented test values; pay with `4242 4242 4242 4242`, any future expiry, any CVC.
-7. Wait for widget `fulfillment_complete` / staging webhook; confirm payment intent provider context shows Onramp funded, then finish conditional settlement funding if prompted.
+   Expect `available=true`, `provider=stripe`, and **no** `stripe_key_mode` / `test_cards_expected` fields.
+2. Confirm test-mode diagnostics via auth-gated runtime (or Railway env prefixes):
+   `GET /tools/payment-test/runtime` → `stripe_key_mode=test`, `test_cards_expected=true`, `stripe_mode=real`.
+3. Reach a buyer negotiation session in `ACCEPTED` with settlement approval `APPROVED`.
+4. MCP (optional): call `haggle_create_checkout` → open returned `checkout_url` while logged in as buyer. Confirm response has **only** URL + message (no card fields).
+5. Or open `https://app.staging.tryhaggle.ai/buy/negotiations/{sessionId}/checkout` directly.
+6. Choose **card**, connect buyer wallet (destination for USDC).
+7. Complete Stripe Onramp sandbox KYC/OTP using Stripe’s documented test values; pay with `4242 4242 4242 4242`, any future expiry, any CVC.
+8. Wait for widget `fulfillment_complete` / staging webhook; confirm payment intent provider context shows Onramp funded, then finish conditional settlement funding if prompted.
 
 ## Code map (primary files)
 
@@ -117,12 +146,13 @@ Haggle never sees the `4242` digits; the tester types them only into Stripe’s 
 
 ## Operator checklist (Railway)
 
-If `test_cards_expected` is false on staging:
+If auth-gated `test_cards_expected` is false on staging (or Onramp returns `STAGING_LIVE_STRIPE_KEYS_FORBIDDEN`):
 
 1. Set `STRIPE_MODE=real`.
-2. Set `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY` to **test** keys (never live on staging).
+2. Set `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY` to **test** keys (`sk_test_` / `pk_test_`). Live keys are hard-blocked on staging.
 3. Point `STRIPE_WEBHOOK_SECRET` at a staging webhook subscribed to `crypto.onramp_session.fulfillment_complete` (and processing events as needed).
 4. Keep `HAGGLE_ENABLE_STAGING_MOCK_PAYMENTS=false` for Onramp dogfood.
-5. Redeploy API; re-check `/payments/onramp/status`.
+5. Redeploy API; re-check public `/payments/onramp/status` (`available=true`) and auth-gated `/tools/payment-test/runtime` (`stripe_key_mode=test`).
 
 Do **not** invent any Haggle endpoint that accepts raw card numbers.
+Do **not** put key-mode diagnostics back on the public status probe.

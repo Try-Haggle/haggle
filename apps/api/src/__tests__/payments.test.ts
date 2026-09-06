@@ -2695,6 +2695,104 @@ describe("Payment routes", () => {
     }
   });
 
+  it("GET /payments/onramp/status returns a minimal public fingerprint", async () => {
+    const previousSecret = process.env.STRIPE_SECRET_KEY;
+    const previousPublishable = process.env.STRIPE_PUBLISHABLE_KEY;
+    const previousMode = process.env.STRIPE_MODE;
+    const previousHaggleEnv = process.env.HAGGLE_ENV;
+    const previousMockOptIn = process.env.HAGGLE_ENABLE_STAGING_MOCK_PAYMENTS;
+    process.env.STRIPE_SECRET_KEY = "sk_test_public_status";
+    process.env.STRIPE_PUBLISHABLE_KEY = "pk_test_public_status";
+    process.env.STRIPE_MODE = "real";
+    process.env.HAGGLE_ENV = "staging";
+    process.env.HAGGLE_ENABLE_STAGING_MOCK_PAYMENTS = "false";
+
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: "/payments/onramp/status",
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as Record<string, unknown>;
+      expect(body).toEqual({
+        available: true,
+        provider: "stripe",
+        supported_destination: {
+          currency: "usdc",
+          network: "base",
+        },
+        supported_source: ["usd"],
+        pci_note: "Haggle never accepts or stores card PANs; card entry is Stripe Onramp only.",
+      });
+      expect(body).not.toHaveProperty("stripe_key_mode");
+      expect(body).not.toHaveProperty("test_cards_expected");
+      expect(body).not.toHaveProperty("staging_mock_payments_opt_in");
+      expect(body).not.toHaveProperty("stripe_mode");
+      expect(body).not.toHaveProperty("stripe_mode_real");
+      expect(body).not.toHaveProperty("fee_info");
+      expect(body).not.toHaveProperty("notes");
+    } finally {
+      if (previousSecret === undefined) delete process.env.STRIPE_SECRET_KEY;
+      else process.env.STRIPE_SECRET_KEY = previousSecret;
+      if (previousPublishable === undefined) delete process.env.STRIPE_PUBLISHABLE_KEY;
+      else process.env.STRIPE_PUBLISHABLE_KEY = previousPublishable;
+      if (previousMode === undefined) delete process.env.STRIPE_MODE;
+      else process.env.STRIPE_MODE = previousMode;
+      if (previousHaggleEnv === undefined) delete process.env.HAGGLE_ENV;
+      else process.env.HAGGLE_ENV = previousHaggleEnv;
+      if (previousMockOptIn === undefined) delete process.env.HAGGLE_ENABLE_STAGING_MOCK_PAYMENTS;
+      else process.env.HAGGLE_ENABLE_STAGING_MOCK_PAYMENTS = previousMockOptIn;
+    }
+  });
+
+  it("POST /payments/:id/onramp/session fail-closes when staging has live Stripe keys", async () => {
+    const previousSecret = process.env.STRIPE_SECRET_KEY;
+    const previousPublishable = process.env.STRIPE_PUBLISHABLE_KEY;
+    const previousHaggleEnv = process.env.HAGGLE_ENV;
+    process.env.STRIPE_SECRET_KEY = "sk_live_forbidden";
+    process.env.STRIPE_PUBLISHABLE_KEY = "pk_live_forbidden";
+    process.env.HAGGLE_ENV = "staging";
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    mockGetPaymentIntentById.mockClear();
+    mockGetPaymentIntentById.mockResolvedValue({
+      id: "pi_onramp_live_gate",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "x402",
+      allowed_rails: ["x402", "stripe"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "QUOTED",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    } as never);
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/payments/pi_onramp_live_gate/onramp/session",
+        headers: AUTH_HEADERS,
+        payload: {
+          destination_wallet: "0x1111111111111111111111111111111111111111",
+        },
+      });
+      expect(res.statusCode).toBe(503);
+      expect(res.json()).toMatchObject({
+        error: "STAGING_LIVE_STRIPE_KEYS_FORBIDDEN",
+      });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      if (previousSecret === undefined) delete process.env.STRIPE_SECRET_KEY;
+      else process.env.STRIPE_SECRET_KEY = previousSecret;
+      if (previousPublishable === undefined) delete process.env.STRIPE_PUBLISHABLE_KEY;
+      else process.env.STRIPE_PUBLISHABLE_KEY = previousPublishable;
+      if (previousHaggleEnv === undefined) delete process.env.HAGGLE_ENV;
+      else process.env.HAGGLE_ENV = previousHaggleEnv;
+    }
+  });
+
   // POST /payments/prepare - auth required
   it("POST /payments/prepare returns 401 without auth token", async () => {
     const res = await app.inject({
