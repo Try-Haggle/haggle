@@ -964,7 +964,7 @@ describe("Negotiation API", () => {
       expect(mockCreateSession).not.toHaveBeenCalled();
     });
 
-    it("rejects carrier shipping without a delivery address", async () => {
+    it("accepts carrier fulfillment without a delivery address on the start schema", async () => {
       const res = await app.inject({
         method: "POST",
         url: "/negotiations/start",
@@ -974,10 +974,11 @@ describe("Negotiation API", () => {
           fulfillment: { method: "carrier" },
         },
       });
-
-      expect(res.statusCode).toBe(400);
-      expect(res.json().error).toBe("INVALID_START_REQUEST");
-      expect(mockCreateSession).not.toHaveBeenCalled();
+      // Address is checkout-stage. Schema must not 400 INVALID_START_REQUEST
+      // for missing buyer_address; listing mock is null -> 404 LISTING_NOT_FOUND.
+      expect(res.statusCode).toBe(404);
+      expect(res.json().error).toBe("LISTING_NOT_FOUND");
+      expect(res.statusCode).not.toBe(400);
     });
 
     it("rejects pickup fulfillment until in-person methods reconnect", async () => {
