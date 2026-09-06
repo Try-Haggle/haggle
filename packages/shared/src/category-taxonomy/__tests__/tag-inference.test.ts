@@ -227,12 +227,12 @@ describe("coverage gaps found by the real-path probe (must stay closed)", () => 
     expect(inferTaxonomyTags("Honda Civic front grill cover")).toEqual([]);
     // "coin operated" is not a collectible coin.
     expect(inferTaxonomyTags("Coin operated laundry machine")).not.toContain("coins");
-    // Boat shoes are not a boat — but A10 shoes taxonomy still opens sneaker authenticity.
+    // Boat shoes are not a boat; D3 — generic shoes must not open sneakers HARD either.
     const boatShoeGates = hardGates(
       enrichTagsWithTaxonomy(["clothing"], "Sperry boat shoes size 10").tags,
     );
     expect(boatShoeGates).not.toContain("hin_match");
-    expect(boatShoeGates).toContain("sneaker_authenticity");
+    expect(boatShoeGates).not.toContain("sneaker_authenticity");
   });
 });
 

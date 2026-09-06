@@ -2115,21 +2115,9 @@ export const CATEGORY_TAXONOMY: readonly CategoryNode[] = [
   // ── clothing: luxury / resale subtypes ───────────────────────────────────
   {
     path: "clothing/sneakers",
-    // "shoes"/"shoe"/"footwear"/"신발" map here — A10 shoes taxonomy. Boat shoes then
-    // correctly get sneaker authenticity (not a vehicle/boat title spine).
-    aliases: [
-      "sneakers",
-      "sneaker",
-      "shoes",
-      "shoe",
-      "footwear",
-      "jordan",
-      "yeezy",
-      "dunk",
-      "스니커즈",
-      "운동화",
-      "신발",
-    ],
+    // D3: do not map generic shoes/footwear/신발 here — A10 shoes→sneakers HARD path removed.
+    // Explicit sneaker brands (jordan/yeezy/dunk) and 스니커즈/운동화 remain.
+    aliases: ["sneakers", "sneaker", "jordan", "yeezy", "dunk", "스니커즈", "운동화"],
     checks: [
       {
         id: "sneaker_authenticity",

@@ -130,13 +130,6 @@ const PRODUCTS: ProductCase[] = [
     ownsSignatures: ["clothing"],
   },
   {
-    name: "Shoes (shoes alias → sneakers)",
-    tags: ["clothing", "shoes"],
-    expectHardGates: ["authenticity", "sneaker_authenticity"],
-    expectChecks: ["size", "cosmetic_grade"],
-    ownsSignatures: ["clothing"],
-  },
-  {
     name: "Luxury handbag",
     tags: ["clothing", "louis-vuitton-handbag"],
     expectHardGates: ["authenticity", "bag_authenticity", "date_code_chip"],
