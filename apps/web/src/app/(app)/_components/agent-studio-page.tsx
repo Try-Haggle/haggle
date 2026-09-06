@@ -13,6 +13,8 @@ import { useCallback, useEffect, useState } from "react";
 import {
   moveStoredSessions,
   NegotiationAgentBuilderChat,
+  readStoredMessages,
+  sweepExpiredSessions,
 } from "@/app/l/[publicId]/negotiation-agent-builder-chat";
 import { AgentStudio } from "@/components/agent-studio";
 import type { StudioSelection } from "@/components/agent-studio/types";
@@ -22,7 +24,6 @@ import {
   createNegotiationAgent,
   deleteBuilderThread,
   deleteNegotiationAgent,
-  fetchBuilderThread,
   listNegotiationAgents,
   type NegotiationAgentConfig,
   rowToNegotiationAgent,
@@ -118,6 +119,12 @@ export function AgentStudioPage({ role }: { role: Role }) {
     return rows.filter((row) => !row.isSystem).map(rowToNegotiationAgent);
   }, [role]);
 
+  // Preset briefings are namespaced per visit and so are never read again once
+  // abandoned. Swept here, where the studio opens, rather than on a timer.
+  useEffect(() => {
+    sweepExpiredSessions();
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -164,25 +171,28 @@ export function AgentStudioPage({ role }: { role: Role }) {
 
   /**
    * A preset thread just became a saved agent, so its conversation has to
-   * follow it to the new key — in the browser and in the database. Reading
-   * before writing keeps this from clearing a thread when the read fails: no
-   * source row means nothing to move, and the local copy still stands.
+   * follow it — first to the new browser namespace, then into the database.
+   *
+   * This is the moment the transcript becomes a record. Up to here it was
+   * browser-only, because a preset is a template rather than an agent and its
+   * briefing is thrown away when you walk off; from here the conversation
+   * belongs to something that exists, and has to survive this device. The
+   * write is made here rather than left to the chat's own mirror so that
+   * closing the tab right after Save cannot lose what was just committed.
    */
   const handleThreadStorageMove = useCallback(async (from: string, to: string) => {
     moveStoredSessions(from, to);
-    const thread = await fetchBuilderThread(from);
-    if (!thread?.messages?.length) return;
-    await saveBuilderThread({
-      key: to,
-      messages: thread.messages,
-      ...(thread.presetId ? { presetId: thread.presetId } : {}),
-    });
-    await deleteBuilderThread(from);
+    const messages = readStoredMessages(to);
+    if (messages.length === 0) return;
+    await saveBuilderThread({ key: to, messages });
   }, []);
 
   const handleDelete = useCallback(
-    async (agentId: string) => {
+    async (agentId: string, storageId: string) => {
       await deleteNegotiationAgent(agentId);
+      // The conversation goes with the agent. Best-effort and after the fact:
+      // a transcript that outlives its agent is litter, not a failed delete.
+      void deleteBuilderThread(storageId);
       setSavedAgents(await refresh());
       // Drop a stale ?agent= so a reload doesn't try to reopen what was
       // just deleted.
@@ -230,6 +240,7 @@ export function AgentStudioPage({ role }: { role: Role }) {
         renderChat={({
           effective,
           storageId,
+          durable,
           role: chatRole,
           onMemoryUpdate,
           onStrategyUpdate,
@@ -239,9 +250,12 @@ export function AgentStudioPage({ role }: { role: Role }) {
             // No listing here — these agents are account-level and get picked
             // per deal later. The chat keys its local draft off this id, so a
             // per-thread value keeps each agent's conversation separate.
-            // Same key for both: the local copy paints instantly, the
-            // server copy is what survives a different device.
-            serverThreadKey={storageId}
+            //
+            // A saved agent also gets a server key, so its transcript is
+            // mirrored to the database as it grows and is there on any device.
+            // A preset gets none: its briefing is a draft that either becomes
+            // an agent — Save carries it over — or is discarded.
+            {...(durable ? { serverThreadKey: storageId } : {})}
             listingPublicId={storageId}
             listingTitle="General negotiation strategy"
             listingCategory={null}

@@ -243,6 +243,68 @@ export function moveStoredSessions(fromListingId: string, toListingId: string): 
   }
 }
 
+/**
+ * The conversation stored under a namespace, longest first.
+ *
+ * Save hands a preset thread's conversation to the agent it just became, and
+ * the database write for that hand-off has to happen right then: a preset
+ * thread is browser-only while it is being built, so nothing else has a copy.
+ * Reading the moved session back is what lets that write be one deliberate
+ * call instead of a race with the chat's own debounced mirror.
+ *
+ * A namespace can hold more than one entry (the inner key is the agent being
+ * talked to), so the longest transcript wins rather than whichever the browser
+ * happens to enumerate first.
+ */
+export function readStoredMessages(listingId: string): ChatMessage[] {
+  try {
+    const prefix = `${STORAGE_PREFIX}:${listingId}:`;
+    let longest: ChatMessage[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k?.startsWith(prefix)) continue;
+      const raw = localStorage.getItem(k);
+      if (!raw) continue;
+      const session = JSON.parse(raw) as PersistedSession;
+      if (Array.isArray(session.messages) && session.messages.length > longest.length) {
+        longest = session.messages;
+      }
+    }
+    return longest;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Drop every stored conversation past the expiry.
+ *
+ * `loadSession` expires an entry when it reads one, which is enough for a
+ * namespace that gets read again — a listing, a saved agent. A preset thread's
+ * namespace is unique to its visit and so is never read again once abandoned,
+ * and without a sweep those would be the one thing here that only accumulates.
+ */
+export function sweepExpiredSessions(): void {
+  try {
+    const stale: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k?.startsWith(`${STORAGE_PREFIX}:`)) continue;
+      const raw = localStorage.getItem(k);
+      if (!raw) continue;
+      try {
+        const { updatedAt } = JSON.parse(raw) as { updatedAt?: number };
+        if (typeof updatedAt !== "number" || Date.now() - updatedAt > EXPIRY_MS) stale.push(k);
+      } catch {
+        stale.push(k);
+      }
+    }
+    for (const k of stale) localStorage.removeItem(k);
+  } catch {
+    // Storage unavailable: nothing to sweep.
+  }
+}
+
 function clearSession(listingId: string, agentId: string): void {
   try {
     localStorage.removeItem(storageKey(listingId, agentId));

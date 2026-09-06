@@ -64,6 +64,16 @@ export interface StudioChatArgs {
   effective: NegotiationAgentPreset;
   /** Stable per-thread id, for the chat's localStorage isolation. */
   storageId: string;
+  /**
+   * Whether this thread's conversation is a record worth keeping.
+   *
+   * True for a saved agent: you are talking to something that exists, and
+   * coming back to it later should show what was said. False for a preset:
+   * it is a template several agents get started from, not a place a
+   * conversation lives, so its transcript stays in the browser for the length
+   * of the visit and is handed to the agent on Save.
+   */
+  durable: boolean;
   role: "buyer" | "seller";
   onMemoryUpdate: (memory: NegotiationAgentBuilderMemory) => void;
   onStrategyUpdate: (strategy: ChatStrategy) => void;
@@ -88,8 +98,14 @@ interface AgentStudioProps {
     state: AgentBuilderState,
     memory: NegotiationAgentBuilderMemory | null,
   ) => Promise<{ id: string } | undefined>;
-  /** Delete a saved agent. Absent → no delete affordance. */
-  onDelete?: (agentId: string) => Promise<void>;
+  /**
+   * Delete a saved agent. Absent → no delete affordance.
+   *
+   * The thread's storage namespace comes along because the conversation is
+   * kept outside this component: deleting the agent has to take its transcript
+   * with it rather than leave one behind with nothing to belong to.
+   */
+  onDelete?: (agentId: string, storageId: string) => Promise<void>;
   /**
    * The thread's chat namespace changed — a preset thread just became a saved
    * agent. The studio owns how `storageId` is composed but not what the chat
@@ -119,6 +135,9 @@ export function AgentStudio({
     return seeded ? { [selectionKey(initialSelection)]: seeded } : {};
   });
   const [memories, setMemories] = useState<Record<string, NegotiationAgentBuilderMemory>>({});
+  // Namespaces this visit's preset conversations. Generated once per mount so
+  // a reload never lands back in a half-finished briefing to a template.
+  const [visitId] = useState(() => Math.random().toString(36).slice(2, 10));
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -178,30 +197,40 @@ export function AgentStudio({
       // work in progress, so the state is moved rather than rebuilt.
       const savedId = result?.id;
       if (savedId && selection?.kind === "preset") {
-        const nextKey = selectionKey({ kind: "saved", id: savedId });
-        setStates((prev) =>
-          prev[key]
-            ? {
-                ...prev,
-                // `source` has to move too, not just the key: it is what the
-                // save handler reads to decide update-vs-create, so a thread
-                // left pointing at its preset would create a second agent on
-                // the next Save instead of updating the one just written.
-                [nextKey]: {
-                  ...prev[key],
-                  source: { kind: "custom", id: savedId },
-                  dirty: false,
-                },
-              }
-            : prev,
-        );
-        setMemories((prev) => (prev[key] ? { ...prev, [nextKey]: prev[key] } : prev));
+        const next: StudioSelection = { kind: "saved", id: savedId };
+        const nextKey = selectionKey(next);
+        setStates((prev) => {
+          const current = prev[key];
+          if (!current) return prev;
+          // The preset entry is dropped, not kept alongside: everything in it
+          // now belongs to the agent, and a preset the user picks again has to
+          // start as the clean template it is rather than as a copy of the
+          // agent they just finished.
+          const { [key]: _moved, ...rest } = prev;
+          return {
+            ...rest,
+            // `source` has to move too, not just the key: it is what the
+            // save handler reads to decide update-vs-create, so a thread
+            // left pointing at its preset would create a second agent on
+            // the next Save instead of updating the one just written.
+            [nextKey]: { ...current, source: { kind: "custom", id: savedId }, dirty: false },
+          };
+        });
+        setMemories((prev) => {
+          const current = prev[key];
+          if (!current) return prev;
+          const { [key]: _moved, ...rest } = prev;
+          return { ...rest, [nextKey]: current };
+        });
         // The transcript lives outside React state, so it has to be moved too
         // — otherwise the chat remounts under the new key and comes back empty.
         // Not awaited: the local half is synchronous so the chat is already
         // correct, and the server half must not hold up the save confirmation.
-        void onThreadStorageMove?.(threadStorageId(role, key), threadStorageId(role, nextKey));
-        setSelection({ kind: "saved", id: savedId });
+        void onThreadStorageMove?.(
+          threadStorageId(role, selection, visitId),
+          threadStorageId(role, next, visitId),
+        );
+        setSelection(next);
       }
 
       // Brief ✓ confirmation on the button itself — where the eyes already are.
@@ -222,7 +251,7 @@ export function AgentStudio({
     setDeleting(true);
     setWriteError(null);
     try {
-      await onDelete(selection.id);
+      await onDelete(selection.id, threadStorageId(role, selection, visitId));
       // Drop the thread with the agent — leaving it selected would point the
       // canvas at a row that no longer exists.
       setStates((prev) => {
@@ -324,7 +353,7 @@ export function AgentStudio({
           {/* ── Chat canvas ── */}
           <main className="flex min-h-0 min-w-0 flex-1 flex-col">
             <AnimatePresence mode="wait" initial={false}>
-              {state && effective && key ? (
+              {state && effective && key && selection ? (
                 <motion.div
                   // Keyed per thread: switching agents swaps conversations whole,
                   // like tapping a different chat, instead of morphing in place.
@@ -337,7 +366,8 @@ export function AgentStudio({
                 >
                   {renderChat({
                     effective,
-                    storageId: threadStorageId(role, key),
+                    storageId: threadStorageId(role, selection, visitId),
+                    durable: selection.kind === "saved",
                     role,
                     onMemoryUpdate: (next) => setMemories((prev) => ({ ...prev, [key]: next })),
                     onStrategyUpdate: (strategy) =>
@@ -443,10 +473,24 @@ function seedState(
 }
 
 /** Invitation state — shown before any agent is picked. */
-/** The chat's storage namespace for one roster thread. Composed in exactly
- *  one place so re-keying a thread cannot drift from rendering it. */
-function threadStorageId(role: "buyer" | "seller", key: string): string {
-  return `agent-studio:${role}:${key}`;
+/**
+ * The chat's storage namespace for one roster thread. Composed in exactly one
+ * place so re-keying a thread cannot drift from rendering it.
+ *
+ * A saved agent's namespace is stable — its conversation is waiting when you
+ * come back. A preset's carries a per-visit id, because a preset is a template
+ * you try things on rather than an agent you keep talking to: every visit
+ * starts from a blank conversation. The id is fixed for the visit, so flipping
+ * to another thread and back still shows what you just said, and Save re-keys
+ * the whole namespace onto the new agent, carrying the conversation with it.
+ */
+function threadStorageId(
+  role: "buyer" | "seller",
+  selection: StudioSelection,
+  visitId: string,
+): string {
+  const base = `agent-studio:${role}:${selectionKey(selection)}`;
+  return selection.kind === "preset" ? `${base}:${visitId}` : base;
 }
 
 function EmptyCanvas({
