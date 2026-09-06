@@ -5485,6 +5485,40 @@ describe("payment test tool routes", () => {
     expect(res.json().error).toBe("PAYMENT_TEST_TOOLS_DISABLED");
   });
 
+  it("keeps other payment-test tools admin-only on staging even when flag is on", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.HAGGLE_ENV = "staging";
+    process.env.HAGGLE_ENABLE_PAYMENT_TEST_TOOLS = "true";
+    const { db } = makeDb({});
+    const app = makeApp(db, {
+      id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      role: "user",
+    });
+
+    const settlement = await app.inject({
+      method: "POST",
+      url: "/tools/payment-test/settlement-approval",
+      payload: {},
+    });
+    expect(settlement.statusCode).toBe(403);
+    expect(settlement.json().error).toBe("PAYMENT_TEST_TOOLS_DISABLED");
+
+    const disputeAi = await app.inject({
+      method: "POST",
+      url: "/tools/payment-test/dispute-ai/evaluate",
+      payload: {},
+    });
+    expect(disputeAi.statusCode).toBe(403);
+    expect(disputeAi.json().error).toBe("PAYMENT_TEST_TOOLS_DISABLED");
+
+    const contract = await app.inject({
+      method: "GET",
+      url: "/tools/payment-test/contract/by-order/22222222-2222-4222-8222-222222222222",
+    });
+    expect(contract.statusCode).toBe(403);
+    expect(contract.json().error).toBe("PAYMENT_TEST_TOOLS_DISABLED");
+  });
+
   it("rejects unknown dispute AI evaluation scenarios before calling a provider", async () => {
     process.env.NODE_ENV = "test";
     const { db } = makeDb({});
