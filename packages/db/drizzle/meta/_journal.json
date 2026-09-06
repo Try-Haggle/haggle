@@ -1051,6 +1051,13 @@
       "when": 1788036447256,
       "tag": "0149_listing_withdrawn_at",
       "breakpoints": true
+    },
+    {
+      "idx": 150,
+      "version": "7",
+      "when": 1788036448256,
+      "tag": "0150_fulfillments",
+      "breakpoints": true
     }
   ]
 }

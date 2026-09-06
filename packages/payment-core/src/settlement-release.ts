@@ -75,8 +75,16 @@ export function createSettlementRelease(params: {
   product_amount: Money;
   buffer_amount: Money;
   now?: string;
+  /**
+   * Force buffer status. When omitted, a zero buffer is RELEASED immediately
+   * (no-shipping / digital path); otherwise buffer starts HELD.
+   */
+  buffer_release_status?: BufferReleaseStatus;
 }): SettlementRelease {
   const now = params.now ?? new Date().toISOString();
+  const zeroBuffer = params.buffer_amount.amount_minor <= 0;
+  const bufferReleaseStatus = params.buffer_release_status ?? (zeroBuffer ? "RELEASED" : "HELD");
+  const bufferImmediatelyReleased = bufferReleaseStatus === "RELEASED";
   return {
     id: createId(),
     payment_intent_id: params.payment_intent_id,
@@ -84,7 +92,11 @@ export function createSettlementRelease(params: {
     product_amount: { ...params.product_amount },
     product_release_status: "PENDING_DELIVERY",
     buffer_amount: { ...params.buffer_amount },
-    buffer_release_status: "HELD",
+    buffer_release_status: bufferReleaseStatus,
+    buffer_released_at: bufferImmediatelyReleased ? now : undefined,
+    buffer_final_amount_minor: bufferImmediatelyReleased
+      ? Math.max(0, params.buffer_amount.amount_minor)
+      : undefined,
     apv_adjustment_minor: 0,
     created_at: now,
     updated_at: now,
@@ -110,6 +122,17 @@ export function confirmDelivery(
     product_release_status: "BUYER_REVIEW",
     updated_at: delivered_at,
   };
+}
+
+/**
+ * Generic fulfillment confirmation wrapper (Phase1 digital / no-shipping path).
+ * Delegates to confirmDelivery so existing release state transitions stay intact.
+ */
+export function confirmFulfillment(
+  release: SettlementRelease,
+  fulfilled_at: string,
+): SettlementRelease {
+  return confirmDelivery(release, fulfilled_at);
 }
 
 export function completeBuyerReview(release: SettlementRelease, now: string): SettlementRelease {

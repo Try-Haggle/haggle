@@ -10,6 +10,7 @@ import {
   completeVerifiedTestBufferRelease,
   computeReleasePhase,
   confirmDelivery,
+  confirmFulfillment,
   createSettlementRelease,
   isFullyReleased,
 } from "../settlement-release.js";
@@ -98,6 +99,37 @@ describe("createSettlementRelease", () => {
     expect(r.buffer_amount).toEqual({ currency: "USDC", amount_minor: 12_50 });
     expect(r.payment_intent_id).toBe("pi_001");
     expect(r.order_id).toBe("ord_001");
+  });
+});
+
+// ===========================================================================
+// 1b. zero-buffer + confirmFulfillment
+// ===========================================================================
+
+describe("createSettlementRelease zero-buffer", () => {
+  it("releases buffer immediately when buffer_amount is 0", () => {
+    const r = createSettlementRelease({
+      payment_intent_id: "pi_digital",
+      order_id: "ord_digital",
+      product_amount: PRODUCT,
+      buffer_amount: { currency: "USDC", amount_minor: 0 },
+      now: NOW,
+    });
+    expect(r.product_amount).toEqual(PRODUCT);
+    expect(r.buffer_amount.amount_minor).toBe(0);
+    expect(r.buffer_release_status).toBe("RELEASED");
+    expect(r.buffer_released_at).toBe(NOW);
+    expect(r.buffer_final_amount_minor).toBe(0);
+    expect(r.product_release_status).toBe("PENDING_DELIVERY");
+  });
+});
+
+describe("confirmFulfillment", () => {
+  it("delegates to confirmDelivery state transition", () => {
+    const r = makeRelease();
+    const updated = confirmFulfillment(r, "2026-03-05T12:00:00.000Z");
+    expect(updated.product_release_status).toBe("BUYER_REVIEW");
+    expect(updated.delivery_confirmed_at).toBe("2026-03-05T12:00:00.000Z");
   });
 });
 

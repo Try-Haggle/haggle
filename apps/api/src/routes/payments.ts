@@ -3,9 +3,13 @@ import {
   type AgentPaymentGrant,
   canonicalizeAgentPaymentPolicy,
   canonicalJson,
+  FULFILLMENT_TYPE_VALUES,
   type FulfillmentType,
+  isNoShippingFulfillment,
+  normalizeFulfillmentType,
   type PaymentLegalAcknowledgement,
   type PaymentTermTag,
+  requiresShipmentForFulfillment,
   type SettlementApproval,
 } from "@haggle/commerce-core";
 import {
@@ -90,6 +94,10 @@ import {
   evaluateConditionalSettlementFinality,
 } from "../services/conditional-settlement-finality.service.js";
 import { getDepositById, updateDepositStatus } from "../services/dispute-deposit.service.js";
+import {
+  ensureFulfillmentRecordForOrder,
+  type FulfillmentRecord,
+} from "../services/fulfillment-record.service.js";
 import {
   assertListingPayableForPrepare,
   beginListingFunding,
@@ -306,14 +314,7 @@ const conditionalSettlementDisputeConfirmationSchema = z.object({
 
 type PaymentRail = "x402" | "stripe";
 
-const FULFILLMENT_TYPE_OPTIONS = [
-  "physical_shipping",
-  "shipped",
-  "local_pickup",
-  "digital_delivery",
-  "external_platform_transfer",
-  "onchain_transfer",
-] as const satisfies readonly FulfillmentType[];
+const FULFILLMENT_TYPE_OPTIONS = FULFILLMENT_TYPE_VALUES;
 
 type PaymentQuoteConfirmation = {
   rail: PaymentRail;
@@ -2105,26 +2106,12 @@ function getRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function normalizeFulfillmentType(value: unknown): FulfillmentType {
-  if (
-    typeof value === "string" &&
-    (FULFILLMENT_TYPE_OPTIONS as readonly string[]).includes(value)
-  ) {
-    return value as FulfillmentType;
-  }
-  return "physical_shipping";
-}
-
 function resolveOrderFulfillmentType(
   order: Awaited<ReturnType<typeof getCommerceOrderByOrderId>>,
 ): FulfillmentType {
   const snapshot = getRecord(order?.orderSnapshot);
   const terms = getRecord(snapshot?.terms);
   return normalizeFulfillmentType(terms?.fulfillment_type);
-}
-
-function requiresShipmentForFulfillment(fulfillmentType: FulfillmentType): boolean {
-  return fulfillmentType === "physical_shipping" || fulfillmentType === "shipped";
 }
 
 function stagingPhysicalShippingReadinessFailure() {
@@ -2214,14 +2201,32 @@ async function inspectExistingIntentShippingMode(
 async function ensureSettlementReleaseForPayment(
   db: Database,
   intent: PaymentIntent,
-  declaredWeightOz?: number,
+  options?: { fulfillmentType?: FulfillmentType; declaredWeightOz?: number },
 ) {
   const existing = await getSettlementReleaseByOrderId(db, intent.order_id);
   if (existing) {
     return existing;
   }
 
-  const weightOz = declaredWeightOz ?? 16; // default 1lb if unknown
+  const fulfillmentType = normalizeFulfillmentType(options?.fulfillmentType);
+  // No-shipping: product = full amount, buffer = 0, buffer RELEASED immediately.
+  if (isNoShippingFulfillment(fulfillmentType)) {
+    const release = createSettlementRelease({
+      payment_intent_id: intent.id,
+      order_id: intent.order_id,
+      product_amount: {
+        currency: intent.amount.currency,
+        amount_minor: intent.amount.amount_minor,
+      },
+      buffer_amount: {
+        currency: intent.amount.currency,
+        amount_minor: 0,
+      },
+    });
+    return await createSettlementReleaseRecord(db, release);
+  }
+
+  const weightOz = options?.declaredWeightOz ?? 16; // default 1lb if unknown
   const buffer = computeWeightBuffer(weightOz);
   const bufferMinor = Math.min(buffer.buffer_amount_minor, intent.amount.amount_minor);
 
@@ -2276,9 +2281,13 @@ async function requireSettlementRecordForPayment(db: Database, intent: PaymentIn
 }
 
 async function prepareFulfillmentForSecuredPayment(db: Database, intent: PaymentIntent) {
-  const settlementRelease = await ensureSettlementReleaseForPayment(db, intent);
-
   const order = await getCommerceOrderByOrderId(db, intent.order_id);
+  const fulfillmentType = resolveOrderFulfillmentType(order);
+  const requiresShipment = requiresShipmentForFulfillment(fulfillmentType);
+  const settlementRelease = await ensureSettlementReleaseForPayment(db, intent, {
+    fulfillmentType,
+  });
+
   if (order?.listingId) {
     await confirmListingFunded(db, {
       listingId: order.listingId,
@@ -2288,7 +2297,6 @@ async function prepareFulfillmentForSecuredPayment(db: Database, intent: Payment
     });
   }
   const orderStatus = order?.status;
-  const fulfillmentType = resolveOrderFulfillmentType(order);
   const canAdvanceToFulfillment =
     !orderStatus ||
     orderStatus === "APPROVED" ||
@@ -2299,9 +2307,29 @@ async function prepareFulfillmentForSecuredPayment(db: Database, intent: Payment
     await updateCommerceOrderStatus(db, intent.order_id, "PAID");
   }
 
-  const shipmentResult = requiresShipmentForFulfillment(fulfillmentType)
-    ? await ensureShipmentForPayment(db, intent)
-    : { shipment: null, created: false };
+  let shipmentResult: {
+    shipment: Awaited<ReturnType<typeof ensureShipmentForPayment>>["shipment"] | null;
+    created: boolean;
+  } = { shipment: null, created: false };
+  let fulfillmentRecord: FulfillmentRecord | null = null;
+  let fulfillmentRecordCreated = false;
+
+  if (requiresShipment) {
+    shipmentResult = await ensureShipmentForPayment(db, intent);
+  } else {
+    const ensured = await ensureFulfillmentRecordForOrder(db, {
+      order_id: intent.order_id,
+      payment_intent_id: intent.id,
+      fulfillment_type: fulfillmentType,
+      metadata: {
+        source: "payment_settlement",
+        requires_shipment: false,
+      },
+    });
+    fulfillmentRecord = ensured.fulfillment;
+    fulfillmentRecordCreated = ensured.created;
+  }
+
   if (canAdvanceToFulfillment) {
     await updateCommerceOrderStatus(db, intent.order_id, "FULFILLMENT_PENDING");
   }
@@ -2310,7 +2338,9 @@ async function prepareFulfillmentForSecuredPayment(db: Database, intent: Payment
     settlementRelease,
     fulfillment: {
       type: fulfillmentType,
-      requires_shipment: requiresShipmentForFulfillment(fulfillmentType),
+      requires_shipment: requiresShipment,
+      record: fulfillmentRecord,
+      record_created: fulfillmentRecordCreated,
     },
     shipment: shipmentResult.shipment,
     shipmentCreated: shipmentResult.created,

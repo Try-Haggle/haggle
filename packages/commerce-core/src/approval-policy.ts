@@ -114,3 +114,32 @@ export function validateMinimumTransaction(
   }
   return { valid: true };
 }
+
+export const FULFILLMENT_TYPE_VALUES = [
+  "physical_shipping",
+  "shipped",
+  "local_pickup",
+  "digital_delivery",
+  "external_platform_transfer",
+  "onchain_transfer",
+] as const satisfies readonly FulfillmentType[];
+
+/** Missing → physical_shipping; legacy shipped → physical_shipping. */
+export function normalizeFulfillmentType(value: unknown): FulfillmentType {
+  if (value === "shipped") {
+    return "physical_shipping";
+  }
+  if (typeof value === "string" && (FULFILLMENT_TYPE_VALUES as readonly string[]).includes(value)) {
+    return value as FulfillmentType;
+  }
+  return "physical_shipping";
+}
+
+export function requiresShipmentForFulfillment(fulfillmentType: FulfillmentType): boolean {
+  const normalized = normalizeFulfillmentType(fulfillmentType);
+  return normalized === "physical_shipping";
+}
+
+export function isNoShippingFulfillment(fulfillmentType: FulfillmentType): boolean {
+  return !requiresShipmentForFulfillment(fulfillmentType);
+}
