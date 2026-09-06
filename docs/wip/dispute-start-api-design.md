@@ -169,6 +169,8 @@ The model output is accepted only after JSON parsing, schema validation, and pla
 
 The accepted AI output is stored in dispute metadata as an audit artifact. MVP code still requires a separate resolve call before money movement, so AI assessment alone never releases or refunds funds.
 
+Invariant (B5): completed assessments always stamp `auto_applied: false` via `dispute-ai-assessment-money-guard`. The assess route must not call `finalizeDisputeResolution`, refund, or settlement-release paths; regression tests in `dispute-ai-assessment-money-guard.test.ts` and `disputes.test.ts` lock this.
+
 ## Staging dogfood: dispute after pay without real money
 
 MCP `haggle_create_checkout` returns a web checkout URL only; it does not settle Stripe Onramp (fiat/card → USDC) and never moves money. `haggle_start_dispute` requires a commerce order in `PAID` / fulfillment / `DELIVERED` / `IN_DISPUTE`.

@@ -36,6 +36,15 @@ vi.mock("../services/settlement-release.service.js", () => ({
   updateSettlementReleaseRecord: vi.fn().mockResolvedValue(null),
 }));
 
+vi.mock("../services/dispute-resolution-finalizer.js", () => ({
+  finalizeDisputeResolution: vi.fn().mockResolvedValue({
+    dispute: null,
+    auto_refund: null,
+    deposit_refund: null,
+    module_settlement_webhook: null,
+  }),
+}));
+
 vi.mock("../services/shipment-record.service.js", () => ({
   createShipmentRecord: vi.fn().mockResolvedValue(null),
   getShipmentById: vi.fn().mockResolvedValue(null),
@@ -543,6 +552,7 @@ import {
   addDisputeEvidenceRecord,
   createDisputeEvidenceUploadRecord,
   createDisputeRecord,
+  createDisputeResolutionRecord,
   decideDisputeEvidenceSimilarityReview,
   findNearestCommittedCameraEvidence,
   getDisputeById,
@@ -560,6 +570,7 @@ import {
   updateDisputeEvidenceUploadSimilarity,
   updateDisputeRecord,
 } from "../services/dispute-record.service.js";
+import { finalizeDisputeResolution } from "../services/dispute-resolution-finalizer.js";
 import {
   getDisputeSimilarityReviewAuditArchiveHealth,
   listDisputeSimilarityReviewAuditArchiveFailures,
@@ -578,13 +589,18 @@ import {
 } from "../services/dispute-storage.service.js";
 // Import mocked service functions for per-test overrides
 import {
+  createRefundRecord,
   getCommerceOrderByOrderId,
   updateCommerceOrderStatus,
 } from "../services/payment-record.service.js";
+import { createSettlementReleaseRecord } from "../services/settlement-release.service.js";
 import { getShipmentByOrderId } from "../services/shipment-record.service.js";
 
 const mockGetCommerceOrderByOrderId = getCommerceOrderByOrderId as ReturnType<typeof vi.fn>;
 const mockUpdateCommerceOrderStatus = updateCommerceOrderStatus as ReturnType<typeof vi.fn>;
+const mockCreateRefundRecord = createRefundRecord as ReturnType<typeof vi.fn>;
+const mockCreateSettlementReleaseRecord = createSettlementReleaseRecord as ReturnType<typeof vi.fn>;
+const mockFinalizeDisputeResolution = finalizeDisputeResolution as ReturnType<typeof vi.fn>;
 const mockGetShipmentByOrderId = getShipmentByOrderId as ReturnType<typeof vi.fn>;
 const mockCreateDisputeRecord = createDisputeRecord as ReturnType<typeof vi.fn>;
 const mockCreateDisputeEvidenceUploadRecord = createDisputeEvidenceUploadRecord as ReturnType<
@@ -626,6 +642,7 @@ const mockUpdateDisputeEvidenceUploadSimilarity =
 const mockRejectDisputeEvidenceUpload = rejectDisputeEvidenceUpload as ReturnType<typeof vi.fn>;
 const mockAddDisputeEvidenceRecord = addDisputeEvidenceRecord as ReturnType<typeof vi.fn>;
 const mockUpdateDisputeRecord = updateDisputeRecord as ReturnType<typeof vi.fn>;
+const mockCreateDisputeResolutionRecord = createDisputeResolutionRecord as ReturnType<typeof vi.fn>;
 const mockCreateDeposit = createDeposit as ReturnType<typeof vi.fn>;
 const mockCreateDisputeUploadUrl = createDisputeUploadUrl as ReturnType<typeof vi.fn>;
 const mockCreateDisputeViewUrl = createDisputeViewUrl as ReturnType<typeof vi.fn>;
@@ -3308,6 +3325,67 @@ describe("Dispute routes", () => {
         }),
       }),
     );
+  });
+
+  it("POST /disputes/:id/ai/assess does not alone refund or release money (B5)", async () => {
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        status: "UNDER_REVIEW",
+        evidence: [
+          {
+            id: "ev_1",
+            dispute_id: "some-id",
+            submitted_by: "buyer",
+            type: "image",
+            uri: "dispute-evidence/some-id/uploaded.png",
+            text: "[Verified Haggle Camera Evidence]\nChallenge confirmed: yes",
+            created_at: "2026-07-02T12:00:00.000Z",
+          },
+        ],
+        metadata: { tier: 1 },
+      }),
+    );
+    mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/disputes/some-id/ai/assess",
+      headers: ADMIN_HEADERS,
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.ai_assessment).toMatchObject({
+      status: "COMPLETED",
+      conclusion: "buyer_favor",
+      auto_applied: false,
+    });
+    expect(body.auto_refund).toBeUndefined();
+    expect(body.deposit_refund).toBeUndefined();
+    expect(body.settlement_release).toBeUndefined();
+
+    // Assessment may persist metadata / audit events, but must not change case
+    // status into a money-moving terminal resolution.
+    expect(mockUpdateDisputeRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        status: "UNDER_REVIEW",
+        metadata: expect.objectContaining({
+          ai_resolution_assessor: expect.objectContaining({
+            auto_applied: false,
+            conclusion: "buyer_favor",
+          }),
+        }),
+      }),
+    );
+
+    // Forbidden money side-effects for L1 AI assessment alone.
+    expect(mockFinalizeDisputeResolution).not.toHaveBeenCalled();
+    expect(mockCreateRefundRecord).not.toHaveBeenCalled();
+    expect(mockCreateSettlementReleaseRecord).not.toHaveBeenCalled();
+    expect(mockUpdateCommerceOrderStatus).not.toHaveBeenCalled();
+    expect(mockCreateDisputeResolutionRecord).not.toHaveBeenCalled();
   });
 
   it("POST /disputes/:id/ai/assess supplies only approved precedents and audits the snapshot", async () => {
