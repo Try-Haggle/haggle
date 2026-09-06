@@ -27,8 +27,7 @@ export default function BuyerFulfillmentPreviewPage() {
           Start negotiation
         </h1>
         <p className="mb-8 text-sm text-ink-muted sm:text-base">
-          Same start gate as the public listing page. Delivery address is optional at start — it
-          belongs to checkout/shipping.
+          Same address gate as the public listing page. Carrier shipping needs a complete address.
         </p>
 
         <PreNegotiationFulfillment
@@ -46,7 +45,7 @@ export default function BuyerFulfillmentPreviewPage() {
           </Button>
           {!canStart && (
             <p className="mt-3 text-center text-ink-muted text-sm">
-              Choose at least one delivery option to start.
+              Add a delivery address to start.
             </p>
           )}
         </div>

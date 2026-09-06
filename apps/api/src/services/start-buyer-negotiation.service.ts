@@ -10,6 +10,10 @@ import {
 } from "@haggle/shared";
 import { z } from "zod";
 import {
+  DELIVERY_ADDRESS_REQUIRED,
+  deliveryAddressRequiredReject,
+} from "../lib/delivery-address-start-gate.js";
+import {
   type BuyerShippingAddress,
   type FulfillmentPreference,
   fulfillmentPreferenceSchema,
@@ -92,6 +96,8 @@ export const startBuyerNegotiationSchema = z.object({
 export type StartBuyerNegotiationBody = z.infer<typeof startBuyerNegotiationSchema>;
 
 /** Distinct from BUYER_CRITERIA_REQUIRED (missing answers) and INVALID_START_REQUEST. */
+export { DELIVERY_ADDRESS_REQUIRED };
+
 export const BUYER_CRITERIA_TYPE_INVALID = "BUYER_CRITERIA_TYPE_INVALID";
 
 function isBuyerCriteriaZodIssue(issue: z.ZodIssue): boolean {
@@ -386,6 +392,20 @@ export async function startBuyerNegotiation(
       ...(fulfillment.methods.includes("carrier")
         ? { carrier_priority: fulfillment.carrier_priority ?? "balanced" }
         : {}),
+    };
+  }
+  // D1: physical (carrier) starts need delivery address before createSession.
+  // Digital / A4 no-shipment listings (fulfillment_type) stay exempt. Schema
+  // still allows omitted buyer_address (400 would be wrong); this gate is 409.
+  const addressReject = deliveryAddressRequiredReject({
+    fulfillment,
+    listingSnapshot,
+  });
+  if (addressReject) {
+    return {
+      ok: false,
+      status: 409,
+      body: addressReject,
     };
   }
   const fulfillmentFields = snapshotFulfillmentFields(fulfillment);

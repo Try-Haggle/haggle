@@ -979,7 +979,7 @@ describe("Negotiation API", () => {
       expect(mockCreateSession).not.toHaveBeenCalled();
     });
 
-    it("accepts carrier fulfillment without a delivery address on the start schema", async () => {
+    it("start schema still parses carrier without address (D1 409 is service-level)", async () => {
       const res = await app.inject({
         method: "POST",
         url: "/negotiations/start",
@@ -989,8 +989,8 @@ describe("Negotiation API", () => {
           fulfillment: { method: "carrier" },
         },
       });
-      // Address is checkout-stage. Schema must not 400 INVALID_START_REQUEST
-      // for missing buyer_address; listing mock is null -> 404 LISTING_NOT_FOUND.
+      // D1 address gate is 409 in startBuyerNegotiation, not schema 400.
+      // Listing mock is null -> 404 LISTING_NOT_FOUND before the service gate.
       expect(res.statusCode).toBe(404);
       expect(res.json().error).toBe("LISTING_NOT_FOUND");
       expect(res.statusCode).not.toBe(400);
