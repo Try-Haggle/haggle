@@ -557,6 +557,12 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
       if (!release) {
         return reply.code(404).send({ error: "SETTLEMENT_RELEASE_NOT_FOUND" });
       }
+      if (await isOrderInDispute(release.order_id)) {
+        return reply.code(409).send({
+          error: "ORDER_IN_DISPUTE",
+          message: "Buffer release is blocked while the order has an active dispute",
+        });
+      }
 
       let updated;
       try {
@@ -1591,6 +1597,12 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
     { preHandler: [requireAdmin] },
     async (request, reply) => {
       const { orderId } = request.params as { orderId: string };
+      if (await isOrderInDispute(orderId)) {
+        return reply.code(409).send({
+          error: "ORDER_IN_DISPUTE",
+          message: "Buffer release is blocked while the order has an active dispute",
+        });
+      }
       const release = await getSettlementReleaseByOrderId(db, orderId);
       if (!release) {
         return reply.code(404).send({ error: "SETTLEMENT_RELEASE_NOT_FOUND" });
