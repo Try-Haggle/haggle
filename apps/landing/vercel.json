@@ -1,0 +1,4 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "ignoreCommand": "if [ -n \"$VERCEL_GIT_PULL_REQUEST_ID\" ]; then echo \"C3: skip haggle-landing PR preview (rate-limit)\"; exit 0; else exit 1; fi"
+}

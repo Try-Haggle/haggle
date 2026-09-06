@@ -203,6 +203,44 @@ export async function evaluateAttemptControl(
   return { allowed: true, attemptControl: snapshot };
 }
 
+/**
+ * C2: close evaluate→createSession TOCTOU.
+ * Serialize buyer+listing start under a transaction-scoped advisory lock, then
+ * re-evaluate before the caller inserts. Race loser surfaces the recheck block
+ * (typically concurrent_on_listing) instead of silent double-create / wrong cooldown.
+ */
+export async function withBuyerListingStartGate<T>(
+  db: Database,
+  input: {
+    buyerPrincipalId: string;
+    listingId: string;
+    nowMs?: number;
+    policy?: AttemptControlPolicy;
+  },
+  run: (tx: Database, attemptControl: AttemptControlSnapshot) => Promise<T>,
+): Promise<
+  | { ok: true; value: T; attemptControl: AttemptControlSnapshot }
+  | { ok: false; attemptResult: AttemptControlResult }
+> {
+  return db.transaction(async (tx) => {
+    const lockKey = `haggle.buyer-listing-start.v1:${input.buyerPrincipalId}:${input.listingId}`;
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
+
+    const recheck = await evaluateAttemptControl(tx as Database, {
+      buyerPrincipalId: input.buyerPrincipalId,
+      listingId: input.listingId,
+      nowMs: input.nowMs,
+      policy: input.policy,
+    });
+    if (!recheck.allowed) {
+      return { ok: false as const, attemptResult: recheck };
+    }
+
+    const value = await run(tx as Database, recheck.attemptControl);
+    return { ok: true as const, value, attemptControl: recheck.attemptControl };
+  });
+}
+
 function intEnv(name: string, fallback: number): number {
   const parsed = Number(process.env[name]);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
