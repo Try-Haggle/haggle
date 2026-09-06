@@ -102,13 +102,8 @@ const fulfillmentPreferenceObjectSchema = z
         message: MVP_FULFILLMENT_ONLY_MESSAGE,
       });
     }
-    if (value.methods.includes("carrier") && !value.buyer_address) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["buyer_address"],
-        message: "A delivery address is required when carrier shipping is on the table.",
-      });
-    }
+    // Delivery address is collected at checkout/shipping — never block
+    // POST /negotiations/start when carrier is selected but address is empty.
     if (value.preferred && !value.methods.includes(value.preferred)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
