@@ -23,7 +23,7 @@ Haggle uses a 3-tier dispute resolution system modeled after a jury trial. When 
 
 | Tier | Name | Who Decides | Cost | Speed |
 |------|------|-------------|------|-------|
-| T1 | AI Review | Resolution Assessor (automated) | $5 flat (or 0.5% if >$600) | Minutes |
+| T1 | AI Review | Resolution Assessor recommends; **human before resolve** (SoT 2026-09-07) | $5 flat (or 0.5% if >$600) | Minutes |
 | T2 | Panel Review | 3–27 Community Reviewers | ~1.2% of transaction | 24–48 hours |
 | T3 | Grand Panel | 5–31 Community Reviewers | ~6% of transaction | 48–72 hours |
 
@@ -31,11 +31,26 @@ Haggle uses a 3-tier dispute resolution system modeled after a jury trial. When 
 1. **Fair to BOTH sides** — Each side gets their own Case Guide. The system is neutral.
 2. **Loser pays** — Dispute cost is always borne by the losing party. This deters frivolous disputes.
 3. **Transparent** — Every cost, every step, every timeline is visible. No hidden fees.
-4. **On-chain evidence** — Evidence is anchored on-chain for tamper-proof records.
+4. **On-chain evidence** — Evidence is anchored on-chain for tamper-proof records. *(UI badges / per-item gallery anchoring: **Planned/Not wired**; resolve-time registry anchor may exist separately.)*
 5. **Community-driven** — Real users (who passed a qualification test) serve as reviewers.
-6. **AI assists, humans decide** — AI summarizes and advocates; humans (or AI at T1) make the final call.
+6. **AI assists, humans decide** — AI summarizes, advocates, and (at T1) **assesses/recommends** via Resolution Assessor; **humans make the final call before resolve**. Prefer Jeonghaeng [product-decisions-2026-09-07.md](./product-decisions-2026-09-07.md) over older “AI at T1 final call” wording. `ai/assess` COMPLETED ≠ money (no resolve/refund/settlement-release without human review; B5 `auto_applied: false`). Later auto-release / auto-apply is **not default-on**.
 
 ---
+
+## Implementation status (QA / E4 — not design fiction)
+
+> Prefer [product-decisions-2026-09-07.md](./product-decisions-2026-09-07.md) when this prompt conflicts.
+
+| Surface | Status | Notes |
+|--------|--------|-------|
+| T1 Resolution Assessor (`ai/assess`) | **Wired (assess only)** | Human-before-resolve after COMPLETED; assess ≠ money; auto-release not default-on |
+| Case Guide (party chat / summaries as designed here) | **Planned/Not wired** | Design/demo brand. Production dispute chat is separate **AI Advisor** routes; `runCaseGuide` harness exists in dispute-core/API but Case Guide UX in this prompt is not the shipped product surface |
+| Specialist Verification (in-dispute LegitApp panel) | **Planned/Not wired** | Shown in design/demo; not product-wired into dispute detail as a live specialist panel |
+| Evidence-anchor UI (per-item “Anchored on-chain” badges) | **Planned/Not wired** | Resolve-time `DisputeRegistry` anchoring exists in finalizer path; per-evidence hash badges / gallery UX here are design |
+| Phase2+ (T2/T3 panel UX, specialist auto-request, full dual Case Guide summaries) | **Planned/Not wired** | Design target beyond current production dispute pages |
+
+Mark every Case Guide / Specialist / evidence-anchor / Phase2+ section below as **Planned/Not wired** unless a later commit flips the row above.
+
 
 ## Design Direction
 
@@ -101,7 +116,7 @@ Horizontal progress bar showing dispute lifecycle:
 - Below each node: timestamp or ETA
 - If escalated: show branch `[T1 Decision] → [Escalate to T2] → [Panel Review] → ...`
 
-#### Section: Your Case Guide (Buyer Side)
+#### Section: Your Case Guide (Buyer Side) — **Planned/Not wired**
 This is the AI assistant that builds the buyer's case. Chat-style interface.
 
 **Header:**
@@ -204,7 +219,7 @@ The seller is responding to a dispute. Their view is a mirror of the buyer's but
 
 **Same layout structure as buyer view**, but with these differences:
 
-#### Case Guide (Seller Side)
+#### Case Guide (Seller Side) — **Planned/Not wired**
 ```
 🛡 Your Case Guide
 Defending your position · Reviewing buyer's claims
@@ -500,7 +515,7 @@ Two columns — buyer's evidence left, seller's evidence right.
 - On-chain hash badge on each piece of evidence
 - Clear separation between buyer and seller evidence
 
-#### Section: Specialist Verification (Optional, if applicable)
+#### Section: Specialist Verification (Optional, if applicable) — **Planned/Not wired**
 
 ```
 ┌─ 🔬 Specialist Verification ────────────────────────────────────┐
@@ -683,7 +698,7 @@ Once the reviewer votes, the page transitions to:
 
 ## Shared Components Across All Pages
 
-### Case Guide Chat Component
+### Case Guide Chat Component — **Planned/Not wired**
 - Clean chat interface with message bubbles
 - AI messages have a subtle left border (cyan for buyer advocate, violet for seller advocate)
 - User messages are right-aligned, neutral background
@@ -810,9 +825,10 @@ Transaction Complete → Escrow Holds Funds
                          ↓
               Buyer Opens Dispute
                          ↓
-         ┌── T1: Resolution Assessor Review (minutes) ──┐
+         ┌── T1: Resolution Assessor assess (minutes) ──┐
+         │   human-before-resolve (SoT 2026-09-07)     │
          │                                       │
-    [Accept]                              [Escalate → T2]
+    [Human accept]                        [Escalate → T2]
          ↓                                       ↓
     Settlement                    Seller deposits $12
                                          ↓

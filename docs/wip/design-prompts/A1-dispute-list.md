@@ -1,5 +1,7 @@
 # A1 — Dispute List Page · Claude Design Prompt
 
+> **Implementation status (E4):** on-chain “Anchored” list badges / Phase2+ extras in this prompt are **Planned/Not wired**. See [../design-prompt-dispute.md](../design-prompt-dispute.md) status table and [../product-decisions-2026-09-07.md](../product-decisions-2026-09-07.md).
+
 > For Claude Design Tool. Single HTML page.
 > Shares the Haggle dispute design system (Inter + JetBrains Mono, warm cream #faf9f6 background).
 > 참고: 이전에 만든 dispute-buyer.html, dispute-seller.html의 디자인 톤과 동일.

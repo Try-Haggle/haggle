@@ -31,6 +31,20 @@ Short SoT for staging/product alignment. Prefer these over older ticket wording 
 
 Do not revive “address is checkout-only / must not block start” for physical carrier flows.
 
+
+## 5. D3 taxonomy — shoes/sneaker HARD removed; electronics HARD kept
+
+A10 follow-up (CTO correction, merged [#141](https://github.com/Try-Haggle/haggle/pull/141)):
+
+- **Shoes / sneakers:** authenticity **HARD removed** (no `sneaker_authenticity`; shoe-family HARD+SOFT authenticity path closed; sneakers leaf aliases cleared for that path). Soft deadstock/box checks may remain without authenticity HARD.
+- **Electronics kept:** **galaxy / pixel / phone** HARD gates remain (e.g. IMEI, FRP, Samsung reactivation lock, financing paid-off, water damage as applicable).
+- **Ambiguous kept:** `dead-pixel` / `no-dead-pixel` stay behind `AMBIGUOUS_MATCH_TOKENS` so they do **not** open Pixel/phone gates; unambiguous model tags (`pixel-8-pro`, `google-pixel`, …) still classify into phone HARD.
+- Goldens: `packages/shared/.../galaxy-pixel-shoes-classify-gate.golden.test.ts`.
+
+## 6. Dispute UX labels vs wiring (design prompts)
+
+Design prompts use Case Guide / Specialist Verification / on-chain evidence-anchor / Phase2+ panel UX. Where not product-wired, docs must say **Planned/Not wired** (see `design-prompt-dispute.md` implementation status). Prefer this file + code locks over older design-prompt “AI at T1 final call” wording for money/resolve.
+
 ## Related PRs
 
-- D1 [#143](https://github.com/Try-Haggle/haggle/pull/143), D2 [#142](https://github.com/Try-Haggle/haggle/pull/142), E1 [#144](https://github.com/Try-Haggle/haggle/pull/144), B5 money-guard, superseded A3 [#120](https://github.com/Try-Haggle/haggle/pull/120).
+- D1 [#143](https://github.com/Try-Haggle/haggle/pull/143), D2 [#142](https://github.com/Try-Haggle/haggle/pull/142), D3 [#141](https://github.com/Try-Haggle/haggle/pull/141), E1 [#144](https://github.com/Try-Haggle/haggle/pull/144), B5 money-guard, superseded A3 [#120](https://github.com/Try-Haggle/haggle/pull/120).
