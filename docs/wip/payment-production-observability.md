@@ -70,6 +70,7 @@ Initial thresholds should be conservative and adjusted after sandbox traffic est
 - The default sink is no-op, so local/test environments do not require Datadog, Prometheus, Sentry, or provider credentials.
 - Payment routes emit backend-neutral metric events for direct mutation idempotency results, provider webhook received/rejected/duplicate/processing-failed outcomes, and production admin overrides.
 - Unsafe labels are dropped without serializing the unsafe label value.
+- Report-only job `payment-reconciliation-report` (env `ENABLE_PAYMENT_RECONCILIATION_REPORT_JOB`) emits `payment.reconciliation.finding` and `payment.reconciliation.drift_open` for local ledger drift; optional provider compare stays off unless snapshots exist.
 
 ## Remaining Backend Decision
 
