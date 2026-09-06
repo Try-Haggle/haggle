@@ -13,6 +13,7 @@ import {
   updateCommerceOrderStatus,
   updateStoredPaymentIntent,
 } from "../services/payment-record.service.js";
+import { setPaymentWebhookProviderRecheckForTests } from "../services/payment-webhook-provider-recheck.service.js";
 import {
   createSettlementReleaseRecord,
   getSettlementReleaseByOrderId,
@@ -246,6 +247,7 @@ describe("payment webhook idempotency", () => {
   });
 
   afterEach(async () => {
+    setPaymentWebhookProviderRecheckForTests(null);
     vi.unstubAllEnvs();
     await app.close();
   });
@@ -774,6 +776,137 @@ describe("payment webhook idempotency", () => {
     expect(mockCreateShipmentRecord).not.toHaveBeenCalled();
     expect(mockUpdateCommerceOrderStatus).not.toHaveBeenCalled();
     expect(mockCompleteWebhookEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("forbids failing an authorized intent when provider recheck disagrees (out-of-order late failure)", async () => {
+    mockGetPaymentIntentById.mockResolvedValueOnce(paymentIntent("AUTHORIZED"));
+    mockGetPaymentIntentRowById.mockResolvedValue({
+      providerContext: { provider_status: "captured" },
+    } as never);
+    setPaymentWebhookProviderRecheckForTests(async () => ({
+      outcome: "confirmed",
+      providerState: "captured",
+      source: "test_inject",
+    }));
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/webhooks/x402",
+      payload: {
+        event_id: "evt_ooo_fail_after_provider_capture",
+        event_type: "settlement.failed",
+        payment_intent_id: "pi_123",
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      accepted: false,
+      action: "reconciliation_required",
+      reason: "provider_recheck_disagrees_with_webhook",
+      local_status: "AUTHORIZED",
+      provider_recheck: {
+        outcome: "confirmed",
+        providerState: "captured",
+      },
+    });
+    expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
+    expect(mockSetPaymentIntentProviderContext).toHaveBeenCalledWith(
+      expect.anything(),
+      "pi_123",
+      expect.objectContaining({
+        reconciliation_needed: expect.objectContaining({
+          reason: "provider_recheck_disagrees_with_webhook",
+          provider_recheck: expect.objectContaining({
+            outcome: "confirmed",
+            providerState: "captured",
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("forbids local overwrite when provider recheck is unavailable before terminal failure", async () => {
+    mockGetPaymentIntentById.mockResolvedValueOnce(paymentIntent("AUTHORIZED"));
+    setPaymentWebhookProviderRecheckForTests(async () => ({
+      outcome: "unavailable",
+      reason: "provider_live_recheck_unavailable",
+    }));
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/webhooks/x402",
+      payload: {
+        event_id: "evt_fail_without_provider_recheck",
+        event_type: "settlement.failed",
+        payment_intent_id: "pi_123",
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      accepted: false,
+      action: "reconciliation_required",
+      reason: "provider_recheck_unavailable_before_local_overwrite",
+    });
+    expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
+  });
+
+  it("allows terminal failure overwrite only after confirming provider recheck", async () => {
+    mockGetPaymentIntentById.mockResolvedValueOnce(paymentIntent("AUTHORIZED"));
+    setPaymentWebhookProviderRecheckForTests(async () => ({
+      outcome: "confirmed",
+      providerState: "failed",
+      source: "test_inject",
+    }));
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/webhooks/x402",
+      payload: {
+        event_id: "evt_fail_after_provider_confirm",
+        event_type: "settlement.failed",
+        payment_intent_id: "pi_123",
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ accepted: true, action: "failed" });
+    expect(mockUpdateStoredPaymentIntent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: "FAILED" }),
+    );
+  });
+
+  it("still forbids out-of-order settlement-before-auth overwrite even when recheck is confirming", async () => {
+    mockGetPaymentIntentById.mockResolvedValueOnce(paymentIntent("CREATED"));
+    setPaymentWebhookProviderRecheckForTests(async () => ({
+      outcome: "confirmed",
+      providerState: "captured",
+      source: "test_inject",
+    }));
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/webhooks/x402",
+      payload: {
+        event_id: "evt_ooo_settle_with_confirming_recheck",
+        event_type: "settlement.confirmed",
+        payment_intent_id: "pi_123",
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      accepted: false,
+      action: "reconciliation_required",
+      reason: "settlement_confirmed_before_authorization",
+      provider_recheck: expect.objectContaining({
+        outcome: "confirmed",
+        providerState: "captured",
+      }),
+    });
+    expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
   });
 
   it("does not mark an x402 webhook processed when post-settlement finalization fails", async () => {
