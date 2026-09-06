@@ -8,7 +8,15 @@
  * Batch limit: 100 records per run
  */
 
-import { and, commerceOrders, type Database, eq, lt, settlementReleases } from "@haggle/db";
+import {
+  and,
+  commerceOrders,
+  type Database,
+  eq,
+  inArray,
+  lt,
+  settlementReleases,
+} from "@haggle/db";
 
 const BATCH_LIMIT = 100;
 
@@ -59,8 +67,12 @@ export async function runSettlementAutoRelease(db: Database): Promise<void> {
         .where(
           and(
             eq(commerceOrders.id, row.orderId),
-            // Only close if order is in DELIVERED state (guard against race)
-            eq(commerceOrders.status, "DELIVERED"),
+            // Physical DELIVERED + no-shipping FULFILLMENT_* (digital never DELIVERED)
+            inArray(commerceOrders.status, [
+              "DELIVERED",
+              "FULFILLMENT_PENDING",
+              "FULFILLMENT_ACTIVE",
+            ]),
           ),
         );
 

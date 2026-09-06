@@ -11,7 +11,17 @@ type ApprovalState = (typeof settlementApprovals.$inferSelect)["approvalState"];
 function fulfillmentTypeFromSnapshot(snapshot: unknown) {
   if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return undefined;
   const value = (snapshot as Record<string, unknown>).fulfillment_type;
-  return typeof value === "string" ? value : undefined;
+  if (value === "shipped") return "physical_shipping";
+  if (
+    value === "physical_shipping" ||
+    value === "local_pickup" ||
+    value === "digital_delivery" ||
+    value === "external_platform_transfer" ||
+    value === "onchain_transfer"
+  ) {
+    return value;
+  }
+  return undefined;
 }
 
 function mapRow(row: typeof settlementApprovals.$inferSelect) {

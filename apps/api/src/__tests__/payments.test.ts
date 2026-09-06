@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import jwt from "jsonwebtoken";
 import { createPublicClient, decodeEventLog } from "viem";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { ensureFulfillmentRecordForOrder } from "../services/fulfillment-record.service.js";
 import {
   assertListingPayableForPrepare,
   ListingClaimError,
@@ -91,6 +92,27 @@ vi.mock("../services/shipment-record.service.js", () => ({
   getShipmentByOrderId: vi.fn().mockResolvedValue(null),
   updateShipmentRecord: vi.fn().mockResolvedValue(null),
   insertShipmentEvent: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock("../services/fulfillment-record.service.js", () => ({
+  createFulfillmentRecord: vi.fn().mockResolvedValue(null),
+  ensureFulfillmentRecordForOrder: vi.fn().mockResolvedValue({
+    fulfillment: {
+      id: "ful_mock",
+      order_id: "order_123",
+      fulfillment_type: "digital_delivery",
+      status: "AWAITING_SELLER_ACTION",
+      proof_required: true,
+      proof_status: "PENDING",
+      review_window_hours: 24,
+      metadata: {},
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+    created: true,
+  }),
+  getFulfillmentByOrderId: vi.fn().mockResolvedValue(null),
+  updateFulfillmentRecord: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../services/trust-ledger.service.js", () => ({
@@ -230,6 +252,7 @@ const mockCreatePaymentOperationIdempotencyRecord = vi.mocked(
 const mockCreateSettlementReleaseRecord = vi.mocked(createSettlementReleaseRecord);
 const mockGetSettlementReleaseByOrderId = vi.mocked(getSettlementReleaseByOrderId);
 const mockCreateShipmentRecord = vi.mocked(createShipmentRecord);
+const mockEnsureFulfillmentRecordForOrder = vi.mocked(ensureFulfillmentRecordForOrder);
 const mockGetShipmentByOrderId = vi.mocked(getShipmentByOrderId);
 const mockCreatePublicClient = vi.mocked(createPublicClient);
 const mockDecodeEventLog = vi.mocked(decodeEventLog);
@@ -1066,6 +1089,9 @@ describe("Payment routes", () => {
     mockUpdateStoredPaymentIntent.mockClear();
     mockCreateSettlementReleaseRecord.mockClear();
     mockCreateShipmentRecord.mockClear();
+    mockEnsureFulfillmentRecordForOrder.mockClear();
+    mockGetSettlementReleaseByOrderId.mockResolvedValue(null);
+    mockCreateSettlementReleaseRecord.mockImplementation(async (_db, release) => release);
     mockUpdateCommerceOrderStatus.mockClear();
     mockGetPaymentSettlementByPaymentIntentId.mockResolvedValueOnce({
       id: "settlement_existing",
@@ -1106,6 +1132,10 @@ describe("Payment routes", () => {
     });
     expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
     expect(mockCreateSettlementReleaseRecord).toHaveBeenCalledOnce();
+    const physicalReleaseArg = mockCreateSettlementReleaseRecord.mock.calls[0]?.[1];
+    expect(physicalReleaseArg.buffer_amount.amount_minor).toBeGreaterThan(0);
+    expect(physicalReleaseArg.buffer_release_status).toBe("HELD");
+    expect(mockEnsureFulfillmentRecordForOrder).not.toHaveBeenCalled();
     expect(mockCreateShipmentRecord).toHaveBeenCalledWith(
       expect.anything(),
       "order_123",
@@ -1139,6 +1169,9 @@ describe("Payment routes", () => {
     mockUpdateStoredPaymentIntent.mockClear();
     mockCreateSettlementReleaseRecord.mockClear();
     mockCreateShipmentRecord.mockClear();
+    mockEnsureFulfillmentRecordForOrder.mockClear();
+    mockGetSettlementReleaseByOrderId.mockResolvedValue(null);
+    mockCreateSettlementReleaseRecord.mockImplementation(async (_db, release) => release);
     mockUpdateCommerceOrderStatus.mockClear();
     mockGetPaymentSettlementByPaymentIntentId.mockResolvedValueOnce({
       id: "settlement_digital_existing",
@@ -1187,11 +1220,33 @@ describe("Payment routes", () => {
       fulfillment: {
         type: "digital_delivery",
         requires_shipment: false,
+        record_created: true,
       },
+      settlement_release: expect.objectContaining({
+        buffer_amount: { currency: "USD", amount_minor: 0 },
+        buffer_release_status: "RELEASED",
+        product_amount: { currency: "USD", amount_minor: 5_00 },
+      }),
+      shipment: null,
     });
     expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
     expect(mockCreateSettlementReleaseRecord).toHaveBeenCalledOnce();
+    const releaseArg = mockCreateSettlementReleaseRecord.mock.calls[0]?.[1];
+    expect(releaseArg).toMatchObject({
+      order_id: "order_123",
+      product_amount: { currency: "USD", amount_minor: 5_00 },
+      buffer_amount: { currency: "USD", amount_minor: 0 },
+      buffer_release_status: "RELEASED",
+    });
     expect(mockCreateShipmentRecord).not.toHaveBeenCalled();
+    expect(mockEnsureFulfillmentRecordForOrder).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        order_id: "order_123",
+        payment_intent_id: "pi_digital_settled_retry",
+        fulfillment_type: "digital_delivery",
+      }),
+    );
     expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(
       expect.anything(),
       "order_123",

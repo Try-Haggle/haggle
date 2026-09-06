@@ -116,6 +116,7 @@ vi.mock("@haggle/db", () => ({
     revokedAt: "revokedAt",
   },
   settlementApprovals: {},
+  fulfillments: { id: "id", orderId: "orderId" },
   conversations: { id: "id", participantKey: "participantKey" },
   conversationMembers: { conversationId: "conversationId", userId: "userId" },
   messages: {},
