@@ -20,10 +20,13 @@ import { Spinner } from "@/components/ui";
 import type { NegotiationAgentBuilderMemory } from "@/lib/negotiation-agent-builder-types";
 import {
   createNegotiationAgent,
+  deleteBuilderThread,
   deleteNegotiationAgent,
+  fetchBuilderThread,
   listNegotiationAgents,
   type NegotiationAgentConfig,
   rowToNegotiationAgent,
+  saveBuilderThread,
   updateNegotiationAgent,
 } from "@/lib/negotiation-agents-api";
 
@@ -159,6 +162,24 @@ export function AgentStudioPage({ role }: { role: Role }) {
     [role, refresh],
   );
 
+  /**
+   * A preset thread just became a saved agent, so its conversation has to
+   * follow it to the new key — in the browser and in the database. Reading
+   * before writing keeps this from clearing a thread when the read fails: no
+   * source row means nothing to move, and the local copy still stands.
+   */
+  const handleThreadStorageMove = useCallback(async (from: string, to: string) => {
+    moveStoredSessions(from, to);
+    const thread = await fetchBuilderThread(from);
+    if (!thread?.messages?.length) return;
+    await saveBuilderThread({
+      key: to,
+      messages: thread.messages,
+      ...(thread.presetId ? { presetId: thread.presetId } : {}),
+    });
+    await deleteBuilderThread(from);
+  }, []);
+
   const handleDelete = useCallback(
     async (agentId: string) => {
       await deleteNegotiationAgent(agentId);
@@ -205,7 +226,7 @@ export function AgentStudioPage({ role }: { role: Role }) {
         initialSelection={selectionFromParams(presetParam, agentParam, savedAgents)}
         onSave={handleSave}
         onDelete={handleDelete}
-        onThreadStorageMove={moveStoredSessions}
+        onThreadStorageMove={handleThreadStorageMove}
         renderChat={({
           effective,
           storageId,
@@ -218,6 +239,9 @@ export function AgentStudioPage({ role }: { role: Role }) {
             // No listing here — these agents are account-level and get picked
             // per deal later. The chat keys its local draft off this id, so a
             // per-thread value keeps each agent's conversation separate.
+            // Same key for both: the local copy paints instantly, the
+            // server copy is what survives a different device.
+            serverThreadKey={storageId}
             listingPublicId={storageId}
             listingTitle="General negotiation strategy"
             listingCategory={null}

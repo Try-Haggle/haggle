@@ -95,7 +95,7 @@ interface AgentStudioProps {
    * agent. The studio owns how `storageId` is composed but not what the chat
    * keeps under it, so moving that content is the caller's to do.
    */
-  onThreadStorageMove?: (fromStorageId: string, toStorageId: string) => void;
+  onThreadStorageMove?: (fromStorageId: string, toStorageId: string) => void | Promise<void>;
   saveLabel?: string;
   className?: string;
 }
@@ -198,7 +198,9 @@ export function AgentStudio({
         setMemories((prev) => (prev[key] ? { ...prev, [nextKey]: prev[key] } : prev));
         // The transcript lives outside React state, so it has to be moved too
         // — otherwise the chat remounts under the new key and comes back empty.
-        onThreadStorageMove?.(threadStorageId(role, key), threadStorageId(role, nextKey));
+        // Not awaited: the local half is synchronous so the chat is already
+        // correct, and the server half must not hold up the save confirmation.
+        void onThreadStorageMove?.(threadStorageId(role, key), threadStorageId(role, nextKey));
         setSelection({ kind: "saved", id: savedId });
       }
 

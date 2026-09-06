@@ -21,6 +21,7 @@ import {
 } from "@/components/ui";
 import { ApiError, apiClient } from "@/lib/api-client";
 import { isSubmitEnter } from "@/lib/keyboard";
+import { fetchBuilderThread, saveBuilderThread } from "@/lib/negotiation-agents-api";
 
 /* ─── Types ───────────────────────────────────────────────── */
 
@@ -73,6 +74,14 @@ interface StrategyChip {
 
 interface NegotiationAgentBuilderChatProps {
   agent: NegotiationAgentPreset | null;
+  /**
+   * Persist the conversation server-side under this key, and restore it from
+   * there. The Agent Studio passes its thread key; the listing page leaves it
+   * off, since a buyer tuning an agent for one listing is mid-flow and the
+   * local copy is enough. Requires a signed-in user — the endpoint is
+   * authenticated, and the calls fail soft when it is not.
+   */
+  serverThreadKey?: string;
   /** Stable key used for localStorage isolation. On listing pages this is the
    *  listing's publicId; on agent design pages it is an agent-scoped key like
    *  `agent-design:<agentId>`. */
@@ -484,6 +493,7 @@ function AgentIcon({ accent, emoji }: { accent: string; emoji?: string }) {
 
 export function NegotiationAgentBuilderChat({
   agent,
+  serverThreadKey,
   listingPublicId,
   listingTitle,
   listingCategory,
@@ -694,6 +704,55 @@ export function NegotiationAgentBuilderChat({
       window.scrollTo({ top: targetY, behavior: "smooth" });
     }, 100);
   }, []);
+
+  /**
+   * Adopt the server's copy of this conversation.
+   *
+   * localStorage is the fast path and paints first; the database is the record
+   * that survives another device, another browser, cleared site data and the
+   * local two-day expiry. Runs once per thread and only adopts when the server
+   * holds more of the conversation than this tab does, so it can restore a
+   * thread this browser never saw without ever truncating one in progress.
+   */
+  const restoredThreadRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!serverThreadKey || restoredThreadRef.current === serverThreadKey) return;
+    restoredThreadRef.current = serverThreadKey;
+    let alive = true;
+    void (async () => {
+      const thread = await fetchBuilderThread(serverThreadKey);
+      if (!alive || !thread?.messages?.length) return;
+      setMessages((current) => {
+        if (thread.messages.length <= current.length) return current;
+        setIsExpanded(true);
+        setHasRestoredSession(true);
+        return thread.messages as ChatMessage[];
+      });
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [serverThreadKey]);
+
+  /**
+   * Mirror the conversation to the server as it grows.
+   *
+   * One effect rather than a call beside each of the eight places a turn is
+   * stored: those already write the local copy, and a future ninth would have
+   * been easy to forget. Debounced so a fast exchange writes once, and it
+   * sends the whole thread so a dropped request cannot leave a gap.
+   */
+  useEffect(() => {
+    if (!serverThreadKey || messages.length === 0) return;
+    const timer = setTimeout(() => {
+      void saveBuilderThread({
+        key: serverThreadKey,
+        messages,
+        ...(agent?.id ? { presetId: agent.id } : {}),
+      });
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [serverThreadKey, messages, agent?.id]);
 
   // Load from localStorage or reset when agent changes
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally re-runs only on agent id / listing change

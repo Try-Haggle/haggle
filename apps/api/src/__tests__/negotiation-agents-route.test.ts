@@ -32,6 +32,16 @@ vi.mock("@haggle/db", () => {
       createdAt: col("created_at"),
       updatedAt: col("updated_at"),
     },
+    agentBuilderThreads: {
+      id: col("id"),
+      userId: col("user_id"),
+      threadKey: col("thread_key"),
+      presetId: col("preset_id"),
+      agentId: col("agent_id"),
+      messages: col("messages"),
+      createdAt: col("created_at"),
+      updatedAt: col("updated_at"),
+    },
   };
 });
 
@@ -99,9 +109,14 @@ function createFakeDb(): FakeDb {
     const chain = {
       values: (payload: unknown) => {
         db.calls.push({ op: "insert.values", payload });
-        return {
+        const tail = {
           returning: () => Promise.resolve(db.insertResults.shift() ?? []),
+          onConflictDoUpdate: (spec: unknown) => {
+            db.calls.push({ op: "insert.onConflictDoUpdate", payload: spec });
+            return tail;
+          },
         };
+        return tail;
       },
     };
     return chain;
@@ -419,6 +434,93 @@ describe("DELETE /negotiations/agents/:id", () => {
     });
     expect(res.statusCode).toBe(204);
     expect(db.calls.some((c) => c.op === "delete.where")).toBe(true);
+    await app.close();
+  });
+});
+
+describe("builder threads", () => {
+  const KEY = "agent-studio:seller:preset:closer";
+  const encoded = encodeURIComponent(KEY);
+
+  it("requires auth on every verb — a thread belongs to someone", async () => {
+    const app = buildApp(db);
+    for (const [method, url] of [
+      ["GET", `/negotiations/agents/threads?key=${encoded}`],
+      ["PUT", "/negotiations/agents/threads"],
+      ["DELETE", `/negotiations/agents/threads?key=${encoded}`],
+    ] as const) {
+      const res = await app.inject({ method, url, payload: { key: KEY, messages: [] } });
+      expect(res.statusCode, `${method} ${url}`).toBe(401);
+    }
+    await app.close();
+  });
+
+  it("returns null rather than 404 when the thread has not been started", async () => {
+    const app = buildApp(db, USER);
+    db.selectResults.push([]);
+    const res = await app.inject({
+      method: "GET",
+      url: `/negotiations/agents/threads?key=${encoded}`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().thread).toBeNull();
+    await app.close();
+  });
+
+  it("scopes the read to the caller, not just the key", async () => {
+    const app = buildApp(db, USER);
+    db.selectResults.push([{ threadKey: KEY, messages: [] }]);
+    await app.inject({ method: "GET", url: `/negotiations/agents/threads?key=${encoded}` });
+    const where = db.calls.find((c) => c.op === "select.where");
+    const cond = where!.payload as { __op: string; conds: Array<{ __op: string; v: unknown }> };
+    expect(cond.__op).toBe("and");
+    expect(cond.conds.map((c) => c.v)).toEqual([USER.id, KEY]);
+    await app.close();
+  });
+
+  it("upserts on (user, key) so a retried turn cannot leave two rows", async () => {
+    const app = buildApp(db, USER);
+    db.insertResults.push([{ id: "t1" }]);
+    const messages = [{ id: "m1", role: "user" as const, text: "hi", timestamp: 1 }];
+    const res = await app.inject({
+      method: "PUT",
+      url: "/negotiations/agents/threads",
+      payload: { key: KEY, messages, presetId: "closer" },
+    });
+    expect(res.statusCode).toBe(200);
+    const values = db.calls.find((c) => c.op === "insert.values")!.payload as Record<
+      string,
+      unknown
+    >;
+    expect(values).toMatchObject({ userId: USER.id, threadKey: KEY, messages, presetId: "closer" });
+    const conflict = db.calls.find((c) => c.op === "insert.onConflictDoUpdate");
+    expect(conflict).toBeDefined();
+    await app.close();
+  });
+
+  it("rejects a malformed message rather than storing it", async () => {
+    const app = buildApp(db, USER);
+    const res = await app.inject({
+      method: "PUT",
+      url: "/negotiations/agents/threads",
+      payload: { key: KEY, messages: [{ id: "m1", role: "narrator", text: "x", timestamp: 1 }] },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("INVALID_THREAD");
+    await app.close();
+  });
+
+  it("deletes only the caller's own thread", async () => {
+    const app = buildApp(db, USER);
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/negotiations/agents/threads?key=${encoded}`,
+    });
+    expect(res.statusCode).toBe(204);
+    const cond = db.calls.find((c) => c.op === "delete.where")!.payload as {
+      conds: Array<{ v: unknown }>;
+    };
+    expect(cond.conds.map((c) => c.v)).toEqual([USER.id, KEY]);
     await app.close();
   });
 });
