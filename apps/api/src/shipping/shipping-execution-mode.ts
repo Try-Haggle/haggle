@@ -154,7 +154,7 @@ export type StagingLiveEasyPostKeysGateEnv = Partial<Pick<NodeJS.ProcessEnv, "HA
  * Classify an EasyPost API key without exposing secret material.
  * Test keys: EZTK / EZTEST. Live keys: EZAK.
  */
-export function classifyEasyPostKeyMode(apiKey: string | undefined): EasyPostKeyMode {
+export function classifyEasyPostKeyMode(apiKey: string | null | undefined): EasyPostKeyMode {
   return classifyEasyPostApiKey(apiKey);
 }
 

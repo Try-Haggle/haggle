@@ -21,6 +21,7 @@ describe("classifyEasyPostKeyMode", () => {
   it("returns missing when empty", () => {
     expect(classifyEasyPostKeyMode("")).toBe("missing");
     expect(classifyEasyPostKeyMode(undefined)).toBe("missing");
+    expect(classifyEasyPostKeyMode(null)).toBe("missing");
   });
 
   it("returns unknown for other prefixes", () => {
