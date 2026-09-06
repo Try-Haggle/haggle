@@ -174,16 +174,73 @@ export function expandMcpTranscript(rounds: McpTranscriptRound[]): McpRecentMess
   ];
 }
 
+/** Folded get_negotiation window — never the full chat unless expand=transcript. */
+export const MCP_GET_NEGOTIATION_RECENT_LIMIT = 4;
+
+export type McpNegotiationOffer = {
+  round_no: number;
+  speaker: BargainRole;
+  offer_sender_role: BargainRole | null;
+  decision: string | null;
+  price_minor: string | number | null;
+  incoming_price_minor: string | number | null;
+  counter_price_minor: string | number | null;
+};
+
+/** Price/decision history without chat copy — expand=offers. */
+export function mcpNegotiationOffers(messages: McpRecentMessage[]): McpNegotiationOffer[] {
+  return messages.map((m) => ({
+    round_no: m.round_no,
+    speaker: m.speaker,
+    offer_sender_role: m.offer_sender_role,
+    decision: m.decision,
+    price_minor: m.price_minor,
+    incoming_price_minor: m.incoming_price_minor,
+    counter_price_minor: m.counter_price_minor,
+  }));
+}
+
 export function mcpNegotiationTranscript(
   rounds: McpTranscriptRound[],
   sessionCurrentRound: number,
 ): { current_round: number; recent_messages: McpRecentMessage[] } {
+  const view = buildMcpGetNegotiationExpandView(rounds, sessionCurrentRound, []);
+  return {
+    current_round: view.current_round,
+    recent_messages: view.recent_messages,
+  };
+}
+
+/**
+ * Fold/expand contract for haggle_get_negotiation:
+ * - default (no expand): recent_messages only (last N), no transcript/offers keys
+ * - expand includes "transcript": full OPENING-aware transcript
+ * - expand includes "offers": price/decision offer rows from that transcript
+ */
+export function buildMcpGetNegotiationExpandView(
+  rounds: McpTranscriptRound[],
+  sessionCurrentRound: number,
+  expand: ReadonlyArray<"transcript" | "offers"> = [],
+): {
+  current_round: number;
+  recent_messages: McpRecentMessage[];
+  transcript?: McpRecentMessage[];
+  offers?: McpNegotiationOffer[];
+} {
   const messages = expandMcpTranscript(rounds);
   const last = messages.at(-1);
-  return {
+  const body: {
+    current_round: number;
+    recent_messages: McpRecentMessage[];
+    transcript?: McpRecentMessage[];
+    offers?: McpNegotiationOffer[];
+  } = {
     current_round: last?.round_no ?? sessionCurrentRound,
-    recent_messages: messages.slice(-4),
+    recent_messages: messages.slice(-MCP_GET_NEGOTIATION_RECENT_LIMIT),
   };
+  if (expand.includes("transcript")) body.transcript = messages;
+  if (expand.includes("offers")) body.offers = mcpNegotiationOffers(messages);
+  return body;
 }
 
 export function negotiationSayToUser(input: {
