@@ -7,6 +7,8 @@ import {
   DISPUTE_EVIDENCE_BUCKET,
   EVIDENCE_LIMITS,
   evaluateControlledEvidenceUploadGates,
+  evaluateControlledEvidenceUploadScaffold,
+  evaluateDigitalDisputeEvidenceContentGate,
   evaluateDisputeEvidenceCategoryGate,
   evidenceTypeFromContentType,
   isAllowedDisputeEvidenceCategory,
@@ -220,5 +222,128 @@ describe("digital dispute evidence category scaffold (Phase 4)", () => {
     });
     expect(mimeGate.ok).toBe(false);
     if (!mimeGate.ok) expect(mimeGate.error).toBe("UNSUPPORTED_CONTENT_TYPE");
+  });
+});
+
+describe("C1 digital evidence content + upload scaffold", () => {
+  const validHash = `sha256:${"d".repeat(64)}`;
+  const validAddress = "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0";
+
+  it("validates digital content formats and still rejects card_pan", () => {
+    const access = evaluateDigitalDisputeEvidenceContentGate({
+      kind: "digital_access",
+      content: { access_uri: "https://cdn.example/access/1" },
+    });
+    expect(access.ok).toBe(true);
+
+    const fileHash = evaluateDigitalDisputeEvidenceContentGate({
+      kind: "digital_file_hash",
+      content: { file_hash: validHash },
+    });
+    expect(fileHash.ok).toBe(true);
+
+    const onchain = evaluateDigitalDisputeEvidenceContentGate({
+      kind: "onchain_transfer",
+      content: { address: validAddress, tx_hash: `0x${"e".repeat(64)}` },
+    });
+    expect(onchain.ok).toBe(true);
+
+    const pan = evaluateDigitalDisputeEvidenceContentGate({
+      kind: "card_pan",
+      content: { pan: "4111111111111111" },
+    });
+    expect(pan.ok).toBe(false);
+    if (!pan.ok) expect(pan.error).toBe("UNSUPPORTED_EVIDENCE_KIND");
+
+    const badAddr = evaluateDigitalDisputeEvidenceContentGate({
+      kind: "onchain_transfer",
+      content: { address: "not-an-address" },
+    });
+    expect(badAddr.ok).toBe(false);
+    if (!badAddr.ok) expect(badAddr.error).toBe("INVALID_DIGITAL_EVIDENCE_CONTENT");
+  });
+
+  it("upload scaffold connects category + content + mime gates without weakening B4", () => {
+    const panRejected = evaluateControlledEvidenceUploadScaffold({
+      category: "card_pan",
+      content: { pan: "4111111111111111" },
+      contentType: "image/png",
+      fileSizeBytes: 1000,
+      imageCount: 0,
+      videoCount: 0,
+      orderAmountCents: 10_000,
+    });
+    expect(panRejected.ok).toBe(false);
+    if (!panRejected.ok) expect(panRejected.error).toBe("UNSUPPORTED_EVIDENCE_CATEGORY");
+
+    const badContent = evaluateControlledEvidenceUploadScaffold({
+      category: "digital_file_hash",
+      content: { file_hash: "sha256:nope" },
+      contentType: "image/png",
+      fileSizeBytes: 1000,
+      imageCount: 0,
+      videoCount: 0,
+      orderAmountCents: 10_000,
+    });
+    expect(badContent.ok).toBe(false);
+    if (!badContent.ok) expect(badContent.error).toBe("INVALID_DIGITAL_EVIDENCE_CONTENT");
+
+    const badMime = evaluateControlledEvidenceUploadScaffold({
+      category: "digital_access",
+      content: { access_uri: "https://example.com/a" },
+      contentType: "application/pdf",
+      fileSizeBytes: 1000,
+      imageCount: 0,
+      videoCount: 0,
+      orderAmountCents: 10_000,
+    });
+    expect(badMime.ok).toBe(false);
+    if (!badMime.ok) expect(badMime.error).toBe("UNSUPPORTED_CONTENT_TYPE");
+
+    const tooLarge = evaluateControlledEvidenceUploadScaffold({
+      category: "onchain_transfer",
+      content: { address: validAddress },
+      contentType: "image/jpeg",
+      fileSizeBytes: EVIDENCE_LIMITS.image.maxSizeBytes + 1,
+      imageCount: 0,
+      videoCount: 0,
+      orderAmountCents: 10_000,
+    });
+    expect(tooLarge.ok).toBe(false);
+    if (!tooLarge.ok) expect(tooLarge.error).toBe("FILE_TOO_LARGE");
+
+    // Path sanitization remains independently enforced (B4).
+    expect(() => sanitizeDisputeFilename("../escape.png")).toThrow();
+
+    const ok = evaluateControlledEvidenceUploadScaffold({
+      category: "platform_transfer",
+      content: { platform: "namecheap", receipt_id: "whois-delta-1" },
+      contentType: "image/webp",
+      fileSizeBytes: 220_000,
+      imageCount: 0,
+      videoCount: 0,
+      orderAmountCents: 12_000,
+    });
+    expect(ok).toEqual(
+      expect.objectContaining({
+        ok: true,
+        evidenceType: "image",
+        category: "platform_transfer",
+        isDigital: true,
+        digitalContent: { platform: "namecheap", receipt_id: "whois-delta-1" },
+      }),
+    );
+
+    // Backward compatible: no category still applies mime/size only.
+    const mediaOnly = evaluateControlledEvidenceUploadScaffold({
+      contentType: "image/png",
+      fileSizeBytes: 1000,
+      imageCount: 0,
+      videoCount: 0,
+      orderAmountCents: 10_000,
+    });
+    expect(mediaOnly).toEqual(
+      expect.objectContaining({ ok: true, evidenceType: "image", isDigital: false }),
+    );
   });
 });

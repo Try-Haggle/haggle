@@ -141,7 +141,13 @@ export {
 } from "./protocol/core.js";
 export type {
   CreateHnpDisputeEvidencePacketInput,
+  HnpDigitalAccessContent,
+  HnpDigitalDisputeEvidenceContent,
+  HnpDigitalDisputeEvidenceContentIssue,
+  HnpDigitalDisputeEvidenceContentIssueCode,
+  HnpDigitalDisputeEvidenceContentValidationResult,
   HnpDigitalDisputeEvidenceKind,
+  HnpDigitalFileHashContent,
   HnpDisputeEvidenceItem,
   HnpDisputeEvidenceKind,
   HnpDisputeEvidencePacket,
@@ -150,6 +156,9 @@ export type {
   HnpDisputeReason,
   HnpDisputeRequestedResolution,
   HnpInspectionFinding,
+  HnpLicenseTermsContent,
+  HnpOnchainTransferContent,
+  HnpPlatformTransferContent,
 } from "./protocol/dispute-evidence.js";
 export {
   computeHnpDisputeEvidencePacketHash,
@@ -158,6 +167,7 @@ export {
   HNP_DISPUTE_EVIDENCE_KINDS,
   isHnpDigitalDisputeEvidenceKind,
   isHnpDisputeEvidenceKind,
+  validateDigitalDisputeEvidenceContent,
   validateHnpDisputeEvidencePacket,
 } from "./protocol/dispute-evidence.js";
 export type { HnpCoreIssueId } from "./protocol/issue-registry.js";

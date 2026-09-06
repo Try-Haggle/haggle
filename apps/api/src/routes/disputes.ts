@@ -28,7 +28,7 @@ import {
   buildDisputeEvidencePath,
   computeEvidenceRemainingLimits,
   DISPUTE_VIEW_URL_TTL_SECONDS,
-  evaluateControlledEvidenceUploadGates,
+  evaluateControlledEvidenceUploadScaffold,
   evidenceTypeFromContentType,
   isImageType,
   isVideoType,
@@ -402,6 +402,10 @@ const uploadUrlSchema = z.object({
     .regex(/^[0-9a-f]{64}$/)
     .optional(),
   fixture_party: z.enum(["buyer", "seller"]).optional(),
+  /** Optional Phase 4 evidence category (B9 allowlist + C1 content validation). */
+  evidence_category: z.string().min(1).max(64).optional(),
+  /** Kind-specific digital evidence content; required when category is digital. */
+  evidence_content: z.record(z.string(), z.unknown()).optional(),
 });
 
 const commitEvidenceSchema = z.object({
@@ -3008,6 +3012,8 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         camera_capture_token,
         capture_sha256,
         fixture_party,
+        evidence_category,
+        evidence_content,
       } = parsed.data;
 
       // 1. Validate dispute exists and is in an evidence-accepting state
@@ -3114,12 +3120,16 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
 
       const orderAmountCents = order?.amountMinor ? parseInt(String(order.amountMinor), 10) : 0;
 
-      // 5. Count existing evidence and enforce mime/size/category gates.
+      // 5. Count existing evidence and enforce category + digital content + mime/size gates.
       // Controlled Evidence never accepts card PAN / payment instrument bytes —
       // only allowlisted image/video evidence for dispute parties.
+      // Optional evidence_category runs B9 category gate; digital kinds also run C1 content validation.
+      // Path/mime/size gates stay identical to B4 (scaffold only wires the gates together).
       const { imageCount, videoCount } = await countEvidenceByType(id);
       const pendingCounts = await countPendingUploadsByType(id);
-      const gate = evaluateControlledEvidenceUploadGates({
+      const gate = evaluateControlledEvidenceUploadScaffold({
+        category: evidence_category,
+        content: evidence_content,
         contentType: content_type,
         fileSizeBytes: file_size_bytes,
         imageCount: imageCount + pendingCounts.imageCount,
@@ -3130,6 +3140,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         return reply.code(400).send({
           error: gate.error,
           message: gate.message,
+          ...("issues" in gate ? { issues: gate.issues } : {}),
         });
       }
 
