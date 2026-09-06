@@ -10,6 +10,7 @@ export default defineConfig({
     "./dist/schema/addresses.js",
     "./dist/schema/admin-ops.js",
     "./dist/schema/advisor-messages.js",
+    "./dist/schema/agent-builder-threads.js",
     "./dist/schema/agent-levels.js",
     "./dist/schema/api-rate-limit.js",
     "./dist/schema/arp-segments.js",

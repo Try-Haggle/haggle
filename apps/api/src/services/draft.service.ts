@@ -708,6 +708,9 @@ export async function getListingPlaybackSummaryByInternalId(db: Database, listin
       photoUrl: listingDrafts.photoUrl,
       targetPrice: listingDrafts.targetPrice,
       sellerAgentPreset: sql<string | null>`${listingDrafts.negotiationAgentSnapshot}->>'preset'`,
+      // The face the seller picked, so the arena shows the same agent the
+      // buyer met on the listing. A slug — no posture travels with it.
+      sellerAgentEmoji: sql<string | null>`${listingDrafts.negotiationAgentSnapshot}->>'emoji'`,
     })
     .from(listingsPublished)
     .innerJoin(listingDrafts, eq(listingDrafts.id, listingsPublished.draftId))

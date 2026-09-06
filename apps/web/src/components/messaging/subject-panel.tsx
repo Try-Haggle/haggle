@@ -153,7 +153,11 @@ export function SubjectPanel({
           {listing.sellerAgentPreset && (
             <>
               <Divider />
-              <OpponentCard presetId={listing.sellerAgentPreset} isOwner={isOwner} />
+              <OpponentCard
+                presetId={listing.sellerAgentPreset}
+                emoji={listing.sellerAgentEmoji ?? null}
+                isOwner={isOwner}
+              />
             </>
           )}
 

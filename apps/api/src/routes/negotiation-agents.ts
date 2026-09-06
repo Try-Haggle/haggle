@@ -9,7 +9,16 @@
  * and the DEMO_USER_ID schema default.
  */
 
-import { and, type Database, eq, inArray, negotiationAgents, or } from "@haggle/db";
+import {
+  agentBuilderThreads,
+  and,
+  type Database,
+  desc,
+  eq,
+  inArray,
+  negotiationAgents,
+  or,
+} from "@haggle/db";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireAuth } from "../middleware/require-auth.js";
@@ -151,6 +160,108 @@ export function registerNegotiationAgentRoutes(app: FastifyInstance, db: Databas
     }
   });
 
+  // ─── Builder threads ────────────────────────────────────────────────────
+  //
+  // The verbatim Agent Studio conversation. It used to live only in the
+  // browser, so it was gone on another device and after two days, while the
+  // distilled memory it produced was safely in the database — the record of
+  // what was actually said deserves the same treatment.
+  //
+  // Keyed by the studio's thread name rather than an agent id, because the
+  // conversation starts before any agent exists. Auth is required: a guest
+  // thread has nobody to return it to, and those stay in the browser.
+  //
+  // The key travels in the query/body, not the path — it contains colons.
+
+  const threadKeySchema = z.string().min(1).max(200);
+  const threadMessageSchema = z.object({
+    id: z.string().min(1).max(120),
+    role: z.enum(["user", "agent"]),
+    text: z.string().max(20_000),
+    timestamp: z.number().int().nonnegative(),
+  });
+  const putThreadSchema = z.object({
+    key: threadKeySchema,
+    // Whole-conversation writes: the client holds the thread and re-sends it,
+    // which keeps a retried turn from doubling a message.
+    messages: z.array(threadMessageSchema).max(500),
+    presetId: z.string().max(80).optional(),
+    agentId: z.string().uuid().optional(),
+  });
+
+  /** GET /negotiations/agents/threads?key=… — one thread, or null. */
+  app.get("/negotiations/agents/threads", { preHandler: [requireAuth] }, async (request, reply) => {
+    const key = threadKeySchema.safeParse((request.query as { key?: unknown } | undefined)?.key);
+    if (!key.success) {
+      return reply.code(400).send({ error: "INVALID_THREAD_KEY" });
+    }
+    const [row] = await db
+      .select()
+      .from(agentBuilderThreads)
+      .where(
+        and(
+          eq(agentBuilderThreads.userId, request.user!.id),
+          eq(agentBuilderThreads.threadKey, key.data),
+        ),
+      )
+      .limit(1);
+    return reply.send({ thread: row ?? null });
+  });
+
+  /** PUT /negotiations/agents/threads — upsert one thread. */
+  app.put("/negotiations/agents/threads", { preHandler: [requireAuth] }, async (request, reply) => {
+    const parsed = putThreadSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "INVALID_THREAD", issues: parsed.error.issues });
+    }
+    const userId = request.user!.id;
+    const { key, messages, presetId, agentId } = parsed.data;
+
+    // Upsert on (user, key) so a turn writes without reading first, and two
+    // turns racing cannot leave two rows for one conversation.
+    const [row] = await db
+      .insert(agentBuilderThreads)
+      .values({
+        userId,
+        threadKey: key,
+        messages,
+        presetId: presetId ?? null,
+        agentId: agentId ?? null,
+      })
+      .onConflictDoUpdate({
+        target: [agentBuilderThreads.userId, agentBuilderThreads.threadKey],
+        set: {
+          messages,
+          presetId: presetId ?? null,
+          agentId: agentId ?? null,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return reply.send({ thread: row });
+  });
+
+  /** DELETE /negotiations/agents/threads?key=… — drop one thread. */
+  app.delete(
+    "/negotiations/agents/threads",
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const key = threadKeySchema.safeParse((request.query as { key?: unknown } | undefined)?.key);
+      if (!key.success) {
+        return reply.code(400).send({ error: "INVALID_THREAD_KEY" });
+      }
+      await db
+        .delete(agentBuilderThreads)
+        .where(
+          and(
+            eq(agentBuilderThreads.userId, request.user!.id),
+            eq(agentBuilderThreads.threadKey, key.data),
+          ),
+        );
+      return reply.code(204).send();
+    },
+  );
+
   // ─── Agent CRUD ─────────────────────────────────────────────────────────
   //
   // All CRUD endpoints require auth. System presets (isSystem=true) are
@@ -202,7 +313,17 @@ export function registerNegotiationAgentRoutes(app: FastifyInstance, db: Databas
         ? ownership
         : and(ownership, inArray(negotiationAgents.role, [query.data.role, "both"] as const));
 
-    const rows = await db.select().from(negotiationAgents).where(where);
+    // Most recently touched first: the roster is a working list, and the
+    // agent you just edited is the one you are most likely to want next.
+    // Without an ORDER BY the rows came back in whatever order Postgres found
+    // them, which tracks physical layout — so editing an agent could silently
+    // move it. `createdAt` breaks ties so two rows written in the same
+    // millisecond (seeded presets) cannot swap between requests.
+    const rows = await db
+      .select()
+      .from(negotiationAgents)
+      .where(where)
+      .orderBy(desc(negotiationAgents.updatedAt), desc(negotiationAgents.createdAt));
     return reply.send({ agents: rows });
   });
 

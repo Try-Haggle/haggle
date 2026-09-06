@@ -1,6 +1,7 @@
 export { orderAddresses, userSavedAddresses } from "./addresses.js";
 export { adminActionLog, tagPromotionRules } from "./admin-ops.js";
 export { advisorMessages } from "./advisor-messages.js";
+export { agentBuilderThreads } from "./agent-builder-threads.js";
 export { agentLevels } from "./agent-levels.js";
 export { apiRateLimitWindows } from "./api-rate-limit.js";
 export { arpSegments } from "./arp-segments.js";

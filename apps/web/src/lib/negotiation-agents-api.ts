@@ -123,3 +123,64 @@ export function rowToNegotiationAgent(row: NegotiationAgentRow): NegotiationAgen
     updatedAt: new Date(row.updatedAt).getTime(),
   };
 }
+
+/* ─── Builder threads ─────────────────────────────────────── */
+
+export interface BuilderThreadMessage {
+  id: string;
+  role: "user" | "agent";
+  text: string;
+  timestamp: number;
+}
+
+export interface BuilderThread {
+  threadKey: string;
+  presetId: string | null;
+  agentId: string | null;
+  messages: BuilderThreadMessage[];
+  updatedAt: string;
+}
+
+/**
+ * The Agent Studio conversation, kept server-side.
+ *
+ * localStorage still holds a copy so the chat paints instantly and survives a
+ * dropped connection, but the database is the record: it is what makes the
+ * conversation there on another device, in another browser, and after the
+ * two-day local expiry.
+ *
+ * Every call is best-effort. A failed read shows the local copy; a failed
+ * write leaves the local copy and the next turn re-sends the whole thread, so
+ * one lost request cannot tear a hole in the middle of a conversation.
+ */
+export async function fetchBuilderThread(key: string): Promise<BuilderThread | null> {
+  try {
+    const data = await api.get<{ thread: BuilderThread | null }>(
+      `/negotiations/agents/threads?key=${encodeURIComponent(key)}`,
+    );
+    return data.thread ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveBuilderThread(input: {
+  key: string;
+  messages: BuilderThreadMessage[];
+  presetId?: string;
+  agentId?: string;
+}): Promise<void> {
+  try {
+    await api.put("/negotiations/agents/threads", input);
+  } catch {
+    /* best-effort — the local copy stands and the next turn resends */
+  }
+}
+
+export async function deleteBuilderThread(key: string): Promise<void> {
+  try {
+    await api.delete(`/negotiations/agents/threads?key=${encodeURIComponent(key)}`);
+  } catch {
+    /* best-effort */
+  }
+}

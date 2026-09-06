@@ -7,8 +7,9 @@ import type {
   NegotiationAgentPreset,
 } from "@haggle/shared";
 import { buildBuyerChoiceQuestions, buildSellerChoiceQuestions } from "@haggle/shared";
-import { ChevronLeft, ChevronRight, MessageSquare, RotateCcw, Send } from "lucide-react";
+import { ChevronLeft, ChevronRight, RotateCcw, Send } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AgentAvatar } from "@/components/agents/agent-avatar";
 import {
   Badge,
   Button,
@@ -20,6 +21,7 @@ import {
 } from "@/components/ui";
 import { ApiError, apiClient } from "@/lib/api-client";
 import { isSubmitEnter } from "@/lib/keyboard";
+import { fetchBuilderThread, saveBuilderThread } from "@/lib/negotiation-agents-api";
 
 /* ─── Types ───────────────────────────────────────────────── */
 
@@ -72,6 +74,14 @@ interface StrategyChip {
 
 interface NegotiationAgentBuilderChatProps {
   agent: NegotiationAgentPreset | null;
+  /**
+   * Persist the conversation server-side under this key, and restore it from
+   * there. The Agent Studio passes its thread key; the listing page leaves it
+   * off, since a buyer tuning an agent for one listing is mid-flow and the
+   * local copy is enough. Requires a signed-in user — the endpoint is
+   * authenticated, and the calls fail soft when it is not.
+   */
+  serverThreadKey?: string;
   /** Stable key used for localStorage isolation. On listing pages this is the
    *  listing's publicId; on agent design pages it is an agent-scoped key like
    *  `agent-design:<agentId>`. */
@@ -194,6 +204,104 @@ function loadSession(listingId: string, agentId: string): PersistedSession | nul
     return session;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Move every stored conversation from one storage namespace to another.
+ *
+ * The Agent Studio names a thread's namespace after the roster selection, and
+ * a preset thread is re-keyed the moment Save turns it into a real agent. The
+ * build and the distilled memory are carried across in React state; without
+ * this the transcript would be left behind under the old name and the chat
+ * would come back empty right after a successful save — the one moment the
+ * user is most sure their work was kept.
+ *
+ * Namespace-wide rather than per-agent so the caller does not have to know how
+ * the inner key is composed. Keys are read up front because the loop writes to
+ * the same storage it is walking.
+ */
+export function moveStoredSessions(fromListingId: string, toListingId: string): void {
+  if (fromListingId === toListingId) return;
+  try {
+    const prefix = `${STORAGE_PREFIX}:${fromListingId}:`;
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k?.startsWith(prefix)) keys.push(k);
+    }
+    for (const k of keys) {
+      const value = localStorage.getItem(k);
+      if (value === null) continue;
+      localStorage.setItem(`${STORAGE_PREFIX}:${toListingId}:${k.slice(prefix.length)}`, value);
+      localStorage.removeItem(k);
+    }
+  } catch {
+    // Storage unavailable or full: the conversation is a convenience, and the
+    // agent's saved memory — the part that changes how it negotiates — is
+    // already in the database by the time this runs.
+  }
+}
+
+/**
+ * The conversation stored under a namespace, longest first.
+ *
+ * Save hands a preset thread's conversation to the agent it just became, and
+ * the database write for that hand-off has to happen right then: a preset
+ * thread is browser-only while it is being built, so nothing else has a copy.
+ * Reading the moved session back is what lets that write be one deliberate
+ * call instead of a race with the chat's own debounced mirror.
+ *
+ * A namespace can hold more than one entry (the inner key is the agent being
+ * talked to), so the longest transcript wins rather than whichever the browser
+ * happens to enumerate first.
+ */
+export function readStoredMessages(listingId: string): ChatMessage[] {
+  try {
+    const prefix = `${STORAGE_PREFIX}:${listingId}:`;
+    let longest: ChatMessage[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k?.startsWith(prefix)) continue;
+      const raw = localStorage.getItem(k);
+      if (!raw) continue;
+      const session = JSON.parse(raw) as PersistedSession;
+      if (Array.isArray(session.messages) && session.messages.length > longest.length) {
+        longest = session.messages;
+      }
+    }
+    return longest;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Drop every stored conversation past the expiry.
+ *
+ * `loadSession` expires an entry when it reads one, which is enough for a
+ * namespace that gets read again — a listing, a saved agent. A preset thread's
+ * namespace is unique to its visit and so is never read again once abandoned,
+ * and without a sweep those would be the one thing here that only accumulates.
+ */
+export function sweepExpiredSessions(): void {
+  try {
+    const stale: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k?.startsWith(`${STORAGE_PREFIX}:`)) continue;
+      const raw = localStorage.getItem(k);
+      if (!raw) continue;
+      try {
+        const { updatedAt } = JSON.parse(raw) as { updatedAt?: number };
+        if (typeof updatedAt !== "number" || Date.now() - updatedAt > EXPIRY_MS) stale.push(k);
+      } catch {
+        stale.push(k);
+      }
+    }
+    for (const k of stale) localStorage.removeItem(k);
+  } catch {
+    // Storage unavailable: nothing to sweep.
   }
 }
 
@@ -425,13 +533,20 @@ const CHIP_TONE: Record<
 
 /* ─── Agent avatar chip (accent-tinted) ───────────────────── */
 
-function AgentIcon({ accent }: { accent: string }) {
+/**
+ * The speaker's mark on an agent message.
+ *
+ * This was a generic 🤖 for every agent, which read as "some bot" next to a
+ * name that says otherwise. The agent has a face; wear it. Falls back to the
+ * robot only before a preset is resolved, where there is no face to show.
+ */
+function AgentIcon({ accent, emoji }: { accent: string; emoji?: string }) {
   return (
     <span
-      className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px]"
+      className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px]"
       style={{ backgroundColor: `${accent}22`, color: accent }}
     >
-      🤖
+      {emoji ? <AgentAvatar value={emoji} /> : "🤖"}
     </span>
   );
 }
@@ -440,6 +555,7 @@ function AgentIcon({ accent }: { accent: string }) {
 
 export function NegotiationAgentBuilderChat({
   agent,
+  serverThreadKey,
   listingPublicId,
   listingTitle,
   listingCategory,
@@ -650,6 +766,55 @@ export function NegotiationAgentBuilderChat({
       window.scrollTo({ top: targetY, behavior: "smooth" });
     }, 100);
   }, []);
+
+  /**
+   * Adopt the server's copy of this conversation.
+   *
+   * localStorage is the fast path and paints first; the database is the record
+   * that survives another device, another browser, cleared site data and the
+   * local two-day expiry. Runs once per thread and only adopts when the server
+   * holds more of the conversation than this tab does, so it can restore a
+   * thread this browser never saw without ever truncating one in progress.
+   */
+  const restoredThreadRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!serverThreadKey || restoredThreadRef.current === serverThreadKey) return;
+    restoredThreadRef.current = serverThreadKey;
+    let alive = true;
+    void (async () => {
+      const thread = await fetchBuilderThread(serverThreadKey);
+      if (!alive || !thread?.messages?.length) return;
+      setMessages((current) => {
+        if (thread.messages.length <= current.length) return current;
+        setIsExpanded(true);
+        setHasRestoredSession(true);
+        return thread.messages as ChatMessage[];
+      });
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [serverThreadKey]);
+
+  /**
+   * Mirror the conversation to the server as it grows.
+   *
+   * One effect rather than a call beside each of the eight places a turn is
+   * stored: those already write the local copy, and a future ninth would have
+   * been easy to forget. Debounced so a fast exchange writes once, and it
+   * sends the whole thread so a dropped request cannot leave a gap.
+   */
+  useEffect(() => {
+    if (!serverThreadKey || messages.length === 0) return;
+    const timer = setTimeout(() => {
+      void saveBuilderThread({
+        key: serverThreadKey,
+        messages,
+        ...(agent?.id ? { presetId: agent.id } : {}),
+      });
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [serverThreadKey, messages, agent?.id]);
 
   // Load from localStorage or reset when agent changes
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally re-runs only on agent id / listing change
@@ -1145,7 +1310,18 @@ export function NegotiationAgentBuilderChat({
     >
       {/* Header */}
       <div className="flex shrink-0 items-center gap-2 border-line border-b px-4 py-3">
-        <MessageSquare size={16} style={{ color: accent }} aria-hidden="true" />
+        {/* The agent's own face, not a speech bubble: the header names who is
+            talking, and that it is a conversation is already obvious from the
+            conversation. Before an agent is picked there is nobody to show. */}
+        {agent && (
+          <span
+            className="flex size-5 shrink-0 items-center justify-center rounded-full text-[13px]"
+            style={{ backgroundColor: `color-mix(in srgb, ${accent} 16%, transparent)` }}
+            aria-hidden="true"
+          >
+            <AgentAvatar value={agent.emoji} />
+          </span>
+        )}
         <span className="flex-1 font-semibold text-[13px]" style={{ color: accent }}>
           {agent ? agent.copy[role].name : role === "seller" ? "Selling Agent" : "Buying Agent"}
         </span>
@@ -1180,7 +1356,7 @@ export function NegotiationAgentBuilderChat({
             author={
               msg.role === "agent" ? (
                 <span className="flex items-center gap-1.5">
-                  <AgentIcon accent={accent} />
+                  <AgentIcon accent={accent} emoji={agent?.emoji} />
                   <span className="font-semibold text-[10px]" style={{ color: accent }}>
                     {agent?.copy[role].name ?? "Agent"}
                   </span>
@@ -1229,7 +1405,7 @@ export function NegotiationAgentBuilderChat({
         {isLoading && (
           <ChatBubble side="left" className="msg-anim">
             <span className="flex items-center gap-1.5">
-              <AgentIcon accent={accent} />
+              <AgentIcon accent={accent} emoji={agent?.emoji} />
               <TypingIndicator />
             </span>
           </ChatBubble>

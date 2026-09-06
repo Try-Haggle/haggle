@@ -4,6 +4,8 @@ export type ServerSession = {
   current_round: number;
   last_offer_price_minor: string | number | null;
   buyer_negotiation_agent_preset_id: string | null;
+  /** The face the buyer picked. Absent on sessions started before faces. */
+  buyer_negotiation_agent_emoji?: string | null;
   driver?: "web" | "mcp";
   chat_url?: string;
   listing: {
@@ -13,6 +15,8 @@ export type ServerSession = {
     target_price: string | null;
     category: string | null;
     seller_agent_preset: string | null;
+    /** The face the seller picked. Absent on listings published before faces. */
+    seller_agent_emoji?: string | null;
   } | null;
 };
 
@@ -91,7 +95,16 @@ function chatMessageForRound(round: ServerRound, offerMajor: number, currency = 
   return fallback;
 }
 
-function agentCardFor(presetId: string | null | undefined, role: "buyer" | "seller"): AgentCard {
+/**
+ * `emoji` is the face its owner picked. Without it the arena fell back to the
+ * preset's own animal, so an agent the buyer met on the listing changed face
+ * the moment the negotiation opened.
+ */
+function agentCardFor(
+  presetId: string | null | undefined,
+  role: "buyer" | "seller",
+  emoji?: string | null,
+): AgentCard {
   const preset = presetId ? getNegotiationAgentPreset(presetId) : null;
   if (preset) {
     return {
@@ -99,15 +112,17 @@ function agentCardFor(presetId: string | null | undefined, role: "buyer" | "sell
       name: preset.copy[role].name,
       tagline: preset.copy[role].tagline,
       accentColor: preset.accentColor,
-      emoji: preset.emoji,
+      emoji: emoji ?? preset.emoji,
     };
   }
   return {
     presetId: presetId ?? "unknown",
     name: role === "buyer" ? "Buyer Agent" : "Seller Agent",
     tagline: "",
+    // No preset means no identity to show a face for, so these stay glyphs on
+    // purpose: an animal here would name an agent that does not exist.
     accentColor: role === "buyer" ? "#3b82f6" : "#06b6d4",
-    emoji: role === "buyer" ? "🤝" : "🏷️",
+    emoji: emoji ?? (role === "buyer" ? "🤝" : "🏷️"),
   };
 }
 
@@ -162,8 +177,16 @@ function fallbackMessage(round: ServerRound, priceMajor: number, currency = "USD
 export function transformNegotiationPlayback(payload: SessionResponse): PlaybackResponse {
   const { session, rounds } = payload;
   const askingMajor = targetPriceToMajor(session.listing?.target_price ?? null);
-  const buyerAgent = agentCardFor(session.buyer_negotiation_agent_preset_id, "buyer");
-  const sellerAgent = agentCardFor(session.listing?.seller_agent_preset ?? null, "seller");
+  const buyerAgent = agentCardFor(
+    session.buyer_negotiation_agent_preset_id,
+    "buyer",
+    session.buyer_negotiation_agent_emoji,
+  );
+  const sellerAgent = agentCardFor(
+    session.listing?.seller_agent_preset ?? null,
+    "seller",
+    session.listing?.seller_agent_emoji,
+  );
   const terminal = isTerminalNegotiationStatus(session.status);
   const firstRound = rounds[0];
   const hasSyntheticBuyerOpen =

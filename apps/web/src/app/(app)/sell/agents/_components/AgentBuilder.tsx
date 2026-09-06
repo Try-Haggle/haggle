@@ -433,7 +433,7 @@ function FaceCard({
           <button
             type="button"
             aria-label="Change face"
-            className="flex size-12 shrink-0 cursor-pointer items-center justify-center rounded-2xl text-[22px] transition-transform hover:scale-105 focus-visible:outline-2 focus-visible:outline-focus focus-visible:outline-offset-2"
+            className="flex size-12 shrink-0 cursor-pointer items-center justify-center rounded-full text-[22px] transition-transform hover:scale-105 focus-visible:outline-2 focus-visible:outline-focus focus-visible:outline-offset-2"
             style={{
               backgroundColor: `color-mix(in srgb, ${effective.accentColor} 14%, transparent)`,
               border: `1px solid color-mix(in srgb, ${effective.accentColor} 32%, transparent)`,

@@ -1065,6 +1065,13 @@
       "when": 1788036449256,
       "tag": "0151_fulfillment_proofs",
       "breakpoints": true
+    },
+    {
+      "idx": 152,
+      "version": "7",
+      "when": 1788036450256,
+      "tag": "0152_agent_builder_threads",
+      "breakpoints": true
     }
   ]
 }

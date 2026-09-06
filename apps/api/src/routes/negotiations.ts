@@ -324,8 +324,13 @@ export function registerNegotiationRoutes(
 
     // Surface only the buyer-agent preset id from negotiation_agent_snapshot; the
     // rest of the strategy stays private.
-    const buyerNegotiationAgentPresetId = extractBuyerNegotiationAgentPresetId(
+    const buyerNegotiationAgentPresetId = extractBuyerNegotiationAgentField(
       session.negotiationAgentSnapshot,
+      "preset_id",
+    );
+    const buyerNegotiationAgentEmoji = extractBuyerNegotiationAgentField(
+      session.negotiationAgentSnapshot,
+      "emoji",
     );
 
     const latestRound = rounds.at(-1);
@@ -354,6 +359,7 @@ export function registerNegotiationRoutes(
         created_at: session.createdAt,
         updated_at: session.updatedAt,
         buyer_negotiation_agent_preset_id: buyerNegotiationAgentPresetId,
+        buyer_negotiation_agent_emoji: buyerNegotiationAgentEmoji,
         driver: session.driver === "mcp" ? "mcp" : "web",
         chat_url: negotiationChatUrl(session.id),
         listing: listing
@@ -364,6 +370,7 @@ export function registerNegotiationRoutes(
               target_price: listing.targetPrice,
               category: listing.category,
               seller_agent_preset: listing.sellerAgentPreset,
+              seller_agent_emoji: listing.sellerAgentEmoji,
             }
           : null,
       },
@@ -1299,22 +1306,24 @@ function isAuthorizedSessionCreator(actorId: string, data: CreateSessionBody): b
   return data.role === "BUYER" ? data.buyer_id === actorId : data.seller_id === actorId;
 }
 
-// Pull the buyer-side preset id out of negotiation_agent_snapshot. Sessions created by
-// POST /negotiations/start nest it under buyer_requested_strategy.agent.preset_id;
-// older code paths may store it at negotiation_agent_snapshot.agent.preset_id directly.
-function extractBuyerNegotiationAgentPresetId(
+// Pull one buyer-side agent field out of negotiation_agent_snapshot. Sessions created
+// by POST /negotiations/start nest the agent under buyer_requested_strategy.agent;
+// older code paths may store it at negotiation_agent_snapshot.agent directly. Only
+// identity fields (preset id, face) are read here — the rest of the strategy stays private.
+function extractBuyerNegotiationAgentField(
   snapshot: Record<string, unknown> | null | undefined,
+  field: "preset_id" | "emoji",
 ): string | null {
   if (!snapshot || typeof snapshot !== "object") return null;
   const buyerStrategy = (snapshot as Record<string, unknown>).buyer_requested_strategy as
     | Record<string, unknown>
     | undefined;
   const buyerAgent = buyerStrategy?.agent as Record<string, unknown> | undefined;
-  if (typeof buyerAgent?.preset_id === "string") return buyerAgent.preset_id;
+  if (typeof buyerAgent?.[field] === "string") return buyerAgent[field] as string;
   const rootAgent = (snapshot as Record<string, unknown>).agent as
     | Record<string, unknown>
     | undefined;
-  if (typeof rootAgent?.preset_id === "string") return rootAgent.preset_id;
+  if (typeof rootAgent?.[field] === "string") return rootAgent[field] as string;
   return null;
 }
 

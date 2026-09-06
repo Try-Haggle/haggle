@@ -64,6 +64,16 @@ export interface StudioChatArgs {
   effective: NegotiationAgentPreset;
   /** Stable per-thread id, for the chat's localStorage isolation. */
   storageId: string;
+  /**
+   * Whether this thread's conversation is a record worth keeping.
+   *
+   * True for a saved agent: you are talking to something that exists, and
+   * coming back to it later should show what was said. False for a preset:
+   * it is a template several agents get started from, not a place a
+   * conversation lives, so its transcript stays in the browser for the length
+   * of the visit and is handed to the agent on Save.
+   */
+  durable: boolean;
   role: "buyer" | "seller";
   onMemoryUpdate: (memory: NegotiationAgentBuilderMemory) => void;
   onStrategyUpdate: (strategy: ChatStrategy) => void;
@@ -88,8 +98,20 @@ interface AgentStudioProps {
     state: AgentBuilderState,
     memory: NegotiationAgentBuilderMemory | null,
   ) => Promise<{ id: string } | undefined>;
-  /** Delete a saved agent. Absent → no delete affordance. */
-  onDelete?: (agentId: string) => Promise<void>;
+  /**
+   * Delete a saved agent. Absent → no delete affordance.
+   *
+   * The thread's storage namespace comes along because the conversation is
+   * kept outside this component: deleting the agent has to take its transcript
+   * with it rather than leave one behind with nothing to belong to.
+   */
+  onDelete?: (agentId: string, storageId: string) => Promise<void>;
+  /**
+   * The thread's chat namespace changed — a preset thread just became a saved
+   * agent. The studio owns how `storageId` is composed but not what the chat
+   * keeps under it, so moving that content is the caller's to do.
+   */
+  onThreadStorageMove?: (fromStorageId: string, toStorageId: string) => void | Promise<void>;
   saveLabel?: string;
   className?: string;
 }
@@ -101,6 +123,7 @@ export function AgentStudio({
   renderChat,
   onSave,
   onDelete,
+  onThreadStorageMove,
   saveLabel,
   className,
 }: AgentStudioProps) {
@@ -112,6 +135,9 @@ export function AgentStudio({
     return seeded ? { [selectionKey(initialSelection)]: seeded } : {};
   });
   const [memories, setMemories] = useState<Record<string, NegotiationAgentBuilderMemory>>({});
+  // Namespaces this visit's preset conversations. Generated once per mount so
+  // a reload never lands back in a half-finished briefing to a template.
+  const [visitId] = useState(() => Math.random().toString(36).slice(2, 10));
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -171,25 +197,40 @@ export function AgentStudio({
       // work in progress, so the state is moved rather than rebuilt.
       const savedId = result?.id;
       if (savedId && selection?.kind === "preset") {
-        const nextKey = selectionKey({ kind: "saved", id: savedId });
-        setStates((prev) =>
-          prev[key]
-            ? {
-                ...prev,
-                // `source` has to move too, not just the key: it is what the
-                // save handler reads to decide update-vs-create, so a thread
-                // left pointing at its preset would create a second agent on
-                // the next Save instead of updating the one just written.
-                [nextKey]: {
-                  ...prev[key],
-                  source: { kind: "custom", id: savedId },
-                  dirty: false,
-                },
-              }
-            : prev,
+        const next: StudioSelection = { kind: "saved", id: savedId };
+        const nextKey = selectionKey(next);
+        setStates((prev) => {
+          const current = prev[key];
+          if (!current) return prev;
+          // The preset entry is dropped, not kept alongside: everything in it
+          // now belongs to the agent, and a preset the user picks again has to
+          // start as the clean template it is rather than as a copy of the
+          // agent they just finished.
+          const { [key]: _moved, ...rest } = prev;
+          return {
+            ...rest,
+            // `source` has to move too, not just the key: it is what the
+            // save handler reads to decide update-vs-create, so a thread
+            // left pointing at its preset would create a second agent on
+            // the next Save instead of updating the one just written.
+            [nextKey]: { ...current, source: { kind: "custom", id: savedId }, dirty: false },
+          };
+        });
+        setMemories((prev) => {
+          const current = prev[key];
+          if (!current) return prev;
+          const { [key]: _moved, ...rest } = prev;
+          return { ...rest, [nextKey]: current };
+        });
+        // The transcript lives outside React state, so it has to be moved too
+        // — otherwise the chat remounts under the new key and comes back empty.
+        // Not awaited: the local half is synchronous so the chat is already
+        // correct, and the server half must not hold up the save confirmation.
+        void onThreadStorageMove?.(
+          threadStorageId(role, selection, visitId),
+          threadStorageId(role, next, visitId),
         );
-        setMemories((prev) => (prev[key] ? { ...prev, [nextKey]: prev[key] } : prev));
-        setSelection({ kind: "saved", id: savedId });
+        setSelection(next);
       }
 
       // Brief ✓ confirmation on the button itself — where the eyes already are.
@@ -210,7 +251,7 @@ export function AgentStudio({
     setDeleting(true);
     setWriteError(null);
     try {
-      await onDelete(selection.id);
+      await onDelete(selection.id, threadStorageId(role, selection, visitId));
       // Drop the thread with the agent — leaving it selected would point the
       // canvas at a row that no longer exists.
       setStates((prev) => {
@@ -278,7 +319,7 @@ export function AgentStudio({
     <MotionConfig reducedMotion="user">
       <div className={cn("flex h-full min-h-0 flex-col bg-surface", className)}>
         {/* ── Mobile: roster as avatar strip ── */}
-        <div className="shrink-0 border-line-subtle border-b lg:hidden">
+        <div className="shrink-0 border-line border-b lg:hidden">
           <AgentAvatarStrip
             role={role}
             savedAgents={savedAgents}
@@ -292,10 +333,15 @@ export function AgentStudio({
             of on the panes. Shortening the row here — rather than padding the
             panes — is also what stops the roster and identity dividers short
             of the window edge, since those lines are those panes' own borders.
-            The three together close the workspace on all four sides. */}
-        <div className="mb-4 flex min-h-0 flex-1 border-line-subtle border-b">
+            The three together close the workspace on all four sides.
+
+            They are `border-line`, not `border-line-subtle`: subtle is #f0ede5
+            on a #fbf9f5 surface, which vanished — with both panes empty there
+            was no content edge left to imply the division either. The same
+            docked-aside pattern in messaging already uses `border-line`. */}
+        <div className="mb-4 flex min-h-0 flex-1 border-line border-b">
           {/* ── Desktop: roster sidebar ── */}
-          <aside className="hidden w-[264px] shrink-0 border-line-subtle border-r lg:block">
+          <aside className="hidden w-[264px] shrink-0 border-line border-r lg:block">
             <AgentRoster
               role={role}
               savedAgents={savedAgents}
@@ -307,7 +353,7 @@ export function AgentStudio({
           {/* ── Chat canvas ── */}
           <main className="flex min-h-0 min-w-0 flex-1 flex-col">
             <AnimatePresence mode="wait" initial={false}>
-              {state && effective && key ? (
+              {state && effective && key && selection ? (
                 <motion.div
                   // Keyed per thread: switching agents swaps conversations whole,
                   // like tapping a different chat, instead of morphing in place.
@@ -320,7 +366,8 @@ export function AgentStudio({
                 >
                   {renderChat({
                     effective,
-                    storageId: `agent-studio:${role}:${key}`,
+                    storageId: threadStorageId(role, selection, visitId),
+                    durable: selection.kind === "saved",
                     role,
                     onMemoryUpdate: (next) => setMemories((prev) => ({ ...prev, [key]: next })),
                     onStrategyUpdate: (strategy) =>
@@ -351,7 +398,7 @@ export function AgentStudio({
               <button
                 type="button"
                 onClick={() => setSheetOpen(true)}
-                className="flex shrink-0 items-center gap-2.5 border-line-subtle border-t px-4 py-2.5 text-left transition-colors hover:bg-surface-sunken lg:hidden"
+                className="flex shrink-0 items-center gap-2.5 border-line border-t px-4 py-2.5 text-left transition-colors hover:bg-surface-sunken lg:hidden"
               >
                 <span className="size-9 shrink-0" aria-hidden="true">
                   <MotionRadar preset={effective} size={36} showLabels={false} />
@@ -371,7 +418,7 @@ export function AgentStudio({
           </main>
 
           {/* ── Desktop: identity panel ── */}
-          <aside className="hidden w-[336px] shrink-0 border-line-subtle border-l lg:block">
+          <aside className="hidden w-[336px] shrink-0 border-line border-l lg:block">
             {identityPanel ?? (
               <div className="flex h-full items-center justify-center p-6">
                 <p className="text-center text-[12px] text-ink-muted leading-relaxed">
@@ -426,6 +473,26 @@ function seedState(
 }
 
 /** Invitation state — shown before any agent is picked. */
+/**
+ * The chat's storage namespace for one roster thread. Composed in exactly one
+ * place so re-keying a thread cannot drift from rendering it.
+ *
+ * A saved agent's namespace is stable — its conversation is waiting when you
+ * come back. A preset's carries a per-visit id, because a preset is a template
+ * you try things on rather than an agent you keep talking to: every visit
+ * starts from a blank conversation. The id is fixed for the visit, so flipping
+ * to another thread and back still shows what you just said, and Save re-keys
+ * the whole namespace onto the new agent, carrying the conversation with it.
+ */
+function threadStorageId(
+  role: "buyer" | "seller",
+  selection: StudioSelection,
+  visitId: string,
+): string {
+  const base = `agent-studio:${role}:${selectionKey(selection)}`;
+  return selection.kind === "preset" ? `${base}:${visitId}` : base;
+}
+
 function EmptyCanvas({
   role,
   onSelect,
@@ -458,7 +525,7 @@ function EmptyCanvas({
             type="button"
             onClick={() => onSelect({ kind: "preset", id: preset.id })}
             title={preset.copy[role].name}
-            className="flex size-12 items-center justify-center rounded-2xl border border-line text-[20px] transition-all hover:scale-105 hover:border-line-strong"
+            className="flex size-12 items-center justify-center rounded-full border border-line text-[20px] transition-all hover:scale-105 hover:border-line-strong"
             style={{
               backgroundColor: `color-mix(in srgb, ${preset.accentColor} 8%, transparent)`,
             }}

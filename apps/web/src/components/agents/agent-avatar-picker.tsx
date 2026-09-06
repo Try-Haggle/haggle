@@ -66,7 +66,7 @@ function AnimalGrid({
                 close();
               }}
               className={cn(
-                "flex size-10 items-center justify-center rounded-xl text-[22px] transition-colors",
+                "flex size-10 items-center justify-center rounded-full text-[22px] transition-colors",
                 "focus-visible:outline-2 focus-visible:outline-focus focus-visible:outline-offset-1",
                 isSelected
                   ? "bg-surface-sunken ring-1 ring-action-primary"

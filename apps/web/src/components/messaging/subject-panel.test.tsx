@@ -112,6 +112,30 @@ describe("SubjectPanel", () => {
     expect(screen.getByText("The seller's AI negotiator")).toBeInTheDocument();
   });
 
+  it("shows the seller's chosen face, not the preset's, the way the listing page does", async () => {
+    subject.mockImplementation(() =>
+      afterATick({
+        subject: { type: "negotiation_session", id: "session-1" },
+        // verifier's own face is the owl; this seller picked a raccoon.
+        listing: listing({ sellerAgentEmoji: "raccoon" }),
+        sellerId: SELLER_ID,
+      }),
+    );
+    renderPanel();
+
+    await screen.findByText("2019 Honda Civic EX");
+    const face = document.querySelector('img[src*="/vendor/fluent-emoji/"]');
+    expect(face?.getAttribute("src")).toBe("/vendor/fluent-emoji/raccoon.svg");
+  });
+
+  it("falls back to the preset's face on listings published before faces existed", async () => {
+    renderPanel();
+
+    await screen.findByText("2019 Honda Civic EX");
+    const face = document.querySelector('img[src*="/vendor/fluent-emoji/"]');
+    expect(face?.getAttribute("src")).toBe("/vendor/fluent-emoji/owl.svg");
+  });
+
   it("links out to the full listing", async () => {
     renderPanel();
 

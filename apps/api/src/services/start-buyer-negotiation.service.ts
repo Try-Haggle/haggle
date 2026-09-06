@@ -55,6 +55,9 @@ const buyerCriterionInputSchema = z.object({
 export const startBuyerNegotiationSchema = z.object({
   listing_public_id: z.string().min(1),
   negotiation_agent_preset_id: z.string().min(1),
+  /** The face the buyer picked for this agent. Identity only; bounded so a
+   *  client cannot smuggle a payload through it. */
+  agent_emoji: z.string().min(1).max(40).optional(),
   agent_weights: z.record(z.number()).optional(),
   agent_overrides: z.record(z.unknown()).optional(),
   negotiation_agent_builder_memory: z
@@ -276,6 +279,7 @@ export async function startBuyerNegotiation(
     concession: styleDefaults.concession,
     agent: {
       preset_id: body.negotiation_agent_preset_id,
+      emoji: body.agent_emoji ?? null,
       weights: body.agent_weights ?? null,
       overrides: body.agent_overrides ?? null,
     },

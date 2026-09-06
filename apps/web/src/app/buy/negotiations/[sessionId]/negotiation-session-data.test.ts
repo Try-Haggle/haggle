@@ -79,6 +79,73 @@ describe("negotiation live session data", () => {
     expect(last?.message).not.toContain("IMEI");
   });
 
+  it("keeps each agent wearing the face its owner picked", () => {
+    const transformed = transformNegotiationPlayback({
+      session: {
+        id: "44444444-4444-4444-8444-444444444444",
+        status: "ACTIVE",
+        current_round: 1,
+        last_offer_price_minor: null,
+        // hunter's own face is the fox, verifier's the owl — both overridden.
+        buyer_negotiation_agent_preset_id: "hunter",
+        buyer_negotiation_agent_emoji: "panda",
+        listing: {
+          public_id: "pub-1",
+          title: "Camera",
+          photo_url: null,
+          target_price: "900.00",
+          category: "cameras",
+          seller_agent_preset: "verifier",
+          seller_agent_emoji: "raccoon",
+        },
+      },
+      rounds: [round()],
+    });
+    expect(transformed.session.buyerAgent.emoji).toBe("panda");
+    expect(transformed.session.sellerAgent.emoji).toBe("raccoon");
+    // The face is the only thing overridden; the preset still names the agent.
+    expect(transformed.session.buyerAgent.presetId).toBe("hunter");
+  });
+
+  it("falls back to each preset's own face on sessions started before faces existed", () => {
+    const transformed = transformNegotiationPlayback({
+      session: {
+        id: "55555555-5555-4555-8555-555555555555",
+        status: "ACTIVE",
+        current_round: 1,
+        last_offer_price_minor: null,
+        buyer_negotiation_agent_preset_id: "hunter",
+        listing: {
+          public_id: "pub-1",
+          title: "Camera",
+          photo_url: null,
+          target_price: "900.00",
+          category: "cameras",
+          seller_agent_preset: "verifier",
+        },
+      },
+      rounds: [round()],
+    });
+    expect(transformed.session.buyerAgent.emoji).toBe("fox");
+    expect(transformed.session.sellerAgent.emoji).toBe("owl");
+  });
+
+  it("leaves an unknown agent as a glyph rather than naming it with an animal", () => {
+    const transformed = transformNegotiationPlayback({
+      session: {
+        id: "66666666-6666-4666-8666-666666666666",
+        status: "ACTIVE",
+        current_round: 1,
+        last_offer_price_minor: null,
+        buyer_negotiation_agent_preset_id: null,
+        listing: null,
+      },
+      rounds: [round()],
+    });
+    expect(transformed.session.buyerAgent.emoji).toBe("🤝");
+    expect(transformed.session.sellerAgent.emoji).toBe("🏷️");
+  });
+
   it("does not label a zero-round created session as escalated", () => {
     const transformed = transformNegotiationPlayback({
       session: {
