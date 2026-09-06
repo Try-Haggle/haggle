@@ -53,6 +53,12 @@ import {
 import { base, baseSepolia } from "viem/chains";
 import { z } from "zod";
 import { boundedJson, INPUT_LIMITS } from "../lib/input-limits.js";
+import {
+  decideWebhookLocalOverwrite,
+  type ProviderRecheckResult,
+  settlementWebhookOutOfOrderReason,
+  terminalWebhookOutOfOrderReason,
+} from "../lib/payment-webhook-out-of-order-guard.js";
 import { createOwnershipMiddleware } from "../middleware/ownership.js";
 import { requireAdmin, requireAuth } from "../middleware/require-auth.js";
 import { X402FacilitatorClient } from "../payments/facilitator-client.js";
@@ -131,6 +137,7 @@ import {
   updateCommerceOrderStatus,
   updateStoredPaymentIntent,
 } from "../services/payment-record.service.js";
+import { recheckPaymentProviderStatus } from "../services/payment-webhook-provider-recheck.service.js";
 import {
   createSettlementReleaseRecord,
   getSettlementReleaseByOrderId,
@@ -797,55 +804,21 @@ function isCapturedLikeProductionState(state: ProductionPaymentState): boolean {
 }
 
 function settlementWebhookReconciliationReason(intent: PaymentIntent): string | null {
-  const productionState = paymentProductionState(intent);
-  if (
-    intent.status === "SETTLED" &&
-    (productionState === "refunded" ||
-      productionState === "partially_refunded" ||
-      productionState === "disputed")
-  ) {
-    return "settlement_confirmed_after_reversal_or_dispute";
-  }
-  if (
-    intent.status === "AUTHORIZED" ||
-    intent.status === "SETTLEMENT_PENDING" ||
-    intent.status === "SETTLED"
-  ) {
-    return null;
-  }
-  if (intent.status === "FAILED" || intent.status === "CANCELED") {
-    return "settlement_confirmed_after_terminal_state";
-  }
-  return "settlement_confirmed_before_authorization";
+  return settlementWebhookOutOfOrderReason({
+    status: intent.status,
+    productionState: paymentProductionState(intent),
+  });
 }
 
 function terminalWebhookReconciliationReason(
   intent: PaymentIntent,
   targetAction: "fail" | "expire",
 ): string | null {
-  const productionState = paymentProductionState(intent);
-  if (isCapturedLikeProductionState(productionState) || intent.status === "SETTLED") {
-    return "terminal_event_after_local_capture";
-  }
-  if (targetAction === "fail") {
-    if (intent.status === "FAILED") {
-      return null;
-    }
-    if (intent.status === "CANCELED") {
-      return "failure_event_after_local_cancel";
-    }
-    return null;
-  }
-  if (intent.status === "CANCELED") {
-    return null;
-  }
-  if (intent.status === "FAILED") {
-    return "expiry_event_after_local_failure";
-  }
-  if (intent.status === "SETTLEMENT_PENDING") {
-    return "expiry_event_after_settlement_started";
-  }
-  return null;
+  return terminalWebhookOutOfOrderReason({
+    status: intent.status,
+    productionState: paymentProductionState(intent),
+    targetAction,
+  });
 }
 
 type ManualPaymentMutation =
@@ -1042,6 +1015,7 @@ async function markPaymentWebhookReconciliationNeeded(
     providerEventId: string;
     eventType: string;
     reason: string;
+    providerRecheck?: ProviderRecheckResult | null;
   },
 ): Promise<void> {
   const row = await getPaymentIntentRowById(db, intent.id);
@@ -1062,6 +1036,11 @@ async function markPaymentWebhookReconciliationNeeded(
       local_status: intent.status,
       local_production_status: paymentProductionState(intent),
       recorded_at: new Date().toISOString(),
+      ...(params.providerRecheck
+        ? {
+            provider_recheck: params.providerRecheck,
+          }
+        : {}),
     },
   });
 }
@@ -1075,6 +1054,7 @@ async function sendPaymentWebhookReconciliationRequired(
     providerEventId: string;
     eventType: string;
     reason: string;
+    providerRecheck?: ProviderRecheckResult | null;
   },
 ) {
   await markPaymentWebhookReconciliationNeeded(db, intent, params);
@@ -1088,6 +1068,7 @@ async function sendPaymentWebhookReconciliationRequired(
     provider: params.provider,
     provider_event_id: params.providerEventId,
     event_type: params.eventType,
+    ...(params.providerRecheck ? { provider_recheck: params.providerRecheck } : {}),
   });
 }
 
@@ -5135,13 +5116,33 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     try {
       switch (eventType) {
         case "settlement.confirmed": {
-          const reconciliationReason = settlementWebhookReconciliationReason(intent);
-          if (reconciliationReason) {
+          // B6: re-query provider before any local status overwrite from out-of-order/late events.
+          const intentRowForRecheck = await getPaymentIntentRowById(db, intent.id);
+          const providerContextForRecheck =
+            intentRowForRecheck?.providerContext &&
+            typeof intentRowForRecheck.providerContext === "object" &&
+            !Array.isArray(intentRowForRecheck.providerContext)
+              ? (intentRowForRecheck.providerContext as Record<string, unknown>)
+              : null;
+          const providerRecheck = await recheckPaymentProviderStatus({
+            provider: "x402",
+            paymentIntentId: intent.id,
+            eventType,
+            providerContext: providerContextForRecheck,
+          });
+          const overwriteDecision = decideWebhookLocalOverwrite({
+            mutation: "settle",
+            localStatus: intent.status,
+            outOfOrderReason: settlementWebhookReconciliationReason(intent),
+            providerRecheck,
+          });
+          if (overwriteDecision.decision === "reconciliation_required") {
             const response = await sendPaymentWebhookReconciliationRequired(db, reply, intent, {
               provider: "x402",
               providerEventId: webhookEventId,
               eventType,
-              reason: reconciliationReason,
+              reason: overwriteDecision.reason,
+              providerRecheck,
             });
             await completeWebhookEvent(db, webhookClaim, reply.statusCode);
             return response;
@@ -5150,7 +5151,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
           if (settledIntent.status === "SETTLED") {
             await requireSettlementRecordForPayment(db, settledIntent);
           }
-          if (settledIntent.status === "AUTHORIZED") {
+          if (overwriteDecision.decision === "apply" && settledIntent.status === "AUTHORIZED") {
             const pending = service.markSettlementPending(settledIntent);
             await updateStoredPaymentIntent(db, pending.intent);
             if (pending.trust_triggers.length > 0) {
@@ -5164,7 +5165,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
             settledIntent = pending.intent;
           }
 
-          if (settledIntent.status !== "SETTLED") {
+          if (overwriteDecision.decision === "apply" && settledIntent.status !== "SETTLED") {
             const result = await service.settleIntent(settledIntent);
             if (result.value) {
               await createPaymentSettlementRecord(db, result.value);
@@ -5194,18 +5195,37 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         }
 
         case "settlement.failed": {
-          const reconciliationReason = terminalWebhookReconciliationReason(intent, "fail");
-          if (reconciliationReason) {
+          const intentRowForRecheck = await getPaymentIntentRowById(db, intent.id);
+          const providerContextForRecheck =
+            intentRowForRecheck?.providerContext &&
+            typeof intentRowForRecheck.providerContext === "object" &&
+            !Array.isArray(intentRowForRecheck.providerContext)
+              ? (intentRowForRecheck.providerContext as Record<string, unknown>)
+              : null;
+          const providerRecheck = await recheckPaymentProviderStatus({
+            provider: "x402",
+            paymentIntentId: intent.id,
+            eventType,
+            providerContext: providerContextForRecheck,
+          });
+          const overwriteDecision = decideWebhookLocalOverwrite({
+            mutation: "fail",
+            localStatus: intent.status,
+            outOfOrderReason: terminalWebhookReconciliationReason(intent, "fail"),
+            providerRecheck,
+          });
+          if (overwriteDecision.decision === "reconciliation_required") {
             const response = await sendPaymentWebhookReconciliationRequired(db, reply, intent, {
               provider: "x402",
               providerEventId: webhookEventId,
               eventType,
-              reason: reconciliationReason,
+              reason: overwriteDecision.reason,
+              providerRecheck,
             });
             await completeWebhookEvent(db, webhookClaim, reply.statusCode);
             return response;
           }
-          if (intent.status !== "FAILED" && intent.status !== "SETTLED") {
+          if (overwriteDecision.decision === "apply") {
             const result = service.failIntent(intent);
             await updateStoredPaymentIntent(db, result.intent);
             if (result.trust_triggers.length > 0) {
@@ -5223,18 +5243,37 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         }
 
         case "payment.expired": {
-          const reconciliationReason = terminalWebhookReconciliationReason(intent, "expire");
-          if (reconciliationReason) {
+          const intentRowForRecheck = await getPaymentIntentRowById(db, intent.id);
+          const providerContextForRecheck =
+            intentRowForRecheck?.providerContext &&
+            typeof intentRowForRecheck.providerContext === "object" &&
+            !Array.isArray(intentRowForRecheck.providerContext)
+              ? (intentRowForRecheck.providerContext as Record<string, unknown>)
+              : null;
+          const providerRecheck = await recheckPaymentProviderStatus({
+            provider: "x402",
+            paymentIntentId: intent.id,
+            eventType,
+            providerContext: providerContextForRecheck,
+          });
+          const overwriteDecision = decideWebhookLocalOverwrite({
+            mutation: "expire",
+            localStatus: intent.status,
+            outOfOrderReason: terminalWebhookReconciliationReason(intent, "expire"),
+            providerRecheck,
+          });
+          if (overwriteDecision.decision === "reconciliation_required") {
             const response = await sendPaymentWebhookReconciliationRequired(db, reply, intent, {
               provider: "x402",
               providerEventId: webhookEventId,
               eventType,
-              reason: reconciliationReason,
+              reason: overwriteDecision.reason,
+              providerRecheck,
             });
             await completeWebhookEvent(db, webhookClaim, reply.statusCode);
             return response;
           }
-          if (intent.status !== "CANCELED" && intent.status !== "SETTLED") {
+          if (overwriteDecision.decision === "apply") {
             const result = service.cancelIntent(intent);
             await updateStoredPaymentIntent(db, result.intent);
           }
