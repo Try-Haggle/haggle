@@ -198,6 +198,42 @@ function loadSession(listingId: string, agentId: string): PersistedSession | nul
   }
 }
 
+/**
+ * Move every stored conversation from one storage namespace to another.
+ *
+ * The Agent Studio names a thread's namespace after the roster selection, and
+ * a preset thread is re-keyed the moment Save turns it into a real agent. The
+ * build and the distilled memory are carried across in React state; without
+ * this the transcript would be left behind under the old name and the chat
+ * would come back empty right after a successful save — the one moment the
+ * user is most sure their work was kept.
+ *
+ * Namespace-wide rather than per-agent so the caller does not have to know how
+ * the inner key is composed. Keys are read up front because the loop writes to
+ * the same storage it is walking.
+ */
+export function moveStoredSessions(fromListingId: string, toListingId: string): void {
+  if (fromListingId === toListingId) return;
+  try {
+    const prefix = `${STORAGE_PREFIX}:${fromListingId}:`;
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k?.startsWith(prefix)) keys.push(k);
+    }
+    for (const k of keys) {
+      const value = localStorage.getItem(k);
+      if (value === null) continue;
+      localStorage.setItem(`${STORAGE_PREFIX}:${toListingId}:${k.slice(prefix.length)}`, value);
+      localStorage.removeItem(k);
+    }
+  } catch {
+    // Storage unavailable or full: the conversation is a convenience, and the
+    // agent's saved memory — the part that changes how it negotiates — is
+    // already in the database by the time this runs.
+  }
+}
+
 function clearSession(listingId: string, agentId: string): void {
   try {
     localStorage.removeItem(storageKey(listingId, agentId));

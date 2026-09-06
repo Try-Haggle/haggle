@@ -10,7 +10,10 @@ import {
 } from "@haggle/shared";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { NegotiationAgentBuilderChat } from "@/app/l/[publicId]/negotiation-agent-builder-chat";
+import {
+  moveStoredSessions,
+  NegotiationAgentBuilderChat,
+} from "@/app/l/[publicId]/negotiation-agent-builder-chat";
 import { AgentStudio } from "@/components/agent-studio";
 import type { StudioSelection } from "@/components/agent-studio/types";
 import { Spinner } from "@/components/ui";
@@ -202,6 +205,7 @@ export function AgentStudioPage({ role }: { role: Role }) {
         initialSelection={selectionFromParams(presetParam, agentParam, savedAgents)}
         onSave={handleSave}
         onDelete={handleDelete}
+        onThreadStorageMove={moveStoredSessions}
         renderChat={({
           effective,
           storageId,

@@ -90,6 +90,12 @@ interface AgentStudioProps {
   ) => Promise<{ id: string } | undefined>;
   /** Delete a saved agent. Absent → no delete affordance. */
   onDelete?: (agentId: string) => Promise<void>;
+  /**
+   * The thread's chat namespace changed — a preset thread just became a saved
+   * agent. The studio owns how `storageId` is composed but not what the chat
+   * keeps under it, so moving that content is the caller's to do.
+   */
+  onThreadStorageMove?: (fromStorageId: string, toStorageId: string) => void;
   saveLabel?: string;
   className?: string;
 }
@@ -101,6 +107,7 @@ export function AgentStudio({
   renderChat,
   onSave,
   onDelete,
+  onThreadStorageMove,
   saveLabel,
   className,
 }: AgentStudioProps) {
@@ -189,6 +196,9 @@ export function AgentStudio({
             : prev,
         );
         setMemories((prev) => (prev[key] ? { ...prev, [nextKey]: prev[key] } : prev));
+        // The transcript lives outside React state, so it has to be moved too
+        // — otherwise the chat remounts under the new key and comes back empty.
+        onThreadStorageMove?.(threadStorageId(role, key), threadStorageId(role, nextKey));
         setSelection({ kind: "saved", id: savedId });
       }
 
@@ -325,7 +335,7 @@ export function AgentStudio({
                 >
                   {renderChat({
                     effective,
-                    storageId: `agent-studio:${role}:${key}`,
+                    storageId: threadStorageId(role, key),
                     role,
                     onMemoryUpdate: (next) => setMemories((prev) => ({ ...prev, [key]: next })),
                     onStrategyUpdate: (strategy) =>
@@ -431,6 +441,12 @@ function seedState(
 }
 
 /** Invitation state — shown before any agent is picked. */
+/** The chat's storage namespace for one roster thread. Composed in exactly
+ *  one place so re-keying a thread cannot drift from rendering it. */
+function threadStorageId(role: "buyer" | "seller", key: string): string {
+  return `agent-studio:${role}:${key}`;
+}
+
 function EmptyCanvas({
   role,
   onSelect,
