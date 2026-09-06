@@ -29,6 +29,7 @@ export default defineConfig({
     "./dist/schema/disputes.js",
     "./dist/schema/ds-ratings.js",
     "./dist/schema/email-deliveries.js",
+    "./dist/schema/fulfillments.js",
     "./dist/schema/hfmi-model-coefficients.js",
     "./dist/schema/hfmi-price-observations.js",
     "./dist/schema/intelligence-layer.js",
