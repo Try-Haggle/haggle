@@ -191,7 +191,7 @@ export async function createDisputeReadyOrderFixture(
     env: {
       non_production: "Available whenever NODE_ENV is not production.",
       production_staging:
-        "Requires role=admin and HAGGLE_ENABLE_PAYMENT_TEST_TOOLS=true (same gate as other payment-test tools).",
+        "Staging (HAGGLE_ENV=staging): any authenticated UUID buyer/MCP token when HAGGLE_ENABLE_PAYMENT_TEST_TOOLS=true. Production: admin + same flag. See docs/wip/dispute-ready-order-staging-auth.md.",
     },
   };
 }

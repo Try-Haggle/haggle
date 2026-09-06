@@ -1524,7 +1524,9 @@ const ORIGINAL_ENV = {
   HAGGLE_X402_USDC_ASSET_ADDRESS: process.env.HAGGLE_X402_USDC_ASSET_ADDRESS,
   HAGGLE_X402_FEE_WALLET: process.env.HAGGLE_X402_FEE_WALLET,
   HAGGLE_BASE_RPC_URL: process.env.HAGGLE_BASE_RPC_URL,
+  HAGGLE_ENV: process.env.HAGGLE_ENV,
   HAGGLE_ENABLE_PAYMENT_TEST_TOOLS: process.env.HAGGLE_ENABLE_PAYMENT_TEST_TOOLS,
+  SUPABASE_URL: process.env.SUPABASE_URL,
   DISPUTE_EVIDENCE_SCANNER_URL: process.env.DISPUTE_EVIDENCE_SCANNER_URL,
   DISPUTE_EVIDENCE_SCANNER_TOKEN: process.env.DISPUTE_EVIDENCE_SCANNER_TOKEN,
   DISPUTE_EVIDENCE_SCANNER_ALLOW_INSECURE_HTTP:
@@ -1549,12 +1551,15 @@ function makeDb(returningRow: Record<string, unknown>) {
 
 function makeApp(
   db: Database,
-  user = { id: "00000000-0000-4000-a000-000000000010", role: "authenticated" },
+  user: { id: string; role: string } | null = {
+    id: "00000000-0000-4000-a000-000000000010",
+    role: "authenticated",
+  },
   requestLogError?: (...args: unknown[]) => void,
 ) {
   const app = Fastify();
   app.addHook("onRequest", async (request) => {
-    request.user = user;
+    if (user) request.user = user;
     if (requestLogError) request.log.error = requestLogError as typeof request.log.error;
   });
   registerPaymentTestToolRoutes(app, db);
@@ -5387,6 +5392,8 @@ describe("payment test tool routes", () => {
 
   it("blocks production dispute-ready fixture for non-admin users", async () => {
     process.env.NODE_ENV = "production";
+    delete process.env.HAGGLE_ENV;
+    delete process.env.HAGGLE_ENABLE_PAYMENT_TEST_TOOLS;
     const { db } = makeDb({});
     const app = makeApp(db);
 
@@ -5398,6 +5405,118 @@ describe("payment test tool routes", () => {
 
     expect(res.statusCode).toBe(403);
     expect(res.json().error).toBe("PAYMENT_TEST_TOOLS_DISABLED");
+  });
+
+  it("returns AUTH_REQUIRED when dispute-ready-order has no bearer user", async () => {
+    process.env.NODE_ENV = "test";
+    const { db } = makeDb({});
+    const app = makeApp(db, null);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/tools/payment-test/dispute-ready-order",
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(401);
+    expect(res.json()).toMatchObject({ error: "AUTH_REQUIRED" });
+  });
+
+  it("allows staging dogfood dispute-ready-order for non-admin UUID buyers when flag is on", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.HAGGLE_ENV = "staging";
+    process.env.HAGGLE_ENABLE_PAYMENT_TEST_TOOLS = "true";
+    // currentPaymentRuntime() resolves JWKS policy when NODE_ENV=production.
+    process.env.SUPABASE_URL = "https://example.supabase.co";
+    const approvalId = "11111111-1111-4111-8111-111111111111";
+    const orderId = "22222222-2222-4222-8222-222222222222";
+    const intentId = "33333333-3333-4333-8333-333333333333";
+    let insertCount = 0;
+    const values = vi.fn().mockImplementation((payload: Record<string, unknown>) => {
+      const ids = [approvalId, orderId, intentId];
+      const id = ids[Math.min(insertCount, ids.length - 1)];
+      insertCount += 1;
+      return {
+        returning: vi.fn().mockResolvedValue([{ ...payload, id }]),
+      };
+    });
+    const insert = vi.fn().mockReturnValue({ values });
+    const db = { insert } as unknown as Database;
+    // MCP OAuth resolves as role=user; staging dogfood must accept that buyer JWT.
+    const app = makeApp(db, {
+      id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      role: "user",
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/tools/payment-test/dispute-ready-order",
+      payload: { order_status: "DELIVERED" },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.json().fixture).toMatchObject({
+      order_id: orderId,
+      money_moved: false,
+      card_pan_used: false,
+    });
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({ buyerId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" }),
+    );
+  });
+
+  it("blocks staging dispute-ready-order when payment-test tools flag is off", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.HAGGLE_ENV = "staging";
+    delete process.env.HAGGLE_ENABLE_PAYMENT_TEST_TOOLS;
+    const { db } = makeDb({});
+    const app = makeApp(db, {
+      id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      role: "user",
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/tools/payment-test/dispute-ready-order",
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe("PAYMENT_TEST_TOOLS_DISABLED");
+  });
+
+  it("keeps other payment-test tools admin-only on staging even when flag is on", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.HAGGLE_ENV = "staging";
+    process.env.HAGGLE_ENABLE_PAYMENT_TEST_TOOLS = "true";
+    const { db } = makeDb({});
+    const app = makeApp(db, {
+      id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      role: "user",
+    });
+
+    const settlement = await app.inject({
+      method: "POST",
+      url: "/tools/payment-test/settlement-approval",
+      payload: {},
+    });
+    expect(settlement.statusCode).toBe(403);
+    expect(settlement.json().error).toBe("PAYMENT_TEST_TOOLS_DISABLED");
+
+    const disputeAi = await app.inject({
+      method: "POST",
+      url: "/tools/payment-test/dispute-ai/evaluate",
+      payload: {},
+    });
+    expect(disputeAi.statusCode).toBe(403);
+    expect(disputeAi.json().error).toBe("PAYMENT_TEST_TOOLS_DISABLED");
+
+    const contract = await app.inject({
+      method: "GET",
+      url: "/tools/payment-test/contract/by-order/22222222-2222-4222-8222-222222222222",
+    });
+    expect(contract.statusCode).toBe(403);
+    expect(contract.json().error).toBe("PAYMENT_TEST_TOOLS_DISABLED");
   });
 
   it("rejects unknown dispute AI evaluation scenarios before calling a provider", async () => {
