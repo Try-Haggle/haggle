@@ -54,7 +54,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.16",
-    "@playwright/test": "^1.60.0",
+    "@playwright/test": "^1.62.1",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.7",
     "next": "^15.5.21",
