@@ -28,7 +28,22 @@ vi.mock("../services/listing-claim.service.js", () => ({
 
 vi.mock("../services/attempt-control.service.js", () => ({
   defaultAttemptControlPolicy: () => ({ maxRoundsPerSession: 8 }),
+  isAttemptControlRateLimited: (error: string | undefined) =>
+    error === "ATTEMPT_LIMIT_EXCEEDED" ||
+    error === "ATTEMPT_WINDOW_EXCEEDED" ||
+    error === "MARKETPLACE_ATTEMPT_LIMIT_EXCEEDED" ||
+    error === "ATTEMPT_COOLDOWN",
   evaluateAttemptControl: (...args: unknown[]) => evaluateAttemptControl(...args),
+  // Pass-through: unit tests mock evaluate/create; gate just runs the callback.
+  withBuyerListingStartGate: async (
+    _db: unknown,
+    _input: unknown,
+    run: (tx: unknown, attemptControl: unknown) => Promise<unknown>,
+  ) => {
+    const attemptControl = { max_rounds_per_session: 8 };
+    const value = await run(_db, attemptControl);
+    return { ok: true as const, value, attemptControl };
+  },
 }));
 
 vi.mock("../services/negotiation-session.service.js", () => ({
