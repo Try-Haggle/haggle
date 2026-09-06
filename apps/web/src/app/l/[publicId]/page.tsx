@@ -18,6 +18,8 @@ interface ListingData {
   tags: string[] | null;
   holdState?: "held" | "funding" | "sold" | null;
   sellerAgentPreset: string | null;
+  /** The seller's chosen face for the agent. Absent on older listings. */
+  sellerAgentEmoji?: string | null;
   sellingDeadline: string | null;
   sellerRequiredCriteria: Array<{ checkId: string; ask: string }> | null;
   sellerFulfillmentOffer?: {

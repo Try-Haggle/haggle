@@ -63,6 +63,41 @@ describe("GET listing required_criteria (toPublicListingView)", () => {
   });
 });
 
+describe("sellerAgentEmoji (toPublicListingView)", () => {
+  const row = (emoji: unknown) => ({
+    publicId: "cam-1",
+    title: "Camera",
+    sellerId: "seller-1",
+    negotiationAgentSnapshot: {
+      preset: "verifier",
+      ...(emoji === undefined ? {} : { emoji }),
+      // Posture that must never reach a buyer, face or no face.
+      engineParams: { u_threshold: 0.6, anchor_ratio: 0.7 },
+    },
+  });
+
+  it("passes the seller's chosen face through", () => {
+    const view = toPublicListingView(row("owl"));
+    expect(view.listing.sellerAgentEmoji).toBe("owl");
+    expect(view.listing.sellerAgentPreset).toBe("verifier");
+  });
+
+  it("is null on listings published before faces existed", () => {
+    expect(toPublicListingView(row(undefined)).listing.sellerAgentEmoji).toBeNull();
+  });
+
+  it("is null for a malformed value rather than leaking whatever was stored", () => {
+    expect(toPublicListingView(row({ src: "x" })).listing.sellerAgentEmoji).toBeNull();
+  });
+
+  it("adds a face without loosening the redaction", () => {
+    const json = JSON.stringify(toPublicListingView(row("owl")).listing);
+    expect(json).not.toContain("u_threshold");
+    expect(json).not.toContain("anchor_ratio");
+    expect(json).not.toContain("engineParams");
+  });
+});
+
 describe("MCP publicListingView", () => {
   it("puts required_criteria {checkId, ask} on get_listing", () => {
     const view = publicListingView({

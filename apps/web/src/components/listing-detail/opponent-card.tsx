@@ -28,6 +28,8 @@ import { DURATION, EASE, riseIn, staggerGroup } from "./motion";
 
 interface OpponentCardProps {
   presetId: string | null;
+  /** The seller's chosen face. Falls back to the preset's own when absent. */
+  emoji?: string | null;
   /**
    * Owner viewing their own listing. The same agent is the buyer's opponent
    * and the seller's representative — only the framing differs, so this card
@@ -37,7 +39,12 @@ interface OpponentCardProps {
   className?: string;
 }
 
-export function OpponentCard({ presetId, isOwner = false, className }: OpponentCardProps) {
+export function OpponentCard({
+  presetId,
+  emoji = null,
+  isOwner = false,
+  className,
+}: OpponentCardProps) {
   const preset = presetId ? getNegotiationAgentPreset(presetId) : undefined;
   const copy = preset?.copy.seller;
   const accent = preset?.accentColor ?? "var(--action-secondary)";
@@ -65,7 +72,7 @@ export function OpponentCard({ presetId, isOwner = false, className }: OpponentC
           transition={{ duration: DURATION.base, ease: EASE.select, delay: 0.05 }}
           aria-hidden="true"
         >
-          <AgentAvatar value={preset?.emoji} fallback="🤝" />
+          <AgentAvatar value={emoji ?? preset?.emoji} fallback="🤝" />
         </motion.span>
         <div className="min-w-0 flex-1">
           <p className="font-bold text-[15px] text-ink">{copy?.name ?? "Default agent"}</p>

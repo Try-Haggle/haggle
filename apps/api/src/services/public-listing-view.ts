@@ -44,6 +44,10 @@ export function toPublicListingView(row: PublishedListingRow): PublicListingView
       ...publicFields,
       // The agent's preset name only — never its thresholds.
       sellerAgentPreset: cfg.preset ?? null,
+      // The face the seller picked for the agent. An avatar slug, nothing
+      // about how the agent negotiates; absent on listings published before
+      // faces existed, and the web falls back to the preset's own.
+      sellerAgentEmoji: typeof cfg.emoji === "string" ? cfg.emoji : null,
       specs: extractSellerProductFacts(cfg),
       // Check id + ask only: no stance, leverage, or floor.
       sellerRequiredCriteria: required_criteria,
