@@ -45,8 +45,8 @@ vi.mock("../services/dispute-ai.service.js", () => ({
 }));
 
 import { runCaseGuide } from "../services/dispute-ai.service.js";
-import { finalizeDisputeResolution } from "../services/dispute-resolution-finalizer.js";
 import { getDisputeById } from "../services/dispute-record.service.js";
+import { finalizeDisputeResolution } from "../services/dispute-resolution-finalizer.js";
 import { getCommerceOrderByOrderId } from "../services/payment-record.service.js";
 
 const mockGetDisputeById = getDisputeById as ReturnType<typeof vi.fn>;

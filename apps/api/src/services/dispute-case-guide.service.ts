@@ -12,15 +12,15 @@ import type { CaseGuideOutput, DisputeAiCaseContext, DisputeAiParty } from "@hag
 import {
   assertDisputeCaseGuideDoesNotMoveMoney,
   buildDisputeCaseGuideMoneySafetyFields,
-  DISPUTE_CASE_GUIDE_AUTO_APPLIED,
-  DISPUTE_CASE_GUIDE_MONEY_MOVED,
+  type DISPUTE_CASE_GUIDE_AUTO_APPLIED,
+  type DISPUTE_CASE_GUIDE_MONEY_MOVED,
 } from "../lib/dispute-case-guide-money-guard.js";
 import {
   buildDisputeAiCaseContextFromDispute,
   createDisputeAiProvider,
-  runCaseGuide,
   type DisputeAiProvider,
   type DisputeAiProviderResponse,
+  runCaseGuide,
 } from "./dispute-ai.service.js";
 import { getDisputeById } from "./dispute-record.service.js";
 import { getCommerceOrderByOrderId } from "./payment-record.service.js";
