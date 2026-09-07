@@ -3,6 +3,7 @@ export * from "./dispute-cost.js";
 export * from "./dispute-deposit.js";
 export * from "./dispute-settlement.js";
 export * from "./ds-rating.js";
+export * from "./evidence-hash-anchor.js";
 export * from "./evidence-validator.js";
 export * from "./id.js";
 export * from "./module-contract.js";

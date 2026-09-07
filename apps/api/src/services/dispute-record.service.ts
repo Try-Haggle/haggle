@@ -77,6 +77,8 @@ export async function createDisputeRecord(
         text: e.text,
         derivedArtifacts: e.derived_artifacts,
         sourceContentSha256: e.source_content_sha256,
+        contentHash: e.content_hash,
+        anchorStatus: e.anchor_status,
         derivedArtifactsProvenance: e.derived_artifacts_provenance,
         createdAt: new Date(e.created_at),
       })),
@@ -126,6 +128,10 @@ export async function getDisputeById(db: Database, id: string): Promise<DisputeC
       uri: e.uri ?? undefined,
       text: e.text ?? undefined,
       source_content_sha256: e.sourceContentSha256 ?? undefined,
+      content_hash: e.contentHash ?? undefined,
+      anchor_status: (e.anchorStatus ?? undefined) as
+        | DisputeEvidenceType["anchor_status"]
+        | undefined,
       derived_artifacts: integrity?.valid ? artifacts : undefined,
       derived_artifacts_integrity: integrity ? (integrity.valid ? "valid" : "invalid") : undefined,
       derived_artifacts_integrity_reason: integrity?.reason,
@@ -208,6 +214,8 @@ export async function addDisputeEvidenceRecord(
     text: evidence.text,
     derivedArtifacts: evidence.derived_artifacts,
     sourceContentSha256: evidence.source_content_sha256,
+    contentHash: evidence.content_hash,
+    anchorStatus: evidence.anchor_status,
     derivedArtifactsProvenance: evidence.derived_artifacts_provenance,
     createdAt: new Date(evidence.created_at),
   });
