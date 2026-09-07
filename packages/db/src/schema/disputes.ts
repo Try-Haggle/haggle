@@ -67,6 +67,12 @@ export const disputeEvidence = pgTable("dispute_evidence", {
       }>
     >(),
   sourceContentSha256: text("source_content_sha256"),
+  /** F2: sha256 hex content digest for per-item anchor badge foundation. */
+  contentHash: text("content_hash"),
+  /** F2: HASHED | PENDING_CHAIN | ANCHORED — stamped HASHED at confirm. */
+  anchorStatus: text("anchor_status", {
+    enum: ["HASHED", "PENDING_CHAIN", "ANCHORED"],
+  }),
   derivedArtifactsProvenance: jsonb("derived_artifacts_provenance").$type<
     Record<string, unknown>
   >(),

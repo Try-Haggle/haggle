@@ -1,4 +1,5 @@
 import type { TrustTriggerEvent } from "@haggle/commerce-core";
+import { buildEvidenceHashAnchor } from "./evidence-hash-anchor.js";
 import { createId } from "./id.js";
 import type { DisputeReasonCode } from "./reason-codes.js";
 import { transitionDisputeStatus } from "./state-machine.js";
@@ -39,12 +40,24 @@ export class DisputeService {
     const ts = nowIso(input.now);
     const disputeId = createId();
 
-    const evidence: DisputeEvidence[] = (input.initial_evidence ?? []).map((e) => ({
-      ...e,
-      id: createId(),
-      dispute_id: disputeId,
-      created_at: ts,
-    }));
+    const evidence: DisputeEvidence[] = (input.initial_evidence ?? []).map((e) => {
+      const hashAnchor =
+        e.content_hash && e.anchor_status
+          ? { content_hash: e.content_hash, anchor_status: e.anchor_status }
+          : buildEvidenceHashAnchor({
+              type: e.type,
+              text: e.text,
+              uri: e.uri,
+              knownContentHash: e.content_hash ?? e.source_content_sha256,
+            });
+      return {
+        ...e,
+        ...hashAnchor,
+        id: createId(),
+        dispute_id: disputeId,
+        created_at: ts,
+      };
+    });
 
     const dispute: DisputeCase = {
       id: disputeId,
@@ -89,8 +102,18 @@ export class DisputeService {
     now?: string,
   ): DisputeServiceResult<DisputeEvidence> {
     const ts = nowIso(now);
+    const hashAnchor =
+      evidence.content_hash && evidence.anchor_status
+        ? { content_hash: evidence.content_hash, anchor_status: evidence.anchor_status }
+        : buildEvidenceHashAnchor({
+            type: evidence.type,
+            text: evidence.text,
+            uri: evidence.uri,
+            knownContentHash: evidence.content_hash ?? evidence.source_content_sha256,
+          });
     const newEvidence: DisputeEvidence = {
       ...evidence,
+      ...hashAnchor,
       id: createId(),
       dispute_id: dispute.id,
       created_at: ts,
