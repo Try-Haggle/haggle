@@ -9,6 +9,7 @@ import type {
   ResolutionAssessorOutput,
 } from "@haggle/dispute-core";
 import {
+  buildEvidenceHashAnchor,
   computeDisputeCost,
   createDepositRequirement,
   DisputeService,
@@ -3885,6 +3886,13 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         }
       }
 
+      const hashAnchor = buildEvidenceHashAnchor({
+        type,
+        text: description,
+        uri: qualifiedStoragePath,
+        bytes: evidenceBytes ?? undefined,
+        knownContentHash: scanResult.sha256 ?? undefined,
+      });
       const evidence: DisputeEvidence = {
         id: evidenceId,
         dispute_id: id,
@@ -3901,6 +3909,8 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
           : description,
         derived_artifacts: derivedArtifacts,
         source_content_sha256: derivedArtifacts ? scanResult.sha256 : undefined,
+        content_hash: hashAnchor.content_hash,
+        anchor_status: hashAnchor.anchor_status,
         derived_artifacts_provenance: derivedArtifactsProvenance,
         derived_artifacts_integrity: derivedArtifacts ? "valid" : undefined,
         created_at: evidenceCreatedAt.toISOString(),

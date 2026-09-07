@@ -1072,6 +1072,13 @@
       "when": 1788036450256,
       "tag": "0152_agent_builder_threads",
       "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1788761000000,
+      "tag": "0153_dispute_evidence_hash_anchor",
+      "breakpoints": true
     }
   ]
 }

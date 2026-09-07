@@ -46,7 +46,7 @@ Haggle uses a 3-tier dispute resolution system modeled after a jury trial. When 
 | T1 Resolution Assessor (`ai/assess`) | **Wired (assess only)** | Human-before-resolve after COMPLETED; assess ≠ money; auto-release not default-on |
 | Case Guide (party chat / summaries as designed here) | **Wired (API)** | `POST /disputes/:id/case-guide` — party-scoped `runCaseGuide` / `dispute_ai_case_guide_v1` (summary + evidence organization only). Money-inert (`money_moved: false`); separate from Assessor / resolve / approve / finalizer. Full dual Case Guide chat UX in this prompt remains Phase2+ |
 | Specialist Verification (in-dispute LegitApp panel) | **Out of scope** | Design/demo only for now; not product-wired (LegitApp / in-dispute specialist panel deferred — F3) |
-| Evidence-anchor UI (per-item “Anchored on-chain” badges) | **Planned/Not wired** | Resolve-time `DisputeRegistry` anchoring exists in finalizer path; per-evidence hash badges / gallery UX here are design |
+| Evidence-anchor UI (per-item “Anchored on-chain” badges) | **Planned/Not wired** | Resolve-time `DisputeRegistry` anchoring exists in finalizer path; **F2:** per-evidence `content_hash` + `anchor_status` (HASHED) stamped on upload/confirm for badge foundation — UI badges / gallery / chain TX still design/follow-up |
 | Phase2+ (T2/T3 panel UX, specialist auto-request, full dual Case Guide summaries) | **Planned/Not wired** | Design target beyond current production dispute pages |
 
 Mark every Case Guide / Specialist / evidence-anchor / Phase2+ section below as **Planned/Not wired** unless a later commit flips the row above.

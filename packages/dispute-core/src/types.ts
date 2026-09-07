@@ -1,3 +1,5 @@
+import type { EvidenceAnchorStatus } from "./evidence-hash-anchor.js";
+
 // ---------------------------------------------------------------------------
 // Legacy Dispute Types (service.ts, state-machine.ts, evidence-validator.ts)
 // ---------------------------------------------------------------------------
@@ -57,6 +59,10 @@ export interface DisputeEvidence {
   text?: string;
   derived_artifacts?: DisputeEvidenceDerivedArtifact[];
   source_content_sha256?: string;
+  /** F2: sha256 hex of evidence bytes/text — UI badge / tamper foundation. */
+  content_hash?: string;
+  /** F2: HASHED at confirm; PENDING_CHAIN/ANCHORED reserved for chain follow-up. */
+  anchor_status?: EvidenceAnchorStatus;
   derived_artifacts_provenance?: DisputeEvidenceDerivedArtifactsProvenance;
   derived_artifacts_integrity?: "valid" | "invalid" | "unsigned";
   derived_artifacts_integrity_reason?: string;
