@@ -43,7 +43,7 @@ A10 follow-up (CTO correction, merged [#141](https://github.com/Try-Haggle/haggl
 
 ## 6. Dispute UX labels vs wiring (design prompts)
 
-Design prompts use Case Guide / Specialist Verification / on-chain evidence-anchor / Phase2+ panel UX. Where not product-wired, docs must say **Planned/Not wired** (see `design-prompt-dispute.md` implementation status). Prefer this file + code locks over older design-prompt “AI at T1 final call” wording for money/resolve.
+Design prompts use Case Guide / Specialist Verification / on-chain evidence-anchor / Phase2+ panel UX. Case Guide first-party API is **Wired (API)** via `POST /disputes/:id/case-guide` (money-inert; not Assessor/resolve). Specialist Verification remains **Out of scope**. Where not product-wired, docs must say **Planned/Not wired** or **Out of scope** (see `design-prompt-dispute.md` implementation status). Prefer this file + code locks over older design-prompt “AI at T1 final call” wording for money/resolve.
 
 ## Related PRs
 

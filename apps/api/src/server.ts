@@ -32,6 +32,7 @@ import { registerBuyerListingsRoutes } from "./routes/buyer-listings.js";
 import { registerClaimRoutes } from "./routes/claim.js";
 import { registerDemoE2ERoutes } from "./routes/demo-e2e.js";
 import { registerDisputeAdvisorRoutes } from "./routes/dispute-advisor.js";
+import { registerDisputeCaseGuideRoutes } from "./routes/dispute-case-guide.js";
 import { registerDisputeModuleRoutes } from "./routes/dispute-modules.js";
 import { registerDisputeRoutes } from "./routes/disputes.js";
 import { registerDraftRoutes } from "./routes/drafts.js";
@@ -250,8 +251,9 @@ export async function createServer() {
   // ─── Reviewer / DS Panel Routes ──────────────────────────
   registerReviewerRoutes(app, db);
 
-  // ─── AI Advisor Routes ──────────────────────────────────
+  // ─── AI Advisor / Case Guide Routes ─────────────────────
   registerDisputeAdvisorRoutes(app, db);
+  registerDisputeCaseGuideRoutes(app, db);
 
   // ─── Demo / E2E Test Routes ────────────────────────────
   registerDemoE2ERoutes(app, db);
