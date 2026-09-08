@@ -17,6 +17,14 @@ export type ControlMode = (typeof CONTROL_MODES)[number];
 
 export type ControlModeParty = "buyer" | "seller";
 
+/** Client sync state for Soft control_mode toggle / handoff UX. */
+export type ControlModeSyncState =
+  | "idle"
+  | "handoff" // waiting for in-flight Soft AI/API to finish (SoT §3)
+  | "saving"
+  | "stubbed" // M1 API not available yet
+  | "error";
+
 /** CU-ready labels (SoT §6) — short, unambiguous, agent-surface friendly. */
 export const CONTROL_MODE_LABEL: Record<ControlMode, string> = {
   auto: "Auto",

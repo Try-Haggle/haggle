@@ -4,17 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type ControlMode,
   type ControlModeParty,
+  type ControlModeSyncState,
   modesFromServerSession,
   patchSessionControlMode,
   type SessionControlModeFields,
 } from "@/lib/control-mode";
-
-export type ControlModeSyncState =
-  | "idle"
-  | "handoff" // waiting for in-flight Soft AI/API to finish (SoT §3)
-  | "saving"
-  | "stubbed" // M1 API not available yet
-  | "error";
 
 /**
  * Mid-session Soft control_mode toggle with SoT handoff semantics.
