@@ -29,6 +29,27 @@ vi.mock("@/hooks/use-negotiation-ws", () => ({
   useNegotiationWs: () => ({ connectionMode: "ws" }),
 }));
 
+vi.mock("@/components/control-mode/control-mode-panel", () => ({
+  ControlModePanel: () => <div data-testid="control-mode-panel" />,
+}));
+
+vi.mock("@/hooks/use-session-control-mode", () => ({
+  useSessionControlMode: () => ({
+    enabled: true,
+    party: "seller",
+    ownMode: "auto",
+    peerMode: "auto",
+    pendingTarget: null,
+    inflight: false,
+    syncState: "idle",
+    error: null,
+    isManual: true, // keep action bar visible in these control tests
+    isAuto: false,
+    requestMode: () => undefined,
+    toggle: () => undefined,
+  }),
+}));
+
 vi.mock("@/app/buy/negotiations/[sessionId]/playback/playback-arena", () => ({
   PlaybackArena: (props: {
     backHref?: string;

@@ -13,6 +13,27 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: mocks.refresh }),
 }));
 
+vi.mock("@/components/control-mode/control-mode-panel", () => ({
+  ControlModePanel: () => <div data-testid="control-mode-panel" />,
+}));
+
+vi.mock("@/hooks/use-session-control-mode", () => ({
+  useSessionControlMode: () => ({
+    enabled: true,
+    party: "buyer",
+    ownMode: "auto",
+    peerMode: "auto",
+    pendingTarget: null,
+    inflight: false,
+    syncState: "idle",
+    error: null,
+    isManual: false,
+    isAuto: true,
+    requestMode: () => undefined,
+    toggle: () => undefined,
+  }),
+}));
+
 vi.mock("@/hooks/use-negotiation-ws", () => ({
   useNegotiationWs: () => ({ connectionMode: "polling" }),
 }));

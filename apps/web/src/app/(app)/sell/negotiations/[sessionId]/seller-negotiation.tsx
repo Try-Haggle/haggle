@@ -7,9 +7,11 @@ import {
   transformNegotiationPlayback,
 } from "@/app/buy/negotiations/[sessionId]/negotiation-session-data";
 import { PlaybackArena } from "@/app/buy/negotiations/[sessionId]/playback/playback-arena";
+import { ControlModePanel } from "@/components/control-mode/control-mode-panel";
 import { OpenConversationButton } from "@/components/messaging/open-conversation-button";
 import { Alert, Button, Input } from "@/components/ui";
 import { useNegotiationWs } from "@/hooks/use-negotiation-ws";
+import { useSessionControlMode } from "@/hooks/use-session-control-mode";
 import { api } from "@/lib/api-client";
 
 /**
@@ -28,11 +30,12 @@ const SELLER_CLOSED_STATUSES = new Set(["ACCEPTED", "REJECTED", "EXPIRED", "SUPE
  *
  * Same arena the buyer sees — one negotiation should not look like two
  * different products depending on which side you are on. What differs is the
- * controls: the buyer's side drives the agent loop, the seller's side responds
- * to it.
+ * controls: Soft Auto lets Haggle AI drive seller Soft turns; Soft Manual
+ * surfaces the seller action bar (SoT auto-manual-control-mode-sot.md).
  */
 export function SellerNegotiation({ initialPayload }: { initialPayload: SessionResponse }) {
   const [payload, setPayload] = useState(initialPayload);
+  const [localInflight, setLocalInflight] = useState(false);
   const sessionId = payload.session.id;
   // Two different questions: has the transcript stopped moving (presentation),
   // and can this seller still act (controls).
@@ -48,6 +51,15 @@ export function SellerNegotiation({ initialPayload }: { initialPayload: SessionR
     }
   }, [sessionId]);
 
+  const control = useSessionControlMode({
+    sessionId,
+    party: "seller",
+    serverSession: payload.session,
+    localInflight,
+    onApplied: reload,
+    enabled: sellerCanAct,
+  });
+
   const { connectionMode } = useNegotiationWs({
     sessionId,
     onUpdate: reload,
@@ -57,9 +69,26 @@ export function SellerNegotiation({ initialPayload }: { initialPayload: SessionR
   });
 
   const data = useMemo(() => transformNegotiationPlayback(payload), [payload]);
+  const sellerIsManual = control.isManual;
+  // Pre-M1: session may omit control_mode fields — keep the action bar so sellers
+  // are not locked out. Once M1 persists modes, Soft Auto hides the bar (AI Soft).
+  const serverHasControlModes =
+    payload.session.buyer_control_mode != null || payload.session.seller_control_mode != null;
+  const showSellerManualBar =
+    sellerCanAct && (sellerIsManual || !serverHasControlModes || control.syncState === "stubbed");
 
   return (
     <>
+      <div className="mx-auto max-w-6xl px-3 pt-3 sm:px-6">
+        <ControlModePanel
+          sessionId={sessionId}
+          party="seller"
+          serverSession={payload.session}
+          localInflight={localInflight}
+          canToggle={sellerCanAct}
+          controller={control}
+        />
+      </div>
       <PlaybackArena
         data={data}
         mode="live"
@@ -80,7 +109,14 @@ export function SellerNegotiation({ initialPayload }: { initialPayload: SessionR
         }
         noDealCta={{ href: "/sell/dashboard", label: "Back to dashboard" }}
       />
-      {sellerCanAct && <SellerActionBar sessionId={sessionId} onDone={reload} />}
+      {/* Soft Manual (or pre-M1): seller drives Soft turns. Soft Auto + M1: hide bar. */}
+      {showSellerManualBar && (
+        <SellerActionBar
+          sessionId={sessionId}
+          onDone={reload}
+          onInflightChange={setLocalInflight}
+        />
+      )}
     </>
   );
 }
@@ -89,7 +125,15 @@ export function SellerNegotiation({ initialPayload }: { initialPayload: SessionR
  * The seller's three moves. Pinned to the bottom of the viewport because the
  * arena is a full screen tall — controls parked under it would never be seen.
  */
-function SellerActionBar({ sessionId, onDone }: { sessionId: string; onDone: () => void }) {
+function SellerActionBar({
+  sessionId,
+  onDone,
+  onInflightChange,
+}: {
+  sessionId: string;
+  onDone: () => void;
+  onInflightChange?: (inflight: boolean) => void;
+}) {
   const [offer, setOffer] = useState("");
   const [busy, setBusy] = useState<"offer" | "accept" | "reject" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -104,6 +148,7 @@ function SellerActionBar({ sessionId, onDone }: { sessionId: string; onDone: () 
         return;
       }
       setBusy("offer");
+      onInflightChange?.(true);
       try {
         await api.post(`/negotiations/sessions/${sessionId}/offers`, {
           price_minor: Math.round(priceUsd * 100),
@@ -115,18 +160,21 @@ function SellerActionBar({ sessionId, onDone }: { sessionId: string; onDone: () 
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not send the offer.");
       } finally {
+        onInflightChange?.(false);
         setBusy(null);
       }
       return;
     }
 
     setBusy(kind);
+    onInflightChange?.(true);
     try {
       await api.patch(`/negotiations/sessions/${sessionId}/${kind}`);
       onDone();
     } catch (err) {
       setError(err instanceof Error ? err.message : `Could not ${kind} — try again in a moment.`);
     } finally {
+      onInflightChange?.(false);
       setBusy(null);
     }
   }

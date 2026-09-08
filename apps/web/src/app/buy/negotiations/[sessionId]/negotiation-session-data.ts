@@ -8,6 +8,15 @@ export type ServerSession = {
   buyer_negotiation_agent_emoji?: string | null;
   driver?: "web" | "mcp";
   chat_url?: string;
+  /**
+   * Soft Auto/Manual (SoT auto-manual-control-mode-sot.md). Server values only —
+   * never trust a client-claimed peer mode (anti-spoof). Default Auto when absent.
+   */
+  buyer_control_mode?: "auto" | "manual" | null;
+  seller_control_mode?: "auto" | "manual" | null;
+  buyer_pending_control_mode?: "auto" | "manual" | null;
+  seller_pending_control_mode?: "auto" | "manual" | null;
+  soft_ai_inflight_party?: "buyer" | "seller" | null;
   listing: {
     public_id: string;
     title: string;

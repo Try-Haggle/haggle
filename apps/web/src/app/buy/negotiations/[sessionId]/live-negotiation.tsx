@@ -2,8 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ControlModePanel } from "@/components/control-mode/control-mode-panel";
 import { OpenConversationButton } from "@/components/messaging/open-conversation-button";
+import { Alert, Button, Input } from "@/components/ui";
 import { useNegotiationWs } from "@/hooks/use-negotiation-ws";
+import { useSessionControlMode } from "@/hooks/use-session-control-mode";
 import { ApiError, api } from "@/lib/api-client";
 import {
   clearNegotiationRunToken,
@@ -116,6 +119,7 @@ export function LiveNegotiation({
     pauseStateFromSession(initialPayload),
   );
   const [runnerAttempt, setRunnerAttempt] = useState(0);
+  const [localInflight, setLocalInflight] = useState(false);
   const isTerminal = isTerminalNegotiationStatus(payload.session.status);
 
   // Progress = a new round landed, or the session changed state. Tracked in a ref so
@@ -149,6 +153,15 @@ export function LiveNegotiation({
     }
   }, [initialPayload.session.id]);
 
+  const control = useSessionControlMode({
+    sessionId: payload.session.id,
+    party: "buyer",
+    serverSession: payload.session,
+    localInflight,
+    onApplied: reload,
+    enabled: !isTerminal,
+  });
+
   const { connectionMode } = useNegotiationWs({
     sessionId: payload.session.id,
     onUpdate: reload,
@@ -157,10 +170,25 @@ export function LiveNegotiation({
   });
 
   const isSpectator = initialPayload.session.driver === "mcp";
+  const buyerIsManual = control.isManual;
+  // Prefer Manual stop *after* in-flight Soft API completes — never abort mid-call (SoT §3).
+  const preferManualRef = useRef(buyerIsManual);
+  preferManualRef.current = buyerIsManual;
+  const wasManualRef = useRef(buyerIsManual);
+  useEffect(() => {
+    const wasManual = wasManualRef.current;
+    wasManualRef.current = buyerIsManual;
+    // Manual → Auto: restart Soft AI drive loop.
+    if (wasManual && !buyerIsManual && !isTerminal && !isSpectator) {
+      setRunnerAttempt((n) => n + 1);
+    }
+  }, [buyerIsManual, isTerminal, isSpectator]);
 
   useEffect(() => {
     if (isSpectator) return;
     if (isTerminalNegotiationStatus(initialPayload.session.status)) return;
+    // Soft Manual with nothing in flight: do not start Soft AI turns (SoT §1).
+    if (preferManualRef.current) return;
     if (runnerAttempt > 0) setUpdateError(false);
     let cancelled = false;
     let activeRoundController: AbortController | null = null;
@@ -180,9 +208,13 @@ export function LiveNegotiation({
       try {
         let current = await loadSession();
         while (!cancelled && !isTerminalNegotiationStatus(current.session.status)) {
+          // Mid-session toggle to Manual: stop driving after the current call
+          // completes (SoT §3 handoff). Re-check each loop iteration.
+          if (cancelled) return;
           const runToken = getNegotiationRunToken(sessionId);
           try {
             activeRoundController = new AbortController();
+            setLocalInflight(true);
             const requestTimeout = window.setTimeout(
               () => activeRoundController?.abort(),
               ROUND_REQUEST_TIMEOUT_MS,
@@ -197,6 +229,7 @@ export function LiveNegotiation({
             } finally {
               window.clearTimeout(requestTimeout);
               activeRoundController = null;
+              setLocalInflight(false);
             }
             // A seller-criteria PAUSE answers 200 with no new round, and WAITING is not a
             // terminal status — so ignoring the body span the loop forever: POST → 200 →
@@ -211,6 +244,7 @@ export function LiveNegotiation({
             }
             if (!cancelled) setPause(null);
           } catch (err) {
+            setLocalInflight(false);
             if (err instanceof ApiError && err.code === "CONCURRENT_MODIFICATION") {
               await new Promise((resolve) => window.setTimeout(resolve, 500));
               current = await loadSession();
@@ -220,6 +254,10 @@ export function LiveNegotiation({
           }
 
           current = await loadSession();
+          // Handoff: after in-flight Soft API finishes, stop if Manual is preferred.
+          if (preferManualRef.current || current.session.buyer_control_mode === "manual") {
+            return;
+          }
         }
 
         if (isTerminalNegotiationStatus(current.session.status)) {
@@ -227,6 +265,7 @@ export function LiveNegotiation({
         }
       } catch (err) {
         if (cancelled) return;
+        setLocalInflight(false);
         const apiError = err instanceof ApiError ? err : null;
         setRoundError(
           apiError?.code === "AUTO_PLAY_TOKEN_INVALID"
@@ -242,8 +281,15 @@ export function LiveNegotiation({
     return () => {
       cancelled = true;
       activeRoundController?.abort();
+      setLocalInflight(false);
     };
-  }, [initialPayload.session.id, initialPayload.session.status, runnerAttempt, isSpectator]);
+  }, [
+    initialPayload.session.id,
+    initialPayload.session.status,
+    runnerAttempt,
+    isSpectator,
+    // Intentionally omit buyerIsManual: flipping Manual must not abort in-flight Soft API.
+  ]);
 
   useEffect(() => {
     if (!isTerminal) return;
@@ -296,30 +342,117 @@ export function LiveNegotiation({
       : null);
 
   return (
-    <PlaybackArena
-      data={data}
-      checkoutHref={checkoutHref}
-      checkoutLabel={checkoutLabel}
-      mode="live"
-      liveTerminal={isTerminal}
-      connectionLabel={isSpectator ? "Watching MCP" : connectionLabel}
-      liveError={liveError}
-      pauseChecks={pause?.checks ?? null}
-      onPauseAnswer={submitPauseAnswer}
-      headerAction={
-        canMessageSeller && isTerminal ? (
-          <OpenConversationButton
-            sessionId={payload.session.id}
-            label="Message seller"
-            className="animate-rise-in"
+    <>
+      <div className="mx-auto max-w-6xl px-3 pt-3 sm:px-6">
+        <ControlModePanel
+          sessionId={payload.session.id}
+          party="buyer"
+          serverSession={payload.session}
+          localInflight={localInflight}
+          canToggle={!isTerminal && !isSpectator}
+          controller={control}
+        />
+      </div>
+      <PlaybackArena
+        data={data}
+        checkoutHref={checkoutHref}
+        checkoutLabel={checkoutLabel}
+        mode="live"
+        liveTerminal={isTerminal}
+        connectionLabel={isSpectator ? "Watching MCP" : connectionLabel}
+        liveError={liveError}
+        pauseChecks={pause?.checks ?? null}
+        onPauseAnswer={submitPauseAnswer}
+        headerAction={
+          canMessageSeller && isTerminal ? (
+            <OpenConversationButton
+              sessionId={payload.session.id}
+              label="Message seller"
+              className="animate-rise-in"
+            />
+          ) : undefined
+        }
+        onLiveRetry={() => {
+          setStalled(false);
+          progressRef.current = { key: progressKey, at: Date.now() };
+          setRunnerAttempt((attempt) => attempt + 1);
+        }}
+      />
+      {!isTerminal && !isSpectator && buyerIsManual && (
+        <BuyerManualActionBar sessionId={payload.session.id} onDone={reload} />
+      )}
+    </>
+  );
+}
+
+/**
+ * Minimal Soft Manual offer entry for the buyer (SoT: Manual = party drives Soft turns).
+ */
+function BuyerManualActionBar({
+  sessionId,
+  onDone,
+}: {
+  sessionId: string;
+  onDone: () => void | Promise<void>;
+}) {
+  const [offer, setOffer] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function send() {
+    setError(null);
+    const priceUsd = Number.parseFloat(offer);
+    if (!Number.isFinite(priceUsd) || priceUsd <= 0) {
+      setError("Enter a valid price.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.post(`/negotiations/sessions/${sessionId}/offers`, {
+        price_minor: Math.round(priceUsd * 100),
+        sender_role: "BUYER",
+        idempotency_key: `manual_buyer_${sessionId}_${Date.now()}`,
+      });
+      setOffer("");
+      await onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not send the offer.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      data-testid="buyer-manual-action-bar"
+      className="sticky bottom-16 z-30 border-line border-t bg-surface/95 backdrop-blur md:bottom-0"
+    >
+      <div className="mx-auto flex max-w-6xl flex-col gap-2 px-3 py-3 sm:px-6">
+        {error && (
+          <Alert tone="error" className="text-sm">
+            {error}
+          </Alert>
+        )}
+        <form
+          className="flex flex-wrap items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void send();
+          }}
+        >
+          <Input
+            value={offer}
+            onChange={(e) => setOffer(e.target.value)}
+            inputMode="decimal"
+            placeholder="Your Soft Manual offer"
+            aria-label="Manual offer price"
+            className="min-w-40 flex-1"
           />
-        ) : undefined
-      }
-      onLiveRetry={() => {
-        setStalled(false);
-        progressRef.current = { key: progressKey, at: Date.now() };
-        setRunnerAttempt((attempt) => attempt + 1);
-      }}
-    />
+          <Button type="submit" disabled={busy || offer.trim() === ""}>
+            {busy ? "Sending…" : "Send offer"}
+          </Button>
+        </form>
+      </div>
+    </div>
   );
 }
