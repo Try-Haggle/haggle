@@ -508,6 +508,7 @@ Soft Preference
 
 - Hard Authority는 결정론적 policy/referee가 강제한다.
 - Soft Preference 안에서는 모델과 전략이 자유롭게 발전한다.
+- **Soft control mode (Auto / Manual):** 당사자별 Soft 턴을 Haggle AI가 돌릴지(Manual이면 사람·외부 에이전트)는 Soft Preference 층이다. Hard Authority·1.5% 수수료는 모드와 무관. 잠긴 제품 SoT: [auto-manual-control-mode-sot.md](./auto-manual-control-mode-sot.md) (Eng1 M0; API/UI는 M1/M2).
 - HNP는 제안과 합의 결과를 표현하며 내부 range 전체를 공개하지 않는다.
 
 ### 7.2 자율성 단계
@@ -1083,6 +1084,7 @@ Haggle 내부 거래량만으로 HNP 표준화를 판단하지 않는다.
 - HNP는 transport·commerce protocol과 경쟁하지 않고 negotiation semantic layer가 된다.
 - HNP는 private strategy가 아니라 proposal·authority reference·agreement를 표준화한다.
 - Hard Authority와 Soft Preference를 분리한다.
+- Soft control mode(Auto/Manual)는 Soft만 바꾸며 Hard Authority는 유지한다. 상세: [auto-manual-control-mode-sot.md](./auto-manual-control-mode-sot.md).
 - AI는 range 안에서 자유롭게 발전하고 deterministic referee가 경계를 강제한다.
 - 내부 Web, MCP, A2A, Shopify는 같은 core에 연결되는 adapter다.
 - ChatGPT는 MCP, 외부 agent는 A2A, Shopify는 Shopify App/API로 연결한다.

@@ -45,6 +45,12 @@ A10 follow-up (CTO correction, merged [#141](https://github.com/Try-Haggle/haggl
 
 Design prompts use Case Guide / Specialist Verification / on-chain evidence-anchor / Phase2+ panel UX. Case Guide first-party API is **Wired (API)** via `POST /disputes/:id/case-guide` (money-inert; not Assessor/resolve). Specialist Verification remains **Out of scope**. Where not product-wired, docs must say **Planned/Not wired** or **Out of scope** (see `design-prompt-dispute.md` implementation status). Prefer this file + code locks over older design-prompt “AI at T1 final call” wording for money/resolve.
 
+## 7. Auto / Manual Soft control mode (Eng1 M0 SoT)
+
+Per-party Soft-side **Auto / Manual** (default Auto ON; no forced start choice; Settings default; mid-session toggle after in-flight handoff; both parties may Manual; credits = our AI only with Pro10/Flash4 · 5/2 · 0 + differential; seller Manual timeout → Soft Auto resume; counterpart mode visible; Hard Authority + 1.5% fee unchanged).
+
+**SoT:** [auto-manual-control-mode-sot.md](./auto-manual-control-mode-sot.md). API/UI is M1/M2 — not this docs ticket.
+
 ## Related PRs
 
 - D1 [#143](https://github.com/Try-Haggle/haggle/pull/143), D2 [#142](https://github.com/Try-Haggle/haggle/pull/142), D3 [#141](https://github.com/Try-Haggle/haggle/pull/141), E1 [#144](https://github.com/Try-Haggle/haggle/pull/144), B5 money-guard, superseded A3 [#120](https://github.com/Try-Haggle/haggle/pull/120).
