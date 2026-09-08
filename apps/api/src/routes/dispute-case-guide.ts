@@ -91,6 +91,8 @@ export function registerDisputeCaseGuideRoutes(app: FastifyInstance, db: Databas
             message: outcome.message,
             issues: outcome.issues,
             context_hash: outcome.context_hash,
+            cause: outcome.cause,
+            model: outcome.model,
             money_moved: false,
             auto_applied: false,
           });

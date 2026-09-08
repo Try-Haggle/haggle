@@ -334,6 +334,44 @@ describe("dispute AI API service", () => {
     });
   });
 
+  it("returns EMPTY_MODEL_OUTPUT for blank provider content without repair", async () => {
+    const context = buildDisputeAiCaseContextFromDispute(dispute);
+    const completeJson = vi.fn().mockResolvedValue({
+      content: "",
+      model: "deepseek-v4-flash",
+      finishReason: "length",
+      emptyReason:
+        "empty model output (finish_reason=length; reasoning_content present (thinking exhausted output budget))",
+      usage: { promptTokens: 10, completionTokens: 1600, totalTokens: 1610 },
+    });
+    const provider: DisputeAiProvider = { completeJson };
+
+    const result = await runCaseGuide(context, "seller", provider);
+    expect(result).toMatchObject({
+      ok: false,
+      error: "EMPTY_MODEL_OUTPUT",
+      message: expect.stringContaining("empty model output"),
+    });
+    expect(result.ok === false && result.message).toContain("finish_reason=length");
+    expect(completeJson).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns INVALID_JSON for malformed non-empty model output after repair fails", async () => {
+    const context = buildDisputeAiCaseContextFromDispute(dispute);
+    const completeJson = vi
+      .fn()
+      .mockResolvedValueOnce({ content: "not json", model: "deepseek-v4-flash" })
+      .mockResolvedValueOnce({ content: "still not json", model: "deepseek-v4-flash" });
+    const provider: DisputeAiProvider = { completeJson };
+
+    const result = await runCaseGuide(context, "buyer", provider);
+    expect(result).toMatchObject({
+      ok: false,
+      error: "INVALID_JSON",
+    });
+    expect(completeJson).toHaveBeenCalledTimes(2);
+  });
+
   it("uses a stronger default model for Resolution Assessor than Case Guide", () => {
     expect(resolveDisputeAiModel("resolution_assessor")).toBe("deepseek-v4-pro");
     expect(resolveDisputeAiModel("case_guide")).toBe("deepseek-v4-flash");
@@ -413,7 +451,7 @@ describe("dispute AI API service", () => {
         role: "case_guide",
         model: "deepseek-v4-flash",
         maxTokens: 1600,
-        thinking: undefined,
+        thinking: { type: "disabled" },
         reasoningEffort: undefined,
       },
       {

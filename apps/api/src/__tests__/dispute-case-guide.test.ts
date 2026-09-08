@@ -323,4 +323,61 @@ describe("F1 Case Guide first-party HTTP goldens", () => {
     expect(serviceSrc).not.toMatch(/from "\.\/dispute-resolution-finalizer/);
     expect(DISPUTE_CASE_GUIDE_FORBIDDEN_MONEY_SIDE_EFFECTS).toContain("finalizeDisputeResolution");
   });
+
+  it("maps empty model output to actionable CASE_GUIDE_EMPTY_MODEL_OUTPUT", async () => {
+    mockRunCaseGuide.mockResolvedValueOnce({
+      ok: false,
+      role: "case_guide",
+      displayName: "Case Guide",
+      schemaName: "dispute_ai_case_guide_v1",
+      contextHash: "hash_empty",
+      error: "EMPTY_MODEL_OUTPUT",
+      message:
+        "empty model output (finish_reason=length; reasoning_content present (thinking exhausted output budget))",
+      model: "deepseek-v4-flash",
+    });
+    app = await buildApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/disputes/some-id/case-guide",
+      headers: SELLER_HEADERS,
+      payload: { party: "seller" },
+    });
+    expect(res.statusCode).toBe(502);
+    expect(res.json()).toMatchObject({
+      error: "CASE_GUIDE_EMPTY_MODEL_OUTPUT",
+      cause: "EMPTY_MODEL_OUTPUT",
+      message: expect.stringContaining("empty model output"),
+      money_moved: false,
+      auto_applied: false,
+      model: "deepseek-v4-flash",
+    });
+  });
+
+  it("maps malformed model JSON to CASE_GUIDE_INVALID_JSON", async () => {
+    mockRunCaseGuide.mockResolvedValueOnce({
+      ok: false,
+      role: "case_guide",
+      displayName: "Case Guide",
+      schemaName: "dispute_ai_case_guide_v1",
+      contextHash: "hash_bad_json",
+      error: "INVALID_JSON",
+      message: "model output was not valid JSON",
+      model: "deepseek-v4-flash",
+    });
+    app = await buildApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/disputes/some-id/case-guide",
+      headers: AUTH_HEADERS,
+      payload: { party: "buyer" },
+    });
+    expect(res.statusCode).toBe(502);
+    expect(res.json()).toMatchObject({
+      error: "CASE_GUIDE_INVALID_JSON",
+      cause: "INVALID_JSON",
+      money_moved: false,
+      auto_applied: false,
+    });
+  });
 });
