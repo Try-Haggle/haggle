@@ -112,6 +112,8 @@ export async function runDisputeCaseGuide(
       statusCode: number;
       issues?: unknown;
       context_hash?: string;
+      cause?: string;
+      model?: string;
     }
 > {
   const dispute = await getDisputeById(db, disputeId);
@@ -139,13 +141,25 @@ export async function runDisputeCaseGuide(
   const run = await runCaseGuide(context, request.party, provider);
 
   if (!run.ok) {
+    const error =
+      run.error === "PROVIDER_ERROR"
+        ? "CASE_GUIDE_PROVIDER_ERROR"
+        : run.error === "EMPTY_MODEL_OUTPUT"
+          ? "CASE_GUIDE_EMPTY_MODEL_OUTPUT"
+          : run.error === "INVALID_JSON"
+            ? "CASE_GUIDE_INVALID_JSON"
+            : run.error === "INVALID_AI_OUTPUT"
+              ? "CASE_GUIDE_INVALID_OUTPUT"
+              : "CASE_GUIDE_FAILED";
     return {
       ok: false,
-      error: "CASE_GUIDE_FAILED",
+      error,
       message: run.message,
       statusCode: 502,
       issues: run.issues,
       context_hash: run.contextHash,
+      cause: run.error,
+      model: run.model,
     };
   }
 

@@ -57,7 +57,7 @@
     "@playwright/test": "^1.60.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.7",
-    "next": "^15.5.21",
+    "next": "^15.5.25",
     "playwright": "^1.60.0",
     "turbo": "^2.4.0",
     "typescript": "^5.7.0"

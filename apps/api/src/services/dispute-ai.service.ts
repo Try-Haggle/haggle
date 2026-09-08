@@ -25,6 +25,13 @@ export interface DisputeAiProviderResponse {
     totalTokens: number;
   };
   cost?: LlmCostEstimate | null;
+  /** Provider finish_reason when available (e.g. stop | length). */
+  finishReason?: string | null;
+  /**
+   * Set when the HTTP call succeeded but visible content was empty
+   * (common with DeepSeek V4 thinking exhausting max_tokens).
+   */
+  emptyReason?: string;
 }
 
 export interface DisputeAiProvider {
@@ -62,7 +69,7 @@ export type DisputeAiRunResult<TOutput> =
       displayName: DisputeAiPromptBundle["display_name"];
       schemaName: string;
       contextHash: string;
-      error: "PROVIDER_ERROR" | "INVALID_JSON" | "INVALID_AI_OUTPUT";
+      error: "PROVIDER_ERROR" | "EMPTY_MODEL_OUTPUT" | "INVALID_JSON" | "INVALID_AI_OUTPUT";
       message: string;
       issues?: DisputeAiValidationIssue[];
       model?: string;
@@ -89,6 +96,38 @@ function stringValue(value: unknown): string | undefined {
 
 function numberValue(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function normalizeMessageContent(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (
+          part &&
+          typeof part === "object" &&
+          typeof (part as { text?: unknown }).text === "string"
+        ) {
+          return (part as { text: string }).text;
+        }
+        return "";
+      })
+      .join("");
+  }
+  return "";
+}
+
+function describeEmptyModelOutput(options: {
+  finishReason?: string | null;
+  hasReasoningContent: boolean;
+}): string {
+  const bits: string[] = [];
+  if (options.finishReason) bits.push(`finish_reason=${options.finishReason}`);
+  if (options.hasReasoningContent) {
+    bits.push("reasoning_content present (thinking exhausted output budget)");
+  }
+  return bits.length > 0 ? `empty model output (${bits.join("; ")})` : "empty model output";
 }
 
 function extractJsonObject(content: string): unknown {
@@ -180,7 +219,10 @@ export function buildDisputeAiCaseContextFromDispute(
 
 interface OpenAiCompatibleChatCompletion {
   choices: Array<{
-    message: { content: string };
+    message: {
+      content?: string | Array<{ type?: string; text?: string }> | null;
+      reasoning_content?: string | null;
+    };
     finish_reason?: string;
   }>;
   usage?: {
@@ -261,6 +303,12 @@ export function createDeepSeekDisputeAiProvider(
         max_tokens: disputeAiMaxTokens(bundle.role, options.maxTokens),
         stream: false,
       };
+      // Case Guide is compact structured JSON. DeepSeek V4 thinking shares max_tokens
+      // with visible content; leaving thinking on often returns finish_reason=length with
+      // empty content (and non-empty reasoning_content) → opaque CASE_GUIDE_FAILED.
+      if (bundle.role === "case_guide") {
+        body.thinking = { type: "disabled" };
+      }
       const response = await fetchWithTimeout(
         `${deepSeekApiBase()}/chat/completions`,
         {
@@ -288,11 +336,22 @@ export function createDeepSeekDisputeAiProvider(
           (data.usage?.prompt_tokens ?? 0) + (data.usage?.completion_tokens ?? 0),
       };
       const returnedModel = data.model ?? model;
+      const choice = data.choices?.[0];
+      const content = normalizeMessageContent(choice?.message?.content);
+      const finishReason = choice?.finish_reason ?? null;
+      const reasoningContent = choice?.message?.reasoning_content;
+      const hasReasoningContent =
+        typeof reasoningContent === "string" && reasoningContent.trim().length > 0;
+      const emptyReason = !content.trim()
+        ? describeEmptyModelOutput({ finishReason, hasReasoningContent })
+        : undefined;
       return {
-        content: data.choices?.[0]?.message?.content ?? "",
+        content,
         model: returnedModel,
         usage,
         cost: estimateLlmCostUsd(returnedModel, usage),
+        finishReason,
+        emptyReason,
       };
     },
   };
@@ -373,6 +432,29 @@ async function completeAndValidate<TOutput>(
       contextHash: bundle.context_hash,
       error: "PROVIDER_ERROR",
       message: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  // Fail fast on empty content — do not spend a repair call when thinking already
+  // exhausted the output budget (or the provider returned no visible content).
+  if (providerResponse.emptyReason || !providerResponse.content.trim()) {
+    return {
+      ok: false,
+      role: bundle.role,
+      displayName: bundle.display_name,
+      schemaName: bundle.schema_name,
+      contextHash: bundle.context_hash,
+      error: "EMPTY_MODEL_OUTPUT",
+      message:
+        providerResponse.emptyReason ??
+        describeEmptyModelOutput({
+          finishReason: providerResponse.finishReason,
+          hasReasoningContent: false,
+        }),
+      model: providerResponse.model,
+      usage: providerResponse.usage,
+      cost:
+        providerResponse.cost ?? estimateLlmCostUsd(providerResponse.model, providerResponse.usage),
     };
   }
 
