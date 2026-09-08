@@ -685,6 +685,9 @@ export function registerPlatformTools(
         current_round: foldView.current_round,
         driver,
         chat_url: negotiationChatUrl(session.id),
+        // Soft control_mode — counterpart-visible (CU-ready / M2)
+        buyer_control_mode: session.buyerControlMode === "manual" ? "manual" : "auto",
+        seller_control_mode: session.sellerControlMode === "manual" ? "manual" : "auto",
         speaker: latestSpeaker,
         spoken_price_minor: latestSpokenPrice,
         last_offer_price_minor: session.lastOfferPriceMinor,

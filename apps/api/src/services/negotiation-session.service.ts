@@ -34,6 +34,11 @@ export async function createSession(
     negotiationAgentSnapshot: Record<string, unknown>;
     expiresAt?: Date;
     driver?: NegotiationDriver;
+    /** Soft control modes (default Auto/Auto). Settings preference applied by caller. */
+    buyerControlMode?: "auto" | "manual";
+    sellerControlMode?: "auto" | "manual";
+    /** Initial Soft AI credit charge base (policy); staging unlimited still records base. */
+    buyerSoftAiCreditsCharged?: number;
   },
 ) {
   const [row] = await db
@@ -50,6 +55,9 @@ export async function createSession(
       negotiationAgentSnapshot: data.negotiationAgentSnapshot,
       expiresAt: data.expiresAt,
       driver: data.driver ?? "web",
+      buyerControlMode: data.buyerControlMode ?? "auto",
+      sellerControlMode: data.sellerControlMode ?? "auto",
+      buyerSoftAiCreditsCharged: data.buyerSoftAiCreditsCharged ?? 0,
     })
     .returning();
 
