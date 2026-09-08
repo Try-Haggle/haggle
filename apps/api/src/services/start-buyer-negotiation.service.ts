@@ -1,4 +1,8 @@
-import { quoteNegotiationCredits } from "@haggle/commerce-core";
+import {
+  quoteNegotiationCredits,
+  type SoftAiCreditBand,
+  type SoftControlMode,
+} from "@haggle/commerce-core";
 import { and, type Database, eq, userSavedAddresses } from "@haggle/db";
 import { compileNegotiationAgentSnapshot, type EngineParamsInput } from "@haggle/engine-session";
 import {
@@ -165,6 +169,17 @@ export type StartBuyerNegotiationResult =
         attempt_control?: AttemptControlSnapshot;
         chat_url?: string;
         driver: NegotiationDriver;
+        /** Soft control_mode at create (Eng1 M1). */
+        buyer_control_mode: SoftControlMode;
+        seller_control_mode: SoftControlMode;
+        credit_quote: ReturnType<typeof quoteNegotiationCredits>;
+        soft_ai_credit_charge: {
+          charge_base: number;
+          charge_total: number;
+          band: SoftAiCreditBand;
+          unlimited: boolean;
+          buyer_soft_ai_credits_charged: number;
+        };
         /** Confirmed shipping fee basis for negotiation/checkout (physical only). */
         shipping_quote?: {
           rate_minor: number;
