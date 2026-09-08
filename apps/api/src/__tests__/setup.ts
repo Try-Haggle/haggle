@@ -67,9 +67,13 @@ vi.mock("@haggle/db", () => ({
     query: createMockQueryProxy(),
     select: createMockSelect(),
     insert: createMockInsert(),
-    update: vi
-      .fn()
-      .mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }) }),
+    update: vi.fn().mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([{ id: "mock-id" }]),
+        }),
+      }),
+    }),
     delete: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }),
     execute: vi.fn().mockResolvedValue([]),
     transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => unknown) =>
@@ -79,7 +83,11 @@ vi.mock("@haggle/db", () => ({
         select: createMockSelect(),
         insert: createMockInsert(),
         update: vi.fn().mockReturnValue({
-          set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }),
+          set: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([{ id: "mock-id" }]),
+            }),
+          }),
         }),
       }),
     ),

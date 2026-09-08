@@ -1140,7 +1140,8 @@ export function registerNegotiationRoutes(
       const responderMode =
         responderParty === "buyer" ? softModes.buyerControlMode : softModes.sellerControlMode;
       if (responderMode === "manual" && !(responderParty === "buyer" && userCounter)) {
-        return reply.send({
+        return reply.code(409).send({
+          error: "SOFT_MANUAL_WAITING",
           waiting_for_manual: true,
           party: responderParty,
           buyer_control_mode: softModes.buyerControlMode,

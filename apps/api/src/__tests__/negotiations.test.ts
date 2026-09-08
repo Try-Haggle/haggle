@@ -74,6 +74,14 @@ const mockSession = {
   expiresAt: null,
   createdAt: new Date("2026-04-01"),
   updatedAt: new Date("2026-04-01"),
+  buyerControlMode: "auto" as const,
+  sellerControlMode: "auto" as const,
+  buyerPendingControlMode: null,
+  sellerPendingControlMode: null,
+  softAiInflightParty: null,
+  buyerSoftAiCreditsCharged: 0,
+  sellerManualSince: null,
+  sellerManualTimeoutPhase: null,
 };
 
 const mockGroup = {
@@ -335,6 +343,16 @@ vi.mock("../lib/action-handlers.js", () => ({
   registerActionHandlers: vi.fn(),
 }));
 
+vi.mock("../services/control-mode.service.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/control-mode.service.js")>();
+  return {
+    ...actual,
+    markSoftAiInflight: vi.fn().mockResolvedValue(true),
+    clearSoftAiInflightAndApplyPending: vi.fn().mockResolvedValue(null),
+    resumeSellerSoftAutoAfterTimeout: vi.fn().mockResolvedValue({ resumed: false }),
+  };
+});
+
 // ─── Auth helper ────────────────────────────────────────────────────
 
 const AUTH_HEADERS = {
@@ -411,6 +429,26 @@ describe("Negotiation API", () => {
     resetRateLimitsForTests(); // avoid the shared global limiter accumulating across tests
     delete process.env.HNP_TRUSTED_JWKS;
     delete process.env.HNP_REQUIRE_SIGNATURE;
+    // mockReset clears leftover mockResolvedValueOnce queues (clearAllMocks does not).
+    mockCreateSession.mockReset();
+    mockGetSessionById.mockReset();
+    mockGetSessionsByUserId.mockReset();
+    mockGetSessionsByGroupId.mockReset();
+    mockSetSessionPerspective.mockReset();
+    mockUpdateSessionState.mockReset();
+    mockBatchUpdateSessionStatus.mockReset();
+    mockCreateRound.mockReset();
+    mockGetRoundsBySessionId.mockReset();
+    mockGetRoundByIdempotencyKey.mockReset();
+    mockCreateGroup.mockReset();
+    mockGetGroupById.mockReset();
+    mockUpdateGroupStatus.mockReset();
+    mockExecuteGroupOrchestration.mockReset();
+    mockExecuteGroupTerminal.mockReset();
+    mockLoadUserMemoryBrief.mockReset();
+    mockEventDispatch.mockReset();
+    mockGetPublishedListingByPublicId.mockReset();
+    mockLoadListingStrategyContext.mockReset();
     // Reset to sensible defaults
     mockCreateSession.mockResolvedValue(mockSession);
     mockGetSessionById.mockResolvedValue(null);
@@ -797,6 +835,11 @@ describe("Negotiation API", () => {
       const { setup, session } = autoPlayFixture();
       mockGetSessionById
         .mockResolvedValueOnce(session)
+        .mockResolvedValueOnce({
+          ...session,
+          version: session.version + 1,
+          softAiInflightParty: "buyer",
+        })
         .mockResolvedValueOnce({ ...session, status: "ACCEPTED", currentRound: 1, version: 3 });
       mockExecuteNegotiationRound.mockResolvedValue({
         idempotent: false,

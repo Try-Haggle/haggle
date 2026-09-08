@@ -202,9 +202,10 @@ export async function executeAutoPlayNext(
     responderParty === "buyer" ? softModes.buyerControlMode : softModes.sellerControlMode;
   if (responderMode === "manual" && !(responderParty === "buyer" && userCounter)) {
     return {
-      ok: true,
-      status: 200,
+      ok: false,
+      status: 409,
       body: {
+        error: "SOFT_MANUAL_WAITING",
         waiting_for_manual: true,
         party: responderParty,
         buyer_control_mode: softModes.buyerControlMode,
