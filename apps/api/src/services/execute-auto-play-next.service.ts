@@ -197,8 +197,7 @@ export async function executeAutoPlayNext(
   }
 
   const softModes = controlModeFromSessionRecord(liveSession);
-  const responderParty =
-    plan.responderRole === "BUYER" ? ("buyer" as const) : ("seller" as const);
+  const responderParty = plan.responderRole === "BUYER" ? ("buyer" as const) : ("seller" as const);
   const responderMode =
     responderParty === "buyer" ? softModes.buyerControlMode : softModes.sellerControlMode;
   if (responderMode === "manual" && !(responderParty === "buyer" && userCounter)) {

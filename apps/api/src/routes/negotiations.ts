@@ -37,13 +37,6 @@ import {
   evaluateAttemptControl,
   isAttemptControlRateLimited,
 } from "../services/attempt-control.service.js";
-import { getListingPlaybackSummaryByInternalId } from "../services/draft.service.js";
-import { validateHnpIngress } from "../services/hnp-ingress.service.js";
-import {
-  assertListingAcceptsNewSession,
-  LISTING_CLAIM_HTTP,
-  ListingClaimError,
-} from "../services/listing-claim.service.js";
 import {
   clearSoftAiInflightAndApplyPending,
   controlModeFromSessionRecord,
@@ -53,6 +46,13 @@ import {
   resumeSellerSoftAutoAfterTimeout,
   setPartyControlMode,
 } from "../services/control-mode.service.js";
+import { getListingPlaybackSummaryByInternalId } from "../services/draft.service.js";
+import { validateHnpIngress } from "../services/hnp-ingress.service.js";
+import {
+  assertListingAcceptsNewSession,
+  LISTING_CLAIM_HTTP,
+  ListingClaimError,
+} from "../services/listing-claim.service.js";
 import {
   applyUserSpecifiedAutoPlayCounter,
   attachNegotiationAutoPlayContext,

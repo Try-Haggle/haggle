@@ -5,11 +5,11 @@
 
 import { type Database, sql } from "@haggle/db";
 import {
+  type ControlModeSessionRow,
   isSellerManualTimedOut,
   resumeSellerSoftAutoAfterTimeout,
   SELLER_MANUAL_FIRST_TIMEOUT_MS,
   SELLER_MANUAL_LATER_TIMEOUT_MS,
-  type ControlModeSessionRow,
 } from "../services/control-mode.service.js";
 
 const BATCH_LIMIT = 50;
@@ -47,7 +47,15 @@ export async function runSellerManualTimeoutResume(db: Database): Promise<{ resu
     if (phase === "later" && since) {
       if (now - since.getTime() < SELLER_MANUAL_LATER_TIMEOUT_MS) continue;
     }
-    if (!isSellerManualTimedOut(probe as Pick<ControlModeSessionRow, "sellerControlMode" | "sellerManualSince" | "sellerManualTimeoutPhase">, now)) {
+    if (
+      !isSellerManualTimedOut(
+        probe as Pick<
+          ControlModeSessionRow,
+          "sellerControlMode" | "sellerManualSince" | "sellerManualTimeoutPhase"
+        >,
+        now,
+      )
+    ) {
       continue;
     }
     const result = await resumeSellerSoftAutoAfterTimeout(db, {

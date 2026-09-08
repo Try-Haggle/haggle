@@ -2,7 +2,7 @@
  * Eng1 M1 goldens — Soft control_mode + Soft AI credit matrix / differential.
  * SoT: docs/wip/auto-manual-control-mode-sot.md
  */
-import { describe, expect, it } from "vitest";
+
 import {
   CREDIT_FLASH_HALF,
   CREDIT_PRO_HALF,
@@ -10,6 +10,7 @@ import {
   quoteSoftAiCreditDifferential,
   softAiCreditBand,
 } from "@haggle/commerce-core";
+import { describe, expect, it } from "vitest";
 import {
   buildControlModeView,
   controlModeFromSessionRecord,

@@ -71,7 +71,8 @@ vi.mock("../services/control-mode.service.js", async (importOriginal) => {
         version: Number(session.version ?? 1),
         buyerControlMode: (session.buyerControlMode as "auto" | "manual" | undefined) ?? "auto",
         sellerControlMode: (session.sellerControlMode as "auto" | "manual" | undefined) ?? "auto",
-        negotiationAgentSnapshot: (session.negotiationAgentSnapshot as Record<string, unknown>) ?? {},
+        negotiationAgentSnapshot:
+          (session.negotiationAgentSnapshot as Record<string, unknown>) ?? {},
       }),
     ),
   };

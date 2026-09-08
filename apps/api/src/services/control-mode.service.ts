@@ -73,13 +73,7 @@ export type SetControlModeResult =
       message?: string;
     };
 
-const TERMINAL = new Set([
-  "ACCEPTED",
-  "REJECTED",
-  "EXPIRED",
-  "SUPERSEDED",
-  "FAILED_COMPATIBILITY",
-]);
+const TERMINAL = new Set(["ACCEPTED", "REJECTED", "EXPIRED", "SUPERSEDED", "FAILED_COMPATIBILITY"]);
 
 type TxDb = {
   execute: Database["execute"];
@@ -110,9 +104,7 @@ function mapLockedRow(raw: Record<string, unknown>): ControlModeSessionRow {
         ? raw.soft_ai_inflight_party
         : null,
     buyerSoftAiCreditsCharged: Number(raw.buyer_soft_ai_credits_charged ?? 0),
-    sellerManualSince: raw.seller_manual_since
-      ? new Date(String(raw.seller_manual_since))
-      : null,
+    sellerManualSince: raw.seller_manual_since ? new Date(String(raw.seller_manual_since)) : null,
     sellerManualTimeoutPhase:
       raw.seller_manual_timeout_phase === "first" || raw.seller_manual_timeout_phase === "later"
         ? raw.seller_manual_timeout_phase
@@ -282,7 +274,10 @@ async function applyModes(
     haggleEnv?: string;
     now: Date;
   },
-): Promise<{ row: ControlModeSessionRow; charge: ReturnType<typeof quoteSoftAiCreditDifferential> } | null> {
+): Promise<{
+  row: ControlModeSessionRow;
+  charge: ReturnType<typeof quoteSoftAiCreditDifferential>;
+} | null> {
   const ask = publishedAskMinorFromSnapshot(session.negotiationAgentSnapshot);
   const charge = quoteSoftAiCreditDifferential({
     alreadyChargedBase: session.buyerSoftAiCreditsCharged,
@@ -305,7 +300,9 @@ async function applyModes(
       version: session.version + 1,
       updatedAt: opts.now,
     })
-    .where(and(eq(negotiationSessions.id, session.id), eq(negotiationSessions.version, session.version)))
+    .where(
+      and(eq(negotiationSessions.id, session.id), eq(negotiationSessions.version, session.version)),
+    )
     .returning();
 
   if (!row) return null;
@@ -365,7 +362,10 @@ export async function setPartyControlMode(
           updatedAt: now,
         })
         .where(
-          and(eq(negotiationSessions.id, session.id), eq(negotiationSessions.version, session.version)),
+          and(
+            eq(negotiationSessions.id, session.id),
+            eq(negotiationSessions.version, session.version),
+          ),
         )
         .returning();
       if (!row) {
@@ -482,7 +482,10 @@ export async function clearSoftAiInflightAndApplyPending(
     const pending =
       input.party === "buyer" ? session.buyerPendingControlMode : session.sellerPendingControlMode;
 
-    if (!pending || pending === (input.party === "buyer" ? session.buyerControlMode : session.sellerControlMode)) {
+    if (
+      !pending ||
+      pending === (input.party === "buyer" ? session.buyerControlMode : session.sellerControlMode)
+    ) {
       const [row] = await tx
         .update(negotiationSessions)
         .set({
@@ -494,7 +497,10 @@ export async function clearSoftAiInflightAndApplyPending(
           updatedAt: now,
         })
         .where(
-          and(eq(negotiationSessions.id, session.id), eq(negotiationSessions.version, session.version)),
+          and(
+            eq(negotiationSessions.id, session.id),
+            eq(negotiationSessions.version, session.version),
+          ),
         )
         .returning();
       return row ? buildControlModeView(mapDrizzleRow(row), { haggleEnv: input.haggleEnv }) : null;
@@ -527,7 +533,12 @@ export async function clearSoftAiInflightAndApplyPending(
         version: session.version + 1,
         updatedAt: now,
       })
-      .where(and(eq(negotiationSessions.id, session.id), eq(negotiationSessions.version, session.version)))
+      .where(
+        and(
+          eq(negotiationSessions.id, session.id),
+          eq(negotiationSessions.version, session.version),
+        ),
+      )
       .returning();
     return row
       ? buildControlModeView(mapDrizzleRow(row), { charge, haggleEnv: input.haggleEnv })
@@ -568,10 +579,14 @@ export async function resumeSellerSoftAutoAfterTimeout(
   return db.transaction(async (tx) => {
     const session = await lockSession(tx as unknown as TxDb, input.sessionId);
     if (!session) return { resumed: false, view: null };
-    if (TERMINAL.has(session.status)) return { resumed: false, view: buildControlModeView(session) };
+    if (TERMINAL.has(session.status))
+      return { resumed: false, view: buildControlModeView(session) };
     const nowMs = input.nowMs ?? Date.now();
     if (!isSellerManualTimedOut(session, nowMs)) {
-      return { resumed: false, view: buildControlModeView(session, { haggleEnv: input.haggleEnv }) };
+      return {
+        resumed: false,
+        view: buildControlModeView(session, { haggleEnv: input.haggleEnv }),
+      };
     }
 
     // If seller Soft AI somehow in-flight, queue Auto via pending
@@ -584,27 +599,34 @@ export async function resumeSellerSoftAutoAfterTimeout(
           updatedAt: new Date(nowMs),
         })
         .where(
-          and(eq(negotiationSessions.id, session.id), eq(negotiationSessions.version, session.version)),
+          and(
+            eq(negotiationSessions.id, session.id),
+            eq(negotiationSessions.version, session.version),
+          ),
         )
         .returning();
       return {
         resumed: false,
-        view: row
-          ? buildControlModeView(mapDrizzleRow(row), { haggleEnv: input.haggleEnv })
-          : null,
+        view: row ? buildControlModeView(mapDrizzleRow(row), { haggleEnv: input.haggleEnv }) : null,
       };
     }
 
     const now = new Date(nowMs);
     const manualFields = nextSellerManualFields("seller", "auto", session, now);
-    const applied = await applyModes(tx as unknown as TxDb, session, session.buyerControlMode, "auto", {
-      clearBuyerPending: false,
-      clearSellerPending: true,
-      sellerManualSince: manualFields.sellerManualSince,
-      sellerManualTimeoutPhase: manualFields.sellerManualTimeoutPhase,
-      haggleEnv: input.haggleEnv,
-      now,
-    });
+    const applied = await applyModes(
+      tx as unknown as TxDb,
+      session,
+      session.buyerControlMode,
+      "auto",
+      {
+        clearBuyerPending: false,
+        clearSellerPending: true,
+        sellerManualSince: manualFields.sellerManualSince,
+        sellerManualTimeoutPhase: manualFields.sellerManualTimeoutPhase,
+        haggleEnv: input.haggleEnv,
+        now,
+      },
+    );
     if (!applied) return { resumed: false, view: null };
     await notify({
       sessionId: session.id,

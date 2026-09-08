@@ -1,5 +1,4 @@
 import { quoteNegotiationCredits } from "@haggle/commerce-core";
-import { initialBuyerSoftAiCharge } from "./control-mode.service.js";
 import { and, type Database, eq, userSavedAddresses } from "@haggle/db";
 import { compileNegotiationAgentSnapshot, type EngineParamsInput } from "@haggle/engine-session";
 import {
@@ -44,6 +43,7 @@ import {
   isAttemptControlRateLimited,
   withBuyerListingStartGate,
 } from "./attempt-control.service.js";
+import { initialBuyerSoftAiCharge } from "./control-mode.service.js";
 import { getPublishedListingByRef } from "./draft.service.js";
 import { mintGuestBuyerClaimPop } from "./guest-buyer-claim-pop.service.js";
 import {
@@ -372,7 +372,8 @@ export async function startBuyerNegotiation(
   const sellerOwnBetter = sellerAllowedModel !== defaultRoute.model;
   // Soft control_mode default Auto/Auto at start (SoT §2). Settings preference
   // for future sessions can override these before create; mid-session toggle is separate.
-  const buyerControlMode = body.buyer_control_mode === "manual" ? ("manual" as const) : ("auto" as const);
+  const buyerControlMode =
+    body.buyer_control_mode === "manual" ? ("manual" as const) : ("auto" as const);
   // Seller Soft mode defaults Auto; only the seller may toggle via control-mode API.
   const sellerControlMode = "auto" as const;
   const buyerCreditQuote = quoteNegotiationCredits({
