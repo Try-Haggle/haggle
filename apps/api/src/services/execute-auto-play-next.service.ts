@@ -10,6 +10,13 @@ import {
   SELLER_CRITERIA_PAUSE_MARKER,
 } from "../negotiation/phase/seller-criteria-pause.js";
 import {
+  clearSoftAiInflightAndApplyPending,
+  controlModeFromSessionRecord,
+  isSellerManualTimedOut,
+  markSoftAiInflight,
+  resumeSellerSoftAutoAfterTimeout,
+} from "./control-mode.service.js";
+import {
   applyUserSpecifiedAutoPlayCounter,
   attachNegotiationAutoPlayContext,
   canApplyBuyerUserCounter,
@@ -177,20 +184,73 @@ export async function executeAutoPlayNext(
   const appliedPriceMinor =
     input.priceMinor !== undefined && input.priceMinor > 0 ? input.priceMinor : undefined;
 
+  let liveSession = session;
+  if (isSellerManualTimedOut(controlModeFromSessionRecord(session))) {
+    const resumed = await resumeSellerSoftAutoAfterTimeout(db, {
+      sessionId: session.id,
+      haggleEnv: process.env.HAGGLE_ENV,
+    });
+    if (resumed.resumed) {
+      const refreshed = await getSessionById(db, session.id);
+      if (refreshed) liveSession = refreshed;
+    }
+  }
+
+  const softModes = controlModeFromSessionRecord(liveSession);
+  const responderParty =
+    plan.responderRole === "BUYER" ? ("buyer" as const) : ("seller" as const);
+  const responderMode =
+    responderParty === "buyer" ? softModes.buyerControlMode : softModes.sellerControlMode;
+  if (responderMode === "manual" && !(responderParty === "buyer" && userCounter)) {
+    return {
+      ok: true,
+      status: 200,
+      body: {
+        waiting_for_manual: true,
+        party: responderParty,
+        buyer_control_mode: softModes.buyerControlMode,
+        seller_control_mode: softModes.sellerControlMode,
+        session_status: liveSession.status,
+        current_round: liveSession.currentRound,
+      },
+    };
+  }
+
+  const softAiDraft = !userCounter;
+  if (softAiDraft) {
+    const inflightClaimed = await markSoftAiInflight(
+      db,
+      liveSession.id,
+      responderParty,
+      liveSession.version,
+    );
+    if (!inflightClaimed) {
+      return { ok: false, status: 409, body: { error: "CONCURRENT_MODIFICATION" } };
+    }
+    liveSession = (await getSessionById(db, liveSession.id)) ?? liveSession;
+  }
+
   const claimed = await setSessionPerspective(
     db,
-    session.id,
+    liveSession.id,
     plan.responderRole,
     attachNegotiationAutoPlayContext(plan.responderSnapshot, context),
-    session.version,
+    liveSession.version,
   );
   if (!claimed) {
+    if (softAiDraft) {
+      await clearSoftAiInflightAndApplyPending(db, {
+        sessionId: liveSession.id,
+        party: responderParty,
+        haggleEnv: process.env.HAGGLE_ENV,
+      });
+    }
     return { ok: false, status: 409, body: { error: "CONCURRENT_MODIFICATION" } };
   }
 
   try {
     const envelope = buildHostHnpOfferEnvelope({
-      sessionId: session.id,
+      sessionId: liveSession.id,
       roundNo: plan.roundNo,
       senderRole: plan.senderRole,
       priceMinor: plan.offerPriceMinor,
@@ -202,6 +262,13 @@ export async function executeAutoPlayNext(
       requireSignature: false,
     });
     if (!submitted.ok) {
+      if (softAiDraft) {
+        await clearSoftAiInflightAndApplyPending(db, {
+          sessionId: liveSession.id,
+          party: responderParty,
+          haggleEnv: process.env.HAGGLE_ENV,
+        });
+      }
       return {
         ok: false,
         status: submitted.status,
@@ -216,7 +283,7 @@ export async function executeAutoPlayNext(
       sessionStatus: submitted.sessionStatus,
     };
 
-    let finalSession = await getSessionById(db, session.id);
+    let finalSession = await getSessionById(db, liveSession.id);
     if (
       finalSession &&
       !isNegotiationAutoPlayTerminal(finalSession.status) &&
@@ -226,6 +293,14 @@ export async function executeAutoPlayNext(
         (await updateSessionState(db, finalSession.id, finalSession.version, {
           status: "STALLED",
         })) ?? finalSession;
+    }
+
+    if (softAiDraft) {
+      await clearSoftAiInflightAndApplyPending(db, {
+        sessionId: liveSession.id,
+        party: responderParty,
+        haggleEnv: process.env.HAGGLE_ENV,
+      });
     }
 
     const finalStatus = finalSession?.status ?? result.sessionStatus;
@@ -239,10 +314,19 @@ export async function executeAutoPlayNext(
         round_id: result.roundId,
         round_no: result.roundNo,
         decision: result.decision,
+        buyer_control_mode: softModes.buyerControlMode,
+        seller_control_mode: softModes.sellerControlMode,
         ...(appliedPriceMinor !== undefined ? { applied_price_minor: appliedPriceMinor } : {}),
       },
     };
   } catch (err) {
+    if (softAiDraft) {
+      await clearSoftAiInflightAndApplyPending(db, {
+        sessionId: liveSession.id,
+        party: responderParty,
+        haggleEnv: process.env.HAGGLE_ENV,
+      }).catch(() => undefined);
+    }
     const message = err instanceof Error ? err.message : String(err);
     if (message.startsWith("SESSION_NOT_FOUND")) {
       return { ok: false, status: 404, body: { error: "SESSION_NOT_FOUND" } };

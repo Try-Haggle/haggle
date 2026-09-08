@@ -54,6 +54,29 @@ vi.mock("../services/negotiation-round.service.js", () => ({
   getRoundsBySessionId: vi.fn(async () => []),
 }));
 
+vi.mock("../services/control-mode.service.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/control-mode.service.js")>();
+  return {
+    ...actual,
+    isSellerManualTimedOut: vi.fn(() => false),
+    resumeSellerSoftAutoAfterTimeout: vi.fn(async () => ({ resumed: false, view: null })),
+    markSoftAiInflight: vi.fn(async () => true),
+    clearSoftAiInflightAndApplyPending: vi.fn(async () => null),
+    controlModeFromSessionRecord: vi.fn((session: Record<string, unknown>) =>
+      actual.controlModeFromSessionRecord({
+        id: String(session.id ?? "sess"),
+        buyerId: String(session.buyerId ?? "buyer"),
+        sellerId: String(session.sellerId ?? "seller"),
+        status: String(session.status ?? "ACTIVE"),
+        version: Number(session.version ?? 1),
+        buyerControlMode: (session.buyerControlMode as "auto" | "manual" | undefined) ?? "auto",
+        sellerControlMode: (session.sellerControlMode as "auto" | "manual" | undefined) ?? "auto",
+        negotiationAgentSnapshot: (session.negotiationAgentSnapshot as Record<string, unknown>) ?? {},
+      }),
+    ),
+  };
+});
+
 describe("executeAutoPlayNext driver guard", () => {
   it("rejects an MCP play against a web-driven session", async () => {
     const result = await executeAutoPlayNext({} as never, {

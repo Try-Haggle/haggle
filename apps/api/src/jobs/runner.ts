@@ -34,6 +34,7 @@ import { runPaymentIntentExpiry } from "./payment-intent-expiry.js";
 import { runPaymentReconciliationReport } from "./payment-reconciliation-report.js";
 import { runProductionReconciliationReport } from "./production-reconciliation-report.js";
 import { runRetryFailedEmails } from "./retry-failed-emails.js";
+import { runSellerManualTimeoutResume } from "./seller-manual-timeout-resume.js";
 import { runSettlementAutoRelease } from "./settlement-auto-release.js";
 import { runShipmentApvCancellationAuditArchive } from "./shipment-apv-cancellation-audit-archive.js";
 import { runShipmentApvCancellationAuditArchiveAlert } from "./shipment-apv-cancellation-audit-archive-alert.js";
@@ -91,6 +92,17 @@ export function buildJobRegistry(): CronJob[] {
       },
       enabled: apiRateLimitConfig.mode === "postgres",
       runOnStart: true,
+    },
+    {
+      name: "seller-manual-timeout-resume",
+      intervalMs: 60 * 1000,
+      handler: async (db) => {
+        const result = await runSellerManualTimeoutResume(db);
+        if (result.resumed > 0) {
+          console.log(`[cron] seller-manual-timeout-resume resumed=${result.resumed}`);
+        }
+      },
+      enabled: true,
     },
     {
       name: "settlement-auto-release",

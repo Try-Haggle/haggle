@@ -1,4 +1,5 @@
 import { quoteNegotiationCredits } from "@haggle/commerce-core";
+import { initialBuyerSoftAiCharge } from "./control-mode.service.js";
 import { and, type Database, eq, userSavedAddresses } from "@haggle/db";
 import { compileNegotiationAgentSnapshot, type EngineParamsInput } from "@haggle/engine-session";
 import {
@@ -99,6 +100,8 @@ export const startBuyerNegotiationSchema = z.object({
   fulfillment: fulfillmentPreferenceSchema.optional(),
   pro_model_credit: z.boolean().optional(),
   requested_model: z.string().min(1).max(80).optional(),
+  /** Soft control_mode for the starting buyer (default Auto). Party-only — cannot set seller. */
+  buyer_control_mode: z.enum(["auto", "manual"]).optional(),
 });
 
 export type StartBuyerNegotiationBody = z.infer<typeof startBuyerNegotiationSchema>;
@@ -367,15 +370,30 @@ export async function startBuyerNegotiation(
       ? listingRequestedModel
       : defaultRoute.model;
   const sellerOwnBetter = sellerAllowedModel !== defaultRoute.model;
+  // Soft control_mode default Auto/Auto at start (SoT §2). Settings preference
+  // for future sessions can override these before create; mid-session toggle is separate.
+  const buyerControlMode = body.buyer_control_mode === "manual" ? ("manual" as const) : ("auto" as const);
+  // Seller Soft mode defaults Auto; only the seller may toggle via control-mode API.
+  const sellerControlMode = "auto" as const;
   const buyerCreditQuote = quoteNegotiationCredits({
     role: "buyer",
     publishedAskMinor: askMinor,
+    buyerControlMode,
+    sellerControlMode,
     haggleEnv: process.env.HAGGLE_ENV,
   });
   const sellerCreditQuote = quoteNegotiationCredits({
     role: "seller",
     publishedAskMinor: askMinor,
     ownBetterModel: sellerOwnBetter,
+    buyerControlMode,
+    sellerControlMode,
+    haggleEnv: process.env.HAGGLE_ENV,
+  });
+  const softAiCharge = initialBuyerSoftAiCharge({
+    publishedAskMinor: askMinor,
+    buyerControlMode,
+    sellerControlMode,
     haggleEnv: process.env.HAGGLE_ENV,
   });
   const listingOffer = parseSellerFulfillmentOffer(listingSnapshot?.sellerFulfillmentOffer);
@@ -609,6 +627,10 @@ export async function startBuyerNegotiation(
     negotiationAgentSnapshot: autoPlay.sellerSnapshot,
     expiresAt,
     driver: input.driver,
+    buyerControlMode,
+    sellerControlMode,
+    // Record policy charge base even when staging unlimited (charge_total=0).
+    buyerSoftAiCreditsCharged: softAiCharge.new_charged_base,
   };
 
   // C2: authenticated path re-checks attempt control under advisory lock at
@@ -654,6 +676,16 @@ export async function startBuyerNegotiation(
       status: session.status,
       run_token: autoPlay.runToken,
       driver: input.driver,
+      buyer_control_mode: buyerControlMode,
+      seller_control_mode: sellerControlMode,
+      credit_quote: buyerCreditQuote,
+      soft_ai_credit_charge: {
+        charge_base: softAiCharge.charge_base,
+        charge_total: softAiCharge.charge_total,
+        band: softAiCharge.band,
+        unlimited: softAiCharge.unlimited,
+        buyer_soft_ai_credits_charged: softAiCharge.new_charged_base,
+      },
       ...(input.isGuest
         ? {
             guest_buyer_id: buyer.id,

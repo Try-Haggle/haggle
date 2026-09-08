@@ -45,6 +45,15 @@ import {
   ListingClaimError,
 } from "../services/listing-claim.service.js";
 import {
+  clearSoftAiInflightAndApplyPending,
+  controlModeFromSessionRecord,
+  isSellerManualTimedOut,
+  markSoftAiInflight,
+  partyForActor,
+  resumeSellerSoftAutoAfterTimeout,
+  setPartyControlMode,
+} from "../services/control-mode.service.js";
+import {
   applyUserSpecifiedAutoPlayCounter,
   attachNegotiationAutoPlayContext,
   canApplyBuyerUserCounter,
@@ -101,6 +110,11 @@ const pauseAnswerSchema = z.object({
   stances: z
     .array(z.object({ checkId: z.string().min(1), stance: z.string().max(2000) }))
     .optional(),
+});
+
+/** Soft Auto/Manual control_mode — party-only (Eng1 M1 / SoT). */
+const controlModePatchSchema = z.object({
+  control_mode: z.enum(["auto", "manual"]),
 });
 
 const transactionSignalsSchema = z
@@ -362,6 +376,13 @@ export function registerNegotiationRoutes(
         buyer_negotiation_agent_emoji: buyerNegotiationAgentEmoji,
         driver: session.driver === "mcp" ? "mcp" : "web",
         chat_url: negotiationChatUrl(session.id),
+        // Soft control_mode — mutually visible (CU-ready for M2)
+        buyer_control_mode: session.buyerControlMode === "manual" ? "manual" : "auto",
+        seller_control_mode: session.sellerControlMode === "manual" ? "manual" : "auto",
+        buyer_pending_control_mode: session.buyerPendingControlMode ?? null,
+        seller_pending_control_mode: session.sellerPendingControlMode ?? null,
+        soft_ai_inflight_party: session.softAiInflightParty ?? null,
+        buyer_soft_ai_credits_charged: session.buyerSoftAiCreditsCharged ?? 0,
         listing: listing
           ? {
               public_id: listing.publicId,
@@ -901,6 +922,53 @@ export function registerNegotiationRoutes(
     });
   });
 
+  // PATCH /negotiations/sessions/:id/control-mode — Soft Auto/Manual (party-only)
+  //
+  // SoT: docs/wip/auto-manual-control-mode-sot.md — cannot set counterpart;
+  // credit differential under row lock (TOCTOU); handoff if Soft AI in-flight.
+  app.patch<{ Params: { id: string } }>(
+    "/negotiations/sessions/:id/control-mode",
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const parsed = controlModePatchSchema.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send({ error: "INVALID_CONTROL_MODE_REQUEST", issues: parsed.error.issues });
+      }
+      const session = await getSessionById(db, request.params.id);
+      if (!session) {
+        return reply.code(404).send({ error: "SESSION_NOT_FOUND" });
+      }
+      const access = validateSessionParticipant(request.user!, session);
+      if (!access.ok) {
+        return reply.code(access.status).send({ error: access.error });
+      }
+      const party = partyForActor(request.user!.id, session);
+      if (!party) {
+        return reply.code(403).send({ error: "SESSION_ACTOR_MISMATCH" });
+      }
+      const result = await setPartyControlMode(db, {
+        sessionId: session.id,
+        actorUserId: request.user!.id,
+        party,
+        controlMode: parsed.data.control_mode,
+        haggleEnv: process.env.HAGGLE_ENV,
+      });
+      if (!result.ok) {
+        return reply.code(result.status).send({
+          error: result.error,
+          ...(result.message ? { message: result.message } : {}),
+        });
+      }
+      return reply.send({
+        applied: result.applied,
+        pending_handoff: result.pending_handoff,
+        ...result.view,
+      });
+    },
+  );
+
   // POST /negotiations/sessions/:id/auto-play/next — execute exactly one round
   //
   // The browser calls this endpoint sequentially. This keeps every LLM round
@@ -1052,20 +1120,72 @@ export function registerNegotiationRoutes(
           ? parsed.data.price_minor
           : undefined;
 
+      // Seller Manual timeout → Soft Auto resume (draft 30m first / 2h later)
+      let liveSession = session;
+      if (isSellerManualTimedOut(controlModeFromSessionRecord(session))) {
+        const resumed = await resumeSellerSoftAutoAfterTimeout(db, {
+          sessionId: session.id,
+          haggleEnv: process.env.HAGGLE_ENV,
+        });
+        if (resumed.resumed) {
+          const refreshed = await getSessionById(db, session.id);
+          if (refreshed) liveSession = refreshed;
+        }
+      }
+
+      // Soft Manual: do not draft Haggle AI Soft turns for that party.
+      const softModes = controlModeFromSessionRecord(liveSession);
+      const responderParty =
+        plan.responderRole === "BUYER" ? ("buyer" as const) : ("seller" as const);
+      const responderMode =
+        responderParty === "buyer" ? softModes.buyerControlMode : softModes.sellerControlMode;
+      if (responderMode === "manual" && !(responderParty === "buyer" && userCounter)) {
+        return reply.send({
+          waiting_for_manual: true,
+          party: responderParty,
+          buyer_control_mode: softModes.buyerControlMode,
+          seller_control_mode: softModes.sellerControlMode,
+          session_status: liveSession.status,
+          current_round: liveSession.currentRound,
+        });
+      }
+
+      // Soft AI handoff lock only when Haggle AI drafts (not user-specified counter).
+      const softAiDraft = !userCounter;
+      if (softAiDraft) {
+        const inflightClaimed = await markSoftAiInflight(
+          db,
+          liveSession.id,
+          responderParty,
+          liveSession.version,
+        );
+        if (!inflightClaimed) {
+          return reply.code(409).send({ error: "CONCURRENT_MODIFICATION" });
+        }
+        liveSession = (await getSessionById(db, liveSession.id)) ?? liveSession;
+      }
+
       const claimed = await setSessionPerspective(
         db,
-        session.id,
+        liveSession.id,
         plan.responderRole,
         attachNegotiationAutoPlayContext(plan.responderSnapshot, context),
-        session.version,
+        liveSession.version,
       );
       if (!claimed) {
+        if (softAiDraft) {
+          await clearSoftAiInflightAndApplyPending(db, {
+            sessionId: liveSession.id,
+            party: responderParty,
+            haggleEnv: process.env.HAGGLE_ENV,
+          });
+        }
         return reply.code(409).send({ error: "CONCURRENT_MODIFICATION" });
       }
 
       try {
         const envelope = buildHostHnpOfferEnvelope({
-          sessionId: session.id,
+          sessionId: liveSession.id,
           roundNo: plan.roundNo,
           senderRole: plan.senderRole,
           priceMinor: plan.offerPriceMinor,
@@ -1077,6 +1197,13 @@ export function registerNegotiationRoutes(
           requireSignature: false,
         });
         if (!submitted.ok) {
+          if (softAiDraft) {
+            await clearSoftAiInflightAndApplyPending(db, {
+              sessionId: liveSession.id,
+              party: responderParty,
+              haggleEnv: process.env.HAGGLE_ENV,
+            });
+          }
           return reply.code(submitted.status).send(submitted.body);
         }
         const result = {
@@ -1087,7 +1214,7 @@ export function registerNegotiationRoutes(
           sessionStatus: submitted.sessionStatus,
         };
 
-        let finalSession = await getSessionById(db, session.id);
+        let finalSession = await getSessionById(db, liveSession.id);
         if (
           finalSession &&
           !isNegotiationAutoPlayTerminal(finalSession.status) &&
@@ -1099,6 +1226,14 @@ export function registerNegotiationRoutes(
             })) ?? finalSession;
         }
 
+        if (softAiDraft) {
+          await clearSoftAiInflightAndApplyPending(db, {
+            sessionId: liveSession.id,
+            party: responderParty,
+            haggleEnv: process.env.HAGGLE_ENV,
+          });
+        }
+
         const finalStatus = finalSession?.status ?? result.sessionStatus;
         return reply.code(result.idempotent ? 200 : 201).send({
           complete: isNegotiationAutoPlayTerminal(finalStatus),
@@ -1107,9 +1242,18 @@ export function registerNegotiationRoutes(
           round_id: result.roundId,
           round_no: result.roundNo,
           decision: result.decision,
+          buyer_control_mode: softModes.buyerControlMode,
+          seller_control_mode: softModes.sellerControlMode,
           ...(appliedPriceMinor !== undefined ? { applied_price_minor: appliedPriceMinor } : {}),
         });
       } catch (err) {
+        if (softAiDraft) {
+          await clearSoftAiInflightAndApplyPending(db, {
+            sessionId: liveSession.id,
+            party: responderParty,
+            haggleEnv: process.env.HAGGLE_ENV,
+          }).catch(() => undefined);
+        }
         const message = err instanceof Error ? err.message : String(err);
         if (message.startsWith("SESSION_NOT_FOUND")) {
           return reply.code(404).send({ error: "SESSION_NOT_FOUND" });

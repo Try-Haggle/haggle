@@ -90,6 +90,25 @@ export const negotiationSessions = pgTable(
     // LLM negotiation engine columns (Step 57)
     phase: text("phase"),
     interventionMode: text("intervention_mode").default("FULL_AUTO"),
+    // Soft Auto/Manual control mode (Eng1 M1) — orthogonal to intervention_mode / Hard Authority
+    buyerControlMode: text("buyer_control_mode", { enum: ["auto", "manual"] })
+      .notNull()
+      .default("auto"),
+    sellerControlMode: text("seller_control_mode", { enum: ["auto", "manual"] })
+      .notNull()
+      .default("auto"),
+    /** Pending Soft mode while that party's Soft AI turn is in-flight (handoff). */
+    buyerPendingControlMode: text("buyer_pending_control_mode", { enum: ["auto", "manual"] }),
+    sellerPendingControlMode: text("seller_pending_control_mode", { enum: ["auto", "manual"] }),
+    softAiInflightParty: text("soft_ai_inflight_party", { enum: ["buyer", "seller"] }),
+    /** Cumulative buyer Soft-AI policy credits charged (never decreases — no refund). */
+    buyerSoftAiCreditsCharged: integer("buyer_soft_ai_credits_charged").notNull().default(0),
+    /** Seller Manual watchdog: when current Manual period started. */
+    sellerManualSince: timestamp("seller_manual_since", { withTimezone: true }),
+    /** first reply = 30m; later Manual periods = 2h (SoT §7). */
+    sellerManualTimeoutPhase: text("seller_manual_timeout_phase", {
+      enum: ["first", "later"],
+    }),
     buddyTone: jsonb("buddy_tone").$type<Record<string, unknown>>(),
     coachingSnapshot: jsonb("coaching_snapshot").$type<Record<string, unknown>>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
