@@ -29,8 +29,7 @@ export function ControlModeStatusStrip({
   syncState = "idle",
   className,
 }: ControlModeStatusStripProps) {
-  const handoff =
-    syncState === "handoff" || (pendingTarget != null && pendingTarget !== ownMode);
+  const handoff = syncState === "handoff" || (pendingTarget != null && pendingTarget !== ownMode);
   const stubbed = syncState === "stubbed";
 
   return (

@@ -75,8 +75,7 @@ export function SellerNegotiation({ initialPayload }: { initialPayload: SessionR
   const serverHasControlModes =
     payload.session.buyer_control_mode != null || payload.session.seller_control_mode != null;
   const showSellerManualBar =
-    sellerCanAct &&
-    (sellerIsManual || !serverHasControlModes || control.syncState === "stubbed");
+    sellerCanAct && (sellerIsManual || !serverHasControlModes || control.syncState === "stubbed");
 
   return (
     <>

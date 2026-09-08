@@ -124,7 +124,9 @@ export function writeDefaultControlModePreference(mode: ControlMode): void {
 export async function patchSessionControlMode(
   sessionId: string,
   controlMode: ControlMode,
-): Promise<{ ok: true; data: PatchControlModeResponse } | { ok: false; stub: true; reason: string }> {
+): Promise<
+  { ok: true; data: PatchControlModeResponse } | { ok: false; stub: true; reason: string }
+> {
   try {
     const data = await api.patch<PatchControlModeResponse>(
       `/negotiations/sessions/${sessionId}/control-mode`,
@@ -132,7 +134,10 @@ export async function patchSessionControlMode(
     );
     return { ok: true, data };
   } catch (err) {
-    if (err instanceof ApiError && (err.status === 404 || err.status === 501 || err.status === 405)) {
+    if (
+      err instanceof ApiError &&
+      (err.status === 404 || err.status === 501 || err.status === 405)
+    ) {
       // M1 not on staging yet — UI keeps SoT field names; caller may queue locally.
       return {
         ok: false,

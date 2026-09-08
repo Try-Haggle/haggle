@@ -4,9 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type ControlMode,
   type ControlModeParty,
-  type SessionControlModeFields,
   modesFromServerSession,
   patchSessionControlMode,
+  type SessionControlModeFields,
 } from "@/lib/control-mode";
 
 export type ControlModeSyncState =
@@ -49,9 +49,12 @@ export function useSessionControlMode(opts: {
   const applyingRef = useRef(false);
 
   // Server truth wins when it moves (handoff commit / peer update / reload).
+  const serverOwn = server.own;
+  const serverOwnPending = server.ownPending;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: clear optimistic own when server mode/handoff/session changes
   useEffect(() => {
     setOptimisticOwn(null);
-  }, [server.own, server.ownPending, sessionId]);
+  }, [serverOwn, serverOwnPending, sessionId]);
 
   const ownDisplayed = optimisticOwn ?? server.own;
   const peerDisplayed = server.peer; // never optimistic / never client-claimed

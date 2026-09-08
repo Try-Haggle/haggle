@@ -1,7 +1,10 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
-import { DEFAULT_CONTROL_MODE_PREF_KEY, readDefaultControlModePreference } from "@/lib/control-mode";
+import {
+  DEFAULT_CONTROL_MODE_PREF_KEY,
+  readDefaultControlModePreference,
+} from "@/lib/control-mode";
 import { ControlModeSettings } from "./control-mode-settings";
 
 describe("ControlModeSettings", () => {

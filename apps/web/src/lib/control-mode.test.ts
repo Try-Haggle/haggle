@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
+  counterpartModeLabel,
   DEFAULT_CONTROL_MODE,
   DEFAULT_CONTROL_MODE_PREF_KEY,
-  counterpartModeLabel,
   isControlMode,
   modesFromServerSession,
   ownModeLabel,
