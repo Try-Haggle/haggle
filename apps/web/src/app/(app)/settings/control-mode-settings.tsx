@@ -50,7 +50,9 @@ export function ControlModeSettings() {
           <p className="text-sm font-medium text-ink">
             {autoOn ? "Auto (Haggle AI Soft turns)" : "Manual (you drive Soft turns)"}
           </p>
-          <p className="text-xs text-ink-muted">Hard Authority, fees, and settlement are unchanged.</p>
+          <p className="text-xs text-ink-muted">
+            Hard Authority, fees, and settlement are unchanged.
+          </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <span className={`text-xs font-semibold ${autoOn ? "text-info" : "text-ink-muted"}`}>
