@@ -36,6 +36,119 @@ export type AutoPlayNextResult =
   | { ok: true; status: number; body: Record<string, unknown> }
   | { ok: false; status: number; body: Record<string, unknown> };
 
+export type SoftManualWaitingBody = {
+  error: "SOFT_MANUAL_WAITING";
+  waiting_for_manual: true;
+  party: "buyer" | "seller";
+  buyer_control_mode: "auto" | "manual";
+  seller_control_mode: "auto" | "manual";
+  session_status: string;
+  current_round: number;
+};
+
+/**
+ * Soft AI draft party for the next /auto-play/next step (responder after plan +
+ * optional buyer user-counter role flip). Derived from durable rounds so Soft
+ * Manual waiting can be decided even when auto-play context is missing (M4).
+ */
+export function softAiDraftPartyFromRounds(
+  rounds: Array<{ senderRole: string }>,
+  userCounter: boolean,
+): "buyer" | "seller" {
+  const latestRound = rounds.at(-1);
+  const senderRole: "BUYER" | "SELLER" = latestRound
+    ? latestRound.senderRole === "BUYER"
+      ? "SELLER"
+      : "BUYER"
+    : "BUYER";
+  let responderRole: "BUYER" | "SELLER" = senderRole === "BUYER" ? "SELLER" : "BUYER";
+  // Mirror applyUserSpecifiedAutoPlayCounter: buyer counter on seller-incoming flips.
+  if (userCounter && senderRole === "SELLER" && responderRole === "BUYER") {
+    responderRole = "SELLER";
+  }
+  return responderRole === "BUYER" ? "buyer" : "seller";
+}
+
+/** 409 SOFT_MANUAL_WAITING when Soft AI would draft for a Manual party. */
+export function softManualWaitingBodyForParty(
+  session: {
+    status: string;
+    currentRound: number;
+    buyerControlMode?: string | null;
+    sellerControlMode?: string | null;
+    buyerPendingControlMode?: string | null;
+    sellerPendingControlMode?: string | null;
+    softAiInflightParty?: string | null;
+    buyerSoftAiCreditsCharged?: number | null;
+    sellerManualSince?: Date | null;
+    sellerManualTimeoutPhase?: string | null;
+    buyerId: string;
+    sellerId: string;
+    id: string;
+    version: number;
+    negotiationAgentSnapshot?: Record<string, unknown> | null;
+  },
+  party: "buyer" | "seller",
+  userCounter: boolean,
+): SoftManualWaitingBody | null {
+  const softModes = controlModeFromSessionRecord(session);
+  const mode = party === "buyer" ? softModes.buyerControlMode : softModes.sellerControlMode;
+  if (mode === "manual" && !(party === "buyer" && userCounter)) {
+    return {
+      error: "SOFT_MANUAL_WAITING",
+      waiting_for_manual: true,
+      party,
+      buyer_control_mode: softModes.buyerControlMode,
+      seller_control_mode: softModes.sellerControlMode,
+      session_status: session.status,
+      current_round: session.currentRound,
+    };
+  }
+  return null;
+}
+
+/**
+ * Resume seller Manual timeout if needed, then Soft Manual waiting for the next
+ * Soft AI draft party. Used when auto-play context is missing so Soft Manual
+ * takes precedence over AUTO_PLAY_CONTEXT_MISSING (Eng1 M4).
+ */
+export async function resolveSoftManualWaitingWithoutContext(
+  db: Database,
+  session: {
+    id: string;
+    status: string;
+    currentRound: number;
+    version: number;
+    buyerId: string;
+    sellerId: string;
+    buyerControlMode?: string | null;
+    sellerControlMode?: string | null;
+    buyerPendingControlMode?: string | null;
+    sellerPendingControlMode?: string | null;
+    softAiInflightParty?: string | null;
+    buyerSoftAiCreditsCharged?: number | null;
+    sellerManualSince?: Date | null;
+    sellerManualTimeoutPhase?: string | null;
+    negotiationAgentSnapshot?: Record<string, unknown> | null;
+  },
+  opts: { userCounter: boolean },
+): Promise<SoftManualWaitingBody | null> {
+  let liveSession = session;
+  if (isSellerManualTimedOut(controlModeFromSessionRecord(session))) {
+    const resumed = await resumeSellerSoftAutoAfterTimeout(db, {
+      sessionId: session.id,
+      haggleEnv: process.env.HAGGLE_ENV,
+    });
+    if (resumed.resumed) {
+      const refreshed = await getSessionById(db, session.id);
+      if (refreshed) liveSession = refreshed;
+    }
+  }
+  const rounds = await getRoundsBySessionId(db, liveSession.id);
+  const party = softAiDraftPartyFromRounds(rounds, opts.userCounter);
+  return softManualWaitingBodyForParty(liveSession, party, opts.userCounter);
+}
+
 export async function executeAutoPlayNext(
   db: Database,
   input: {
@@ -63,8 +176,14 @@ export async function executeAutoPlayNext(
     return { ok: false, status: 403, body: { error: "SESSION_ACTOR_MISMATCH" } };
   }
 
+  const userCounter = input.priceMinor !== undefined || input.message !== undefined;
   const context = getNegotiationAutoPlayContext(session.negotiationAgentSnapshot);
   if (!context) {
+    // Eng1 M4: Soft Manual waiting precedes AUTO_PLAY_CONTEXT_MISSING.
+    const softWait = await resolveSoftManualWaitingWithoutContext(db, session, { userCounter });
+    if (softWait) {
+      return { ok: false, status: 409, body: softWait };
+    }
     return { ok: false, status: 409, body: { error: "AUTO_PLAY_CONTEXT_MISSING" } };
   }
 
@@ -158,7 +277,6 @@ export async function executeAutoPlayNext(
     return { ok: false, status: 409, body: { error: "AUTO_PLAY_ROUND_UNAVAILABLE" } };
   }
 
-  const userCounter = input.priceMinor !== undefined || input.message !== undefined;
   // NOT_BUYER_TURN only when the buyer is neither sender nor responder this round.
   // After a persisted BUYER round, plan.senderRole is SELLER (buyer responds) — still
   // allow price_minor as a forced BUYER COUNTER (fc14da18).
@@ -198,22 +316,9 @@ export async function executeAutoPlayNext(
 
   const softModes = controlModeFromSessionRecord(liveSession);
   const responderParty = plan.responderRole === "BUYER" ? ("buyer" as const) : ("seller" as const);
-  const responderMode =
-    responderParty === "buyer" ? softModes.buyerControlMode : softModes.sellerControlMode;
-  if (responderMode === "manual" && !(responderParty === "buyer" && userCounter)) {
-    return {
-      ok: false,
-      status: 409,
-      body: {
-        error: "SOFT_MANUAL_WAITING",
-        waiting_for_manual: true,
-        party: responderParty,
-        buyer_control_mode: softModes.buyerControlMode,
-        seller_control_mode: softModes.sellerControlMode,
-        session_status: liveSession.status,
-        current_round: liveSession.currentRound,
-      },
-    };
+  const softWait = softManualWaitingBodyForParty(liveSession, responderParty, userCounter);
+  if (softWait) {
+    return { ok: false, status: 409, body: softWait };
   }
 
   const softAiDraft = !userCounter;

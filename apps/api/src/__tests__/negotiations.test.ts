@@ -757,6 +757,63 @@ describe("Negotiation API", () => {
       };
     }
 
+    it("returns 409 SOFT_MANUAL_WAITING when Soft Manual and auto-play context is missing (Eng1 M4)", async () => {
+      const session = {
+        ...mockSession,
+        role: "SELLER" as const,
+        status: "CREATED",
+        currentRound: 0,
+        lastOfferPriceMinor: null,
+        negotiationAgentSnapshot: { alpha: { price: 0.4 } },
+        buyerControlMode: "auto" as const,
+        sellerControlMode: "manual" as const,
+      };
+      mockGetSessionById.mockResolvedValue(session);
+      mockGetRoundsBySessionId.mockResolvedValue([]);
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/sess-001/auto-play/next",
+        headers: AUTH_HEADERS,
+        payload: {},
+      });
+
+      expect(res.statusCode).toBe(409);
+      expect(res.json()).toMatchObject({
+        error: "SOFT_MANUAL_WAITING",
+        waiting_for_manual: true,
+        party: "seller",
+        buyer_control_mode: "auto",
+        seller_control_mode: "manual",
+      });
+      expect(mockSetSessionPerspective).not.toHaveBeenCalled();
+    });
+
+    it("preserves AUTO_PLAY_CONTEXT_MISSING for Soft Auto when context is missing", async () => {
+      const session = {
+        ...mockSession,
+        role: "SELLER" as const,
+        status: "CREATED",
+        currentRound: 0,
+        lastOfferPriceMinor: null,
+        negotiationAgentSnapshot: { alpha: { price: 0.4 } },
+        buyerControlMode: "auto" as const,
+        sellerControlMode: "auto" as const,
+      };
+      mockGetSessionById.mockResolvedValue(session);
+      mockGetRoundsBySessionId.mockResolvedValue([]);
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/sess-001/auto-play/next",
+        headers: AUTH_HEADERS,
+        payload: {},
+      });
+
+      expect(res.statusCode).toBe(409);
+      expect(res.json()).toEqual({ error: "AUTO_PLAY_CONTEXT_MISSING" });
+    });
+
     it("rejects an unauthenticated caller without the session run token", async () => {
       const { session } = autoPlayFixture();
       mockGetSessionById.mockResolvedValue(session);
