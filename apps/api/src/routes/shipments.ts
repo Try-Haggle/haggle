@@ -169,7 +169,7 @@ const recordEventSchema = z.object({
   ]),
   raw_status: z.string().max(INPUT_LIMITS.mediumTextChars).optional(),
   payload: boundedJson(
-    z.record(z.any()),
+    z.record(z.string(), z.any()),
     INPUT_LIMITS.jsonPayloadBytes,
     "shipment event payload",
   ).optional(),
@@ -336,7 +336,11 @@ function manualShipmentEventId(shipmentId: string, externalEventId: string): str
 
 const _webhookSchema = z.object({
   carrier: z.string().max(INPUT_LIMITS.shortTextChars),
-  payload: boundedJson(z.record(z.any()), INPUT_LIMITS.jsonPayloadBytes, "carrier webhook payload"),
+  payload: boundedJson(
+    z.record(z.string(), z.any()),
+    INPUT_LIMITS.jsonPayloadBytes,
+    "carrier webhook payload",
+  ),
 });
 
 function requiresRealShippingProvider(): boolean {

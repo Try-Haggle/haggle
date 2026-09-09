@@ -13,7 +13,7 @@ import {
 const computeTrustSchema = z.object({
   role: z.enum(["buyer", "seller", "combined"]),
   completed_transactions: z.number().int().min(0),
-  raw_inputs: z.record(z.number()).optional(),
+  raw_inputs: z.record(z.string(), z.number()).optional(),
   sla_penalty: z
     .object({
       sla_violation_count: z.number().int().min(0),

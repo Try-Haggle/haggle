@@ -46,3 +46,5 @@ export function normalizeGetNegotiationExpand(
   // If every value was unknown, fall back to the full default rather than folding.
   return out.length > 0 ? out : [...GET_NEGOTIATION_EXPAND_DEFAULT];
 }
+
+export const haggleGetNegotiationInputSchema = z.strictObject(haggleGetNegotiationInputShape);

@@ -18,6 +18,7 @@ const structuredNegotiationAgentBuilderMemorySchema = z
       .optional(),
     productRequirements: z
       .record(
+        z.string(),
         z.object({
           mustHave: z.array(z.string()).default([]),
           avoid: z.array(z.string()).default([]),
@@ -25,7 +26,7 @@ const structuredNegotiationAgentBuilderMemorySchema = z
           ambiguousSlots: z.array(z.string()).default([]),
         }),
       )
-      .default({}),
+      .prefault({}),
     globalPreferences: z
       .object({
         mustHave: z.array(z.string()).default([]),
@@ -36,7 +37,7 @@ const structuredNegotiationAgentBuilderMemorySchema = z
         negotiationStyle: z.enum(["defensive", "balanced", "aggressive"]).optional(),
         openingTactic: z.enum(["condition_anchor", "fair_market_anchor", "speed_close"]).optional(),
       })
-      .default({}),
+      .prefault({}),
     pendingSlots: z
       .array(
         z.object({
@@ -161,7 +162,7 @@ const structuredNegotiationAgentBuilderMemorySchema = z
       })
       .optional(),
   })
-  .default({});
+  .prefault({});
 
 export const negotiationAgentBuilderMemorySchema = z.object({
   categoryInterest: z.string().min(1),

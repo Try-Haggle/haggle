@@ -9,7 +9,7 @@ describe("input limits", () => {
   });
 
   it("rejects oversized structured JSON payloads", () => {
-    const schema = boundedJson(z.record(z.any()), 32, "payload");
+    const schema = boundedJson(z.record(z.string(), z.any()), 32, "payload");
     const result = schema.safeParse({ text: "x".repeat(64) });
     expect(result.success).toBe(false);
   });

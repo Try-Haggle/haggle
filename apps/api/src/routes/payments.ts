@@ -258,7 +258,11 @@ const x402SubmitSchema = z.object({
       x402Version: z.literal(1),
       scheme: z.literal("exact"),
       network: z.string().max(INPUT_LIMITS.shortTextChars),
-      payload: boundedJson(z.record(z.any()), INPUT_LIMITS.paymentPayloadBytes, "x402 payload"),
+      payload: boundedJson(
+        z.record(z.string(), z.any()),
+        INPUT_LIMITS.paymentPayloadBytes,
+        "x402 payload",
+      ),
       paymentRequirements: boundedJson(
         z.any(),
         INPUT_LIMITS.paymentPayloadBytes,

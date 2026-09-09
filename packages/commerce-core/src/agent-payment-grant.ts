@@ -79,7 +79,7 @@ export const agentPaymentGrantSchema = z.object({
   expires_at: z.string().min(1),
   nonce: z.string().min(1),
   human_confirmation_required: z.boolean().default(true),
-  legal_acknowledgements: paymentLegalAcknowledgementSchema.default({}),
+  legal_acknowledgements: paymentLegalAcknowledgementSchema.prefault({}),
 });
 
 export type AgentPaymentGrant = z.infer<typeof agentPaymentGrantSchema>;

@@ -1,4 +1,4 @@
-import { objectFromShape } from "@modelcontextprotocol/sdk/server/zod-compat.js";
+import { normalizeObjectSchema } from "@modelcontextprotocol/sdk/server/zod-compat.js";
 import { toJsonSchemaCompat } from "@modelcontextprotocol/sdk/server/zod-json-schema-compat.js";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -10,7 +10,9 @@ import { registerPlatformTools } from "../mcp/tools/platform.js";
  * Cursor catalogs this JSON; additionalProperties:false means omitted fields cannot be passed.
  */
 function publishedInputSchema(shape: Record<string, z.ZodTypeAny>) {
-  const obj = objectFromShape(shape);
+  // Zod 4 + MCP io:input: only strictObject emits additionalProperties:false
+  const obj = normalizeObjectSchema(z.strictObject(shape));
+  if (!obj) throw new Error("expected object schema");
   return toJsonSchemaCompat(obj, {
     strictUnions: true,
     pipeStrategy: "input",

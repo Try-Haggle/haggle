@@ -9,7 +9,7 @@ const createPresetSchema = z.object({
   displayName: z.string().min(1).max(200),
   description: z.string().max(1000).optional(),
   advisorSkillId: z.string().min(1),
-  negotiationAgentConfig: z.record(z.unknown()).optional(),
+  negotiationAgentConfig: z.record(z.string(), z.unknown()).optional(),
   validatorSkills: z.array(z.string()).optional(),
 });
 

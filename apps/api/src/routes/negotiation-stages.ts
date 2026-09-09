@@ -77,7 +77,7 @@ const coreMemorySchema = z
 const understoodSchema = z.object({
   price_offer: z.number().optional(),
   action_intent: z.enum(["OFFER", "COUNTER", "ACCEPT", "REJECT", "QUESTION", "INFO"]),
-  conditions: z.record(z.unknown()),
+  conditions: z.record(z.string(), z.unknown()),
   sentiment: z.enum(["positive", "neutral", "negative"]),
   raw_text: z.string(),
   conversation_type: z
@@ -151,7 +151,7 @@ const roundFactSchema = z.object({
   gap: z.number(),
   buyer_tactic: z.string().optional(),
   seller_tactic: z.string().optional(),
-  conditions_changed: z.record(z.string()),
+  conditions_changed: z.record(z.string(), z.string()),
   coaching_given: z.object({ recommended: z.number(), tactic: z.string() }),
   coaching_followed: z.boolean(),
   human_intervened: z.boolean(),
@@ -207,7 +207,7 @@ const protocolDecisionSchema = z.object({
   action: z.enum(["COUNTER", "ACCEPT", "REJECT", "HOLD", "DISCOVER", "CONFIRM"]),
   price: z.number().optional(),
   reasoning: z.string(),
-  non_price_terms: z.record(z.unknown()).optional(),
+  non_price_terms: z.record(z.string(), z.unknown()).optional(),
   tactic_used: z.string().optional(),
 });
 

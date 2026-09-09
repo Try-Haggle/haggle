@@ -8,7 +8,7 @@ import { z } from "zod";
  * a z.array(z.object({checkId, ask})) so the live catalog lists the questions —
  * testers cannot see the field when it is omitted and additionalProperties is false.
  */
-export const mcpRequiredCriterionSchema = z.object({
+export const mcpRequiredCriterionSchema = z.strictObject({
   checkId: z
     .string()
     .min(1)
@@ -22,7 +22,7 @@ export const haggleGetListingInputShape = {
   public_id: z.string().min(1).describe("Listing slug (jc6r2T3d) or full /l/... URL"),
 };
 
-export const haggleGetListingListingSchema = z.object({
+export const haggleGetListingListingSchema = z.strictObject({
   public_id: z.string().nullable(),
   title: z.string().nullable(),
   description: z.string().nullable(),
@@ -50,3 +50,7 @@ export const buyerCriteriaRequiredErrorShape = {
   required_check_ids: z.array(z.string()),
   required_criteria: z.array(mcpRequiredCriterionSchema),
 };
+
+export const haggleGetListingInputSchema = z.strictObject(haggleGetListingInputShape);
+export const haggleGetListingOutputSchema = z.strictObject(haggleGetListingOutputShape);
+export const buyerCriteriaRequiredErrorSchema = z.strictObject(buyerCriteriaRequiredErrorShape);

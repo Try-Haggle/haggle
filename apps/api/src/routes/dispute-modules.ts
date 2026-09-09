@@ -55,7 +55,7 @@ const moduleTransactionSchema = z
       "CLOSED",
       "CANCELED",
     ]),
-    metadata: z.record(z.unknown()).optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
   })
   .strict();
 
