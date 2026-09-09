@@ -37,12 +37,28 @@ describe("credit-balance (SoT §6 shapes)", () => {
     get.mockReset();
   });
 
-  it("parses non-negative integer balance only", () => {
+  it("parses non-negative integer balance only (C1 #159 shape)", () => {
+    expect(
+      parseCreditBalanceResponse({
+        account_id: "acc",
+        balance: 200,
+        unlimited: true,
+        currency: "soft_ai_credits",
+      }),
+    ).toEqual({
+      balance: 200,
+      unlimited: true,
+      account_id: "acc",
+      actor_id: undefined,
+      currency: "soft_ai_credits",
+      unit: undefined,
+    });
     expect(parseCreditBalanceResponse({ balance: 200, unlimited: true })).toEqual({
       balance: 200,
       unlimited: true,
       account_id: undefined,
       actor_id: undefined,
+      currency: undefined,
       unit: undefined,
     });
     expect(parseCreditBalanceResponse({ balance: -1 })).toBeNull();
@@ -70,7 +86,12 @@ describe("credit-balance (SoT §6 shapes)", () => {
   });
 
   it("fetches GET /credits/balance when C1 present", async () => {
-    get.mockResolvedValue({ balance: 200, unlimited: true, account_id: "acc" });
+    get.mockResolvedValue({
+      account_id: "acc",
+      balance: 200,
+      unlimited: true,
+      currency: "soft_ai_credits",
+    });
     const state = await fetchCreditBalance();
     expect(get).toHaveBeenCalledWith(CREDIT_BALANCE_PATH);
     expect(state).toEqual({

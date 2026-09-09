@@ -5,9 +5,10 @@
  * insufficient-credits gate; optional quote/grant feedback out of C2 scope).
  * Also: docs/wip/auto-manual-control-mode-sot.md §5 · §5.1.
  *
- * Field shapes match Eng1 C1 ledger read path. Do NOT invent credit math in
- * the web client — server / policy is source of truth for quotes and debits.
- * Until C1 lands, fetch stubs with clear tolerance (no fake balance number).
+ * Field shapes match Eng1 C1 (#159): GET /credits/balance →
+ * { account_id, balance, unlimited, currency: "soft_ai_credits" }.
+ * Insufficient: 402 + error INSUFFICIENT_CREDITS + required/balance.
+ * Do NOT invent credit math — server/policy is SoT. Stub-tolerant until C1 merges.
  */
 
 import { ApiError, api } from "@/lib/api-client";
@@ -51,8 +52,12 @@ export type CreditBalanceResponse = {
   unlimited?: boolean;
   account_id?: string;
   actor_id?: string;
-  /** Optional currency tag — Soft AI credits only, not fiat/USDC. */
-  unit?: "soft_ai_credit";
+  /**
+   * C1 sends `currency: "soft_ai_credits"`. Older drafts used `unit`.
+   * Soft AI credits only — not fiat/USDC/PAN.
+   */
+  currency?: "soft_ai_credits";
+  unit?: "soft_ai_credit" | "soft_ai_credits";
 };
 
 export type CreditBalanceSource = "api" | "stub";
@@ -85,12 +90,18 @@ export function parseCreditBalanceResponse(raw: unknown): CreditBalanceResponse 
   if (!raw || typeof raw !== "object") return null;
   const obj = raw as Record<string, unknown>;
   if (!isNonNegativeInt(obj.balance)) return null;
+  const currency = obj.currency === "soft_ai_credits" ? ("soft_ai_credits" as const) : undefined;
+  const unit =
+    obj.unit === "soft_ai_credit" || obj.unit === "soft_ai_credits"
+      ? (obj.unit as "soft_ai_credit" | "soft_ai_credits")
+      : undefined;
   return {
     balance: obj.balance,
     unlimited: obj.unlimited === true,
     account_id: typeof obj.account_id === "string" ? obj.account_id : undefined,
     actor_id: typeof obj.actor_id === "string" ? obj.actor_id : undefined,
-    unit: obj.unit === "soft_ai_credit" ? "soft_ai_credit" : undefined,
+    currency,
+    unit,
   };
 }
 
@@ -140,7 +151,7 @@ export function formatInsufficientCreditsMessage(info: InsufficientCreditsInfo):
 
 /**
  * GET Soft credit balance for the signed-in account.
- * C1 route: GET /credits/balance
+ * C1 route (PR #159): GET /credits/balance → { account_id, balance, unlimited, currency }.
  * If C1 is not on staging yet, returns a stub state (clear tolerance) — no fake math.
  */
 export async function fetchCreditBalance(): Promise<CreditBalanceState> {
