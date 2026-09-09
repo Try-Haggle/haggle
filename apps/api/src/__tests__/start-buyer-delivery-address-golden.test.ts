@@ -62,6 +62,26 @@ vi.mock("@haggle/engine-session", async (importOriginal) => {
   };
 });
 
+vi.mock("../services/credit-ledger.service.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/credit-ledger.service.js")>();
+  return {
+    ...actual,
+    // Gate/golden tests pass `{} as never` as db — stub wallet side-effects.
+    ensureAccountWithSignupGrant: vi.fn(async (_db: unknown, accountId: string) => ({
+      account_id: accountId,
+      balance: 200,
+      unlimited: false,
+    })),
+    applySoftAiCreditCharge: vi.fn(async () => ({
+      debited: false as const,
+      skipped: true as const,
+      reason: "zero_charge" as const,
+      balance: 200,
+      unlimited: false as const,
+    })),
+  };
+});
+
 vi.mock("@haggle/commerce-core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@haggle/commerce-core")>();
   return {

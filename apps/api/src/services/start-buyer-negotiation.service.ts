@@ -48,6 +48,12 @@ import {
   withBuyerListingStartGate,
 } from "./attempt-control.service.js";
 import { initialBuyerSoftAiCharge } from "./control-mode.service.js";
+import {
+  applySoftAiCreditCharge,
+  ensureAccountWithSignupGrant,
+  INSUFFICIENT_CREDITS,
+  InsufficientCreditsError,
+} from "./credit-ledger.service.js";
 import { getPublishedListingByRef } from "./draft.service.js";
 import { mintGuestBuyerClaimPop } from "./guest-buyer-claim-pop.service.js";
 import {
@@ -649,33 +655,77 @@ export async function startBuyerNegotiation(
     buyerSoftAiCreditsCharged: softAiCharge.new_charged_base,
   };
 
+  // C1: ensure Soft credit account + signup grant (policy CREDIT_SIGNUP=200).
+  // Amount is server-side only — never accept client-supplied grant amounts.
+  await ensureAccountWithSignupGrant(db, buyer.id, {
+    haggleEnv: process.env.HAGGLE_ENV,
+  });
+
+  async function createSessionAndDebitSoftAi(tx: Database) {
+    const created = await createSession(tx, sessionInput);
+    await applySoftAiCreditCharge(tx, {
+      accountId: buyer.id,
+      sessionId: created.id,
+      chargeTotal: softAiCharge.charge_total,
+      chargeBase: softAiCharge.charge_base,
+      newChargedBase: softAiCharge.new_charged_base,
+      unlimited: softAiCharge.unlimited,
+      haggleEnv: process.env.HAGGLE_ENV,
+      metadata: {
+        band: softAiCharge.band,
+        buyer_mode: buyerControlMode,
+        seller_mode: sellerControlMode,
+        source: "session_start",
+      },
+    });
+    return created;
+  }
+
   // C2: authenticated path re-checks attempt control under advisory lock at
   // create time so evaluate→createSession TOCTOU cannot double-create; loser
   // gets concurrent_on_listing (or the live recheck rule), never silent create.
   let session: Awaited<ReturnType<typeof createSession>>;
-  if (!input.isGuest) {
-    const gated = await withBuyerListingStartGate(
-      db,
-      { buyerPrincipalId: buyer.id, listingId: listing.id },
-      async (tx) => createSession(tx, sessionInput),
-    );
-    if (!gated.ok) {
-      const attemptResult = gated.attemptResult;
+  try {
+    if (!input.isGuest) {
+      const gated = await withBuyerListingStartGate(
+        db,
+        { buyerPrincipalId: buyer.id, listingId: listing.id },
+        async (tx) => createSessionAndDebitSoftAi(tx),
+      );
+      if (!gated.ok) {
+        const attemptResult = gated.attemptResult;
+        return {
+          ok: false,
+          status: isAttemptControlRateLimited(attemptResult.error) ? 429 : 409,
+          body: {
+            error: attemptResult.error,
+            rule: attemptResult.rule,
+            attempt_control: attemptResult.attemptControl,
+            retry_after: attemptResult.retryAfterSeconds,
+          },
+        };
+      }
+      session = gated.value;
+      attemptControl = gated.attemptControl;
+    } else {
+      session = await db.transaction(async (tx) =>
+        createSessionAndDebitSoftAi(tx as unknown as Database),
+      );
+    }
+  } catch (error) {
+    if (error instanceof InsufficientCreditsError) {
       return {
         ok: false,
-        status: isAttemptControlRateLimited(attemptResult.error) ? 429 : 409,
+        status: 402,
         body: {
-          error: attemptResult.error,
-          rule: attemptResult.rule,
-          attempt_control: attemptResult.attemptControl,
-          retry_after: attemptResult.retryAfterSeconds,
+          error: INSUFFICIENT_CREDITS,
+          message: error.message,
+          required: error.required,
+          balance: error.balance,
         },
       };
     }
-    session = gated.value;
-    attemptControl = gated.attemptControl;
-  } else {
-    session = await createSession(db, sessionInput);
+    throw error;
   }
 
   if (!input.isGuest && body.fulfillment?.save_address && body.fulfillment.buyer_address) {

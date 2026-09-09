@@ -17,6 +17,7 @@ export {
 export { categoryRelatedness } from "./category-relatedness.js";
 export { chainSyncCursors } from "./chain-sync.js";
 export { commerceOrders, settlementApprovals } from "./commerce-orders.js";
+export { creditAccounts, creditLedgerEntries } from "./credit-ledger.js";
 export { disputeDeposits } from "./dispute-deposits.js";
 export {
   disputeEvidenceProvenanceArchiveOutbox,
