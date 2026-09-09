@@ -1,3 +1,4 @@
+import { isDogfoodAuthWebSurfaceEnabled } from "@/lib/dogfood-auth-gate";
 import { createClient } from "@/lib/supabase/server";
 import { SettingsContent } from "./settings-content";
 
@@ -23,6 +24,7 @@ export default async function SettingsPage() {
       displayName={displayName}
       avatarUrl={avatarUrl}
       provider={provider}
+      showDogfoodLogin={isDogfoodAuthWebSurfaceEnabled()}
     />
   );
 }
