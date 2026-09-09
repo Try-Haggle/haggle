@@ -84,7 +84,7 @@ Encode exactly:
 ### 5.2 Out of M0 scope (cite only)
 
 - Seller better-model upgrade **+5** (Pro cap) — later; see credit discussion. Mode SoT does not block or require it.
-- Staging/local unlimited credit flags remain as in credit notes; production must debit when credits are enabled.
+- Staging/local unlimited credit flags remain as in credit notes; production must debit when credits are enabled. Balance/ledger wallet SoT: [credit-ledger-sot.md](./credit-ledger-sot.md) (C0).
 
 ---
 
@@ -147,6 +147,7 @@ When implementing later:
 | [product-decisions-2026-09-07.md](./product-decisions-2026-09-07.md) | Staging product decision index (cross-link) |
 | [2026-08-28-credit-hold-model-discussion.md](../meetings/2026-08-28-credit-hold-model-discussion.md) | Pro10 / Flash4 / +5 draft credit numbers; 1.5% fee |
 | [2026-08-29-branch-meeting-brief.md](../meetings/2026-08-29-branch-meeting-brief.md) | Meeting brief restating Flash 4, Pro 10 |
+| [credit-ledger-sot.md](./credit-ledger-sot.md) | C0 Soft credit **balance/ledger** SoT (grants/debits/idempotency; not trust-ledger) |
 
 ---
 
