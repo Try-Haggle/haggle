@@ -263,8 +263,8 @@ importers:
         specifier: ^1.46.0
         version: 1.54.2
       '@supabase/ssr':
-        specifier: ^0.9.0
-        version: 0.9.0(@supabase/supabase-js@2.99.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+        specifier: ^0.12.4
+        version: 0.12.4(@supabase/supabase-js@2.99.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@supabase/supabase-js':
         specifier: ^2.99.0
         version: 2.99.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
@@ -669,6 +669,10 @@ packages:
     engines: {node: '>=6.9.0'}
     peerDependencies:
       '@babel/core': ^7.0.0-0
+
+  '@babel/runtime@7.29.7':
+    resolution: {integrity: sha512-Nq8OhGWiZIZGV6hLHoyAKLLcJihP/xFeBMGJoUrxTX2psI8dCifzLhZISFb+VWS3wFMRDmCGw5R+dOySCqPLhw==}
+    engines: {node: '>=6.9.0'}
 
   '@babel/runtime@7.29.7':
     resolution: {integrity: sha512-Nq8OhGWiZIZGV6hLHoyAKLLcJihP/xFeBMGJoUrxTX2psI8dCifzLhZISFb+VWS3wFMRDmCGw5R+dOySCqPLhw==}
@@ -2884,10 +2888,10 @@ packages:
     resolution: {integrity: sha512-7nFTZhNeANR7FvEY6PfWLCfE8dHqcaJd9SuR7IPEZvBPG9K4uEHMivpjZx4NWRSU7Eji7ZbKy2LG+cJ48DhwHg==}
     engines: {node: '>=20.0.0'}
 
-  '@supabase/ssr@0.9.0':
-    resolution: {integrity: sha512-UFY6otYV3yqCgV+AyHj80vNkTvbf1Gas2LW4dpbQ4ap6p6v3eB2oaDfcI99jsuJzwVBCFU4BJI+oDYyhNk1z0Q==}
+  '@supabase/ssr@0.12.4':
+    resolution: {integrity: sha512-xHzcgI8cC1TpBKSwJcR5Yd8CCwfIq0SBc5yb4yz/YFw5tbCrEQ0QT3a+2jymCxHgQWLfzwN93HZ6eRbcoMkOlA==}
     peerDependencies:
-      '@supabase/supabase-js': ^2.97.0
+      '@supabase/supabase-js': ^2.111.0
 
   '@supabase/storage-js@2.99.0':
     resolution: {integrity: sha512-mAEEbfsght5EEALejYrwAP9k8sFBGjfMZT8n4SyMXk2iYuWVeRMs1kA/uKg0uDMctWdZ0bL+L4jZzksUJpCjMA==}
@@ -6381,6 +6385,8 @@ snapshots:
 
   '@babel/runtime@7.29.7': {}
 
+  '@babel/runtime@7.29.7': {}
+
   '@babel/template@7.28.6':
     dependencies:
       '@babel/code-frame': 7.29.0
@@ -8609,7 +8615,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@supabase/ssr@0.9.0(@supabase/supabase-js@2.99.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
+  '@supabase/ssr@0.12.4(@supabase/supabase-js@2.99.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
     dependencies:
       '@supabase/supabase-js': 2.99.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
       cookie: 1.1.1
