@@ -60,3 +60,5 @@ Then MCP: `haggle_start_dispute` with that `order_id` (suggested reason `ITEM_NO
 | 400 | `PAYMENT_TEST_BUYER_ID_MUST_BE_UUID` | Token `sub` is not a UUID (local non-UUID test tokens) |
 
 Related: `docs/wip/dispute-start-api-design.md`, `.env.example` (`HAGGLE_ENABLE_PAYMENT_TEST_TOOLS`).
+
+Related (buyer≠seller dogfood login SoT): [dogfood-auth-sot.md](./dogfood-auth-sot.md) — dedicated staging/local personas; do not enable `test_unverified` JWTs.
