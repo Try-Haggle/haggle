@@ -170,4 +170,3 @@ When Soft AI would draft for a party that is **Manual**, `POST .../auto-play/nex
 **Precedence:** `SOFT_MANUAL_WAITING` takes priority over **`AUTO_PLAY_CONTEXT_MISSING`** when the next Soft AI draft party is Manual — even if auto-play context/token is absent. Non-Soft-Manual sessions keep existing context/token missing behavior.
 
 Buyer Manual + user-specified counter (`price_minor` / `message`) remains allowed through this gate (human Soft turn).
-
