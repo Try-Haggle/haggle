@@ -13,9 +13,17 @@ interface SettingsContentProps {
   displayName: string;
   avatarUrl: string;
   provider: string;
+  /** Staging/local-only discoverability for /dogfood-login (SoT §4). */
+  showDogfoodLogin?: boolean;
 }
 
-export function SettingsContent({ email, displayName, avatarUrl, provider }: SettingsContentProps) {
+export function SettingsContent({
+  email,
+  displayName,
+  avatarUrl,
+  provider,
+  showDogfoodLogin = false,
+}: SettingsContentProps) {
   const router = useRouter();
   const supabase = createClient();
 
@@ -305,6 +313,22 @@ export function SettingsContent({ email, displayName, avatarUrl, provider }: Set
           {passwordSaving ? "Saving…" : isOAuth ? "Set Password" : "Update Password"}
         </Button>
       </section>
+
+      {showDogfoodLogin ? (
+        <section className="mb-6 rounded-xl border border-dashed border-line bg-surface-raised p-4 sm:p-6">
+          <h2 className="mb-1 text-base font-semibold text-ink sm:text-lg">Dogfood</h2>
+          <p className="mb-3 text-sm text-ink-muted">
+            Staging/local persona login for buyer ≠ seller rehearsals. Hidden in production.
+          </p>
+          <a
+            href="/dogfood-login"
+            data-testid="settings-dogfood-login-link"
+            className="text-sm font-medium text-action-primary underline-offset-2 hover:underline"
+          >
+            Open dogfood login
+          </a>
+        </section>
+      ) : null}
 
       {/* ── Delete Account Section ─────────────────────── */}
       <section className="rounded-xl border border-error/30 bg-surface-raised p-4 sm:p-6">
