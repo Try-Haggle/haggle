@@ -455,3 +455,141 @@ describe("executeAutoPlayNext user price_minor over real planner max", () => {
     }
   });
 });
+
+describe("executeAutoPlayNext Soft Manual vs AUTO_PLAY_CONTEXT_MISSING (Eng1 M4)", () => {
+  it("returns 409 SOFT_MANUAL_WAITING when Soft Manual responder and context is missing", async () => {
+    vi.mocked(getSessionById).mockResolvedValue({
+      id: "sess-1",
+      driver: "web",
+      buyerId: "buyer-1",
+      sellerId: "seller-1",
+      status: "ACTIVE",
+      currentRound: 0,
+      version: 1,
+      negotiationAgentSnapshot: {},
+      buyerControlMode: "auto",
+      sellerControlMode: "manual",
+    } as never);
+    vi.mocked(getNegotiationAutoPlayContext).mockReturnValueOnce(null);
+    vi.mocked(getRoundsBySessionId).mockResolvedValueOnce([] as never);
+
+    const result = await executeAutoPlayNext({} as never, {
+      sessionId: "sess-1",
+      actor: { id: "buyer-1", role: "user" },
+      expectedDriver: "web",
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      status: 409,
+      body: {
+        error: "SOFT_MANUAL_WAITING",
+        waiting_for_manual: true,
+        party: "seller",
+        buyer_control_mode: "auto",
+        seller_control_mode: "manual",
+      },
+    });
+  });
+
+  it("returns 409 SOFT_MANUAL_WAITING for buyer Soft Manual after a BUYER round when context is missing", async () => {
+    vi.mocked(getSessionById).mockResolvedValue({
+      id: "sess-1",
+      driver: "mcp",
+      buyerId: "buyer-1",
+      sellerId: "seller-1",
+      status: "ACTIVE",
+      currentRound: 1,
+      version: 1,
+      negotiationAgentSnapshot: {},
+      buyerControlMode: "manual",
+      sellerControlMode: "auto",
+    } as never);
+    vi.mocked(getNegotiationAutoPlayContext).mockReturnValueOnce(null);
+    vi.mocked(getRoundsBySessionId).mockResolvedValueOnce([
+      { roundNo: 1, senderRole: "BUYER", priceminor: "45000" },
+    ] as never);
+
+    const result = await executeAutoPlayNext({} as never, {
+      sessionId: "sess-1",
+      actor: { id: "buyer-1", role: "user" },
+      expectedDriver: "mcp",
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      status: 409,
+      body: {
+        error: "SOFT_MANUAL_WAITING",
+        waiting_for_manual: true,
+        party: "buyer",
+        buyer_control_mode: "manual",
+        seller_control_mode: "auto",
+      },
+    });
+  });
+
+  it("preserves AUTO_PLAY_CONTEXT_MISSING when Soft modes are Auto and context is missing", async () => {
+    vi.mocked(getSessionById).mockResolvedValue({
+      id: "sess-1",
+      driver: "web",
+      buyerId: "buyer-1",
+      sellerId: "seller-1",
+      status: "ACTIVE",
+      currentRound: 0,
+      version: 1,
+      negotiationAgentSnapshot: {},
+      buyerControlMode: "auto",
+      sellerControlMode: "auto",
+    } as never);
+    vi.mocked(getNegotiationAutoPlayContext).mockReturnValueOnce(null);
+    vi.mocked(getRoundsBySessionId).mockResolvedValueOnce([] as never);
+
+    const result = await executeAutoPlayNext({} as never, {
+      sessionId: "sess-1",
+      actor: { id: "buyer-1", role: "user" },
+      expectedDriver: "web",
+    });
+    expect(result).toEqual({
+      ok: false,
+      status: 409,
+      body: { error: "AUTO_PLAY_CONTEXT_MISSING" },
+    });
+  });
+
+  it("returns SOFT_MANUAL_WAITING (not CONTEXT_MISSING) when context exists and Soft Manual responder", async () => {
+    vi.mocked(getSessionById).mockResolvedValue({
+      id: "sess-1",
+      driver: "web",
+      buyerId: "buyer-1",
+      sellerId: "seller-1",
+      status: "ACTIVE",
+      currentRound: 0,
+      version: 1,
+      negotiationAgentSnapshot: { keep: true },
+      buyerControlMode: "auto",
+      sellerControlMode: "manual",
+    } as never);
+    vi.mocked(getNegotiationAutoPlayContext).mockReturnValue({
+      maxRounds: 8,
+      buyerSnapshot: { side: "buyer" },
+      sellerSnapshot: { side: "seller" },
+    } as never);
+    vi.mocked(planNegotiationAutoPlayRound).mockReturnValue({
+      roundNo: 1,
+      senderRole: "BUYER",
+      responderRole: "SELLER",
+      responderSnapshot: { side: "seller" },
+      offerPriceMinor: 9000,
+      messageText: "hi",
+    } as never);
+
+    const result = await executeAutoPlayNext({} as never, {
+      sessionId: "sess-1",
+      actor: { id: "buyer-1", role: "user" },
+      expectedDriver: "web",
+    });
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(409);
+    expect(result.body.error).toBe("SOFT_MANUAL_WAITING");
+    expect(result.body.error).not.toBe("AUTO_PLAY_CONTEXT_MISSING");
+  });
+});

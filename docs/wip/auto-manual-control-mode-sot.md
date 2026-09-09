@@ -1,6 +1,6 @@
 # Auto / Manual Control Mode — Source of Truth (M0)
 
-> **Status:** Accepted product SoT for staging (docs-only). **Not implemented in API/UI yet** (Eng1 M1/M2).
+> **Status:** Accepted product SoT for staging. M1/M2 shipped Soft control_mode; **M4** locks Soft Manual `/auto-play/next` → `SOFT_MANUAL_WAITING` precedence.
 > **Scope:** Soft-side negotiation control mode only. Does **not** change Hard Authority, fees, or settlement.
 > **Created:** 2026-09-09 (Eng1 ticket M0)
 > **Base:** `origin/staging` @ `f90703e`
@@ -160,3 +160,13 @@ When implementing later:
 - [x] Counterpart mode mutually visible (CU-ready label)
 - [x] Hard Authority unchanged; Soft only is mode
 - [x] Fee 1.5% mode-independent; seller better-model +5 later (Pro cap)
+
+---
+
+## 12. Soft Manual + `/auto-play/next` (Eng1 M4)
+
+When Soft AI would draft for a party that is **Manual**, `POST .../auto-play/next` (and the shared `executeAutoPlayNext` / MCP play path) returns **HTTP 409** with error code **`SOFT_MANUAL_WAITING`** (`waiting_for_manual: true`, `party`, both Soft modes).
+
+**Precedence:** `SOFT_MANUAL_WAITING` takes priority over **`AUTO_PLAY_CONTEXT_MISSING`** when the next Soft AI draft party is Manual — even if auto-play context/token is absent. Non-Soft-Manual sessions keep existing context/token missing behavior.
+
+Buyer Manual + user-specified counter (`price_minor` / `message`) remains allowed through this gate (human Soft turn).

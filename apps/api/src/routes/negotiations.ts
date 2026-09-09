@@ -47,6 +47,10 @@ import {
   setPartyControlMode,
 } from "../services/control-mode.service.js";
 import { getListingPlaybackSummaryByInternalId } from "../services/draft.service.js";
+import {
+  resolveSoftManualWaitingWithoutContext,
+  softManualWaitingBodyForParty,
+} from "../services/execute-auto-play-next.service.js";
 import { validateHnpIngress } from "../services/hnp-ingress.service.js";
 import {
   assertListingAcceptsNewSession,
@@ -991,18 +995,33 @@ export function registerNegotiationRoutes(
       if (session.driver === "mcp") {
         return reply.code(409).send({ error: "DRIVER_MISMATCH" });
       }
+      const userCounter =
+        parsed.data.price_minor !== undefined || parsed.data.message !== undefined;
       const context = getNegotiationAutoPlayContext(session.negotiationAgentSnapshot);
-      if (!context) {
-        return reply.code(409).send({ error: "AUTO_PLAY_CONTEXT_MISSING" });
-      }
 
       if (request.user) {
         const access = validateSessionParticipant(request.user, session);
         if (!access.ok) {
           return reply.code(access.status).send({ error: access.error });
         }
+      } else if (!context) {
+        // Eng1 M4: Soft Manual waiting precedes AUTO_PLAY_CONTEXT_MISSING.
+        const softWait = await resolveSoftManualWaitingWithoutContext(db, session, {
+          userCounter,
+        });
+        if (softWait) return reply.code(409).send(softWait);
+        return reply.code(409).send({ error: "AUTO_PLAY_CONTEXT_MISSING" });
       } else if (!validateNegotiationAutoPlayToken(context, parsed.data.run_token)) {
         return reply.code(401).send({ error: "AUTO_PLAY_TOKEN_INVALID" });
+      }
+
+      if (!context) {
+        // Eng1 M4: Soft Manual waiting precedes AUTO_PLAY_CONTEXT_MISSING.
+        const softWait = await resolveSoftManualWaitingWithoutContext(db, session, {
+          userCounter,
+        });
+        if (softWait) return reply.code(409).send(softWait);
+        return reply.code(409).send({ error: "AUTO_PLAY_CONTEXT_MISSING" });
       }
 
       if (isNegotiationAutoPlayTerminal(session.status)) {
@@ -1096,8 +1115,6 @@ export function registerNegotiationRoutes(
       if (!planned) {
         return reply.code(409).send({ error: "AUTO_PLAY_ROUND_UNAVAILABLE" });
       }
-      const userCounter =
-        parsed.data.price_minor !== undefined || parsed.data.message !== undefined;
       // After a persisted BUYER round autoplay plans SELLER incoming; user price_minor
       // still forces a BUYER COUNTER. NOT_BUYER_TURN only if buyer has no role this round.
       if (userCounter && !canApplyBuyerUserCounter(planned)) {
@@ -1137,18 +1154,9 @@ export function registerNegotiationRoutes(
       const softModes = controlModeFromSessionRecord(liveSession);
       const responderParty =
         plan.responderRole === "BUYER" ? ("buyer" as const) : ("seller" as const);
-      const responderMode =
-        responderParty === "buyer" ? softModes.buyerControlMode : softModes.sellerControlMode;
-      if (responderMode === "manual" && !(responderParty === "buyer" && userCounter)) {
-        return reply.code(409).send({
-          error: "SOFT_MANUAL_WAITING",
-          waiting_for_manual: true,
-          party: responderParty,
-          buyer_control_mode: softModes.buyerControlMode,
-          seller_control_mode: softModes.sellerControlMode,
-          session_status: liveSession.status,
-          current_round: liveSession.currentRound,
-        });
+      const softWait = softManualWaitingBodyForParty(liveSession, responderParty, userCounter);
+      if (softWait) {
+        return reply.code(409).send(softWait);
       }
 
       // Soft AI handoff lock only when Haggle AI drafts (not user-specified counter).
