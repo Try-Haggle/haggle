@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { ControlModeSettings } from "@/app/(app)/settings/control-mode-settings";
+import { CreditBalanceSettings } from "@/components/credit-balance";
 import { SavedAddressSettings } from "@/components/shipping/saved-address-settings";
 import { Alert, Avatar, Button, Field, Input } from "@/components/ui";
 import { ApiError, api } from "@/lib/api-client";
@@ -259,6 +260,8 @@ export function SettingsContent({ email, displayName, avatarUrl, provider }: Set
       </section>
 
       <SavedAddressSettings />
+
+      <CreditBalanceSettings />
 
       <ControlModeSettings />
 

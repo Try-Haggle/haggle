@@ -8,6 +8,7 @@
  */
 import { ApiError, api } from "@/lib/api-client";
 import { withDefaultControlModePreference } from "@/lib/control-mode";
+import { formatInsufficientCreditsMessage, parseInsufficientCredits } from "@/lib/credit-balance";
 
 export interface StartListingNegotiationResponse {
   session_id: string;
@@ -64,6 +65,20 @@ export async function startListingNegotiation(
     const res = await api.post<StartListingNegotiationResponse>("/negotiations/start", startBody);
     return { ...res, resumed: false };
   } catch (err) {
+    const insufficient = parseInsufficientCredits(err);
+    if (insufficient) {
+      // Re-throw as ApiError so listing surfaces can render InsufficientCreditsAlert.
+      const status = err instanceof ApiError ? err.status : 402;
+      throw new ApiError(
+        status,
+        insufficient.code,
+        formatInsufficientCreditsMessage(insufficient),
+        {
+          required: insufficient.required,
+          balance: insufficient.balance,
+        },
+      );
+    }
     if (err instanceof ApiError && !err.message) {
       throw new Error(err.code ?? "Couldn't start the negotiation. Try again.");
     }

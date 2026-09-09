@@ -7,13 +7,20 @@ interface ApiOptions extends RequestInit {
 }
 
 export class ApiError extends Error {
+  /** Optional server body fields (e.g. insufficient-credits required/balance). */
+  details?: Record<string, unknown>;
+
   constructor(
     public status: number,
     public code: string,
     message?: string,
+    details?: Record<string, unknown>,
   ) {
     super(message || code);
     this.name = "ApiError";
+    if (details && Object.keys(details).length > 0) {
+      this.details = details;
+    }
   }
 }
 
@@ -47,8 +54,14 @@ export async function apiClient<T = unknown>(path: string, options: ApiOptions =
   });
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new ApiError(res.status, body.error || "UNKNOWN_ERROR", body.message);
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const { error, message, ...rest } = body;
+    throw new ApiError(
+      res.status,
+      typeof error === "string" ? error : "UNKNOWN_ERROR",
+      typeof message === "string" ? message : undefined,
+      rest,
+    );
   }
 
   // Empty body (e.g. 204 No Content from DELETE) — nothing to parse. Reading

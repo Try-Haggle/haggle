@@ -5,10 +5,14 @@ import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import { ArrowRight, Info } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { CreditBalanceStrip } from "@/components/credit-balance/credit-balance-strip";
+import { InsufficientCreditsAlert } from "@/components/credit-balance/insufficient-credits-alert";
 import { Button, Drawer } from "@/components/ui";
 import { buttonVariants } from "@/components/ui/button";
+import { useCreditBalance } from "@/hooks/use-credit-balance";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { cn } from "@/lib/cn";
+import { parseInsufficientCredits } from "@/lib/credit-balance";
 import { formatPrice, formatTimeAgo } from "@/lib/format";
 import type { SavedAgentOption } from "./agent-picker";
 import { AgentPicker, type AgentSelection, resolveSelectedPreset } from "./agent-picker";
@@ -124,6 +128,9 @@ export function ListingDetailV2({
   const [selection, setSelection] = useState<AgentSelection | null>(null);
   const [status, setStatus] = useState<"idle" | "starting" | "error">("idle");
   const [message, setMessage] = useState("");
+  const [insufficientCredits, setInsufficientCredits] =
+    useState<ReturnType<typeof parseInsufficientCredits>>(null);
+  const creditBalance = useCreditBalance({ enabled: !!viewer });
   const [panelOpen, setPanelOpen] = useState(false);
   /**
    * The panel edits a DRAFT selection, committed when it closes.
@@ -259,9 +266,12 @@ export function ListingDetailV2({
     }
     setStatus("starting");
     setMessage("Preparing your agent…");
+    setInsufficientCredits(null);
     try {
       await onStart(selection, committed.override);
     } catch (err) {
+      const insufficient = parseInsufficientCredits(err);
+      setInsufficientCredits(insufficient);
       setStatus("error");
       setMessage(
         err instanceof Error
@@ -510,7 +520,17 @@ export function ListingDetailV2({
             >
               {/* On mobile the rail's CTA — and the error line under it — is
                   gone, so a failed start would otherwise say nothing at all. */}
-              {status === "error" && (
+              {viewer && (
+                <div className="mx-auto max-w-7xl px-4 pt-2.5 sm:px-6">
+                  <CreditBalanceStrip state={creditBalance} loading={creditBalance.loading} />
+                </div>
+              )}
+              {status === "error" && insufficientCredits && (
+                <div className="mx-auto max-w-7xl px-4 pt-2.5 sm:px-6">
+                  <InsufficientCreditsAlert info={insufficientCredits} />
+                </div>
+              )}
+              {status === "error" && !insufficientCredits && (
                 <p
                   role="alert"
                   className="mx-auto max-w-7xl px-4 pt-2.5 text-center text-[12px] text-error sm:px-6"

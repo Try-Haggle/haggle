@@ -9,6 +9,11 @@ import {
   patchSessionControlMode,
   type SessionControlModeFields,
 } from "@/lib/control-mode";
+import {
+  formatInsufficientCreditsMessage,
+  type InsufficientCreditsInfo,
+  parseInsufficientCredits,
+} from "@/lib/credit-balance";
 
 /**
  * Mid-session Soft control_mode toggle with SoT handoff semantics.
@@ -40,6 +45,9 @@ export function useSessionControlMode(opts: {
   const [queuedMode, setQueuedMode] = useState<ControlMode | null>(null);
   const [syncState, setSyncState] = useState<ControlModeSyncState>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [insufficientCredits, setInsufficientCredits] = useState<InsufficientCreditsInfo | null>(
+    null,
+  );
   const applyingRef = useRef(false);
 
   // Server truth wins when it moves (handoff commit / peer update / reload).
@@ -61,6 +69,7 @@ export function useSessionControlMode(opts: {
       applyingRef.current = true;
       setSyncState("saving");
       setError(null);
+      setInsufficientCredits(null);
       try {
         const result = await patchSessionControlMode(sessionId, next);
         if (!result.ok && result.stub) {
@@ -90,7 +99,14 @@ export function useSessionControlMode(opts: {
         }
       } catch (err) {
         setSyncState("error");
-        setError(err instanceof Error ? err.message : "Could not update control mode.");
+        const insufficient = parseInsufficientCredits(err);
+        if (insufficient) {
+          setInsufficientCredits(insufficient);
+          setError(formatInsufficientCreditsMessage(insufficient));
+        } else {
+          setInsufficientCredits(null);
+          setError(err instanceof Error ? err.message : "Could not update control mode.");
+        }
       } finally {
         applyingRef.current = false;
       }
@@ -116,6 +132,7 @@ export function useSessionControlMode(opts: {
       if (!enabled) return;
       if (next === ownDisplayed && !pendingTarget) return;
       setError(null);
+      setInsufficientCredits(null);
       if (inflight) {
         // Do not cancel/abort the in-flight call — queue for after (SoT §3).
         setQueuedMode(next);
@@ -140,6 +157,8 @@ export function useSessionControlMode(opts: {
     inflight,
     syncState,
     error,
+    /** Set when Auto ON / Soft charge is refused for insufficient Soft credits (SoT §6). */
+    insufficientCredits,
     isManual: ownDisplayed === "manual",
     isAuto: ownDisplayed === "auto",
     requestMode,
