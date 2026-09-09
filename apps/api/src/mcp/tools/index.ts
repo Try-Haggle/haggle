@@ -200,7 +200,7 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
           targetPrice: z.string().optional(),
           floorPrice: z.string().optional(),
           sellingDeadline: z.string().datetime().optional(),
-          negotiationAgentSnapshot: z.record(z.unknown()).optional(),
+          negotiationAgentSnapshot: z.record(z.string(), z.unknown()).optional(),
         }),
       },
       _meta: {

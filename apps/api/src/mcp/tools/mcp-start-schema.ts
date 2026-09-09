@@ -8,7 +8,7 @@ import { z } from "zod";
  * so the live catalog lists checkId + optional stance — testers cannot pass it
  * when it is omitted and additionalProperties is false.
  */
-export const mcpBuyerCriteriaItemSchema = z.object({
+export const mcpBuyerCriteriaItemSchema = z.strictObject({
   checkId: z
     .string()
     .min(1)
@@ -39,3 +39,5 @@ export const haggleStartNegotiationInputShape = {
       "Start-wizard answers for seller required criteria (IMEI/완납/침수/Find My). Each item is {checkId, stance?}. Required when the listing has those checks.",
     ),
 };
+
+export const haggleStartNegotiationInputSchema = z.strictObject(haggleStartNegotiationInputShape);

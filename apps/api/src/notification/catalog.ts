@@ -57,13 +57,14 @@ export interface DisplayResult {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-interface CatalogEntry<TSchema extends z.ZodTypeAny = z.ZodTypeAny> {
+interface CatalogEntry<TSchema extends z.ZodType = z.ZodType> {
   category: NotificationCategory;
   channels: NotificationChannel[];
   transactional: boolean;
   primaryEntityKey: string;
   payloadSchema: TSchema;
-  renderDisplay?: (payload: z.infer<TSchema>) => DisplayResult;
+  // Zod 4: z.infer<ZodType> defaults to unknown; keep display renderers practical.
+  renderDisplay?: (payload: any) => DisplayResult;
 }
 
 // ─── Event Catalog ────────────────────────────────────────────────────────────

@@ -16,7 +16,7 @@ import { executeRound } from "@haggle/engine-session";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
-const strategySchema = z.record(z.unknown());
+const strategySchema = z.record(z.string(), z.unknown());
 
 const simulateSchema = z.object({
   buyer_strategy: strategySchema,

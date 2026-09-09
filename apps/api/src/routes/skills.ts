@@ -29,16 +29,16 @@ const createSkillSchema = z.object({
     monthlySubscriptionCents: z.number().positive().optional(),
     revenueSharePercent: z.number().min(0).max(100).optional(),
   }),
-  configSchema: z.record(z.unknown()).optional(),
-  metadata: z.record(z.unknown()).optional(),
+  configSchema: z.record(z.string(), z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 const executeSkillSchema = z.object({
   hook_point: z.string().min(1),
   success: z.boolean(),
   latency_ms: z.number().int().min(0),
-  input_summary: z.record(z.unknown()).optional(),
-  output_summary: z.record(z.unknown()).optional(),
+  input_summary: z.record(z.string(), z.unknown()).optional(),
+  output_summary: z.record(z.string(), z.unknown()).optional(),
   error: z.string().optional(),
 });
 

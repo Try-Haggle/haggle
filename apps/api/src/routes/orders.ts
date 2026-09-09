@@ -37,7 +37,7 @@ const submitFulfillmentProofSchema = z
     uri: z.string().min(1).max(INPUT_LIMITS.uriChars).optional(),
     sha256: z.string().min(1).max(INPUT_LIMITS.mediumTextChars).optional(),
     external_reference: z.string().min(1).max(INPUT_LIMITS.mediumTextChars).optional(),
-    metadata: z.record(z.unknown()).optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
   })
   .superRefine((value, ctx) => {
     if (!value.uri && !value.sha256 && !value.external_reference) {

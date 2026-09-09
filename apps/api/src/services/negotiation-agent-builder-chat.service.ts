@@ -81,6 +81,7 @@ const structuredNegotiationAgentBuilderMemorySchema = z
       .optional(),
     productRequirements: z
       .record(
+        z.string(),
         z.object({
           mustHave: z.array(z.string()).default([]),
           avoid: z.array(z.string()).default([]),
@@ -88,7 +89,7 @@ const structuredNegotiationAgentBuilderMemorySchema = z
           ambiguousSlots: z.array(z.string()).default([]),
         }),
       )
-      .default({}),
+      .prefault({}),
     globalPreferences: z
       .object({
         mustHave: z.array(z.string()).default([]),
@@ -99,7 +100,7 @@ const structuredNegotiationAgentBuilderMemorySchema = z
         negotiationStyle: z.enum(["defensive", "balanced", "aggressive"]).optional(),
         openingTactic: z.enum(["condition_anchor", "fair_market_anchor", "speed_close"]).optional(),
       })
-      .default({}),
+      .prefault({}),
     pendingSlots: z
       .array(
         z.object({
@@ -224,7 +225,7 @@ const structuredNegotiationAgentBuilderMemorySchema = z
       })
       .optional(),
   })
-  .default({});
+  .prefault({});
 
 const negotiationAgentBuilderMemorySchema = z.object({
   categoryInterest: z.string().min(1),
@@ -466,7 +467,7 @@ const presetTuningDraftSchema = z.object({
   walkAway: z.array(presetDraftWalkAwaySchema),
   engineReview: presetEngineReviewSchema.optional(),
   sourceBadges: z.array(z.enum(["listing", "memory", "preset", "tag"])),
-  negotiationStartPayload: z.record(z.unknown()),
+  negotiationStartPayload: z.record(z.string(), z.unknown()),
 });
 
 const savePresetTuningBodySchema = z.object({

@@ -27,7 +27,7 @@ const addSessionSchema = z.object({
   buyer_id: z.string().uuid(),
   seller_id: z.string().uuid(),
   counterparty_id: z.string().uuid(),
-  negotiation_agent_snapshot: z.record(z.unknown()),
+  negotiation_agent_snapshot: z.record(z.string(), z.unknown()),
   expires_at: z.string().datetime().optional(),
 });
 

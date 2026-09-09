@@ -21,7 +21,7 @@ const createIntentSchema = z.object({
   role: z.enum(["BUYER", "SELLER"]),
   category: z.string().min(1),
   keywords: z.array(z.string().min(1)),
-  strategy: z.record(z.unknown()),
+  strategy: z.record(z.string(), z.unknown()),
   min_u_total: z.number().min(0).max(1).optional(),
   max_active_sessions: z.number().int().min(1).optional(),
   expires_in_days: z.number().int().min(1).optional(),
@@ -39,7 +39,7 @@ const triggerMatchSchema = z.object({
   category: z.string().min(1),
   listing_id: z.string().min(1).optional(),
   trigger_intent_id: z.string().min(1).optional(),
-  context_template: z.record(z.unknown()),
+  context_template: z.record(z.string(), z.unknown()),
 });
 
 export function registerIntentRoutes(app: FastifyInstance, db: Database) {

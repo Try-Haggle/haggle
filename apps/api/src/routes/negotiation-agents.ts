@@ -50,13 +50,13 @@ const negotiationAgentConfigSchema = z.object({
   basePresetId: z.string().optional(),
   negotiationAgentPresetId: z.string().optional(),
   weights: weightsSchema.optional(),
-  engineParams: z.record(z.unknown()).optional(),
-  categoryAnswers: z.record(z.record(z.unknown())).optional(),
+  engineParams: z.record(z.string(), z.unknown()).optional(),
+  categoryAnswers: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
   voiceId: z.string().optional(),
   /** Latest memory snapshot captured from the builder chat. Sanitized to the
    *  durable fields only — the session-only scratchpad is dropped on persist. */
   builderChatMemory: z
-    .record(z.unknown())
+    .record(z.string(), z.unknown())
     .optional()
     .transform((m) => sanitizePersistedBuilderMemory(m)),
 });
@@ -65,7 +65,7 @@ const createNegotiationAgentSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(1000).optional(),
   role: agentRoleSchema.default("both"),
-  config: negotiationAgentConfigSchema.default({}),
+  config: negotiationAgentConfigSchema.prefault({}),
 });
 
 const updateNegotiationAgentSchema = z.object({

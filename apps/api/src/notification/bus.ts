@@ -20,10 +20,10 @@ export function createNotificationBus(db: Database, resend: Resend): Notificatio
       const meta = EVENT_CATALOG[type];
 
       // 1. Validate payload against Zod schema
-      const validatedPayload = meta.payloadSchema.parse(payload);
+      const validatedPayload = meta.payloadSchema.parse(payload) as Record<string, unknown>;
 
       // 2. Generate deterministic idempotency key
-      const primaryEntityId = (validatedPayload as Record<string, unknown>)[meta.primaryEntityKey];
+      const primaryEntityId = validatedPayload[meta.primaryEntityKey];
       const idempotencyKey = `${type}:${primaryEntityId}:${recipientUserId}`;
 
       // 3. Preferences check — all 1차 events are transactional (prefs skipped)

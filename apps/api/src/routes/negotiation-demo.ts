@@ -848,7 +848,7 @@ const initSchema = z.object({
       swappa_median_minor: z.number().int().positive().optional(),
       swappa_median: z.number().positive().optional(),
     })
-    .default({}),
+    .prefault({}),
   seller: z
     .object({
       ask_price_minor: z.number().int().positive().optional(),
@@ -856,24 +856,24 @@ const initSchema = z.object({
       ask_price: z.number().positive().optional(),
       floor_price: z.number().positive().optional(),
     })
-    .default({}),
+    .prefault({}),
   buyer_budget: z
     .object({
       max_budget_minor: z.number().int().positive().optional(),
       max_budget: z.number().positive().optional(),
     })
-    .default({}),
+    .prefault({}),
   language: z.string().default("en"),
   preset: z.enum(["lowest_price", "balanced", "safe_first", "custom"]).default("balanced"),
   custom_skills: z
     .object({
       advisor: z.string(),
-      negotiation_agent_config: z.record(z.unknown()).optional(),
+      negotiation_agent_config: z.record(z.string(), z.unknown()).optional(),
     })
     .optional(),
   buyer_agent_id: z.enum(AGENT_PROFILE_IDS).default("vel"),
   seller_agent_id: z.enum(AGENT_PROFILE_IDS).default("dealer_hana"),
-  preset_tuning_draft: z.record(z.unknown()).optional(),
+  preset_tuning_draft: z.record(z.string(), z.unknown()).optional(),
 });
 
 const roundSchema = z

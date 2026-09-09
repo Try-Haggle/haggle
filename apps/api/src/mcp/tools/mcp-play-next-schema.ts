@@ -26,3 +26,5 @@ export const hagglePlayNextInputShape = {
     .optional()
     .describe("Optional buyer text sent with the user-specified counter."),
 };
+
+export const hagglePlayNextInputSchema = z.strictObject(hagglePlayNextInputShape);

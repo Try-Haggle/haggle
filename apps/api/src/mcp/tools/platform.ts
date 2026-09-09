@@ -68,12 +68,12 @@ import {
 } from "../../services/start-buyer-negotiation.service.js";
 import { lockTestContractForDisputeOpen } from "../../services/test-contract-ledger.service.js";
 import {
-  haggleGetNegotiationInputShape,
+  haggleGetNegotiationInputSchema,
   normalizeGetNegotiationExpand,
 } from "./mcp-get-negotiation-schema.js";
-import { haggleGetListingInputShape, haggleGetListingOutputShape } from "./mcp-listing-schema.js";
-import { hagglePlayNextInputShape } from "./mcp-play-next-schema.js";
-import { haggleStartNegotiationInputShape } from "./mcp-start-schema.js";
+import { haggleGetListingInputSchema, haggleGetListingOutputSchema } from "./mcp-listing-schema.js";
+import { hagglePlayNextInputSchema } from "./mcp-play-next-schema.js";
+import { haggleStartNegotiationInputSchema } from "./mcp-start-schema.js";
 import {
   buildMcpGetNegotiationExpandView,
   mcpNegotiationTranscript,
@@ -98,11 +98,11 @@ const agentConfigSchema = z.object({
   basePresetId: z.string().optional(),
   negotiationAgentPresetId: z.string().optional(),
   weights: weightsSchema.optional(),
-  engineParams: z.record(z.unknown()).optional(),
-  categoryAnswers: z.record(z.record(z.unknown())).optional(),
+  engineParams: z.record(z.string(), z.unknown()).optional(),
+  categoryAnswers: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
   voiceId: z.string().optional(),
   builderChatMemory: z
-    .record(z.unknown())
+    .record(z.string(), z.unknown())
     .optional()
     .transform((m) => sanitizePersistedBuilderMemory(m)),
 });
@@ -238,8 +238,8 @@ export function registerPlatformTools(
     {
       description:
         "Get a published listing by its public id (the /l/:publicId slug). Returns required_criteria as {checkId, ask}[] from extractSellerRequiredCriteria(listing.negotiationAgentSnapshot) — same source as the web start wizard. Empty when the seller has no required checks. Do not assume IMEI/완납/침수/Find My.",
-      inputSchema: haggleGetListingInputShape,
-      outputSchema: haggleGetListingOutputShape,
+      inputSchema: haggleGetListingInputSchema,
+      outputSchema: haggleGetListingOutputSchema,
     },
     async ({ public_id }) => {
       const listing = await getPublishedListingByPublicId(db, public_id);
@@ -538,10 +538,13 @@ export function registerPlatformTools(
     },
   );
 
-  server.tool(
+  server.registerTool(
     "haggle_start_negotiation",
-    "Start a buyer negotiation on a published listing. Same as POST /negotiations/start. Requires a connected account that is not the seller. public_id may be the slug (jc6r2T3d) or the full /l/... URL. agent_id is optional — use a preset (hunter, balancer, closer, verifier), an id from haggle_list_agents, or omit it to use balancer. Call haggle_get_listing first and answer required_criteria ({checkId, ask}) via buyerCriteria ({checkId, stance?}). Empty start is 409 BUYER_CRITERIA_REQUIRED with required_criteria {checkId, ask}[] (and required_check_ids) and no session. Do not assume IMEI/완납/침수/Find My. Do not use answer_pause. Do not invent user IDs.",
-    haggleStartNegotiationInputShape,
+    {
+      description:
+        "Start a buyer negotiation on a published listing. Same as POST /negotiations/start. Requires a connected account that is not the seller. public_id may be the slug (jc6r2T3d) or the full /l/... URL. agent_id is optional — use a preset (hunter, balancer, closer, verifier), an id from haggle_list_agents, or omit it to use balancer. Call haggle_get_listing first and answer required_criteria ({checkId, ask}) via buyerCriteria ({checkId, stance?}). Empty start is 409 BUYER_CRITERIA_REQUIRED with required_criteria {checkId, ask}[] (and required_check_ids) and no session. Do not assume IMEI/완납/침수/Find My. Do not use answer_pause. Do not invent user IDs.",
+      inputSchema: haggleStartNegotiationInputSchema,
+    },
     async ({ public_id, agent_id, deadline_hours, buyerCriteria }) => {
       const scoped = requireScopedActor("negotiate");
       if (!scoped.ok) return scoped.error;
@@ -603,10 +606,13 @@ export function registerPlatformTools(
     },
   );
 
-  server.tool(
+  server.registerTool(
     "haggle_get_negotiation",
-    "Read the live negotiation. Immediately quote say_to_user to the human — that is the counterpart's line. If pause_questions are present, ask those next; do not treat them as the seller's bargain line. Do not stop silently. Default response includes full transcript + offers (plus recent_messages). expand is optional if you only need a subset.",
-    haggleGetNegotiationInputShape,
+    {
+      description:
+        "Read the live negotiation. Immediately quote say_to_user to the human — that is the counterpart's line. If pause_questions are present, ask those next; do not treat them as the seller's bargain line. Do not stop silently. Default response includes full transcript + offers (plus recent_messages). expand is optional if you only need a subset.",
+      inputSchema: haggleGetNegotiationInputSchema,
+    },
     async ({ session_id, expand }) => {
       const scoped = requireScopedActor("negotiate");
       if (!scoped.ok) return scoped.error;
@@ -704,10 +710,13 @@ export function registerPlatformTools(
     },
   );
 
-  server.tool(
+  server.registerTool(
     "haggle_play_next",
-    "Advance one Haggle auto-play round (DeepSeek plays a side). After the tool returns, immediately quote say_to_user. If ask_user asked for a price/accept, pass the user's counter as price_minor (integer cents, 42000 = $420) and optional message — same as the web counter, not hnp_submit_offer. Omit both fields to autoplay. Rejected with BUYER_CRITERIA_REQUIRED if seller required criteria exist and buyerCriteria was not provided at start — do not start auto-play and do not use answer_pause.",
-    hagglePlayNextInputShape,
+    {
+      description:
+        "Advance one Haggle auto-play round (DeepSeek plays a side). After the tool returns, immediately quote say_to_user. If ask_user asked for a price/accept, pass the user's counter as price_minor (integer cents, 42000 = $420) and optional message — same as the web counter, not hnp_submit_offer. Omit both fields to autoplay. Rejected with BUYER_CRITERIA_REQUIRED if seller required criteria exist and buyerCriteria was not provided at start — do not start auto-play and do not use answer_pause.",
+      inputSchema: hagglePlayNextInputSchema,
+    },
     async ({ session_id, price_minor, message }) => {
       const scoped = requireScopedActor("negotiate");
       if (!scoped.ok) return scoped.error;

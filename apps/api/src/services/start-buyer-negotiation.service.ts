@@ -77,8 +77,8 @@ export const startBuyerNegotiationSchema = z.object({
   /** The face the buyer picked for this agent. Identity only; bounded so a
    *  client cannot smuggle a payload through it. */
   agent_emoji: z.string().min(1).max(40).optional(),
-  agent_weights: z.record(z.number()).optional(),
-  agent_overrides: z.record(z.unknown()).optional(),
+  agent_weights: z.record(z.string(), z.number()).optional(),
+  agent_overrides: z.record(z.string(), z.unknown()).optional(),
   negotiation_agent_builder_memory: z
     .object({
       budgetMax: z.number().positive().optional(),
