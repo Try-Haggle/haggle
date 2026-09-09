@@ -1,7 +1,7 @@
-# Staging Onramp checkout test-mode map (A1)
+# Staging Onramp checkout test-mode map (A1 / R1)
 
-Date: 2026-09-06
-Ticket: CTO A1 — Map staging `ACCEPTED` → checkout → Stripe Onramp test-mode path.
+Date: 2026-09-10 (R1 readiness pass; originally 2026-09-06 A1)
+Ticket: CTO A1 map + Eng2 R1 staging Onramp real-path readiness.
 
 Stripe here is **Crypto Onramp** (fiat/card → USDC on Base), **not** merchant card capture. Haggle APIs and MCP **never** accept or store card PANs.
 
@@ -61,6 +61,7 @@ Related (not Stripe Onramp, but checkout often needs them after funding):
 
 - `HAGGLE_X402_MODE=real` + base-sepolia / USDC test assets for conditional settlement after Onramp funds the buyer wallet.
 - `HAGGLE_X402_*` wallet maps / fee wallet as documented in `.env.example`.
+- **Network pairing:** Stripe Onramp API destinations are `base` (mainnet) only. Staging settlement is pinned to `base-sepolia`. With Stripe **test** keys on `HAGGLE_ENV=staging`, conditional settlement accepts Onramp `base` + settle `base-sepolia` so dogfood can continue; production still requires exact network match. Stage 1 fake-money E2E does **not** exercise this rail.
 
 ### Public probe (minimal fingerprint)
 
@@ -116,17 +117,35 @@ Haggle never sees the `4242` digits; the tester types them only into Stripe’s 
 
 ## Dogfood steps (tester)
 
+> **Not Stage 1 fake money.** `docs/wip/fake-money-fake-address-e2e-test-plan.md` is mock/test-contract only.
+> This checklist is the **real** staging path: Stripe test Onramp (`4242`) → webhook `ONRAMP_FUNDED` → conditional settlement on **base-sepolia** test assets. Do not conflate the two.
+
 1. Confirm public probe is up (minimal):
    `curl -sS https://api.staging.tryhaggle.ai/payments/onramp/status`
    Expect `available=true`, `provider=stripe`, and **no** `stripe_key_mode` / `test_cards_expected` fields.
 2. Confirm test-mode diagnostics via auth-gated runtime (or Railway env prefixes):
    `GET /tools/payment-test/runtime` → `stripe_key_mode=test`, `test_cards_expected=true`, `stripe_mode=real`.
+   Confirm `HAGGLE_ENABLE_STAGING_MOCK_PAYMENTS` is **false** (mock adapter does not drive the embedded Onramp widget).
 3. Reach a buyer negotiation session in `ACCEPTED` with settlement approval `APPROVED`.
-4. MCP (optional): call `haggle_create_checkout` → open returned `checkout_url` while logged in as buyer. Confirm response has **only** URL + message (no card fields).
+4. MCP (optional): call `haggle_create_checkout` → open returned `checkout_url` while logged in as buyer. Confirm response has **only** URL + message (no card fields / no PAN).
 5. Or open `https://app.staging.tryhaggle.ai/buy/negotiations/{sessionId}/checkout` directly.
-6. Choose **card**, connect buyer wallet (destination for USDC).
-7. Complete Stripe Onramp sandbox KYC/OTP using Stripe’s documented test values; pay with `4242 4242 4242 4242`, any future expiry, any CVC.
-8. Wait for widget `fulfillment_complete` / staging webhook; confirm payment intent provider context shows Onramp funded, then finish conditional settlement funding if prompted.
+6. Choose **card**, connect buyer wallet on the staging settlement network (base-sepolia). That wallet is also the Onramp destination address.
+7. Complete Stripe Onramp sandbox KYC/OTP using Stripe’s documented test values; pay with `4242 4242 4242 4242`, any future expiry, any CVC. Keep amount ≤ $100 in sandbox. Haggle never sees the digits.
+8. Wait for widget `fulfillment_complete`. Checkout must **not** treat this as order-paid yet — UI continues to the settlement quote step.
+9. Confirm staging webhook set `providerContext.stripe_onramp.status = ONRAMP_FUNDED` (UI retries briefly on `STRIPE_ONRAMP_NOT_FUNDED` while the webhook lands).
+10. Finish **conditional settlement** funding with staging test USDC/hUSDC on **base-sepolia** (faucet if needed). Stripe Onramp destinations are Base mainnet (`base`) only; staging intentionally allows Onramp `base` + settle `base-sepolia` when Stripe keys are test-mode. Do **not** expect Onramp sandbox to deposit spendable sepolia hUSDC.
+11. Confirm wallet `createAndFund` succeeds and payment/order shows settlement funded (not merely onramp session created).
+
+### Dogfood readiness checklist (R1)
+
+- [ ] Public `/payments/onramp/status` → `available=true`, minimal fingerprint only
+- [ ] Auth runtime → `stripe_key_mode=test`, `test_cards_expected=true`, `stripe_mode=real`, mock opt-in **false**
+- [ ] MCP `haggle_create_checkout` → URL + message only (PCI)
+- [ ] Web card path: wallet connect → Onramp session → widget mounts
+- [ ] `4242` sandbox completes; webhook → `ONRAMP_FUNDED` (not live keys / not mock rail)
+- [ ] UI continues to conditional settlement after Onramp (does not stop at “Payment complete”)
+- [ ] Staging network pairing: Onramp `base` + settle `base-sepolia` accepted under test keys
+- [ ] Conditional settlement funding confirmed on staging test assets
 
 ## Code map (primary files)
 

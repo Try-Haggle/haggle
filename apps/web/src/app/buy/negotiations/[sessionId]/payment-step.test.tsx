@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PaymentStep } from "./payment-step";
@@ -33,7 +33,35 @@ vi.mock("wagmi", () => ({
 }));
 
 vi.mock("@/lib/api-client", () => ({
+  ApiError: class ApiError extends Error {
+    status: number;
+    code: string;
+    constructor(status: number, code: string, message?: string) {
+      super(message || code);
+      this.status = status;
+      this.code = code;
+      this.name = "ApiError";
+    }
+  },
   api: { post: apiPost },
+}));
+
+const onrampListeners = vi.hoisted(() => ({
+  handlers: [] as Array<(event: { payload: { session: { status: string } } }) => void>,
+}));
+
+vi.mock("@stripe/crypto/pure", () => ({
+  loadStripeOnramp: vi.fn(async () => ({
+    createSession: () => ({
+      mount: vi.fn(),
+      addEventListener: (
+        _event: string,
+        handler: (event: { payload: { session: { status: string } } }) => void,
+      ) => {
+        onrampListeners.handlers.push(handler);
+      },
+    }),
+  })),
 }));
 
 vi.mock("@/lib/conditional-settlement-confirmation", () => ({
@@ -145,6 +173,7 @@ describe("PaymentStep navigation and wallet reuse", () => {
     sendCallsSyncAsync.mockReset();
     switchChain.mockReset();
     apiPost.mockReset();
+    onrampListeners.handlers = [];
   });
 
   afterEach(() => cleanup());
@@ -452,5 +481,58 @@ describe("PaymentStep navigation and wallet reuse", () => {
       }),
     );
     expect(await screen.findByText("Funding confirmed")).toBeInTheDocument();
+  });
+
+  it("continues card onramp fulfillment into conditional settlement instead of completing early", async () => {
+    walletState.address = WALLET_A;
+    walletState.isConnected = true;
+    apiPost.mockImplementation(async (requestPath: string) => {
+      if (requestPath === "/payments/prepare") {
+        return { intent: { id: "payment-1" }, order: { id: "order-1" } };
+      }
+      if (requestPath === "/payments/payment-1/onramp/session") {
+        return {
+          client_secret: "cos_test_secret",
+          stripe_publishable_key: "pk_test_dogfood",
+          buyer_payable: { currency: "USD", amount_minor: 1015 },
+          seller_receives: { currency: "USD", amount_minor: 1000 },
+          quote_confirmation: {
+            rail: "stripe",
+            amount: { currency: "USD", amount_minor: 1000 },
+            buyer_total: { currency: "USD", amount_minor: 1015 },
+            seller_receives: { currency: "USD", amount_minor: 1000 },
+            fees: {
+              buyer_fee_total: { currency: "USD", amount_minor: 15 },
+              seller_fee_total: { currency: "USD", amount_minor: 0 },
+              items: [],
+            },
+          },
+        };
+      }
+      throw new Error(`Unexpected API request: ${requestPath}`);
+    });
+
+    const user = userEvent.setup();
+    render(<PaymentStep {...props} />);
+
+    await user.click(screen.getByText("Integration test").closest("button")!);
+    await user.click(screen.getByText("Pay with card").closest("button")!);
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+
+    expect(await screen.findByText("Complete the payment in Stripe.")).toBeInTheDocument();
+    expect(onrampListeners.handlers.length).toBeGreaterThan(0);
+
+    await act(async () => {
+      onrampListeners.handlers[0]!({
+        payload: { session: { status: "fulfillment_complete" } },
+      });
+    });
+
+    expect(await screen.findByText(/Card on-ramp funded — finish settlement/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Continue to hUSDC settlement/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Payment complete")).not.toBeInTheDocument();
+    expect(screen.queryByText("Funding confirmed")).not.toBeInTheDocument();
   });
 });

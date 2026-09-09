@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  areStripeOnrampAndSettlementNetworksCompatible,
   assertStagingStripeOnrampKeysAllowed,
   classifyStripeKeyMode,
   createOnrampSession,
@@ -110,5 +111,46 @@ describe("staging live Stripe key hard gate", () => {
       }),
     ).rejects.toMatchObject({ code: STAGING_LIVE_STRIPE_KEYS_FORBIDDEN });
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("areStripeOnrampAndSettlementNetworksCompatible", () => {
+  it("requires exact match outside staging test-mode", () => {
+    expect(
+      areStripeOnrampAndSettlementNetworksCompatible("base", "base-sepolia", {
+        haggleEnv: "production",
+        stripeKeyMode: "live",
+      }),
+    ).toBe(false);
+    expect(
+      areStripeOnrampAndSettlementNetworksCompatible("base", "base", {
+        haggleEnv: "production",
+        stripeKeyMode: "live",
+      }),
+    ).toBe(true);
+  });
+
+  it("allows Onramp base + settle base-sepolia on staging with Stripe test keys", () => {
+    expect(
+      areStripeOnrampAndSettlementNetworksCompatible("base", "base-sepolia", {
+        haggleEnv: "staging",
+        stripeKeyMode: "test",
+      }),
+    ).toBe(true);
+  });
+
+  it("still rejects staging live-key or non-base onramp pairings", () => {
+    expect(
+      areStripeOnrampAndSettlementNetworksCompatible("base", "base-sepolia", {
+        haggleEnv: "staging",
+        stripeKeyMode: "live",
+      }),
+    ).toBe(false);
+    expect(
+      areStripeOnrampAndSettlementNetworksCompatible("base-sepolia", "base", {
+        haggleEnv: "staging",
+        stripeKeyMode: "test",
+      }),
+    ).toBe(false);
   });
 });

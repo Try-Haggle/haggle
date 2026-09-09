@@ -88,6 +88,7 @@ import {
   createConditionalSettlementSigner,
 } from "../payments/settlement-signer.js";
 import {
+  areStripeOnrampAndSettlementNetworksCompatible,
   assertStagingStripeOnrampKeysAllowed,
   createOnrampSession,
   getStripeConfig,
@@ -1913,7 +1914,13 @@ function validateStripeOnrampContractFundingPreconditions(
       message: "Stripe onramp destination network is missing",
     };
   }
-  if (expectedNetwork && actualNetwork !== expectedNetwork) {
+  if (
+    expectedNetwork &&
+    !areStripeOnrampAndSettlementNetworksCompatible(actualNetwork, expectedNetwork, {
+      haggleEnv: process.env.HAGGLE_ENV,
+      stripeKeyMode: getStripeConfig().keyMode,
+    })
+  ) {
     return {
       ok: false,
       statusCode: 409,
