@@ -25,7 +25,7 @@ import {
   Spinner,
   Stepper,
 } from "@/components/ui";
-import { api } from "@/lib/api-client";
+import { ApiError, api } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
 import { confirmConditionalSettlementFunding } from "@/lib/conditional-settlement-confirmation";
 import { createPaymentDisclosureAck } from "@/lib/payment-disclosure";
@@ -233,6 +233,41 @@ function isConfirmedSettlementAmount(money: Money | undefined): money is Money {
   );
 }
 
+async function sleep(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * After Stripe Onramp fulfillment_complete, the staging webhook may lag briefly
+ * before providerContext.stripe_onramp.status becomes ONRAMP_FUNDED. Retry the
+ * conditional-settlement request only for that specific gate.
+ */
+async function requestConditionalSettlementWithOnrampRetry(
+  paymentIntentId: string,
+  buyerWalletAddress: string,
+  isCardOnrampPath: boolean,
+): Promise<ConditionalSettlementRequest> {
+  const maxAttempts = isCardOnrampPath ? 8 : 1;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      return await api.post<ConditionalSettlementRequest>(
+        `/payments/${paymentIntentId}/x402/conditional-settlement-request`,
+        { buyer_wallet_address: buyerWalletAddress },
+      );
+    } catch (error) {
+      lastError = error;
+      const waitingForWebhook =
+        isCardOnrampPath && error instanceof ApiError && error.code === "STRIPE_ONRAMP_NOT_FUNDED";
+      if (!waitingForWebhook || attempt === maxAttempts - 1) {
+        throw error;
+      }
+      await sleep(1500);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
 export function PaymentStep({
   settlementApprovalId,
   amountMinor,
@@ -432,9 +467,10 @@ export function PaymentStep({
         );
       }
       setQuoteConfirmation(confirmation);
-      const request = await api.post<ConditionalSettlementRequest>(
-        `/payments/${paymentIntentId}/x402/conditional-settlement-request`,
-        { buyer_wallet_address: address },
+      const request = await requestConditionalSettlementWithOnrampRetry(
+        paymentIntentId,
+        address,
+        method === "card",
       );
       assertConditionalSettlementTarget({
         contractAddress: request.contract.address,
@@ -518,8 +554,10 @@ export function PaymentStep({
           session.mount("#stripe-onramp-element");
           session.addEventListener("onramp_session_updated", (event) => {
             if (event.payload.session.status === "fulfillment_complete") {
+              // Onramp only funds the buyer wallet. Conditional settlement still
+              // required (SoT: ACCEPTED → onramp → webhook ONRAMP_FUNDED → settle).
               clearSessionDraft(draftKey);
-              setStep("complete");
+              setStep("check_balance");
             }
           });
         }
@@ -881,12 +919,21 @@ export function PaymentStep({
                 </>
               )}
             </div>
+            {method === "card" && (
+              <Alert tone="info" title="Card on-ramp funded — finish settlement">
+                Stripe funded your wallet. Next, quote and fund the conditional settlement contract
+                with {HAGGLE_SETTLEMENT_ASSET.symbol} (staging uses base-sepolia test assets; Onramp
+                itself targets Base).
+              </Alert>
+            )}
             <Button onClick={handleQuote} loading={isLoading} disabled={isWrongNetwork} fullWidth>
               {isLoading
-                ? "Loading..."
+                ? method === "card"
+                  ? "Waiting for on-ramp webhook / quoting..."
+                  : "Loading..."
                 : method === "crypto"
                   ? `Get ${HAGGLE_SETTLEMENT_ASSET.symbol} Quote`
-                  : "Get Quote"}
+                  : `Continue to ${HAGGLE_SETTLEMENT_ASSET.symbol} settlement`}
             </Button>
           </div>
         )}
@@ -957,11 +1004,11 @@ export function PaymentStep({
           <ResultState
             tone="success"
             icon={<CheckCircle2 className="size-7" />}
-            title={conditionalSettlement ? "Funding confirmed" : "Payment complete"}
+            title={conditionalSettlement ? "Funding confirmed" : "Payment submitted"}
             description={
               conditionalSettlement
                 ? `Your ${formatMinor(settlementAmountDisplay ?? buyerPaysDisplay)} funding transaction is confirmed. The funds remain protected by the release and dispute rules.`
-                : `Your payment of ${formatMinor(buyerPaysDisplay)} has been submitted.`
+                : `Your payment of ${formatMinor(buyerPaysDisplay)} was submitted. If you used card on-ramp, confirm conditional settlement funding still completed.`
             }
             action={
               orderId ? (
@@ -984,7 +1031,9 @@ export function PaymentStep({
               onClick={() => {
                 setError(null);
                 setStep(
-                  method === "crypto" && paymentIntentId ? "check_balance" : "connect_wallet",
+                  paymentIntentId && (method === "crypto" || method === "card")
+                    ? "check_balance"
+                    : "connect_wallet",
                 );
               }}
               fullWidth

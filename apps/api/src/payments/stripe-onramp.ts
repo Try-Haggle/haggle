@@ -153,6 +153,33 @@ export function assertStagingStripeOnrampKeysAllowed(
   );
 }
 
+export type StripeOnrampSettlementNetwork = "base" | "base-sepolia";
+
+/**
+ * Stripe Crypto Onramp destinations are Base mainnet (`base`) only.
+ * Staging settlement is pinned to base-sepolia test assets (hUSDC), so Onramp
+ * `base` + settle `base-sepolia` is an intentional staging dogfood pairing when
+ * Stripe keys are test-mode — not a production cross-network fund.
+ */
+export function areStripeOnrampAndSettlementNetworksCompatible(
+  onrampNetwork: StripeOnrampSettlementNetwork,
+  settlementNetwork: StripeOnrampSettlementNetwork | null,
+  options: {
+    haggleEnv?: string | undefined;
+    stripeKeyMode?: StripeKeyMode;
+  } = {},
+): boolean {
+  if (!settlementNetwork) return true;
+  if (onrampNetwork === settlementNetwork) return true;
+  const haggleEnv = (options.haggleEnv ?? "").trim().toLowerCase();
+  return (
+    haggleEnv === "staging" &&
+    options.stripeKeyMode === "test" &&
+    onrampNetwork === "base" &&
+    settlementNetwork === "base-sepolia"
+  );
+}
+
 export function isStagingLiveStripeKeysForbiddenError(
   error: unknown,
 ): error is Error & { code: typeof STAGING_LIVE_STRIPE_KEYS_FORBIDDEN } {
