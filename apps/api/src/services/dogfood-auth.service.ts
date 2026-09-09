@@ -6,7 +6,7 @@
  * Never log secrets or minted tokens.
  */
 
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 import {
   DOGFOOD_PERSONA_EMAILS,
   DOGFOOD_PERSONA_HANDLES,
@@ -24,7 +24,42 @@ export type DogfoodWebSession = {
   handle: "dogfood_buyer" | "dogfood_seller";
 };
 
-export type DogfoodAuthAdmin = Pick<SupabaseClient, "auth">;
+/** Minimal admin surface used by ensure/mint — avoids full SupabaseAuthClient in tests. */
+export type DogfoodAuthAdmin = {
+  auth: {
+    admin: {
+      getUserById: (uid: string) => Promise<{
+        data: { user: { id: string; email?: string | null } | null };
+        error: { message?: string } | null;
+      }>;
+      createUser: (attrs: {
+        id: string;
+        email: string;
+        email_confirm?: boolean;
+        user_metadata?: Record<string, unknown>;
+        app_metadata?: Record<string, unknown>;
+      }) => Promise<{
+        data: { user: { id: string; email?: string | null } | null };
+        error: { message?: string } | null;
+      }>;
+      generateLink: (params: { type: "magiclink"; email: string }) => Promise<{
+        data: { properties?: { hashed_token?: string | null } | null } | null;
+        error: { message?: string } | null;
+      }>;
+    };
+    verifyOtp: (params: { type: "email"; token_hash: string }) => Promise<{
+      data: {
+        session: {
+          access_token: string;
+          refresh_token: string;
+          expires_at?: number;
+          expires_in?: number;
+        } | null;
+      };
+      error: { message?: string } | null;
+    }>;
+  };
+};
 
 let _adminForTest: DogfoodAuthAdmin | null = null;
 
@@ -42,7 +77,7 @@ function getSupabaseAdmin(): DogfoodAuthAdmin {
   }
   return createClient(url, key, {
     auth: { autoRefreshToken: false, persistSession: false },
-  });
+  }) as DogfoodAuthAdmin;
 }
 
 /**

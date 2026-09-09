@@ -51,7 +51,7 @@ function makeAdminMock(options?: {
     return { data: { user }, error: null };
   });
 
-  const generateLink = vi.fn(async () => {
+  const generateLink = vi.fn(async (_params: { type: "magiclink"; email: string }) => {
     if (options?.mintFail) {
       return { data: null, error: { message: "boom" } };
     }
@@ -61,7 +61,7 @@ function makeAdminMock(options?: {
     };
   });
 
-  const verifyOtp = vi.fn(async () => {
+  const verifyOtp = vi.fn(async (_params: { type: "email"; token_hash: string }) => {
     if (options?.mintFail) {
       return { data: { session: null }, error: { message: "boom" } };
     }
