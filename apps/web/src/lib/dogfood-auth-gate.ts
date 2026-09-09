@@ -7,6 +7,9 @@
 
 export type DogfoodPersona = "buyer" | "seller";
 
+/** Env bag for gates — looser than ProcessEnv so unit tests can pass partials. */
+export type DogfoodAuthEnv = Record<string, string | undefined>;
+
 export const DOGFOOD_PERSONAS: readonly DogfoodPersona[] = ["buyer", "seller"] as const;
 
 const MIN_SECRET_BYTES = 32;
@@ -19,7 +22,7 @@ export function normalizeHaggleEnv(raw: string | undefined): "local" | "staging"
 }
 
 /** True when this process must never expose dogfood login (prod build/host). */
-export function isDogfoodAuthProductionClosed(env: NodeJS.ProcessEnv = process.env): boolean {
+export function isDogfoodAuthProductionClosed(env: DogfoodAuthEnv = process.env): boolean {
   if (normalizeHaggleEnv(env.HAGGLE_ENV) === "production") return true;
   if (env.VERCEL_ENV === "production") return true;
   return false;
@@ -29,13 +32,13 @@ export function isDogfoodAuthProductionClosed(env: NodeJS.ProcessEnv = process.e
  * Page/link visibility: staging + local only.
  * Matches design-system gate pattern (VERCEL_ENV) plus explicit HAGGLE_ENV.
  */
-export function isDogfoodAuthWebSurfaceEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+export function isDogfoodAuthWebSurfaceEnabled(env: DogfoodAuthEnv = process.env): boolean {
   if (isDogfoodAuthProductionClosed(env)) return false;
   const haggleEnv = normalizeHaggleEnv(env.HAGGLE_ENV);
   return haggleEnv === "staging" || haggleEnv === "local";
 }
 
-export function readDogfoodAuthSecret(env: NodeJS.ProcessEnv = process.env): string | null {
+export function readDogfoodAuthSecret(env: DogfoodAuthEnv = process.env): string | null {
   const secret = env.HAGGLE_DOGFOOD_AUTH_SECRET;
   if (typeof secret !== "string") return null;
   // Prefer byte length so multi-byte chars cannot under-fill the SoT floor.
@@ -47,7 +50,7 @@ export function readDogfoodAuthSecret(env: NodeJS.ProcessEnv = process.env): str
  * BFF/proxy may call upstream only when surface is enabled AND secret is set.
  * Production or missing/short secret → fail-closed (caller returns 404).
  */
-export function isDogfoodAuthBffEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+export function isDogfoodAuthBffEnabled(env: DogfoodAuthEnv = process.env): boolean {
   if (!isDogfoodAuthWebSurfaceEnabled(env)) return false;
   return readDogfoodAuthSecret(env) !== null;
 }
