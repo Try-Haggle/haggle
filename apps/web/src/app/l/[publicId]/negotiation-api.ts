@@ -7,6 +7,7 @@
  * an already-open session reuses it without re-applying strategy.
  */
 import { ApiError, api } from "@/lib/api-client";
+import { withDefaultControlModePreference } from "@/lib/control-mode";
 
 export interface StartListingNegotiationResponse {
   session_id: string;
@@ -58,7 +59,9 @@ export async function startListingNegotiation(
   body: Record<string, unknown>,
 ): Promise<StartListingNegotiationResponse> {
   try {
-    const res = await api.post<StartListingNegotiationResponse>("/negotiations/start", body);
+    // SoT §2: Settings Soft default applies at session create (not on resume).
+    const startBody = withDefaultControlModePreference(body);
+    const res = await api.post<StartListingNegotiationResponse>("/negotiations/start", startBody);
     return { ...res, resumed: false };
   } catch (err) {
     if (err instanceof ApiError && !err.message) {

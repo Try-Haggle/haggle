@@ -106,22 +106,109 @@ export function modesFromServerSession(
   return { own, peer, ownPending, inflight };
 }
 
-export function readDefaultControlModePreference(): ControlMode {
-  if (typeof window === "undefined") return DEFAULT_CONTROL_MODE;
+/** Same-tab + cross-tab listeners for Settings default preference. */
+const DEFAULT_CONTROL_MODE_PREF_EVENT = "haggle:default-control-mode";
+const DEFAULT_CONTROL_MODE_COOKIE_MAX_AGE_SEC = 60 * 60 * 24 * 365; // 1y
+
+function readDefaultControlModeCookie(): ControlMode | null {
+  if (typeof document === "undefined") return null;
   try {
-    return parseControlMode(window.localStorage.getItem(DEFAULT_CONTROL_MODE_PREF_KEY));
+    const prefix = `${DEFAULT_CONTROL_MODE_PREF_KEY}=`;
+    for (const part of document.cookie.split("; ")) {
+      if (!part.startsWith(prefix)) continue;
+      const value = part.slice(prefix.length);
+      return isControlMode(value) ? value : null;
+    }
   } catch {
-    return DEFAULT_CONTROL_MODE;
+    // cookie access blocked
+  }
+  return null;
+}
+
+function writeDefaultControlModeCookie(mode: ControlMode): boolean {
+  if (typeof document === "undefined") return false;
+  try {
+    // Cookie Store API is async / not universal; dual-write with document.cookie is intentional.
+    // biome-ignore lint/suspicious/noDocumentCookie: sync preference mirror for reload/re-entry
+    document.cookie = `${DEFAULT_CONTROL_MODE_PREF_KEY}=${mode}; Path=/; Max-Age=${DEFAULT_CONTROL_MODE_COOKIE_MAX_AGE_SEC}; SameSite=Lax`;
+    return readDefaultControlModeCookie() === mode;
+  } catch {
+    return false;
   }
 }
 
-export function writeDefaultControlModePreference(mode: ControlMode): void {
-  if (typeof window === "undefined") return;
+/**
+ * Read Settings Soft control_mode default (SoT §2).
+ * Prefers localStorage; falls back to cookie (SSR-friendly / private-mode resilient).
+ */
+export function readDefaultControlModePreference(): ControlMode {
+  if (typeof window === "undefined") return DEFAULT_CONTROL_MODE;
+  try {
+    const fromStorage = window.localStorage.getItem(DEFAULT_CONTROL_MODE_PREF_KEY);
+    if (isControlMode(fromStorage)) return fromStorage;
+  } catch {
+    // localStorage blocked — try cookie
+  }
+  return readDefaultControlModeCookie() ?? DEFAULT_CONTROL_MODE;
+}
+
+/**
+ * Persist Settings Soft control_mode default for the next session start.
+ * Dual-writes localStorage + cookie so re-entry / reload still see Manual|Auto.
+ * @returns true when at least one store retained the value
+ */
+export function writeDefaultControlModePreference(mode: ControlMode): boolean {
+  if (typeof window === "undefined") return false;
+  if (!isControlMode(mode)) return false;
+
+  let stored = false;
   try {
     window.localStorage.setItem(DEFAULT_CONTROL_MODE_PREF_KEY, mode);
+    stored = window.localStorage.getItem(DEFAULT_CONTROL_MODE_PREF_KEY) === mode;
   } catch {
-    // private mode / quota — preference is best-effort until M1 account prefs land
+    // private mode / quota
   }
+
+  const cookieOk = writeDefaultControlModeCookie(mode);
+  const ok = stored || cookieOk;
+
+  if (ok) {
+    try {
+      window.dispatchEvent(new Event(DEFAULT_CONTROL_MODE_PREF_EVENT));
+    } catch {
+      // EventTarget unavailable — readers still pick up on remount
+    }
+  }
+  return ok;
+}
+
+/** Subscribe to Settings default preference changes (same tab + storage events). */
+export function subscribeDefaultControlModePreference(onStoreChange: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  const handler = () => onStoreChange();
+  window.addEventListener("storage", handler);
+  window.addEventListener(DEFAULT_CONTROL_MODE_PREF_EVENT, handler);
+  return () => {
+    window.removeEventListener("storage", handler);
+    window.removeEventListener(DEFAULT_CONTROL_MODE_PREF_EVENT, handler);
+  };
+}
+
+/**
+ * Attach Settings Soft default to POST /negotiations/start body (SoT §2 / M1).
+ * Explicit body.buyer_control_mode wins; otherwise the persisted preference is used.
+ */
+export function withDefaultControlModePreference(
+  body: Record<string, unknown>,
+): Record<string, unknown> {
+  const explicit = body.buyer_control_mode;
+  if (isControlMode(explicit)) {
+    return { ...body, buyer_control_mode: explicit };
+  }
+  return {
+    ...body,
+    buyer_control_mode: readDefaultControlModePreference(),
+  };
 }
 
 /**

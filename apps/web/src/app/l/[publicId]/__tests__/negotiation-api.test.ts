@@ -8,6 +8,10 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  DEFAULT_CONTROL_MODE_PREF_KEY,
+  writeDefaultControlModePreference,
+} from "@/lib/control-mode";
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
@@ -40,6 +44,9 @@ import {
 beforeEach(() => {
   mocks.get.mockReset();
   mocks.post.mockReset();
+  window.localStorage.clear();
+  // biome-ignore lint/suspicious/noDocumentCookie: test cleanup of preference cookie
+  document.cookie = `${DEFAULT_CONTROL_MODE_PREF_KEY}=; Path=/; Max-Age=0`;
 });
 
 describe("listing → session API (A3)", () => {
@@ -58,7 +65,10 @@ describe("listing → session API (A3)", () => {
 
     expect(res).toEqual({ session_id: "sess-new", run_token: "tok-1", resumed: false });
     expect(mocks.post).toHaveBeenCalledTimes(1);
-    expect(mocks.post).toHaveBeenCalledWith("/negotiations/start", body);
+    expect(mocks.post).toHaveBeenCalledWith("/negotiations/start", {
+      ...body,
+      buyer_control_mode: "auto",
+    });
     const path = mocks.post.mock.calls[0]![0] as string;
     expect(path).not.toMatch(/intent/i);
     expect(path).not.toMatch(/trigger-match/i);
@@ -130,7 +140,29 @@ describe("listing → session API (A3)", () => {
       guest_buyer_id: "guest-9",
       resumed: false,
     });
-    expect(mocks.post).toHaveBeenCalledWith("/negotiations/start", startBody);
+    expect(mocks.post).toHaveBeenCalledWith("/negotiations/start", {
+      ...startBody,
+      buyer_control_mode: "auto",
+    });
+  });
+
+  it("starts with Settings Manual preference as buyer_control_mode", async () => {
+    writeDefaultControlModePreference("manual");
+    mocks.post.mockResolvedValueOnce({
+      session_id: "sess-manual",
+      run_token: "tok-m",
+    });
+
+    await startListingNegotiation({
+      listing_public_id: "pub-abc",
+      negotiation_agent_preset_id: "balancer",
+    });
+
+    expect(mocks.post).toHaveBeenCalledWith("/negotiations/start", {
+      listing_public_id: "pub-abc",
+      negotiation_agent_preset_id: "balancer",
+      buyer_control_mode: "manual",
+    });
   });
 
   it("starts directly for guests (no session-list lookup)", async () => {
@@ -199,7 +231,10 @@ describe("listing → session API (A3)", () => {
 
     expect(res.session_id).toBe("sess-with-addr");
     expect(res.resumed).toBe(false);
-    expect(mocks.post).toHaveBeenCalledWith("/negotiations/start", startBody);
+    expect(mocks.post).toHaveBeenCalledWith("/negotiations/start", {
+      ...startBody,
+      buyer_control_mode: "auto",
+    });
     expect(startBody.fulfillment).toHaveProperty("buyer_address");
   });
 });

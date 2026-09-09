@@ -13,6 +13,14 @@ const nextConfig: NextConfig = {
       ...(config.resolve.fallback ?? {}),
       "@react-native-async-storage/async-storage": false,
       "pino-pretty": false,
+      "@x402/core": false,
+      "@x402/core/client": false,
+      "@x402/evm": false,
+      "@x402/evm/exact/client": false,
+      "@x402/evm/upto/client": false,
+      "@x402/svm": false,
+      "@x402/svm/exact/client": false,
+      "@x402/extensions": false,
     };
     return config;
   },
