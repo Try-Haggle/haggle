@@ -64,6 +64,9 @@ const messagesLimiter = new SlidingWindowRateLimiter(30, 60_000);
 // Unauthenticated DCR: 10 registrations / 15 minutes per IP
 const oauthRegisterLimiter = new SlidingWindowRateLimiter(10, 15 * 60 * 1000);
 
+// Dogfood auth mint: 20 req / 15 minutes per IP (secret stuffing brake)
+const dogfoodAuthLimiter = new SlidingWindowRateLimiter(20, 15 * 60 * 1000);
+
 export function resetRateLimitsForTests(): void {
   if (process.env.NODE_ENV !== "test") {
     throw new Error("rate limit reset is test-only");
@@ -73,6 +76,7 @@ export function resetRateLimitsForTests(): void {
   paymentsLimiter.clear();
   messagesLimiter.clear();
   oauthRegisterLimiter.clear();
+  dogfoodAuthLimiter.clear();
 }
 
 function getIp(request: FastifyRequest): string {
@@ -179,6 +183,19 @@ export async function oauthRegisterRateLimit(
   reply: FastifyReply,
 ): Promise<void> {
   const result = oauthRegisterLimiter.isAllowed(getIp(request));
+  if (!result.allowed) {
+    reply
+      .code(429)
+      .header("Retry-After", String(result.retryAfter))
+      .send({ error: "TOO_MANY_REQUESTS", retryAfter: result.retryAfter });
+  }
+}
+
+export async function dogfoodAuthRateLimit(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<void> {
+  const result = dogfoodAuthLimiter.isAllowed(getIp(request));
   if (!result.allowed) {
     reply
       .code(429)

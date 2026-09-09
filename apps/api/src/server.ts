@@ -36,6 +36,7 @@ import { registerDisputeAdvisorRoutes } from "./routes/dispute-advisor.js";
 import { registerDisputeCaseGuideRoutes } from "./routes/dispute-case-guide.js";
 import { registerDisputeModuleRoutes } from "./routes/dispute-modules.js";
 import { registerDisputeRoutes } from "./routes/disputes.js";
+import { registerDogfoodAuthRoutes } from "./routes/dogfood-auth.js";
 import { registerDraftRoutes } from "./routes/drafts.js";
 import { registerDSRatingRoutes } from "./routes/ds-ratings.js";
 import { registerGamificationRoutes } from "./routes/gamification.js";
@@ -90,6 +91,7 @@ export const API_CORS_ALLOWED_HEADERS = [
   "x-haggle-module-timestamp",
   "x-haggle-module-signature",
   "x-haggle-idempotency-key",
+  "x-haggle-dogfood-secret",
   "stripe-signature",
 ];
 
@@ -101,6 +103,16 @@ export async function createServer() {
   const app = Fastify({
     logger: {
       level: process.env.LOG_LEVEL || "info",
+      // Never persist Authorization / dogfood secret / module signatures in logs.
+      redact: {
+        paths: [
+          "req.headers.authorization",
+          'req.headers["x-haggle-dogfood-secret"]',
+          'req.headers["x-haggle-module-signature"]',
+          'req.headers["x-haggle-x402-signature"]',
+        ],
+        remove: true,
+      },
     },
     bodyLimit: jsonBodyLimit,
     trustProxy: trustedProxyCidrs,
@@ -260,6 +272,7 @@ export async function createServer() {
   // ─── Demo / E2E Test Routes ────────────────────────────
   registerDemoE2ERoutes(app, db);
   registerPaymentTestToolRoutes(app, db);
+  registerDogfoodAuthRoutes(app, db);
 
   // ─── Messaging Routes ─────────────────────────────────────
   registerMessagingRoutes(app, db);
