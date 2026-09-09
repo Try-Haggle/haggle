@@ -963,6 +963,9 @@ export function registerNegotiationRoutes(
         return reply.code(result.status).send({
           error: result.error,
           ...(result.message ? { message: result.message } : {}),
+          ...("required" in result && result.required !== undefined
+            ? { required: result.required, balance: result.balance }
+            : {}),
         });
       }
       return reply.send({

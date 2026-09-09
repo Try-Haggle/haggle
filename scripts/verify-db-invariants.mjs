@@ -26,6 +26,29 @@ if (!/CREATE UNIQUE INDEX IF NOT EXISTS negotiation_rounds_session_idempotency_k
   failures.push("0023 migration must create the composite session/idempotency index");
 }
 
+
+
+const creditSchemaPath = join(root, "packages", "db", "src", "schema", "credit-ledger.ts");
+const creditMigrationPath = join(root, "packages", "db", "drizzle", "0155_credit_ledger.sql");
+const creditSchema = readFileSync(creditSchemaPath, "utf8");
+const creditMigration = readFileSync(creditMigrationPath, "utf8");
+
+if (!creditSchema.includes('uniqueIndex("credit_ledger_entries_account_idempotency_key_idx").on(table.accountId, table.idempotencyKey)')) {
+  failures.push("credit_ledger_entries must keep idempotency unique per (account_id, idempotency_key)");
+}
+
+if (/uniqueIndex\("credit_ledger_entries_idempotency_key_idx"\)\.on\(table\.idempotencyKey\)/.test(creditSchema)) {
+  failures.push("credit_ledger_entries must not use a globally unique idempotency_key index");
+}
+
+if (!/CREATE UNIQUE INDEX IF NOT EXISTS "credit_ledger_entries_account_idempotency_key_idx"\s+ON "credit_ledger_entries" \("account_id", "idempotency_key"\);/u.test(creditMigration)) {
+  failures.push("0155 migration must create composite account/idempotency unique index");
+}
+
+if (/CREATE UNIQUE INDEX[^;]*ON "credit_ledger_entries" \("idempotency_key"\)/u.test(creditMigration)) {
+  failures.push("0155 migration must not create a globally unique idempotency_key index");
+}
+
 if (failures.length) {
   console.error("DB invariant verification failed.");
   for (const failure of failures) console.error(`- ${failure}`);

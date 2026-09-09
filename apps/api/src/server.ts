@@ -30,6 +30,7 @@ import { registerAuthenticationRoutes } from "./routes/authentications.js";
 import { registerBuddyRoutes } from "./routes/buddies.js";
 import { registerBuyerListingsRoutes } from "./routes/buyer-listings.js";
 import { registerClaimRoutes } from "./routes/claim.js";
+import { registerCreditRoutes } from "./routes/credits.js";
 import { registerDemoE2ERoutes } from "./routes/demo-e2e.js";
 import { registerDisputeAdvisorRoutes } from "./routes/dispute-advisor.js";
 import { registerDisputeCaseGuideRoutes } from "./routes/dispute-case-guide.js";
@@ -205,6 +206,7 @@ export async function createServer() {
   registerClaimRoutes(app, db);
   registerListingsRoutes(app, db);
   registerAccountRoutes(app, db);
+  registerCreditRoutes(app, db);
   registerPublicListingRoutes(app, db);
   registerDraftRoutes(app, db, notificationBus);
   registerBuyerListingsRoutes(app, db);

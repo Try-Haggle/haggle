@@ -83,11 +83,15 @@ function normalizeEnv(haggleEnv?: string): string {
   return (haggleEnv ?? "").trim().toLowerCase();
 }
 
-/** True on local/staging during the test period. Always false in production. */
+/**
+ * True on local/staging during the test period. Always false in production.
+ * Explicit `prod` / `production` never unlimited. Callers in Node should also
+ * pass production NODE_ENV through the ledger runtime gate (fail-closed).
+ */
 export function creditsAreUnlimited(haggleEnv?: string): boolean {
   if (!CREDIT_UNLIMITED_IS_TEMPORARY) return false;
   const env = normalizeEnv(haggleEnv);
-  if (env === "production") return false;
+  if (env === "production" || env === "prod") return false;
   return (CREDIT_UNLIMITED_ENVS as readonly string[]).includes(env);
 }
 

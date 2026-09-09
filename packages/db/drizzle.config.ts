@@ -23,6 +23,7 @@ export default defineConfig({
     "./dist/schema/category-relatedness.js",
     "./dist/schema/chain-sync.js",
     "./dist/schema/commerce-orders.js",
+    "./dist/schema/credit-ledger.js",
     "./dist/schema/dispute-deposits.js",
     "./dist/schema/dispute-precedents.js",
     "./dist/schema/dispute-evidence-operations.js",

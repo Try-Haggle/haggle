@@ -16,6 +16,11 @@ import {
   type SoftControlMode,
 } from "@haggle/commerce-core";
 import { and, type Database, eq, negotiationSessions, sql } from "@haggle/db";
+import {
+  applySoftAiCreditCharge,
+  INSUFFICIENT_CREDITS,
+  InsufficientCreditsError,
+} from "./credit-ledger.service.js";
 
 export const SELLER_MANUAL_FIRST_TIMEOUT_MS = 30 * 60 * 1000;
 export const SELLER_MANUAL_LATER_TIMEOUT_MS = 2 * 60 * 60 * 1000;
@@ -62,15 +67,18 @@ export type SetControlModeResult =
   | { ok: true; applied: boolean; pending_handoff: boolean; view: ControlModeView }
   | {
       ok: false;
-      status: 403 | 404 | 409;
+      status: 402 | 403 | 404 | 409;
       error:
         | "SESSION_NOT_FOUND"
         | "SESSION_ACTOR_MISMATCH"
         | "PARTY_ONLY_CONTROL_MODE"
         | "INVALID_CONTROL_MODE"
         | "SESSION_TERMINAL"
-        | "CONCURRENT_MODIFICATION";
+        | "CONCURRENT_MODIFICATION"
+        | typeof INSUFFICIENT_CREDITS;
       message?: string;
+      required?: number;
+      balance?: number;
     };
 
 const TERMINAL = new Set(["ACCEPTED", "REJECTED", "EXPIRED", "SUPERSEDED", "FAILED_COMPATIBILITY"]);
@@ -274,10 +282,14 @@ async function applyModes(
     haggleEnv?: string;
     now: Date;
   },
-): Promise<{
-  row: ControlModeSessionRow;
-  charge: ReturnType<typeof quoteSoftAiCreditDifferential>;
-} | null> {
+): Promise<
+  | {
+      row: ControlModeSessionRow;
+      charge: ReturnType<typeof quoteSoftAiCreditDifferential>;
+    }
+  | { insufficient: InsufficientCreditsError }
+  | null
+> {
   const ask = publishedAskMinorFromSnapshot(session.negotiationAgentSnapshot);
   const charge = quoteSoftAiCreditDifferential({
     alreadyChargedBase: session.buyerSoftAiCreditsCharged,
@@ -286,6 +298,31 @@ async function applyModes(
     publishedAskMinor: ask,
     haggleEnv: opts.haggleEnv ?? process.env.HAGGLE_ENV,
   });
+
+  // Wire Soft AI differential → ledger debit when !creditsAreUnlimited().
+  // Staging/local unlimited skips debit; watermark still advances below.
+  // Manual / both Manual → charge 0; Auto OFF → no refund (charge_base 0).
+  try {
+    await applySoftAiCreditCharge(tx as unknown as Database, {
+      accountId: session.buyerId,
+      sessionId: session.id,
+      chargeTotal: charge.charge_total,
+      chargeBase: charge.charge_base,
+      newChargedBase: charge.new_charged_base,
+      unlimited: charge.unlimited,
+      haggleEnv: opts.haggleEnv,
+      metadata: {
+        band: charge.band,
+        buyer_mode: nextBuyer,
+        seller_mode: nextSeller,
+      },
+    });
+  } catch (err) {
+    if (err instanceof InsufficientCreditsError) {
+      return { insufficient: err };
+    }
+    throw err;
+  }
 
   const [row] = await tx
     .update(negotiationSessions)
@@ -434,6 +471,16 @@ export async function setPartyControlMode(
     if (!applied) {
       return { ok: false, status: 409, error: "CONCURRENT_MODIFICATION" };
     }
+    if ("insufficient" in applied) {
+      return {
+        ok: false,
+        status: 402,
+        error: INSUFFICIENT_CREDITS,
+        message: applied.insufficient.message,
+        required: applied.insufficient.required,
+        balance: applied.insufficient.balance,
+      };
+    }
     return {
       ok: true,
       applied: true,
@@ -510,7 +557,7 @@ export async function clearSoftAiInflightAndApplyPending(
     const nextSeller = input.party === "seller" ? pending : session.sellerControlMode;
     const manualFields = nextSellerManualFields(input.party, pending, session, now);
 
-    // Clear inflight in same update as mode apply
+    // Debit Soft AI differential then clear inflight + apply pending modes.
     const ask = publishedAskMinorFromSnapshot(session.negotiationAgentSnapshot);
     const charge = quoteSoftAiCreditDifferential({
       alreadyChargedBase: session.buyerSoftAiCreditsCharged,
@@ -519,6 +566,29 @@ export async function clearSoftAiInflightAndApplyPending(
       publishedAskMinor: ask,
       haggleEnv: input.haggleEnv ?? process.env.HAGGLE_ENV,
     });
+    try {
+      await applySoftAiCreditCharge(tx as unknown as Database, {
+        accountId: session.buyerId,
+        sessionId: session.id,
+        chargeTotal: charge.charge_total,
+        chargeBase: charge.charge_base,
+        newChargedBase: charge.new_charged_base,
+        unlimited: charge.unlimited,
+        haggleEnv: input.haggleEnv,
+        metadata: {
+          band: charge.band,
+          buyer_mode: nextBuyer,
+          seller_mode: nextSeller,
+          source: "clear_inflight_pending",
+        },
+      });
+    } catch (err) {
+      if (err instanceof InsufficientCreditsError) {
+        // Leave inflight/pending unchanged; Soft AI handoff cannot expand band.
+        return null;
+      }
+      throw err;
+    }
     const [row] = await tx
       .update(negotiationSessions)
       .set({
@@ -627,7 +697,7 @@ export async function resumeSellerSoftAutoAfterTimeout(
         now,
       },
     );
-    if (!applied) return { resumed: false, view: null };
+    if (!applied || "insufficient" in applied) return { resumed: false, view: null };
     await notify({
       sessionId: session.id,
       sellerId: session.sellerId,
