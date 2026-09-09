@@ -8,12 +8,15 @@ import {
   ownModeLabel,
   parseControlMode,
   readDefaultControlModePreference,
+  withDefaultControlModePreference,
   writeDefaultControlModePreference,
 } from "./control-mode";
 
 describe("control-mode SoT helpers", () => {
   afterEach(() => {
     window.localStorage.clear();
+    // biome-ignore lint/suspicious/noDocumentCookie: test cleanup of preference cookie
+    document.cookie = `${DEFAULT_CONTROL_MODE_PREF_KEY}=; Path=/; Max-Age=0`;
   });
 
   it("parses only auto|manual and defaults to Auto (SoT §2)", () => {
@@ -51,8 +54,33 @@ describe("control-mode SoT helpers", () => {
 
   it("persists Settings default preference for future sessions", () => {
     expect(readDefaultControlModePreference()).toBe("auto");
-    writeDefaultControlModePreference("manual");
+    expect(writeDefaultControlModePreference("manual")).toBe(true);
     expect(window.localStorage.getItem(DEFAULT_CONTROL_MODE_PREF_KEY)).toBe("manual");
     expect(readDefaultControlModePreference()).toBe("manual");
+    expect(writeDefaultControlModePreference("auto")).toBe(true);
+    expect(readDefaultControlModePreference()).toBe("auto");
+  });
+
+  it("falls back to cookie when localStorage is empty", () => {
+    expect(writeDefaultControlModePreference("manual")).toBe(true);
+    window.localStorage.clear();
+    expect(readDefaultControlModePreference()).toBe("manual");
+  });
+
+  it("applies Settings preference onto start body (explicit wins)", () => {
+    writeDefaultControlModePreference("manual");
+    expect(withDefaultControlModePreference({ listing_public_id: "pub" })).toEqual({
+      listing_public_id: "pub",
+      buyer_control_mode: "manual",
+    });
+    expect(
+      withDefaultControlModePreference({
+        listing_public_id: "pub",
+        buyer_control_mode: "auto",
+      }),
+    ).toEqual({
+      listing_public_id: "pub",
+      buyer_control_mode: "auto",
+    });
   });
 });

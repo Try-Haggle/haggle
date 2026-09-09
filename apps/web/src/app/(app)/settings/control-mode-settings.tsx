@@ -1,32 +1,41 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Alert, Switch } from "@/components/ui";
 import {
   type ControlMode,
   DEFAULT_CONTROL_MODE,
   readDefaultControlModePreference,
+  subscribeDefaultControlModePreference,
   writeDefaultControlModePreference,
 } from "@/lib/control-mode";
 
 /**
  * Account default Soft control_mode preference (SoT §2).
- * Applied at next session create by M1 — does not force a start chooser.
- * Stored client-side until an account-prefs API lands with M1.
+ * Applied at next session create via withDefaultControlModePreference on start.
+ * Dual-persisted (localStorage + cookie) so Manual/Auto survive reload/re-entry.
  */
 export function ControlModeSettings() {
-  const [mode, setMode] = useState<ControlMode>(DEFAULT_CONTROL_MODE);
+  const mode = useSyncExternalStore(
+    subscribeDefaultControlModePreference,
+    readDefaultControlModePreference,
+    () => DEFAULT_CONTROL_MODE,
+  );
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    setMode(readDefaultControlModePreference());
     setHydrated(true);
   }, []);
 
   function update(next: ControlMode) {
-    setMode(next);
-    writeDefaultControlModePreference(next);
+    setSaveError(false);
+    const ok = writeDefaultControlModePreference(next);
+    if (!ok) {
+      setSaveError(true);
+      return;
+    }
     setSaved(true);
     window.setTimeout(() => setSaved(false), 2000);
   }
@@ -73,6 +82,11 @@ export function ControlModeSettings() {
       {saved && (
         <Alert tone="success" className="mt-3 text-sm">
           Default saved. It applies to new sessions only.
+        </Alert>
+      )}
+      {saveError && (
+        <Alert tone="error" className="mt-3 text-sm">
+          Could not save default. Check browser storage and try again.
         </Alert>
       )}
     </section>
