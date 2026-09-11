@@ -61,6 +61,17 @@ describe("GET listing required_criteria (toPublicListingView)", () => {
     expect(view.listing.required_criteria).toEqual([]);
     expect(view.listing.sellerRequiredCriteria).toEqual([]);
   });
+
+  it("does not attach trust on the redacted listing body", () => {
+    const view = toPublicListingView({
+      publicId: "lamp-1",
+      title: "Lamp",
+      sellerId: "seller-1",
+      negotiationAgentSnapshot: {},
+    });
+    expect(view.listing).not.toHaveProperty("sellerTrust");
+    expect(JSON.stringify(view.listing)).not.toContain("seller-1");
+  });
 });
 
 describe("sellerAgentEmoji (toPublicListingView)", () => {

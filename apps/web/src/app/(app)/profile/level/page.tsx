@@ -50,6 +50,23 @@ export default async function LevelPage() {
       ? Math.min(100, Math.round((levelInfo.xp / levelInfo.nextLevelXp) * 100))
       : 100;
 
+  let sellerTrustLabel = "New";
+  try {
+    const trust = await serverApi.get<{
+      trust_score?: { score?: string | number; status?: string; completedTransactions?: number };
+    }>(`/trust/${user.id}/seller`);
+    const row = trust.trust_score;
+    if (row) {
+      const score = typeof row.score === "number" ? row.score : Number(row.score);
+      sellerTrustLabel = Number.isFinite(score) ? String(Math.round(score)) : "New";
+      if ((row.completedTransactions ?? 0) > 0) {
+        sellerTrustLabel = `${sellerTrustLabel} · ${row.completedTransactions} deals`;
+      }
+    }
+  } catch {
+    // No score yet — keep New. Do not render rawInputs from this endpoint.
+  }
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
       <h1 className="mb-6 text-2xl font-bold">Agent Level</h1>
@@ -92,6 +109,7 @@ export default async function LevelPage() {
         <StatTile label="Avg Savings" value={`${Number(levelInfo.avgSavingPct).toFixed(1)}%`} />
         <StatTile label="Best Savings" value={`${Number(levelInfo.bestSavingPct).toFixed(1)}%`} />
         <StatTile label="Win Streak" value={levelInfo.consecutiveDeals} />
+        <StatTile label="Seller trust" value={sellerTrustLabel} />
       </div>
     </div>
   );

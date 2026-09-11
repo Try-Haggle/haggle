@@ -9,6 +9,11 @@ import {
   listPublishedListings,
 } from "../services/draft.service.js";
 import { toPublicListingView } from "../services/public-listing-view.js";
+import {
+  getPublicTrustSummariesByActorIds,
+  getTrustScore,
+  toPublicTrustSummary,
+} from "../services/trust-score.service.js";
 
 const SORT_VALUES = ["newest", "price_asc", "price_desc"] as const;
 
@@ -175,7 +180,7 @@ export function registerPublicListingRoutes(app: FastifyInstance, db: Database) 
 
     const effectiveLimit = Math.min(Math.max(parsedLimit ?? 40, 1), 100);
 
-    const listings = await listPublishedListings(db, {
+    const rows = await listPublishedListings(db, {
       categories,
       minPrice,
       maxPrice,
@@ -185,6 +190,14 @@ export function registerPublicListingRoutes(app: FastifyInstance, db: Database) 
       limit: effectiveLimit,
       cursor,
     });
+    const trustBySeller = await getPublicTrustSummariesByActorIds(
+      db,
+      rows.map((row) => row.sellerId),
+    );
+    const listings = rows.map(({ sellerId, ...listing }) => ({
+      ...listing,
+      sellerTrust: sellerId ? (trustBySeller.get(sellerId) ?? null) : null,
+    }));
 
     let nextCursor: string | null = null;
     if (listings.length === effectiveLimit) {
@@ -231,10 +244,16 @@ export function registerPublicListingRoutes(app: FastifyInstance, db: Database) 
 
     // Shared with the messaging detail panel so both show the same redacted view.
     const view = toPublicListingView(listing);
+    const sellerTrust = view.sellerId
+      ? toPublicTrustSummary(await getTrustScore(db, view.sellerId, "seller"))
+      : null;
 
     return reply.send({
       ok: true,
-      listing: view.listing,
+      listing: {
+        ...view.listing,
+        sellerTrust,
+      },
       // Included for ownership check — not sensitive (just a UUID)
       sellerId: view.sellerId,
     });

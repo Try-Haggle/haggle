@@ -42,6 +42,12 @@ export interface ListingDetail {
     width_in?: number;
     height_in?: number;
   } | null;
+  /** Public seller trust. Score/status/deals only — never rawInputs. */
+  sellerTrust?: {
+    score: number | null;
+    status: "NEW" | "SCORING" | "MATURE";
+    completedTransactions: number;
+  } | null;
 }
 
 export interface ViewerInfo {
