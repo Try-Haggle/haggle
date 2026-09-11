@@ -10,6 +10,8 @@ import {
 import { ArrowRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { AgentBuilder } from "@/app/(app)/sell/agents/_components/AgentBuilder";
+import { CreditBalanceStrip } from "@/components/credit-balance/credit-balance-strip";
+import { InsufficientCreditsAlert } from "@/components/credit-balance/insufficient-credits-alert";
 import { Nav } from "@/components/nav";
 import {
   canStartWithFulfillment,
@@ -22,7 +24,9 @@ import { BackLink } from "@/components/ui/back-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Price } from "@/components/ui/price";
+import { useCreditBalance } from "@/hooks/use-credit-balance";
 import { ApiError } from "@/lib/api-client";
+import { parseInsufficientCredits } from "@/lib/credit-balance";
 import { formatPriceStr } from "@/lib/format";
 import {
   formatListingParcel,
@@ -140,6 +144,9 @@ export function BuyerLanding({
     "idle" | "loading" | "success" | "error"
   >("idle");
   const [negotiationMessage, setNegotiationMessage] = useState("");
+  const [insufficientCredits, setInsufficientCredits] =
+    useState<ReturnType<typeof parseInsufficientCredits>>(null);
+  const creditBalance = useCreditBalance({ enabled: !!user });
   const [hfmiData, setHfmiData] = useState<HfmiData | null>(null);
   const sellerOffer = parseSellerFulfillmentOffer(listing.sellerFulfillmentOffer);
   const listingParcel = parseListingParcel(listing.parcel);
@@ -408,6 +415,11 @@ export function BuyerLanding({
                 </div>
               ) : (
                 <>
+                  {user && (
+                    <div className="mb-3">
+                      <CreditBalanceStrip state={creditBalance} loading={creditBalance.loading} />
+                    </div>
+                  )}
                   <Button
                     fullWidth
                     loading={negotiationState === "loading"}
@@ -418,6 +430,7 @@ export function BuyerLanding({
 
                       setNegotiationState("loading");
                       setNegotiationMessage("Briefing your agent…");
+                      setInsufficientCredits(null);
 
                       try {
                         // Real session path only — never intents/trigger-match.
@@ -492,11 +505,15 @@ export function BuyerLanding({
                         window.location.href = `/buy/negotiations/${res.session_id}`;
                       } catch (err) {
                         const apiErr = err instanceof ApiError ? err : null;
+                        const insufficient = parseInsufficientCredits(err);
+                        setInsufficientCredits(insufficient);
                         setNegotiationState("error");
                         setNegotiationMessage(
-                          apiErr?.message ??
-                            apiErr?.code ??
-                            "Couldn't reach Haggle. Check your connection and try again.",
+                          insufficient
+                            ? (apiErr?.message ?? "Insufficient Soft credits.")
+                            : (apiErr?.message ??
+                                apiErr?.code ??
+                                "Couldn't reach Haggle. Check your connection and try again."),
                         );
                       }
                     }}
@@ -515,7 +532,12 @@ export function BuyerLanding({
                       Add a delivery address to start.
                     </p>
                   )}
-                  {negotiationState === "error" && (
+                  {negotiationState === "error" && insufficientCredits && (
+                    <div className="mt-3">
+                      <InsufficientCreditsAlert info={insufficientCredits} />
+                    </div>
+                  )}
+                  {negotiationState === "error" && !insufficientCredits && (
                     <div className="mt-3 text-center text-error text-sm">{negotiationMessage}</div>
                   )}
                 </>

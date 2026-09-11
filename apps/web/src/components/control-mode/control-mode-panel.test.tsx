@@ -8,19 +8,35 @@ vi.mock("@/lib/api-client", () => {
   class ApiError extends Error {
     status: number;
     code: string;
-    constructor(status: number, code: string, message?: string) {
+    details?: Record<string, unknown>;
+    constructor(status: number, code: string, message?: string, details?: Record<string, unknown>) {
       super(message || code);
       this.status = status;
       this.code = code;
+      this.details = details;
     }
   }
   return {
     ApiError,
     api: {
       patch: (...args: unknown[]) => patch(...args),
+      get: vi.fn().mockRejectedValue(new ApiError(404, "NOT_FOUND")),
     },
   };
 });
+
+vi.mock("@/hooks/use-credit-balance", () => ({
+  useCreditBalance: () => ({
+    source: "stub",
+    balance: null,
+    unlimited: false,
+    accountId: null,
+    reason: "CREDIT_BALANCE_API_UNAVAILABLE",
+    loading: false,
+    error: null,
+    reload: vi.fn(),
+  }),
+}));
 
 import { ControlModePanel } from "./control-mode-panel";
 
