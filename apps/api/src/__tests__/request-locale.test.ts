@@ -1,4 +1,4 @@
-import Fastify from "fastify";
+import Fastify, { type FastifyRequest } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { DEFAULT_API_LOCALE, parseAcceptLanguage } from "../lib/request-locale.js";
 import localePlugin from "../middleware/locale.js";
@@ -33,7 +33,7 @@ describe("locale middleware", () => {
   it("exposes request.locale, defaulting to English", async () => {
     app = Fastify();
     await app.register(localePlugin);
-    app.get("/loc", async (request) => ({ locale: request.locale }));
+    app.get("/loc", async (request: FastifyRequest) => ({ locale: request.locale }));
     await app.ready();
 
     expect((await app.inject({ method: "GET", url: "/loc" })).json()).toEqual({ locale: "en" });
