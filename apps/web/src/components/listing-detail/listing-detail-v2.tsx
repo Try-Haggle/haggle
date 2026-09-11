@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { CreditBalanceStrip } from "@/components/credit-balance/credit-balance-strip";
 import { InsufficientCreditsAlert } from "@/components/credit-balance/insufficient-credits-alert";
+import { TrustScoreChip } from "@/components/trust/trust-score-chip";
 import { Button, Drawer } from "@/components/ui";
 import { buttonVariants } from "@/components/ui/button";
 import { useCreditBalance } from "@/hooks/use-credit-balance";
@@ -391,6 +392,7 @@ export function ListingDetailV2({
                   emoji={listing.sellerAgentEmoji ?? null}
                   isOwner={isOwner}
                 />
+                <TrustScoreChip trust={listing.sellerTrust} className="mt-2" />
               </motion.div>
 
               {/* ②½ What must be settled — a fact about the deal, not the

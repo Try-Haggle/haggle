@@ -15,6 +15,7 @@
 | [`strategy/`](./strategy/00_INDEX.md) | 사업 전략, 해자, 파트너 리서치 | [00_INDEX](./strategy/00_INDEX.md) |
 | [`features/`](./features/00_INDEX.md) | 기능별 설계 문서 (태그, 분쟁, 게이미피케이션) | [00_INDEX](./features/00_INDEX.md) |
 | [`design/`](./design/design-system.html) | 디자인 시스템 Source of Truth (색·타이포·토큰·컴포넌트) | [design-system.html](./design/design-system.html) |
+| [`automation/`](./automation/00_INDEX.md) | 자동화 파이프라인 운영 규칙 | [00_INDEX](./automation/00_INDEX.md) |
 | [`meetings/`](./meetings/WORK_GRAPH.md) | 주간 작업·리뷰 그래프, 미팅 노트, 의사결정 기록 | [WORK_GRAPH](./meetings/WORK_GRAPH.md) |
 | [`wip/`](./wip/) | 구현 중 임시 문서 (완료 시 삭제) | — |
 | [`archive/`](./archive/) | 구현 완료 또는 대체된 문서 (보존용) | — |
@@ -43,6 +44,7 @@
 | HNP 공개 스펙 | [protocol/HNP.md](./protocol/HNP.md) |
 | HNP 공개 압축 상태 | [engine/hnp-compact-state.md](./engine/hnp-compact-state.md) |
 | 코드 네이밍 컨벤션 (협상 에이전트/빌더 챗) | [CODE_NAMING_CONVENTIONS.md](./CODE_NAMING_CONVENTIONS.md) |
+| 자동화 브랜치 네이밍 | [automation/branch-naming.md](./automation/branch-naming.md) |
 | 미팅 overview | [meetings/overview.html](./meetings/overview.html) |
 | 이번 주 작업·리뷰 그래프 | [meetings/WORK_GRAPH.md](./meetings/WORK_GRAPH.md) · 데이터 [current-week-work-graph.json](./meetings/current-week-work-graph.json) · [2026-08-29 회의](./meetings/2026-08-29-weekly.md) · [2026-08-22 회의](./meetings/2026-08-22-weekly.md) |
 | 개발 참여 규칙 | [../CONTRIBUTING.md](../CONTRIBUTING.md) |
@@ -57,4 +59,4 @@
 4. **INDEX 업데이트**: 문서 추가/이동 시 해당 폴더의 `00_INDEX.md`와 이 README 둘 다 업데이트
 5. **단일 파일 → 폴더 승격**: 같은 주제에 2개 이상 문서 쌓이면 전용 폴더 생성
 
-*Last Updated: 2026-08-24*
+*Last Updated: 2026-09-11*

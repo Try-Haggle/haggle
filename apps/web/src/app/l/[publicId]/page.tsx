@@ -34,6 +34,11 @@ interface ListingData {
   } | null;
   /** Product facts the seller answered with canonical taxonomy options. */
   specs?: Array<{ checkId: string; label: string; value: string }> | null;
+  sellerTrust?: {
+    score: number | null;
+    status: "NEW" | "SCORING" | "MATURE";
+    completedTransactions: number;
+  } | null;
 }
 
 const VALID_ORIGINS = ["browse", "buy-dashboard", "sell-dashboard"] as const;

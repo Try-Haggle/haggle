@@ -1,5 +1,6 @@
 import { ITEM_CONDITIONS, LISTING_CATEGORIES } from "@haggle/shared";
 import type { Metadata } from "next";
+import type { PublicTrustSummary } from "@/components/trust/trust-score-chip";
 import { serverApi } from "@/lib/api-server";
 import type { PublicListingHoldState } from "@/lib/listing-hold";
 import { BrowseToolbar } from "./_components/browse-toolbar";
@@ -22,6 +23,7 @@ export interface BrowseListing {
   targetPrice: string | null;
   tags: string[] | null;
   holdState?: PublicListingHoldState | null;
+  sellerTrust?: PublicTrustSummary | null;
 }
 
 export type BrowseSort = "newest" | "price_asc" | "price_desc";

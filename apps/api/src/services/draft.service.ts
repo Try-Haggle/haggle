@@ -845,6 +845,7 @@ export async function listPublishedListings(
       photoUrl: listingDrafts.photoUrl,
       targetPrice: listingDrafts.targetPrice,
       tags: listingDrafts.tags,
+      sellerId: listingDrafts.userId,
       claimStatus: listingClaims.status,
     })
     .from(listingsPublished)

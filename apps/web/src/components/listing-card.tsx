@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ListingHoldBadge } from "@/components/listing-hold-badge";
+import { type PublicTrustSummary, TrustScoreChip } from "@/components/trust/trust-score-chip";
 import { Badge } from "@/components/ui/badge";
 import { Price } from "@/components/ui/price";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,6 +16,7 @@ export interface ListingCardListing {
   targetPrice: string | null;
   publishedAt?: string;
   holdState?: PublicListingHoldState | null;
+  sellerTrust?: PublicTrustSummary | null;
 }
 
 export function ListingCard({
@@ -91,6 +93,7 @@ export function ListingCard({
             <div className="text-ink-muted text-xs">{formatTimeAgo(listing.publishedAt)}</div>
           )}
         </div>
+        <TrustScoreChip trust={listing.sellerTrust} className="mt-1" />
         {matchReasons && matchReasons.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1">
             {matchReasons.slice(0, 2).map((reason) => (
