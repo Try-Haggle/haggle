@@ -82,6 +82,23 @@ describe("LiveNegotiation", () => {
     expect(screen.getByText("Live updates")).toBeInTheDocument();
   });
 
+  it("does not drive auto-play when the session driver is MCP", async () => {
+    render(
+      <LiveNegotiation
+        initialPayload={{
+          ...payload("CREATED", 0),
+          session: { ...payload("CREATED", 0).session, driver: "mcp" },
+        }}
+      />,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mocks.post).not.toHaveBeenCalled();
+    expect(screen.getByText("Watching MCP")).toBeInTheDocument();
+  });
+
   it("requests and displays one committed round at a time", async () => {
     window.sessionStorage.setItem(
       "haggle:negotiation-run-token:11111111-1111-4111-8111-111111111111",

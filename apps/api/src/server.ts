@@ -13,7 +13,7 @@ import { insecureDemoRoutesEnabled } from "./lib/insecure-demo-routes.js";
 import { setTelemetryDb } from "./lib/llm-telemetry.js";
 import { configuredTrustedProxyCidrs } from "./lib/trusted-proxy.js";
 import { registerMcpRoutes } from "./mcp/router.js";
-import authPlugin from "./middleware/auth.js";
+import authPlugin, { setMcpAccessTokenResolver } from "./middleware/auth.js";
 import { createGlobalRateLimit } from "./middleware/rate-limit.js";
 import { createNotificationBus } from "./notification/index.js";
 import { registerAccountRoutes } from "./routes/account.js";
@@ -40,6 +40,7 @@ import { registerIntelligenceDemoRoutes } from "./routes/intelligence-demo.js";
 import { registerIntentRoutes } from "./routes/intents.js";
 import { registerInternalRoutes } from "./routes/internal.js";
 import { registerListingsRoutes } from "./routes/listings.js";
+import { registerMcpOauthRoutes } from "./routes/mcp-oauth.js";
 import { registerNegotiationAgentRoutes } from "./routes/negotiation-agents.js";
 import { registerDemoRoute } from "./routes/negotiation-demo.js";
 import { registerSimulateRoute } from "./routes/negotiation-simulate.js";
@@ -64,6 +65,7 @@ import { registerTrustRoutes } from "./routes/trust.js";
 import { registerWalletRoutes } from "./routes/wallets.js";
 import { registerResendWebhookRoute } from "./routes/webhooks/resend.js";
 import { registerWebSocketAuthRoutes } from "./routes/websocket-auth.js";
+import { resolveMcpAccessToken } from "./services/mcp-oauth.service.js";
 import { registerWebSocketRoutes } from "./ws/negotiation-ws.js";
 import { registerNotificationWsRoute } from "./ws/notification-ws.js";
 
@@ -121,6 +123,7 @@ export async function createServer() {
 
   // ─── Database ──────────────────────────────────────────────
   const db = createDb(runtimeConfig.databaseUrl);
+  setMcpAccessTokenResolver((token) => resolveMcpAccessToken(db, token));
 
   // ─── Notification Bus ─────────────────────────────────────
   // Fallback key prevents Resend constructor throw in test env (actual sends are
@@ -141,6 +144,7 @@ export async function createServer() {
     },
     methods: ["GET", "POST", "DELETE", "PATCH", "PUT", "OPTIONS"],
     allowedHeaders: API_CORS_ALLOWED_HEADERS,
+    exposedHeaders: ["mcp-session-id", "WWW-Authenticate"],
     credentials: true,
   });
 
@@ -162,6 +166,7 @@ export async function createServer() {
     timestamp: new Date().toISOString(),
   }));
   registerHnpProfileRoutes(app);
+  registerMcpOauthRoutes(app, db);
 
   // ─── Negotiation Engine Routes ──────────────────────────
   const eventDispatcher = createEventDispatcher();

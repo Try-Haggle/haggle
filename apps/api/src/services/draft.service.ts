@@ -47,9 +47,62 @@ type PatchableField = (typeof PATCHABLE_FIELDS)[number];
 /** Partial update payload — only patchable fields allowed. */
 export type DraftPatch = Partial<Pick<typeof listingDrafts.$inferInsert, PatchableField>>;
 
+const DEFAULT_LISTING_DEADLINE_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function defaultListingSellingDeadline(now = new Date()): Date {
+  return new Date(now.getTime() + DEFAULT_LISTING_DEADLINE_MS);
+}
+
+export async function createAndPublishOwnedListing(
+  db: Database,
+  input: {
+    userId: string;
+    title: string;
+    targetPrice: string;
+    sellingDeadline?: Date;
+    description?: string;
+    category?: string;
+    condition?: string;
+    floorPrice?: string;
+    tags?: string[];
+  },
+) {
+  const draft = await createDraft(db, { userId: input.userId });
+  const patched = await patchDraft(db, draft.id, {
+    title: input.title.trim(),
+    targetPrice: input.targetPrice,
+    sellingDeadline: input.sellingDeadline ?? defaultListingSellingDeadline(),
+    ...(input.description !== undefined ? { description: input.description } : {}),
+    ...(input.category !== undefined ? { category: input.category } : {}),
+    ...(input.condition !== undefined ? { condition: input.condition } : {}),
+    ...(input.floorPrice !== undefined ? { floorPrice: input.floorPrice } : {}),
+    ...(input.tags !== undefined ? { tags: input.tags } : {}),
+  });
+  if (!patched) return { ok: false as const, error: "DRAFT_NOT_FOUND", draftId: draft.id };
+  const errors = validateDraft(patched);
+  if (errors.length > 0) {
+    return { ok: false as const, error: "INVALID_LISTING", draftId: patched.id, errors };
+  }
+  const published = await publishDraft(db, patched.id);
+  if (!published) return { ok: false as const, error: "DRAFT_NOT_FOUND", draftId: patched.id };
+  return {
+    ok: true as const,
+    draftId: patched.id,
+    publicId: published.publicId,
+    shareUrl: published.shareUrl,
+    listingUrl: published.shareUrl,
+  };
+}
+
 /** Insert a new empty draft row with status "draft". */
-export async function createDraft(db: Database) {
-  const [row] = await db.insert(listingDrafts).values({ status: "draft" }).returning();
+export async function createDraft(db: Database, input?: { userId?: string }) {
+  const [row] = await db
+    .insert(listingDrafts)
+    .values({
+      status: "draft",
+      ...(input?.userId ? { userId: input.userId } : {}),
+    })
+    .returning();
   return row;
 }
 

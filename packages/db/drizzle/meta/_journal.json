@@ -1030,6 +1030,13 @@
       "when": 1787910000000,
       "tag": "0146_hold_floor",
       "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1787910001000,
+      "tag": "0147_mcp_oauth_and_session_driver",
+      "breakpoints": true
     }
   ]
 }
