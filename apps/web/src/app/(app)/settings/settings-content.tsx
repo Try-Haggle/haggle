@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { ControlModeSettings } from "@/app/(app)/settings/control-mode-settings";
+import { LanguageSettings } from "@/app/(app)/settings/language-settings";
 import { CreditBalanceSettings } from "@/components/credit-balance";
 import { SavedAddressSettings } from "@/components/shipping/saved-address-settings";
 import { Alert, Avatar, Button, Field, Input } from "@/components/ui";
@@ -266,6 +267,8 @@ export function SettingsContent({
           {profileSaving ? "Saving…" : "Save Profile"}
         </Button>
       </section>
+
+      <LanguageSettings />
 
       <SavedAddressSettings />
 
