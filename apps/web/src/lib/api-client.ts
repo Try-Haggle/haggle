@@ -1,3 +1,4 @@
+import { acceptLanguageHeader } from "./i18n";
 import { createClient } from "./supabase/client";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.tryhaggle.ai";
@@ -31,6 +32,9 @@ export async function apiClient<T = unknown>(path: string, options: ApiOptions =
     ...(fetchOptions.body === undefined ? {} : { "Content-Type": "application/json" }),
     ...(fetchOptions.headers as Record<string, string>),
   };
+  if (!headers["Accept-Language"] && !headers["accept-language"]) {
+    headers["Accept-Language"] = acceptLanguageHeader();
+  }
 
   // Attach Supabase JWT if available
   if (!skipAuth) {

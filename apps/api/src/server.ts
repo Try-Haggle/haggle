@@ -14,6 +14,7 @@ import { setTelemetryDb } from "./lib/llm-telemetry.js";
 import { configuredTrustedProxyCidrs } from "./lib/trusted-proxy.js";
 import { registerMcpRoutes } from "./mcp/router.js";
 import authPlugin, { setMcpAccessTokenResolver } from "./middleware/auth.js";
+import localePlugin from "./middleware/locale.js";
 import { createGlobalRateLimit } from "./middleware/rate-limit.js";
 import { createNotificationBus } from "./notification/index.js";
 import {
@@ -81,6 +82,7 @@ import { registerNotificationWsRoute } from "./ws/notification-ws.js";
 export const API_CORS_ALLOWED_HEADERS = [
   "Content-Type",
   "Authorization",
+  "Accept-Language",
   "Idempotency-Key",
   "mcp-session-id",
   "x-haggle-actor-id",
@@ -178,6 +180,7 @@ export async function createServer() {
   );
 
   // ─── Auth Middleware ──────────────────────────────────────
+  await app.register(localePlugin);
   await app.register(authPlugin);
 
   // ─── Health Check ────────────────────────────────────────

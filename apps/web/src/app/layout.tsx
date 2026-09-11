@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { IBM_Plex_Mono, Lora, Plus_Jakarta_Sans } from "next/font/google";
 import { Toaster } from "sonner";
 import { AmplitudeProvider } from "@/providers/amplitude-provider";
+import { LocaleProvider } from "@/providers/locale-provider";
 import "@rainbow-me/rainbowkit/styles.css";
 import "./globals.css";
 
@@ -46,7 +47,7 @@ export const metadata: Metadata = {
 
 // Runs before paint to restore a saved theme (avoids light→dark flash).
 // Default is Light; Dark only if explicitly chosen and persisted.
-const themeScript = `(function(){try{var t=localStorage.getItem('haggle-theme');if(t==='dark'||t==='light'){document.documentElement.dataset.theme=t;}}catch(e){}})();`;
+const themeScript = `(function(){try{var t=localStorage.getItem('haggle-theme');if(t==='dark'||t==='light'){document.documentElement.dataset.theme=t;}var l=localStorage.getItem('haggle-locale');if(l==='en'||l==='ko'){document.documentElement.lang=l;document.documentElement.dataset.locale=l;}}catch(e){}})();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -57,11 +58,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       suppressHydrationWarning
     >
       <head>
-        {/** biome-ignore lint/security/noDangerouslySetInnerHtml: inline no-FOUC theme bootstrap */}
+        {/** biome-ignore lint/security/noDangerouslySetInnerHtml: inline no-FOUC theme/locale bootstrap */}
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="bg-surface font-sans text-ink antialiased" suppressHydrationWarning>
-        <AmplitudeProvider>{children}</AmplitudeProvider>
+        <AmplitudeProvider>
+          <LocaleProvider>{children}</LocaleProvider>
+        </AmplitudeProvider>
         <Toaster
           position="bottom-center"
           duration={5000}

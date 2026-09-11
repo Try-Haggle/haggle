@@ -195,4 +195,31 @@ describe("Stage 5: respond", () => {
     expect(result.message).toBeTruthy();
     expect(result.tone).toBe("professional");
   });
+
+  it("defaults message locale to English even when the last message is Hangul", () => {
+    const memory = makeMemory();
+    (memory.session as Record<string, unknown>).last_opponent_message = "이 가격은 너무 비싸요";
+    const result = respond({
+      validated: makeValidateOutput("COUNTER", 86000),
+      memory,
+      adapter,
+      skill,
+      config: makeConfig(),
+    });
+    expect(result.locale).toBe("en");
+    expect(result.message).not.toMatch(/[가-힣]/);
+  });
+
+  it("uses an explicit session locale when the client asked for one", () => {
+    const memory = makeMemory();
+    (memory.session as Record<string, unknown>).preferred_locale = "ko";
+    const result = respond({
+      validated: makeValidateOutput("COUNTER", 86000),
+      memory,
+      adapter,
+      skill,
+      config: makeConfig(),
+    });
+    expect(result.locale).toBe("ko");
+  });
 });

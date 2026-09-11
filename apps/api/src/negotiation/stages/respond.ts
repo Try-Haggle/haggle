@@ -6,7 +6,7 @@
  */
 
 import type { RespondInput, RespondOutput } from "../pipeline/types.js";
-import { detectLanguage, type SupportedLocale } from "../rendering/language-detect.js";
+import type { SupportedLocale } from "../rendering/language-detect.js";
 import { TemplateMessageRenderer } from "../rendering/message-renderer.js";
 import { isDealClosingAction } from "../types.js";
 import { messageLeaksPrivateState } from "./public-message-guard.js";
@@ -33,31 +33,15 @@ export function respond(input: RespondInput): RespondOutput {
 /**
  * Resolve response locale.
  *
- * Priority:
- * 1. Session-level locale (if previously detected and stored)
- * 2. Auto-detect from last opponent message
- * 3. Default: 'en'
- *
- * Each party sees messages in THEIR language:
- *   - 한국어 구매자 → 한국어 응답
- *   - English 판매자 → English 응답
- *   - Internal processing always English (token savings)
+ * Default is English. Do not infer locale from message script (Hangul ≠ Korean UI).
+ * An explicit session locale (from Accept-Language / account setting) wins.
  */
 function resolveLocale(memory: import("../types.js").CoreMemory): SupportedLocale {
-  // Check if session has a stored locale
   const sessionAny = memory.session as Record<string, unknown>;
-  if (typeof sessionAny.detected_locale === "string") {
-    return sessionAny.detected_locale as SupportedLocale;
+  const stored = sessionAny.preferred_locale ?? sessionAny.detected_locale;
+  if (typeof stored === "string" && stored.length > 0) {
+    return stored as SupportedLocale;
   }
-
-  // Auto-detect from the last opponent message if available
-  if (typeof sessionAny.last_opponent_message === "string") {
-    const detection = detectLanguage(sessionAny.last_opponent_message as string);
-    if (detection.confidence > 0.5) {
-      return detection.locale;
-    }
-  }
-
   return "en";
 }
 
