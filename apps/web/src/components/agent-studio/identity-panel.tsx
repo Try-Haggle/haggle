@@ -10,6 +10,7 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Check,
+  ChevronDown,
   Gauge,
   RotateCcw,
   ShieldCheck,
@@ -22,7 +23,7 @@ import {
 } from "lucide-react";
 import { useId } from "react";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
-import { AgentAvatarPicker } from "@/components/agents/agent-avatar-picker";
+import { AgentAvatarPicker, agentAvatarLabel } from "@/components/agents/agent-avatar-picker";
 import { DURATION, EASE } from "@/components/listing-detail/motion";
 import { MotionRadar } from "@/components/listing-detail/motion-radar";
 import { Button, Input } from "@/components/ui";
@@ -108,6 +109,9 @@ export function AgentIdentityPanel({
   // own copy. A hardcoded id would collide, and the label would then point at
   // whichever copy is hidden, so each instance derives its own.
   const nameId = useId();
+  const avatarLabelId = useId();
+  const avatarValueId = useId();
+  const avatarName = agentAvatarLabel(effective.emoji);
 
   return (
     <div className={cn("relative flex h-full min-h-0 flex-col", className)}>
@@ -148,7 +152,7 @@ export function AgentIdentityPanel({
                   trigger={
                     <button
                       type="button"
-                      aria-label="Change face"
+                      aria-label="Change avatar"
                       className={cn(
                         chipClass,
                         "cursor-pointer transition-transform hover:scale-105",
@@ -209,6 +213,48 @@ export function AgentIdentityPanel({
               value={name}
               onChange={(e) => onNameChange(e.target.value)}
               placeholder={copy.name}
+            />
+          </div>
+        )}
+
+        {/* ── Avatar ──
+            The face above can be tapped too, but nothing about it says so; this
+            is the labelled way in. A field-shaped trigger rather than the grid
+            laid open, because twenty faces inline would push the briefing —
+            the part that grows as you talk — off the bottom of the panel. */}
+        {onAvatarChange && (
+          <div>
+            <span id={avatarLabelId} className="mb-1.5 block text-label text-ink-muted">
+              Agent avatar
+            </span>
+            <AgentAvatarPicker
+              value={effective.emoji}
+              onChange={onAvatarChange}
+              className="block w-full"
+              trigger={
+                <button
+                  type="button"
+                  aria-labelledby={`${avatarLabelId} ${avatarValueId}`}
+                  className={cn(
+                    "flex h-11 w-full cursor-pointer items-center gap-2.5 rounded-[10px] border border-line bg-surface-overlay px-3.5 text-left transition",
+                    "hover:border-line-strong focus-visible:border-focus focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-action-primary/20",
+                  )}
+                >
+                  <span className="flex size-6 shrink-0 items-center justify-center text-[16px]">
+                    <AgentAvatar value={effective.emoji} />
+                  </span>
+                  <span
+                    id={avatarValueId}
+                    className={cn(
+                      "min-w-0 flex-1 truncate text-sm",
+                      avatarName ? "text-ink" : "text-ink-muted",
+                    )}
+                  >
+                    {avatarName ?? "Choose an avatar"}
+                  </span>
+                  <ChevronDown className="size-4 shrink-0 text-ink-muted" aria-hidden="true" />
+                </button>
+              }
             />
           </div>
         )}

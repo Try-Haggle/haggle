@@ -16,6 +16,17 @@ interface AgentAvatarPickerProps {
 }
 
 /**
+ * The name a stored avatar reads as — "Polar bear" for `polar-bear` — or null
+ * when it is a plain glyph, which has no name worth showing.
+ */
+export function agentAvatarLabel(value: string | null | undefined): string | null {
+  const current = resolveAgentAvatar(value);
+  if (current.kind !== "animal") return null;
+  const words = current.animal.replace("-", " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/**
  * Pick an agent's face from the vendored animals.
  *
  * The face is identity, not strategy — choosing one never marks the build as
@@ -49,7 +60,7 @@ function AnimalGrid({
     // radio group has no way to carry the artwork.
     <fieldset className="m-0 min-w-0 border-0 p-0">
       <legend className="px-1 pb-2 font-semibold text-[10px] text-ink-muted uppercase tracking-wider">
-        Choose a face
+        Choose an avatar
       </legend>
       <div className="grid grid-cols-5 gap-1">
         {AGENT_ANIMALS.map((animal) => {
@@ -78,6 +89,11 @@ function AnimalGrid({
           );
         })}
       </div>
+      {/* The presets arrive with a matching animal, so it is easy to read the
+          tiger as the aggressive one. Said where the choice is made. */}
+      <p className="px-1 pt-2 text-[11px] text-ink-muted leading-snug">
+        Just for looks — doesn't change how it negotiates.
+      </p>
     </fieldset>
   );
 }
