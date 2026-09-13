@@ -192,6 +192,15 @@ export function registerNegotiationAgentRoutes(app: FastifyInstance, db: Databas
     // Whole-conversation writes: the client holds the thread and re-sends it,
     // which keeps a retried turn from doubling a message.
     messages: z.array(threadMessageSchema).max(500),
+    /**
+     * What the conversation has established — the state the next turn builds
+     * on. Optional so a writer that has no memory to report never erases the
+     * stored one; bounded so it cannot become a bulk store.
+     */
+    memory: z
+      .record(z.string(), z.unknown())
+      .refine((m) => JSON.stringify(m).length <= 64_000, { message: "memory too large" })
+      .optional(),
     presetId: z.string().max(80).optional(),
     agentId: z.string().uuid().optional(),
   });
@@ -222,7 +231,7 @@ export function registerNegotiationAgentRoutes(app: FastifyInstance, db: Databas
       return reply.code(400).send({ error: "INVALID_THREAD", issues: parsed.error.issues });
     }
     const userId = request.user!.id;
-    const { key, messages, presetId, agentId } = parsed.data;
+    const { key, messages, memory, presetId, agentId } = parsed.data;
 
     // Upsert on (user, key) so a turn writes without reading first, and two
     // turns racing cannot leave two rows for one conversation.
@@ -232,6 +241,7 @@ export function registerNegotiationAgentRoutes(app: FastifyInstance, db: Databas
         userId,
         threadKey: key,
         messages,
+        memory: memory ?? null,
         presetId: presetId ?? null,
         agentId: agentId ?? null,
       })
@@ -239,6 +249,8 @@ export function registerNegotiationAgentRoutes(app: FastifyInstance, db: Databas
         target: [agentBuilderThreads.userId, agentBuilderThreads.threadKey],
         set: {
           messages,
+          // Absent means "not reporting", not "cleared".
+          ...(memory !== undefined ? { memory } : {}),
           presetId: presetId ?? null,
           agentId: agentId ?? null,
           updatedAt: new Date(),

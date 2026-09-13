@@ -23,6 +23,7 @@ import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { DURATION, EASE } from "@/components/listing-detail/motion";
 import { MotionRadar } from "@/components/listing-detail/motion-radar";
 import { Drawer } from "@/components/ui";
+import { agentChatThread, newChatVisitId } from "@/lib/agent-chat-thread";
 import { cn } from "@/lib/cn";
 import type { NegotiationAgentBuilderMemory } from "@/lib/negotiation-agent-builder-types";
 import { AgentIdentityPanel } from "./identity-panel";
@@ -74,6 +75,8 @@ export interface StudioChatArgs {
    * of the visit and is handed to the agent on Save.
    */
   durable: boolean;
+  /** What a new conversation starts out knowing: a saved agent's own memory. */
+  initialMemory?: NegotiationAgentBuilderMemory | null;
   role: "buyer" | "seller";
   onMemoryUpdate: (memory: NegotiationAgentBuilderMemory) => void;
   onStrategyUpdate: (strategy: ChatStrategy) => void;
@@ -137,7 +140,7 @@ export function AgentStudio({
   const [memories, setMemories] = useState<Record<string, NegotiationAgentBuilderMemory>>({});
   // Namespaces this visit's preset conversations. Generated once per mount so
   // a reload never lands back in a half-finished briefing to a template.
-  const [visitId] = useState(() => Math.random().toString(36).slice(2, 10));
+  const [visitId] = useState(newChatVisitId);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -371,6 +374,9 @@ export function AgentStudio({
                     effective,
                     storageId: threadStorageId(role, selection, visitId),
                     durable: selection.kind === "saved",
+                    initialMemory: state.agent.builderChatMemory as
+                      | NegotiationAgentBuilderMemory
+                      | undefined,
                     role,
                     onMemoryUpdate: (next) => setMemories((prev) => ({ ...prev, [key]: next })),
                     onStrategyUpdate: (strategy) =>
@@ -492,8 +498,8 @@ function threadStorageId(
   selection: StudioSelection,
   visitId: string,
 ): string {
-  const base = `agent-studio:${role}:${selectionKey(selection)}`;
-  return selection.kind === "preset" ? `${base}:${visitId}` : base;
+  // One rule for every surface that briefs an agent — see agent-chat-thread.ts.
+  return agentChatThread(role, selection, visitId).storageId;
 }
 
 function EmptyCanvas({

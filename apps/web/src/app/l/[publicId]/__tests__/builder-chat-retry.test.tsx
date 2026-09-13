@@ -22,10 +22,9 @@ vi.mock("@/lib/api-client", async (importOriginal) => {
 import { NegotiationAgentBuilderChat } from "../negotiation-agent-builder-chat";
 
 /**
- * A taxonomy-matched listing on purpose: a seller listing with NO quick-setup pills
- * auto-fires an opening LLM turn on mount, which would consume the mocked responses
- * and make the call counts below meaningless. Here the pills exist, so the only API
- * calls are the ones these tests make.
+ * A taxonomy-matched listing, so the quick-setup strip is part of what renders.
+ * No conversation calls the model on mount, so the only API calls counted below
+ * are the ones these tests make.
  */
 // Passed via a const: biome's `useValidAriaRole` reads a literal `role="seller"` as an
 // ARIA role even though it is this component's own prop.

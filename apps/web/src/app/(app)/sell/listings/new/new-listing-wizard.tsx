@@ -2,13 +2,9 @@
 
 import {
   type AgentBuilderState,
-  applyChatStrategyToState,
-  createBuilderState,
-  engineParamsFromPreset,
-  isBuilderCustomized,
   LISTING_CATEGORIES,
   LISTING_CATEGORY_LABELS,
-  type NegotiationAgentPresetId,
+  type NegotiationAgent,
   resolveChecks,
   resolveEffectivePreset,
   unansweredHardCriteria,
@@ -46,13 +42,18 @@ import {
   parseSellerFulfillmentOffer,
   type SellerFulfillmentOffer,
 } from "@/lib/fulfillment-options";
-import { createNegotiationAgent } from "@/lib/negotiation-agents-api";
+import { listNegotiationAgents, rowToNegotiationAgent } from "@/lib/negotiation-agents-api";
 import { createClient } from "@/lib/supabase/client";
 import { useAmplitude } from "@/providers/amplitude-provider";
+import { agentStrategySnapshotFromState } from "../../agents/_components/AgentBuilder";
 import {
-  AgentBuilder,
-  agentStrategySnapshotFromState,
-} from "../../agents/_components/AgentBuilder";
+  agentStateFromPick,
+  EMPTY_SELLER_AGENT_PICK,
+  pickFromSnapshot,
+  type SellerAgentPick,
+  savedAgentOption,
+} from "./seller-agent-pick";
+import { SellerAgentStep } from "./seller-agent-step";
 
 /* ─── Constants ───────────────────────────────────────────── */
 
@@ -71,6 +72,10 @@ const CONDITIONS = [
 
 const TOTAL_STEPS = 5;
 
+/** Every step and the Back/Next bar share this column and gutter — see the scroll area. */
+const WIZARD_COLUMN = "mx-auto w-full max-w-lg";
+const WIZARD_GUTTER = "px-5 sm:px-8";
+
 const STEP_TITLES = [
   "Add a photo",
   "Describe your item",
@@ -87,18 +92,18 @@ const STEP_SUBTITLES = [
   "Pick a negotiation style for your AI agent.",
 ];
 
-/* ─── Seller Agent Presets (4D weight system) ─────────────────
- *
- * Source of truth lives in @haggle/shared/agent-presets.
- * Step 5 uses NEGOTIATION_AGENT_PRESETS + PresetGrid + StrategyRadar.
- */
-
-const RECOGNIZED_PRESET_IDS: NegotiationAgentPresetId[] = [
-  "hunter",
-  "closer",
-  "verifier",
-  "balancer",
-];
+/** Hints the briefing produced, shown on the agent card as progress. */
+function countBriefHints(memory: NegotiationAgentBuilderMemory | null): number {
+  if (!memory) return 0;
+  return (
+    (memory.mustHave?.length ?? 0) +
+    (memory.avoid?.length ?? 0) +
+    (memory.dealBreakers?.length ?? 0) +
+    (memory.categoryCriteria?.filter((c) => c.stance).length ?? 0) +
+    (memory.budgetMax ? 1 : 0) +
+    (memory.targetPrice ? 1 : 0)
+  );
+}
 
 /* ─── Image Compression ───────────────────────────────────── */
 
@@ -210,8 +215,16 @@ export function NewListingWizard({
     useState<SellerFulfillmentOffer>(DEFAULT_SELLER_OFFER);
   const [parcel, setParcel] = useState<ListingParcelInput>(EMPTY_LISTING_PARCEL);
 
-  // Step 5: Agent — all state lives in a single AgentBuilderState.
-  const [agentValue, setAgentValue] = useState<AgentBuilderState | null>(null);
+  // Step 5: Agent. The screen edits a pick (selection + tuning + face); the
+  // rest of the wizard reads the AgentBuilderState derived from it, exactly as
+  // it read the old step's state — see seller-agent-pick.ts.
+  const [agentPick, setAgentPick] = useState<SellerAgentPick>(EMPTY_SELLER_AGENT_PICK);
+  const [savedAgentRows, setSavedAgentRows] = useState<NegotiationAgent[]>([]);
+  const agentValue = useMemo(
+    () => agentStateFromPick(agentPick, savedAgentRows),
+    [agentPick, savedAgentRows],
+  );
+  const savedAgentOptions = useMemo(() => savedAgentRows.map(savedAgentOption), [savedAgentRows]);
   const prevAgentRef = useRef<AgentBuilderState | null>(null);
   // Strategy chat memory captured from the advisor conversation.
   const [negotiationAgentBuilderMemory, setNegotiationAgentBuilderMemory] =
@@ -286,6 +299,21 @@ export function NewListingWizard({
     };
   }
 
+  // The seller's own agents, offered as one-tap picks. Non-fatal: the four
+  // presets alone are enough to publish.
+  useEffect(() => {
+    let alive = true;
+    listNegotiationAgents("seller")
+      .then((rows) => {
+        if (alive)
+          setSavedAgentRows(rows.filter((row) => !row.isSystem).map(rowToNegotiationAgent));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   /* ─── Resume draft ─────────────────────────────────────── */
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: resume once when a draft id is present
@@ -322,12 +350,7 @@ export function NewListingWizard({
           setSellingDeadline(savedLocalDate ?? formatLocalDateInput(new Date(d.sellingDeadline)));
         }
         if (d.draftName) setDraftName(d.draftName);
-        if (typeof d.negotiationAgentSnapshot?.preset === "string") {
-          const candidate = d.negotiationAgentSnapshot.preset as NegotiationAgentPresetId;
-          if (RECOGNIZED_PRESET_IDS.includes(candidate)) {
-            setAgentValue(createBuilderState({ side: "seller", presetId: candidate }));
-          }
-        }
+        setAgentPick(pickFromSnapshot(d.negotiationAgentSnapshot));
         // Restore the captured builder-chat memory (criteria, deal-breakers, style)
         // so resuming a draft and publishing WITHOUT re-running the chat does not wipe
         // it — patchDraft overwrites the whole snapshot, so an unrestored (null) memory
@@ -715,34 +738,10 @@ export function NewListingWizard({
         agent_preset: agentValue!.agent.presetId,
       });
 
-      // Side effect: persist the configured agent into the seller's library.
-      // Failure here is non-fatal — the listing is already live. We only mint a
-      // fresh agent when the wizard customized a preset; an existing custom
-      // agent picked from the list is already in DB.
-      if (agentValue!.source.kind === "preset" || isBuilderCustomized(agentValue!)) {
-        const ep = resolveEffectivePreset(agentValue!);
-        try {
-          await createNegotiationAgent({
-            name: `${ep.copy.seller.name} · ${title || data.publicId}`,
-            role: "seller",
-            config: {
-              emoji: ep.emoji,
-              accentColor: ep.accentColor,
-              basePresetId: agentValue!.agent.presetId,
-              negotiationAgentPresetId: agentValue!.agent.presetId,
-              weights: { ...ep.weights },
-              builderChatMemory: negotiationAgentBuilderMemory ?? undefined,
-              // Same engine-knob extractor as every other boundary (one source).
-              ...(isBuilderCustomized(agentValue!)
-                ? { engineParams: engineParamsFromPreset(ep) }
-                : {}),
-            },
-          });
-        } catch (saveErr) {
-          console.warn("[new-listing-wizard] post-publish agent save failed:", saveErr);
-        }
-      }
-
+      // The seller's agent library is updated by publish itself, on the server,
+      // exactly once: a tuned agent becomes one new saved agent, a saved agent
+      // published unchanged is referenced, not copied. This page used to add a
+      // second copy of its own here.
       setPublishResult({ publicId: data.publicId!, shareUrl: data.shareUrl! });
     } finally {
       setSaving(false);
@@ -1010,14 +1009,20 @@ export function NewListingWizard({
         </IconButton>
       </div>
 
-      {/* ── Scrollable content area — vertically centered ── */}
-      <div className="flex-1 overflow-y-auto px-5 sm:px-8">
+      {/* ── Scroll area: the steps AND the Back/Next bar ──
+          The bar lives inside the scroll container as a sticky footer, not as a
+          sibling below it. When a platform draws a classic scrollbar it narrows
+          the scroll box; as siblings, the column lost ~15px and the bar did not,
+          so Back and Next sat outside the content's edges on exactly the
+          machines nobody previews on. Sharing one box (and one gutter) makes the
+          alignment structural instead of two widths that happen to match. */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <div
-          className={`flex min-h-full flex-col ${step === 4 ? "justify-start" : "justify-center"}`}
+          className={`flex flex-1 flex-col ${step === 4 ? "justify-start" : "justify-center"} ${WIZARD_GUTTER}`}
         >
           <div
             key={step}
-            className={`mx-auto w-full ${step === 5 ? "max-w-[1100px]" : "max-w-lg"} py-10 sm:py-16`}
+            className={`${WIZARD_COLUMN} py-10 sm:py-16`}
             style={{
               animation: "wizard-step-in 0.35s cubic-bezier(0.16, 1, 0.3, 1)",
             }}
@@ -1290,83 +1295,113 @@ export function NewListingWizard({
 
             {/* ── STEP 5: Agent ── */}
             {step === 5 && (
-              // biome-ignore lint/a11y/useValidAriaRole: "role" is an AgentBuilder prop (buyer/seller), not an ARIA role
-              <AgentBuilder
-                role="seller"
-                embedded
-                value={agentValue}
-                onChange={setAgentValue}
-                chatSlot={
-                  agentValue && (
-                    // biome-ignore lint/a11y/useValidAriaRole: "role" is a NegotiationAgentBuilderChat prop (buyer/seller), not an ARIA role
-                    <NegotiationAgentBuilderChat
-                      agent={resolveEffectivePreset(agentValue)}
-                      // Key the builder session by DRAFT (not preset) so quick-setup
-                      // picks / criteria never leak between two of the seller's listings
-                      // that happen to use the same preset. `agent.id` adds preset isolation.
-                      listingPublicId={`listing-draft-${draftId ?? "new"}`}
-                      listingTitle={title || "this listing"}
-                      listingCategory={category || null}
-                      listingPrice={targetPrice || null}
-                      listingFloorPrice={floorPrice || null}
-                      listingCondition={condition || null}
-                      listingTags={tags}
-                      listingDescription={description || null}
-                      role="seller"
-                      onNegotiationAgentBuilderMemoryUpdate={setNegotiationAgentBuilderMemory}
-                      onStrategyUpdate={(s) =>
-                        setAgentValue((prev) => (prev ? applyChatStrategyToState(prev, s) : prev))
-                      }
-                    />
-                  )
+              <SellerAgentStep
+                pick={agentPick}
+                onPickChange={setAgentPick}
+                savedAgents={savedAgentOptions}
+                briefHintCount={countBriefHints(negotiationAgentBuilderMemory)}
+                openRequirementCount={
+                  unansweredHardCriteria(
+                    [category, ...tags].filter(Boolean),
+                    negotiationAgentBuilderMemory?.categoryCriteria,
+                  ).length
                 }
+                chatSlot={({ preset, thread, selection, onStrategyUpdate }) => (
+                  // biome-ignore lint/a11y/useValidAriaRole: "role" is a NegotiationAgentBuilderChat prop (buyer/seller), not an ARIA role
+                  <NegotiationAgentBuilderChat
+                    // One conversation per agent, the same one the Agents tab
+                    // shows: a saved agent brings its history (and keeps it in
+                    // the database), a preset starts fresh this visit. Keyed so
+                    // switching agents swaps conversations whole.
+                    key={thread.storageId}
+                    serverThreadKey={thread.serverThreadKey}
+                    agent={preset}
+                    listingPublicId={thread.storageId}
+                    // The listing is still the draft, whichever conversation this is.
+                    advisorListingId={`listing-draft-${draftId ?? "new"}`}
+                    // A saved agent's new conversation starts from what it knows.
+                    initialMemory={
+                      selection.kind === "saved"
+                        ? (savedAgentRows.find((row) => row.id === selection.id)
+                            ?.builderChatMemory as NegotiationAgentBuilderMemory | undefined)
+                        : undefined
+                    }
+                    listingTitle={title || "this listing"}
+                    listingCategory={category || null}
+                    listingPrice={targetPrice || null}
+                    listingFloorPrice={floorPrice || null}
+                    listingCondition={condition || null}
+                    listingTags={tags}
+                    listingDescription={description || null}
+                    role="seller"
+                    variant="bare"
+                    density="compact"
+                    onNegotiationAgentBuilderMemoryUpdate={setNegotiationAgentBuilderMemory}
+                    // ChatStrategy is a superset of StrategyOverride (weights + the
+                    // four behaviour curves), so a briefing turn tunes the pick directly.
+                    onStrategyUpdate={onStrategyUpdate}
+                  />
+                )}
               />
             )}
           </div>
         </div>
-      </div>
 
-      {/* ── Bottom bar: Back / Next ── */}
-      <div className="relative z-20 shrink-0 border-line border-t bg-[var(--bg-primary)] px-4 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-8 sm:pt-3 sm:pb-6">
-        <div className="mx-auto flex max-w-lg items-center justify-between gap-4">
-          {/* Back (hidden on step 1) */}
-          {step > 1 ? (
-            <Button variant="secondary" className="w-24 sm:w-28" onClick={handleBack}>
+        {/* ── Bottom bar: Back / Next ──
+            Same column and gutter as the step above, so the two buttons sit
+            under the content's left and right edges. The step counter fills
+            the middle, which made the two buttons read as one pager rather
+            than as unrelated controls. Opaque, because a tall step scrolls
+            underneath it. */}
+        <div
+          className={`sticky bottom-0 z-20 shrink-0 border-line border-t pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pt-3 sm:pb-6 ${WIZARD_GUTTER}`}
+          style={{ background: "var(--bg-primary)" }}
+        >
+          <div className={`${WIZARD_COLUMN} flex items-center justify-between gap-4`}>
+            {/* Disabled on step 1 rather than hidden: an empty slot left the
+                counter floating against nothing. Exiting is the X, as before. */}
+            <Button
+              variant="secondary"
+              className="w-24 sm:w-28"
+              disabled={step === 1}
+              onClick={handleBack}
+            >
               <ChevronLeft className="size-4" />
               Back
             </Button>
-          ) : (
-            <div />
-          )}
 
-          {/* Next / Publish */}
-          {step < TOTAL_STEPS ? (
-            <Button
-              className="w-24 sm:w-28"
-              loading={saving}
-              disabled={!canProceed()}
-              onClick={handleNext}
-            >
-              {saving ? (
-                "Saving..."
-              ) : (
-                <>
-                  Next
-                  <ChevronRight className="size-4" />
-                </>
-              )}
-            </Button>
-          ) : (
-            // Solid-success final CTA — Button has no solid-green variant.
-            <button
-              type="button"
-              onClick={handlePublish}
-              disabled={saving || !agentValue}
-              className="flex w-24 cursor-pointer items-center justify-center gap-2 rounded-xl bg-success py-2.5 font-semibold text-on-accent text-xs transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 sm:w-28 sm:py-3 sm:text-sm"
-            >
-              {saving ? "Publishing..." : "Submit"}
-            </button>
-          )}
+            <p className="text-[11.5px] text-ink-muted tabular-nums">
+              Step {step} of {TOTAL_STEPS}
+            </p>
+
+            {step < TOTAL_STEPS ? (
+              <Button
+                className="w-24 sm:w-28"
+                loading={saving}
+                disabled={!canProceed()}
+                onClick={handleNext}
+              >
+                {saving ? (
+                  "Saving..."
+                ) : (
+                  <>
+                    Next
+                    <ChevronRight className="size-4" />
+                  </>
+                )}
+              </Button>
+            ) : (
+              // Solid-success final CTA — Button has no solid-green variant.
+              <button
+                type="button"
+                onClick={handlePublish}
+                disabled={saving || !agentValue}
+                className="flex w-24 cursor-pointer items-center justify-center gap-2 rounded-xl bg-success py-2.5 font-semibold text-on-accent text-xs transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 sm:w-28 sm:py-3 sm:text-sm"
+              >
+                {saving ? "Publishing..." : "Submit"}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

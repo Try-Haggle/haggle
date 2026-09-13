@@ -498,6 +498,54 @@ describe("builder threads", () => {
     await app.close();
   });
 
+  it("keeps the conversation's memory with its messages", async () => {
+    const app = buildApp(db, USER);
+    db.insertResults.push([{ id: "t1" }]);
+    const memory = { dealBreakers: ["no trades"], categoryInterest: "electronics" };
+    const res = await app.inject({
+      method: "PUT",
+      url: "/negotiations/agents/threads",
+      payload: { key: KEY, messages: [], memory },
+    });
+    expect(res.statusCode).toBe(200);
+    const values = db.calls.find((c) => c.op === "insert.values")!.payload as Record<
+      string,
+      unknown
+    >;
+    expect(values.memory).toEqual(memory);
+    const conflict = db.calls.find((c) => c.op === "insert.onConflictDoUpdate")!.payload as {
+      set: Record<string, unknown>;
+    };
+    expect(conflict.set.memory).toEqual(memory);
+    await app.close();
+  });
+
+  it("never erases stored memory when a write does not report any", async () => {
+    const app = buildApp(db, USER);
+    db.insertResults.push([{ id: "t1" }]);
+    await app.inject({
+      method: "PUT",
+      url: "/negotiations/agents/threads",
+      payload: { key: KEY, messages: [] },
+    });
+    const conflict = db.calls.find((c) => c.op === "insert.onConflictDoUpdate")!.payload as {
+      set: Record<string, unknown>;
+    };
+    expect("memory" in conflict.set).toBe(false);
+    await app.close();
+  });
+
+  it("refuses memory too large to be a conversation's state", async () => {
+    const app = buildApp(db, USER);
+    const res = await app.inject({
+      method: "PUT",
+      url: "/negotiations/agents/threads",
+      payload: { key: KEY, messages: [], memory: { notes: ["x".repeat(70_000)] } },
+    });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+
   it("rejects a malformed message rather than storing it", async () => {
     const app = buildApp(db, USER);
     const res = await app.inject({
