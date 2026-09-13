@@ -13,7 +13,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   moveStoredSessions,
   NegotiationAgentBuilderChat,
-  readStoredMessages,
+  readStoredSession,
   sweepExpiredSessions,
 } from "@/app/l/[publicId]/negotiation-agent-builder-chat";
 import { AgentStudio } from "@/components/agent-studio";
@@ -183,9 +183,15 @@ export function AgentStudioPage({ role }: { role: Role }) {
    */
   const handleThreadStorageMove = useCallback(async (from: string, to: string) => {
     moveStoredSessions(from, to);
-    const messages = readStoredMessages(to);
+    const { messages, memory } = readStoredSession(to);
     if (messages.length === 0) return;
-    await saveBuilderThread({ key: to, messages });
+    // The memory travels with the transcript, or the saved agent's thread
+    // would restore a conversation that has forgotten what it established.
+    await saveBuilderThread({
+      key: to,
+      messages,
+      ...(memory ? { memory: memory as unknown as Record<string, unknown> } : {}),
+    });
   }, []);
 
   const handleDelete = useCallback(
@@ -242,12 +248,14 @@ export function AgentStudioPage({ role }: { role: Role }) {
           effective,
           storageId,
           durable,
+          initialMemory,
           role: chatRole,
           onMemoryUpdate,
           onStrategyUpdate,
         }) => (
           <NegotiationAgentBuilderChat
             agent={effective}
+            initialMemory={initialMemory}
             // No listing here — these agents are account-level and get picked
             // per deal later. The chat keys its local draft off this id, so a
             // per-thread value keeps each agent's conversation separate.

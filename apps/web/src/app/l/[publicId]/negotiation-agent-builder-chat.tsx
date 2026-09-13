@@ -82,10 +82,23 @@ interface NegotiationAgentBuilderChatProps {
    * authenticated, and the calls fail soft when it is not.
    */
   serverThreadKey?: string;
-  /** Stable key used for localStorage isolation. On listing pages this is the
-   *  listing's publicId; on agent design pages it is an agent-scoped key like
-   *  `agent-design:<agentId>`. */
+  /** The conversation's local storage namespace — see `agentChatThread`. */
   listingPublicId: string;
+  /**
+   * Which listing this conversation is about, as the advisor should know it.
+   * Defaults to `listingPublicId`. Pass it whenever the storage namespace is a
+   * conversation key rather than the listing: the server attributes learned
+   * category questions to this id, and promotes one only once DISTINCT listings
+   * have asked it. A per-visit or per-agent key there would let one seller's
+   * repeat visits count as many listings, or many listings count as one.
+   */
+  advisorListingId?: string;
+  /**
+   * What a new conversation starts out knowing — a saved agent's own memory.
+   * Absent for a preset, which starts from its archetype. Only read when the
+   * conversation is new; a restored one brings its own.
+   */
+  initialMemory?: NegotiationAgentBuilderMemory | null;
   listingTitle: string;
   listingCategory: string | null;
   /** Decimal-dollar string. Null on agent-design pages — the advisor then
@@ -256,23 +269,27 @@ export function moveStoredSessions(fromListingId: string, toListingId: string): 
  * talked to), so the longest transcript wins rather than whichever the browser
  * happens to enumerate first.
  */
-export function readStoredMessages(listingId: string): ChatMessage[] {
+export function readStoredSession(listingId: string): {
+  messages: ChatMessage[];
+  memory: NegotiationAgentBuilderMemory | null;
+} {
+  const empty = { messages: [] as ChatMessage[], memory: null };
   try {
     const prefix = `${STORAGE_PREFIX}:${listingId}:`;
-    let longest: ChatMessage[] = [];
+    let longest: { messages: ChatMessage[]; memory: NegotiationAgentBuilderMemory | null } = empty;
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (!k?.startsWith(prefix)) continue;
       const raw = localStorage.getItem(k);
       if (!raw) continue;
       const session = JSON.parse(raw) as PersistedSession;
-      if (Array.isArray(session.messages) && session.messages.length > longest.length) {
-        longest = session.messages;
+      if (Array.isArray(session.messages) && session.messages.length > longest.messages.length) {
+        longest = { messages: session.messages, memory: session.memory ?? null };
       }
     }
     return longest;
   } catch {
-    return [];
+    return empty;
   }
 }
 
@@ -314,10 +331,6 @@ function clearSession(listingId: string, agentId: string): void {
 }
 
 /* ─── Constants ───────────────────────────────────────────── */
-
-/** Synthetic opener sent once on agent-select so the builder LLM leads with its first
- * question instead of a static greeting. Not shown as a user message. */
-const AUTO_OPEN_MESSAGE = "Let's set up this agent for my listing — what should I decide first?";
 
 function buildInitialMemory(
   agent: NegotiationAgentPreset | null,
@@ -556,6 +569,8 @@ function AgentIcon({ accent, emoji }: { accent: string; emoji?: string }) {
 export function NegotiationAgentBuilderChat({
   agent,
   serverThreadKey,
+  advisorListingId,
+  initialMemory,
   listingPublicId,
   listingTitle,
   listingCategory,
@@ -586,19 +601,11 @@ export function NegotiationAgentBuilderChat({
     return side === "seller" ? buildSellerChoiceQuestions(tags) : buildBuyerChoiceQuestions(tags);
   }, [side, listingCategory, listingTags]);
 
-  // ① Instant first question: the seller builder used to fire a ~15s LLM turn on
-  // arrival just to produce its opener. When the taxonomy already has deterministic
-  // questions for this category, we skip that entirely — a static greeting + the
-  // quick-setup picker render instantly. The LLM opener only fires for the long tail
-  // (a category with no taxonomy checks). Buyer keeps its instant static greeting.
-  // `listingPrice` is what makes a listing a listing here — `makeGreeting` uses
-  // the same signal to decide between its per-item and standalone openers. Without
-  // it this fired on the Agent Studio too, where a seller building a reusable agent
-  // waited ~15s for an LLM to invent an opener about an item that does not exist,
-  // and got a different one every time. The static greeting already covers that
-  // case; the LLM opener is only for a real listing whose category has no
-  // taxonomy checks to ask from.
-  const autoOpenFirst = side === "seller" && !!listingPrice && choiceQuestions.length === 0;
+  // Every new conversation opens with `makeGreeting`, instantly, on every
+  // surface. A seller on a listing whose category had no quick-setup questions
+  // used to get an LLM-written opener instead — measured at ~78s for one
+  // sentence, with a typing indicator the whole time. The greeting already asks
+  // what that opener asked; the LLM answers from the seller's first message on.
 
   // Current radar numbers, sent so the LLM adjusts from them (not invents).
   const buildCurrentStrategy = useCallback((): ChatStrategy | undefined => {
@@ -634,7 +641,6 @@ export function NegotiationAgentBuilderChat({
     buildInitialMemory(agent, listingCategory),
   );
   const [isExpanded, setIsExpanded] = useState(false);
-  const [hasRestoredSession, setHasRestoredSession] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const chatTopRef = useRef<HTMLDivElement>(null);
 
@@ -777,6 +783,11 @@ export function NegotiationAgentBuilderChat({
    * thread this browser never saw without ever truncating one in progress.
    */
   const restoredThreadRef = useRef<string | null>(null);
+  // Read by the async restore below, which must compare against the
+  // conversation as it is when the server answers, not as it was when it asked.
+  const messageCountRef = useRef(0);
+  messageCountRef.current = messages.length;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once per thread; the agent, category and callback it reads are those of that thread
   useEffect(() => {
     if (!serverThreadKey || restoredThreadRef.current === serverThreadKey) return;
     restoredThreadRef.current = serverThreadKey;
@@ -784,12 +795,20 @@ export function NegotiationAgentBuilderChat({
     void (async () => {
       const thread = await fetchBuilderThread(serverThreadKey);
       if (!alive || !thread?.messages?.length) return;
-      setMessages((current) => {
-        if (thread.messages.length <= current.length) return current;
-        setIsExpanded(true);
-        setHasRestoredSession(true);
-        return thread.messages as ChatMessage[];
-      });
+      if (thread.messages.length <= messageCountRef.current) return;
+      setMessages(thread.messages as ChatMessage[]);
+      setIsExpanded(true);
+      // The transcript and what it established come back together. Restoring
+      // only the messages looked continuous and started the next turn from a
+      // blank memory, so the agent forgot everything the transcript shows.
+      if (thread.memory) {
+        const restored = {
+          ...buildInitialMemory(agent, listingCategory),
+          ...(thread.memory as Partial<NegotiationAgentBuilderMemory>),
+        };
+        setMemory(restored);
+        onNegotiationAgentBuilderMemoryUpdate?.(restored);
+      }
     })();
     return () => {
       alive = false;
@@ -810,11 +829,14 @@ export function NegotiationAgentBuilderChat({
       void saveBuilderThread({
         key: serverThreadKey,
         messages,
+        // Memory can change without a message (a quick-setup tap), so it is
+        // part of what triggers a write, not just what a write carries.
+        memory: memory as unknown as Record<string, unknown>,
         ...(agent?.id ? { presetId: agent.id } : {}),
       });
     }, 500);
     return () => clearTimeout(timer);
-  }, [serverThreadKey, messages, agent?.id]);
+  }, [serverThreadKey, messages, memory, agent?.id]);
 
   // Load from localStorage or reset when agent changes
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally re-runs only on agent id / listing change
@@ -827,7 +849,6 @@ export function NegotiationAgentBuilderChat({
       // (budget/picks) and would send/publish it under the new selection.
       onNegotiationAgentBuilderMemoryUpdate?.(reset);
       setIsExpanded(false);
-      setHasRestoredSession(false);
       return;
     }
 
@@ -838,31 +859,31 @@ export function NegotiationAgentBuilderChat({
       setMemory(saved.memory);
       setMessages(saved.messages);
       setIsExpanded(true);
-      setHasRestoredSession(true);
       onNegotiationAgentBuilderMemoryUpdate?.(saved.memory);
     } else {
-      // Fresh start.
-      const newMemory = buildInitialMemory(agent, listingCategory);
+      // Fresh start — from the saved agent's own memory when there is one.
+      const newMemory = {
+        ...buildInitialMemory(agent, listingCategory),
+        ...(initialMemory ?? {}),
+      };
       setMemory(newMemory);
+      // Tell the surface too. It holds the memory it publishes or starts a
+      // negotiation with, and without this it kept the previous agent's —
+      // switching agents swapped the transcript on screen while the old
+      // agent's budget and deal-breakers went out under the new one.
+      onNegotiationAgentBuilderMemoryUpdate?.(newMemory);
 
-      if (autoOpenFirst) {
-        // Seller: no static greeting — the auto-open effect fires the first LLM turn,
-        // whose reply becomes the first bubble (a typing indicator shows meanwhile).
-        setMessages([]);
-      } else {
-        const greeting = makeGreeting();
-        setMessages([
-          {
-            id: "greeting",
-            role: "agent",
-            text: greeting.text,
-            timestamp: Date.now(),
-            ...(greeting.widget ? { widget: greeting.widget } : {}),
-          },
-        ]);
-      }
+      const greeting = makeGreeting();
+      setMessages([
+        {
+          id: "greeting",
+          role: "agent",
+          text: greeting.text,
+          timestamp: Date.now(),
+          ...(greeting.widget ? { widget: greeting.widget } : {}),
+        },
+      ]);
       setIsExpanded(true);
-      setHasRestoredSession(false);
     }
     // Always persist agent selection
     saveSelectedAgent(listingPublicId, agent.id);
@@ -883,7 +904,7 @@ export function NegotiationAgentBuilderChat({
       : askPriceMinor;
     return [
       {
-        id: listingPublicId,
+        id: advisorListingId ?? listingPublicId,
         title: listingTitle,
         category: listingCategory ?? undefined,
         condition: listingCondition ?? "unknown",
@@ -895,6 +916,7 @@ export function NegotiationAgentBuilderChat({
       },
     ];
   }, [
+    advisorListingId,
     listingPublicId,
     listingTitle,
     listingCategory,
@@ -905,11 +927,6 @@ export function NegotiationAgentBuilderChat({
     listingTags,
     listingDescription,
   ]);
-
-  // Auto-open: fire ONE builder turn as soon as an agent is picked so the LLM opens
-  // with the first category question, instead of a static greeting the user has to
-  // guess how to answer. Tracked per (listing, agent) so it fires once per selection.
-  const autoOpenedRef = useRef<string | null>(null);
 
   /**
    * Run one builder turn for `trimmed`. Split out from `handleSend` so a failed turn can
@@ -1046,97 +1063,6 @@ export function NegotiationAgentBuilderChat({
     [isLoading, runTurn],
   );
 
-  // Fire the opening turn automatically (no user bubble) so the agent leads with its
-  // first question. Silent on error — the greeting stays and the user can still type.
-  const autoOpen = useCallback(async () => {
-    if (!agent) return;
-    setIsLoading(true);
-    setIsExpanded(true);
-    try {
-      const data = await apiClient<{
-        memory?: NegotiationAgentBuilderMemory;
-        reply?: string;
-        strategy?: ChatStrategy;
-      }>("/negotiations/agents/builder/chat-turn", {
-        method: "POST",
-        body: JSON.stringify({
-          message: AUTO_OPEN_MESSAGE,
-          previous_memory: memory,
-          side,
-          agent_id: agent.id,
-          listings: buildAdvisorListings(),
-          seller_required_criteria: sellerRequiredCriteria ?? [],
-          current_strategy: buildCurrentStrategy(),
-        }),
-        skipAuth: true,
-      });
-      const updatedMemory: NegotiationAgentBuilderMemory = data.memory ?? memory;
-      setMemory(updatedMemory);
-      onNegotiationAgentBuilderMemoryUpdate?.(updatedMemory);
-      if (data.strategy) onStrategyUpdate?.(data.strategy);
-      const replyText =
-        data.reply?.trim() || "What would you like to emphasize, and any deal-breakers?";
-      const agentMsg: ChatMessage = {
-        id: `agent-${Date.now()}`,
-        role: "agent",
-        text: replyText,
-        timestamp: Date.now(),
-      };
-      setMessages((prev) => {
-        const next = [...prev, agentMsg];
-        saveSession(listingPublicId, agent.id, {
-          memory: updatedMemory,
-          messages: next,
-          agentId: agent.id,
-          updatedAt: Date.now(),
-        });
-        return next;
-      });
-    } catch (err) {
-      // Surface the failure instead of leaving a dead typing indicator.
-      console.error("[negotiation-agent-builder-chat] auto-open error:", err);
-      const apiError = err instanceof ApiError ? err : null;
-      const errorMsg: ChatMessage = {
-        id: `autoopen-error-${Date.now()}`,
-        role: "agent",
-        text:
-          apiError?.message ??
-          apiError?.code ??
-          "I couldn't start automatically. Tell me what to emphasize or anything you won't budge on, and we'll go from there.",
-        timestamp: Date.now(),
-      };
-      setMessages((prev) => [...prev, errorMsg]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [
-    agent,
-    memory,
-    side,
-    listingPublicId,
-    buildAdvisorListings,
-    buildCurrentStrategy,
-    sellerRequiredCriteria,
-    onNegotiationAgentBuilderMemoryUpdate,
-    onStrategyUpdate,
-  ]);
-
-  // Seller only: trigger the opening LLM turn once per selection, on a fresh (empty)
-  // chat. Its reply becomes the first bubble.
-  useEffect(() => {
-    if (!autoOpenFirst || !agent) return;
-    const key = `${listingPublicId}::${agent.id}`;
-    if (autoOpenedRef.current === key) return;
-    if (hasRestoredSession) {
-      autoOpenedRef.current = key; // a restored session already has its turns
-      return;
-    }
-    if (isLoading) return;
-    if (messages.length !== 0) return;
-    autoOpenedRef.current = key;
-    void autoOpen();
-  }, [autoOpenFirst, agent, listingPublicId, hasRestoredSession, isLoading, messages, autoOpen]);
-
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset deps intentionally fixed; greeting is rebuilt inline and excluded on purpose
   const handleReset = useCallback(() => {
     if (!agent) return;
@@ -1145,24 +1071,17 @@ export function NegotiationAgentBuilderChat({
     setMemory(newMemory);
     setChoiceIndex(0);
 
-    if (autoOpenFirst) {
-      // Re-fire the opening LLM turn on the now-empty chat.
-      autoOpenedRef.current = null;
-      setMessages([]);
-    } else {
-      const greeting = makeGreeting();
-      setMessages([
-        {
-          id: "greeting",
-          role: "agent",
-          text: greeting.text,
-          timestamp: Date.now(),
-          ...(greeting.widget ? { widget: greeting.widget } : {}),
-        },
-      ]);
-    }
+    const greeting = makeGreeting();
+    setMessages([
+      {
+        id: "greeting",
+        role: "agent",
+        text: greeting.text,
+        timestamp: Date.now(),
+        ...(greeting.widget ? { widget: greeting.widget } : {}),
+      },
+    ]);
     setIsExpanded(true);
-    setHasRestoredSession(false);
     scrollToTop();
   }, [agent, listingPublicId, listingCategory, listingTitle, listingPrice, scrollToTop]);
 

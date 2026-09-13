@@ -37,6 +37,13 @@ export const agentBuilderThreads = pgTable(
       .$type<Array<{ id: string; role: "user" | "agent"; text: string; timestamp: number }>>()
       .notNull()
       .default([]),
+    /**
+     * What the conversation has established so far (budget, deal-breakers,
+     * answered checks) — the state the next turn builds on. Kept with the
+     * messages because a restored transcript without it looks continuous but
+     * starts the model from nothing. Null on threads written before this column.
+     */
+    memory: jsonb("memory").$type<Record<string, unknown>>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

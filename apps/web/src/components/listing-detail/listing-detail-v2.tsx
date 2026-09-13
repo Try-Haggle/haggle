@@ -12,6 +12,7 @@ import { Button, Drawer } from "@/components/ui";
 import { buttonVariants } from "@/components/ui/button";
 import { useCreditBalance } from "@/hooks/use-credit-balance";
 import { useMediaQuery } from "@/hooks/use-media-query";
+import { type AgentChatThread, agentChatThread, newChatVisitId } from "@/lib/agent-chat-thread";
 import { cn } from "@/lib/cn";
 import { parseInsufficientCredits } from "@/lib/credit-balance";
 import { formatPrice, formatTimeAgo } from "@/lib/format";
@@ -80,6 +81,10 @@ interface ListingDetailV2Props {
    */
   chatSlot?: (args: {
     preset: NegotiationAgentPreset;
+    /** Which conversation this is — the same one the Agents tab opens for this pick. */
+    thread: AgentChatThread;
+    /** The pick being briefed, so the page can hand a saved agent its memory. */
+    selection: AgentSelection;
     onStrategyUpdate: (strategy: StrategyOverride) => void;
   }) => React.ReactNode;
   /** Hints captured by the chat so far; drives the picker's briefed state. */
@@ -204,6 +209,8 @@ export function ListingDetailV2({
     return { key, override, merged, named };
   }
 
+  // Scopes preset conversations to this visit; saved agents ignore it.
+  const [chatVisitId] = useState(newChatVisitId);
   const committed = deriveView(selection);
   const panelSelection = panelOpen ? panelDraft : selection;
   const panel = panelOpen ? deriveView(panelDraft) : committed;
@@ -503,8 +510,13 @@ export function ListingDetailV2({
               onOverrideChange={applyOverride}
               onResetOverride={clearOverride}
               chatSlot={
-                panel.named && chatSlot
-                  ? chatSlot({ preset: panel.named, onStrategyUpdate: applyOverride })
+                panel.named && chatSlot && panelSelection
+                  ? chatSlot({
+                      preset: panel.named,
+                      thread: agentChatThread("buyer", panelSelection, chatVisitId),
+                      selection: panelSelection,
+                      onStrategyUpdate: applyOverride,
+                    })
                   : undefined
               }
             />

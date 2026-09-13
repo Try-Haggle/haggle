@@ -16,6 +16,13 @@ export interface DrawerProps {
   dismissible?: boolean;
   children: ReactNode;
   className?: string;
+  /**
+   * Stacking layer for the overlay and the sheet. The default sits with the
+   * app's other overlays; a surface that already covers the app shell from a
+   * higher layer (the listing wizard, at z-[60]) must open its drawers above
+   * itself, or they open invisibly behind it.
+   */
+  layer?: string;
 }
 
 const sideClass = {
@@ -32,6 +39,7 @@ export function Drawer({
   dismissible = true,
   children,
   className,
+  layer = "z-50",
 }: DrawerProps) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -65,11 +73,12 @@ export function Drawer({
         dismissible={dismissible}
       >
         <Vaul.Portal>
-          <Vaul.Overlay className="fixed inset-0 z-50 bg-black/50" />
+          <Vaul.Overlay className={cn("fixed inset-0 bg-black/50", layer)} />
           <Vaul.Content
             aria-describedby={undefined}
             className={cn(
-              "fixed inset-x-0 bottom-0 z-50 flex max-h-[85vh] flex-col rounded-t-2xl border-line border-t bg-surface-raised outline-none",
+              "fixed inset-x-0 bottom-0 flex max-h-[85vh] flex-col rounded-t-2xl border-line border-t bg-surface-raised outline-none",
+              layer,
               className,
             )}
           >
@@ -101,7 +110,7 @@ export function Drawer({
   if (!open || !mounted) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-50">
+    <div className={cn("fixed inset-0", layer)}>
       <button
         type="button"
         aria-label="Close"

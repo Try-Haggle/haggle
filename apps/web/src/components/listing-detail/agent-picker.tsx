@@ -60,7 +60,7 @@ interface AgentPickerProps {
   onOpenPanel?: () => void;
   /** Strategy hints captured by the briefing chat so far. */
   briefHintCount?: number;
-  /** Deal-required questions the buyer hasn't answered yet. */
+  /** Required questions not yet answered — the buyer's deal checks, or a seller's safety questions. */
   openRequirementCount?: number;
   className?: string;
 }
@@ -120,9 +120,11 @@ export function AgentPicker({
             return (
               <div key={agent.id} className="w-[calc(25%-6px)] shrink-0 snap-start">
                 <AgentTile
-                  emoji={agent.emoji ?? "✦"}
+                  // Same fallback as the Agent Studio roster: an agent saved
+                  // without a face wears its archetype's, not a placeholder.
+                  emoji={agent.emoji ?? base?.emoji ?? "✦"}
                   label={agent.name}
-                  accent={base?.accentColor ?? "var(--action-primary)"}
+                  accent={agent.accentColor ?? base?.accentColor ?? "var(--action-primary)"}
                   selected={selection?.kind === "saved" && selection.id === agent.id}
                   onClick={() =>
                     onSelect({ kind: "saved", id: agent.id, presetId: agent.presetId })
@@ -238,7 +240,9 @@ export function AgentPicker({
                         {briefHintCount > 0
                           ? `${briefHintCount} strategy hint${briefHintCount === 1 ? "" : "s"} captured, tap to keep going`
                           : openRequirementCount > 0
-                            ? `This deal has ${openRequirementCount} required question${openRequirementCount === 1 ? "" : "s"} to answer before it can close.`
+                            ? role === "seller"
+                              ? `Answer ${openRequirementCount} required safety question${openRequirementCount === 1 ? "" : "s"} before publishing.`
+                              : `This deal has ${openRequirementCount} required question${openRequirementCount === 1 ? "" : "s"} to answer before it can close.`
                             : role === "seller"
                               ? "Tune its strategy and tell it your floor and what you won't accept."
                               : "Tune its strategy and tell it your budget and deal-breakers."}

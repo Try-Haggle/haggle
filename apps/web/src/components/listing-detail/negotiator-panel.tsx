@@ -1,8 +1,10 @@
 "use client";
 
 import {
+  type AgentAnimal,
   type FieldDescriptor,
   fieldsByTier,
+  getNegotiationAgentPreset,
   NEGOTIATION_AGENT_PRESETS,
   type NegotiationAgentPreset,
 } from "@haggle/shared";
@@ -10,6 +12,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ChevronDown, RotateCcw, SlidersHorizontal } from "lucide-react";
 import { useId, useState } from "react";
 import { WeightTuner } from "@/components/agent-studio/weight-tuner";
+import { AgentAvatar } from "@/components/agents/agent-avatar";
+import { AgentAvatarPicker, agentAvatarLabel } from "@/components/agents/agent-avatar-picker";
 import { Carousel, Slider } from "@/components/ui";
 import {
   type AgentRole,
@@ -73,6 +77,13 @@ interface NegotiatorPanelProps {
   showSaved?: boolean;
   /** The briefing chat for the current selection — rendered by the page. */
   chatSlot?: React.ReactNode;
+  /**
+   * Choose the agent's animal and colour. Absent → no avatar row, which is the
+   * buyer's listing page: a buyer picks an agent for one deal, while a seller
+   * is dressing the agent their buyers will meet on the listing.
+   */
+  onAvatarChange?: (animal: AgentAnimal) => void;
+  onAccentChange?: (hex: string) => void;
 }
 
 export function NegotiatorPanel({
@@ -87,6 +98,8 @@ export function NegotiatorPanel({
   showPresets = true,
   showSaved = true,
   chatSlot,
+  onAvatarChange,
+  onAccentChange,
 }: NegotiatorPanelProps) {
   return (
     <div className="flex h-full min-h-[70vh] flex-col">
@@ -123,9 +136,15 @@ export function NegotiatorPanel({
             {savedAgents.map((agent) => (
               <div key={agent.id} className="w-[calc(25%-6px)] shrink-0 snap-start">
                 <AgentTile
-                  emoji={agent.emoji ?? "✦"}
+                  // Same fallback as the Agent Studio roster: an agent saved
+                  // without a face wears its archetype's, not a placeholder.
+                  emoji={agent.emoji ?? getNegotiationAgentPreset(agent.presetId)?.emoji ?? "✦"}
                   label={agent.name}
-                  accent="var(--action-primary)"
+                  accent={
+                    agent.accentColor ??
+                    getNegotiationAgentPreset(agent.presetId)?.accentColor ??
+                    "var(--action-primary)"
+                  }
                   selected={selection?.kind === "saved" && selection.id === agent.id}
                   onClick={() =>
                     onSelect({ kind: "saved", id: agent.id, presetId: agent.presetId })
@@ -139,6 +158,14 @@ export function NegotiatorPanel({
 
       {effective ? (
         <>
+          {onAvatarChange && (
+            <AvatarStrip
+              effective={effective}
+              onAvatarChange={onAvatarChange}
+              onAccentChange={onAccentChange}
+            />
+          )}
+
           {/* ── Strategy, folded to a strip so the chat keeps the stage ── */}
           <StrategyStrip
             role={role}
@@ -169,6 +196,70 @@ export function NegotiatorPanel({
         </div>
       )}
     </div>
+  );
+}
+
+/* ─── Avatar strip (who buyers meet) ─────────────────────── */
+
+/**
+ * The agent's animal and colour, as one row shaped like the strategy strip
+ * below it. It opens the same picker the Agent Studio uses rather than
+ * expanding in place: twenty faces and ten colours inline would push the
+ * briefing — the part of this panel that grows — out of view.
+ */
+function AvatarStrip({
+  effective,
+  onAvatarChange,
+  onAccentChange,
+}: {
+  effective: NegotiationAgentPreset;
+  onAvatarChange: (animal: AgentAnimal) => void;
+  onAccentChange?: (hex: string) => void;
+}) {
+  const labelId = useId();
+  const valueId = useId();
+  const animal = agentAvatarLabel(effective.emoji);
+
+  return (
+    <AgentAvatarPicker
+      value={effective.emoji}
+      onChange={onAvatarChange}
+      accent={effective.accentColor}
+      onAccentChange={onAccentChange}
+      className="mt-4 block w-full shrink-0"
+      trigger={
+        <button
+          type="button"
+          aria-labelledby={`${labelId} ${valueId}`}
+          className="flex w-full items-center gap-2.5 rounded-xl border border-line bg-surface-raised px-3.5 py-2 text-left transition-colors hover:bg-surface-sunken/60"
+        >
+          <span
+            className="flex size-10 shrink-0 items-center justify-center rounded-full text-[19px]"
+            style={{
+              backgroundColor: `color-mix(in srgb, ${effective.accentColor} 14%, transparent)`,
+              border: `1px solid color-mix(in srgb, ${effective.accentColor} 32%, transparent)`,
+            }}
+            aria-hidden="true"
+          >
+            <AgentAvatar value={effective.emoji} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span id={labelId} className="block font-semibold text-[12.5px] text-ink">
+              Avatar
+            </span>
+            <span id={valueId} className="block truncate text-[10.5px] text-ink-muted">
+              {animal ?? "Choose an avatar"} · buyers see it on your listing
+            </span>
+          </span>
+          <span
+            className="size-2.5 shrink-0 rounded-full"
+            style={{ backgroundColor: effective.accentColor }}
+            aria-hidden="true"
+          />
+          <ChevronDown className="size-4 shrink-0 text-ink-muted" aria-hidden="true" />
+        </button>
+      }
+    />
   );
 }
 

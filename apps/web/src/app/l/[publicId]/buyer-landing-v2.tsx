@@ -263,11 +263,19 @@ export function BuyerLandingV2({ listing, user, isOwner, from, footerSlot }: Buy
           </div>
         </>
       }
-      chatSlot={({ preset, onStrategyUpdate }) => (
+      chatSlot={({ preset, thread, selection, onStrategyUpdate }) => (
         // biome-ignore lint/a11y/useValidAriaRole: "role" is a NegotiationAgentBuilderChat prop (buyer/seller), not an ARIA role
         <NegotiationAgentBuilderChat
+          // One conversation per agent, the same one the Agents tab shows: a
+          // saved agent brings its history, a preset starts fresh this visit.
+          key={thread.storageId}
+          serverThreadKey={thread.serverThreadKey}
           agent={preset}
-          listingPublicId={listing.publicId}
+          listingPublicId={thread.storageId}
+          // The listing is still this listing, whichever conversation this is.
+          advisorListingId={listing.publicId}
+          // A saved agent's new conversation starts from what it knows.
+          initialMemory={selection.kind === "saved" ? savedMemory[selection.id] : undefined}
           listingTitle={listing.title}
           listingCategory={listing.category}
           listingPrice={listing.targetPrice}

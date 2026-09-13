@@ -22,6 +22,7 @@ import {
   sql,
   tags,
 } from "@haggle/db";
+import { planListingAgentPromotion, type SourceAgent } from "../lib/listing-agent-promotion.js";
 import { isListingId, normalizeListingPublicId } from "../lib/listing-ref.js";
 import {
   CLOSEABLE_SESSION_STATUSES,
@@ -252,13 +253,14 @@ function generateClaimToken(): string {
  *  standalone /negotiations/agents create path). */
 const LISTING_BUILDER_SKILL_ID = "negotiation-agent-builder-v1";
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
- * On publish, promote the listing's agent snapshot to provenance:
- *   - returns a negotiation_agents row id when the snapshot was customized AND
- *     the listing has an owner (so it becomes a reusable "My Agent")
- *   - otherwise returns the preset id (string) — no duplicate row
- *   - returns null when there is no usable snapshot
- * The returned value is stored in listing_drafts.agent_id.
+ * On publish, record which agent the listing uses, adding to the seller's
+ * library only when the wizard produced an agent they do not already have.
+ * The decision lives in `planListingAgentPromotion`; this does the IO.
+ * The returned value is stored in listing_drafts.agent_id — an agent row id,
+ * or a preset id, or null when there is no usable snapshot.
  */
 async function persistListingAgent(
   db: Database,
@@ -270,36 +272,58 @@ async function persistListingAgent(
   },
 ): Promise<string | null> {
   const snap = draft.negotiationAgentSnapshot;
-  if (!snap) return null;
-  const presetId = typeof snap.preset === "string" ? snap.preset : null;
-  const customized = snap.customized === true;
+  const presetId = typeof snap?.preset === "string" ? snap.preset : null;
 
-  // Unchanged preset, or guest (no owner) → just reference the preset id.
-  if (!customized || !draft.userId) {
-    return presetId;
+  // The saved agent the wizard started from — only if it is still the owner's.
+  let sourceAgent: SourceAgent | null = null;
+  if (
+    snap?.source === "custom" &&
+    typeof snap.sourceId === "string" &&
+    UUID.test(snap.sourceId) &&
+    draft.userId
+  ) {
+    const [row] = await db
+      .select({
+        id: negotiationAgents.id,
+        name: negotiationAgents.name,
+        negotiationAgentConfig: negotiationAgents.negotiationAgentConfig,
+      })
+      .from(negotiationAgents)
+      .where(
+        and(
+          eq(negotiationAgents.id, snap.sourceId),
+          eq(negotiationAgents.userId, draft.userId),
+          eq(negotiationAgents.isSystem, false),
+        ),
+      )
+      .limit(1);
+    sourceAgent = row ?? null;
   }
 
-  // Customized + owned → create a reusable agent row from the snapshot.
-  const name = `${draft.title?.trim() || "Listing"} agent`;
-  const config: Record<string, unknown> = {
-    basePresetId: presetId,
-    negotiationAgentPresetId: presetId,
-    weights: snap.weights,
-    engineParams: snap.engineParams,
-    builderChatMemory: sanitizePersistedBuilderMemory(
-      snap.negotiationAgentBuilderMemory as Record<string, unknown> | null | undefined,
-    ),
-    forkedFromListing: draft.id,
-  };
+  const plan = planListingAgentPromotion({
+    snapshot: snap,
+    owned: Boolean(draft.userId),
+    sourceAgent,
+    title: draft.title,
+  });
+  if (plan.kind === "preset") return plan.presetId;
+  if (plan.kind === "existing") return plan.agentId;
+
   try {
     const [created] = await db
       .insert(negotiationAgents)
       .values({
-        name,
-        displayName: name,
+        name: plan.name,
+        displayName: plan.name,
         description: null,
         advisorSkillId: LISTING_BUILDER_SKILL_ID,
-        negotiationAgentConfig: config,
+        negotiationAgentConfig: {
+          ...plan.config,
+          builderChatMemory: sanitizePersistedBuilderMemory(
+            snap?.negotiationAgentBuilderMemory as Record<string, unknown> | null | undefined,
+          ),
+          forkedFromListing: draft.id,
+        },
         role: "seller",
         isSystem: false,
         userId: draft.userId,

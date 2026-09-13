@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  getNegotiationAgentPreset,
   NEGOTIATION_AGENT_PRESETS,
   type NegotiationAgent,
   type NegotiationAgentPreset,
@@ -178,12 +179,21 @@ export function AgentsList({ role, embedded = false, selectMode }: AgentsListPro
             >
               {customs.map((agent) => {
                 const isSelected = selectMode?.selectedCustomId === agent.id;
+                // Printed as text, a slug read "owl". Rendered through the
+                // avatar, with the archetype's face when none was saved.
+                const face =
+                  agent.emoji ??
+                  getNegotiationAgentPreset(
+                    agent.negotiationAgentPresetId ?? agent.basePresetId ?? "",
+                  )?.emoji;
 
                 const body = (
                   <>
                     <div className="min-w-0 flex-1">
                       <div className="mb-1 flex items-baseline gap-2">
-                        <span className="text-lg">{agent.emoji ?? "✦"}</span>
+                        <span className="text-lg">
+                          <AgentAvatar value={face} />
+                        </span>
                         <h3 className="truncate font-bold text-ink text-sm">{agent.name}</h3>
                       </div>
                       {agent.description && (
@@ -214,7 +224,7 @@ export function AgentsList({ role, embedded = false, selectMode }: AgentsListPro
                         <WeightRadar weights={agent.weights} size={88} labels={false} />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center text-3xl">
-                          {agent.emoji ?? "✦"}
+                          <AgentAvatar value={face} />
                         </div>
                       )}
                     </div>

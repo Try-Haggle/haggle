@@ -141,6 +141,8 @@ export interface BuilderThread {
   presetId: string | null;
   agentId: string | null;
   messages: BuilderThreadMessage[];
+  /** The conversation's memory. Null on threads written before it was kept. */
+  memory: Record<string, unknown> | null;
   updatedAt: string;
 }
 
@@ -170,6 +172,7 @@ export async function fetchBuilderThread(key: string): Promise<BuilderThread | n
 export async function saveBuilderThread(input: {
   key: string;
   messages: BuilderThreadMessage[];
+  memory?: Record<string, unknown>;
   presetId?: string;
   agentId?: string;
 }): Promise<void> {
