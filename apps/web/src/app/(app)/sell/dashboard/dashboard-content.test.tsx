@@ -24,6 +24,8 @@ function negotiation(overrides: Partial<SellerNegotiation> = {}): SellerNegotiat
     last_offer_price_minor: 890000,
     created_at: "2026-08-28T00:00:00.000Z",
     updated_at: "2026-08-29T00:00:00.000Z",
+    // The buyer's agent moved last, so the seller's is working on a reply.
+    last_sender_role: "BUYER",
     ...overrides,
   };
 }
@@ -43,7 +45,8 @@ describe("Seller Dashboard negotiations", () => {
 
     expect(screen.getByText(/Round 3/)).toBeInTheDocument();
     expect(screen.getByText(/\$8,900/)).toBeInTheDocument();
-    expect(screen.getByText("ACTIVE")).toBeInTheDocument();
+    // Where things stand, in words, instead of the raw server status.
+    expect(screen.getByText(/Thinking/)).toBeInTheDocument();
   });
 
   it("orders by most recent activity, not the order the API returned", () => {

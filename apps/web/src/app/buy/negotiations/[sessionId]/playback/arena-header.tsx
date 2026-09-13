@@ -2,14 +2,17 @@
 
 import { animate, motion, useMotionValue } from "framer-motion";
 import { useEffect, useState } from "react";
-import { AgentIcon } from "./agent-icon";
+import { AgentPresence } from "@/components/agents/agent-presence";
+import type { NegotiationAgentState } from "@/lib/negotiation-agent-state";
 import { formatPrice, formatSignedPct } from "./format";
 import type { AgentCard, AgentRole } from "./types";
 
 interface ArenaHeaderProps {
   buyerAgent: AgentCard;
   sellerAgent: AgentCard;
-  activeRole: AgentRole | null;
+  /** What each avatar shows — see `negotiationAgentState`. */
+  buyerState: NegotiationAgentState;
+  sellerState: NegotiationAgentState;
   currentRound: number;
   currentPrice: number | null;
   previousPrice: number | null;
@@ -28,7 +31,8 @@ interface ArenaHeaderProps {
 export function ArenaHeader({
   buyerAgent,
   sellerAgent,
-  activeRole,
+  buyerState,
+  sellerState,
   currentRound,
   currentPrice,
   previousPrice,
@@ -68,12 +72,7 @@ export function ArenaHeader({
     <div className="grid grid-cols-2 grid-rows-[auto_auto] items-center gap-x-3 gap-y-4 sm:grid-cols-[1fr_auto_1fr] sm:grid-rows-[auto] sm:gap-5">
       <div className="row-start-2 sm:row-start-1 sm:col-start-1">
         {/* biome-ignore lint/a11y/useValidAriaRole: "role" is a CompactAgent prop (BUYER/SELLER), not an ARIA role */}
-        <CompactAgent
-          agent={sellerAgent}
-          role="SELLER"
-          active={activeRole === "SELLER"}
-          side="left"
-        />
+        <CompactAgent agent={sellerAgent} role="SELLER" state={sellerState} side="left" />
       </div>
 
       {/* Center: round + price + delta */}
@@ -126,12 +125,7 @@ export function ArenaHeader({
 
       <div className="row-start-2 col-start-2 flex justify-end sm:row-start-1 sm:col-start-3">
         {/* biome-ignore lint/a11y/useValidAriaRole: "role" is a CompactAgent prop (BUYER/SELLER), not an ARIA role */}
-        <CompactAgent
-          agent={buyerAgent}
-          role="BUYER"
-          active={activeRole === "BUYER"}
-          side="right"
-        />
+        <CompactAgent agent={buyerAgent} role="BUYER" state={buyerState} side="right" />
       </div>
     </div>
   );
@@ -140,12 +134,12 @@ export function ArenaHeader({
 function CompactAgent({
   agent,
   role,
-  active,
+  state,
   side,
 }: {
   agent: AgentCard;
   role: AgentRole;
-  active: boolean;
+  state: NegotiationAgentState;
   side: "left" | "right";
 }) {
   const isLeft = side === "left";
@@ -153,28 +147,16 @@ function CompactAgent({
     <div
       className={`flex min-w-0 items-center gap-2 sm:gap-2.5 ${isLeft ? "" : "flex-row-reverse"}`}
     >
-      <motion.div
-        className="relative flex h-8 w-8 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg"
-        style={{ backgroundColor: `${agent.accentColor}1f`, color: agent.accentColor }}
-        animate={{
-          boxShadow: active
-            ? `0 0 0 1px ${agent.accentColor}, 0 0 18px ${agent.accentColor}55`
-            : `0 0 0 1px ${agent.accentColor}33`,
-        }}
-        transition={{ duration: 0.3, ease: "easeOut" }}
-      >
-        <AgentIcon agent={agent} size={14} />
-        {active && (
-          <motion.span
-            aria-hidden
-            className="absolute -inset-0.5 rounded-xl"
-            style={{ border: `1px solid ${agent.accentColor}` }}
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: [0.7, 0, 0.7], scale: [0.95, 1.1, 0.95] }}
-            transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
-          />
-        )}
-      </motion.div>
+      {/* The state lives on the frame — ring, badge, motion — because the face
+          itself never changes. Replaces the square glow chip, which could only
+          say "active" and was the last agent face not drawn as a circle. */}
+      <AgentPresence
+        value={agent.emoji}
+        accent={agent.accentColor}
+        state={state}
+        size={36}
+        label={agent.name}
+      />
       <div className={`min-w-0 flex flex-col ${isLeft ? "items-start" : "items-end"}`}>
         <div
           className="text-[9px] font-bold tracking-[0.16em]"

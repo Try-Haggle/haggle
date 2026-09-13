@@ -17,15 +17,9 @@ export interface ViewedListing {
   targetPrice: string | null;
 }
 
-export interface ActiveNegotiation {
-  id: string;
-  listing_id: string;
-  status: string;
-  current_round: number;
-  last_offer_price_minor: number | null;
-  created_at: string;
-  updated_at: string;
-}
+import type { NegotiationListItem } from "@/components/negotiations/negotiation-roster-row";
+
+export type ActiveNegotiation = NegotiationListItem;
 
 export default async function BuyerDashboardPage() {
   const supabase = await createClient();

@@ -29,15 +29,9 @@ export interface DraftSummary {
   updatedAt: string;
 }
 
-export interface SellerNegotiation {
-  id: string;
-  listing_id: string;
-  status: string;
-  current_round: number;
-  last_offer_price_minor: number | null;
-  created_at: string;
-  updated_at: string;
-}
+import type { NegotiationListItem } from "@/components/negotiations/negotiation-roster-row";
+
+export type SellerNegotiation = NegotiationListItem;
 
 export default async function DashboardPage({
   searchParams,

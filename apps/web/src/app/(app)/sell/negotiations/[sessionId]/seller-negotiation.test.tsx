@@ -55,9 +55,17 @@ vi.mock("@/app/buy/negotiations/[sessionId]/playback/playback-arena", () => ({
     backHref?: string;
     backLabel?: string;
     liveTerminal?: boolean;
+    mode?: string;
+    pausedForBuyer?: boolean;
     headerAction?: React.ReactNode;
   }) => (
-    <div data-testid="arena" data-back={props.backHref} data-terminal={String(props.liveTerminal)}>
+    <div
+      data-testid="arena"
+      data-back={props.backHref}
+      data-terminal={String(props.liveTerminal)}
+      data-mode={props.mode ?? "replay"}
+      data-paused={String(props.pausedForBuyer ?? false)}
+    >
       {props.backLabel}
       {props.headerAction}
     </div>
@@ -99,6 +107,29 @@ describe("SellerNegotiation", () => {
     render(<SellerNegotiation initialPayload={payload("ACTIVE")} />);
 
     expect(screen.queryByRole("button", { name: /Message buyer/ })).toBeNull();
+  });
+
+  it("plays the replay when asked, once the negotiation has settled", () => {
+    render(<SellerNegotiation initialPayload={payload("ACCEPTED")} replay />);
+    const arena = screen.getByTestId("arena");
+    expect(arena).toHaveAttribute("data-mode", "replay");
+    expect(arena).toHaveAttribute("data-back", `/sell/negotiations/${SESSION_ID}`);
+    // A replay is not a place to act: no seller moves on top of it.
+    expect(screen.queryByRole("button", { name: /accept deal/i })).toBeNull();
+  });
+
+  it("tells the arena when the loop is paused for the buyer", () => {
+    render(
+      <SellerNegotiation
+        initialPayload={{ ...payload("ACTIVE"), paused_for_buyer: true } as SessionResponse}
+      />,
+    );
+    expect(screen.getByTestId("arena")).toHaveAttribute("data-paused", "true");
+  });
+
+  it("ignores a replay request while the negotiation is still live", () => {
+    render(<SellerNegotiation initialPayload={payload("ACTIVE")} replay />);
+    expect(screen.getByTestId("arena")).toHaveAttribute("data-mode", "live");
   });
 
   it("offers the thread once the rounds have stopped", () => {

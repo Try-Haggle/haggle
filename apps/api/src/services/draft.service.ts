@@ -724,6 +724,40 @@ export async function getListingPlaybackSummaryByInternalId(db: Database, listin
   return rows[0] ?? null;
 }
 
+/**
+ * `getListingPlaybackSummaryByInternalId` for many listings at once, keyed by
+ * internal listing id — for session lists, which would otherwise query once
+ * per row. Same buyer-safe fields: title and the seller agent's identity.
+ */
+export async function getListingPlaybackSummariesByInternalIds(db: Database, listingIds: string[]) {
+  const ids = [...new Set(listingIds)];
+  if (ids.length === 0) return new Map<string, ListingPlaybackSummary>();
+  const rows = await db
+    .select({
+      id: listingsPublished.id,
+      publicId: listingsPublished.publicId,
+      title: listingDrafts.title,
+      sellerAgentPreset: sql<string | null>`${listingDrafts.negotiationAgentSnapshot}->>'preset'`,
+      sellerAgentEmoji: sql<string | null>`${listingDrafts.negotiationAgentSnapshot}->>'emoji'`,
+      sellerAgentAccent: sql<
+        string | null
+      >`${listingDrafts.negotiationAgentSnapshot}->>'accentColor'`,
+    })
+    .from(listingsPublished)
+    .innerJoin(listingDrafts, eq(listingDrafts.id, listingsPublished.draftId))
+    .where(inArray(listingsPublished.id, ids));
+  return new Map<string, ListingPlaybackSummary>(rows.map((r) => [r.id, r]));
+}
+
+export interface ListingPlaybackSummary {
+  id: string;
+  publicId: string;
+  title: string | null;
+  sellerAgentPreset: string | null;
+  sellerAgentEmoji: string | null;
+  sellerAgentAccent: string | null;
+}
+
 export type ListPublishedSort = "newest" | "price_asc" | "price_desc";
 
 /**

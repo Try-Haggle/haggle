@@ -27,6 +27,8 @@ const {
   mockEventDispatch,
   mockGetPublishedListingByPublicId,
   mockLoadListingStrategyContext,
+  mockGetLatestRoundsBySessionIds,
+  mockGetListingPlaybackSummariesByInternalIds,
 } = vi.hoisted(() => ({
   mockCreateSession: vi.fn(),
   mockGetSessionById: vi.fn(),
@@ -48,6 +50,8 @@ const {
   mockEventDispatch: vi.fn(),
   mockGetPublishedListingByPublicId: vi.fn(),
   mockLoadListingStrategyContext: vi.fn(),
+  mockGetLatestRoundsBySessionIds: vi.fn(),
+  mockGetListingPlaybackSummariesByInternalIds: vi.fn(),
 }));
 
 // ─── Mock data ──────────────────────────────────────────────────────
@@ -133,6 +137,7 @@ vi.mock("../services/negotiation-round.service.js", () => ({
   getRoundsBySessionId: (...args: unknown[]) => mockGetRoundsBySessionId(...args),
   getRoundByIdempotencyKey: (...args: unknown[]) => mockGetRoundByIdempotencyKey(...args),
   getLatestRound: vi.fn().mockResolvedValue(null),
+  getLatestRoundsBySessionIds: (...args: unknown[]) => mockGetLatestRoundsBySessionIds(...args),
 }));
 
 vi.mock("../services/user-memory-card.service.js", () => ({
@@ -335,6 +340,8 @@ vi.mock("../services/draft.service.js", () => ({
   deleteDraft: vi.fn().mockResolvedValue(null),
   publishDraft: vi.fn().mockResolvedValue(null),
   getListingPlaybackSummaryByInternalId: vi.fn().mockResolvedValue(null),
+  getListingPlaybackSummariesByInternalIds: (...args: unknown[]) =>
+    mockGetListingPlaybackSummariesByInternalIds(...args),
   getPublishedListingByPublicId: (...args: unknown[]) => mockGetPublishedListingByPublicId(...args),
   getPublishedListingByRef: (...args: unknown[]) => mockGetPublishedListingByPublicId(...args),
 }));
@@ -449,7 +456,11 @@ describe("Negotiation API", () => {
     mockEventDispatch.mockReset();
     mockGetPublishedListingByPublicId.mockReset();
     mockLoadListingStrategyContext.mockReset();
+    mockGetLatestRoundsBySessionIds.mockReset();
+    mockGetListingPlaybackSummariesByInternalIds.mockReset();
     // Reset to sensible defaults
+    mockGetLatestRoundsBySessionIds.mockResolvedValue(new Map());
+    mockGetListingPlaybackSummariesByInternalIds.mockResolvedValue(new Map());
     mockCreateSession.mockResolvedValue(mockSession);
     mockGetSessionById.mockResolvedValue(null);
     mockGetSessionsByUserId.mockResolvedValue([]);
@@ -651,6 +662,81 @@ describe("Negotiation API", () => {
       expect(res.statusCode).toBe(200);
       expect(res.json().sessions).toHaveLength(1);
       expect(res.json().sessions[0].id).toBe("sess-001");
+    });
+
+    it("gives each buyer row its listing, the buyer's own agent and whose move it is", async () => {
+      mockGetSessionsByUserId.mockResolvedValue([
+        {
+          ...mockSession,
+          negotiationAgentSnapshot: {
+            buyer_requested_strategy: {
+              agent: { preset_id: "hunter", emoji: "panda", accent_color: "#EC4899" },
+              p_reservation: 123_456,
+            },
+          },
+        },
+      ]);
+      mockGetLatestRoundsBySessionIds.mockResolvedValue(
+        new Map([["sess-001", { sessionId: "sess-001", senderRole: "BUYER", metadata: null }]]),
+      );
+      mockGetListingPlaybackSummariesByInternalIds.mockResolvedValue(
+        new Map([
+          [
+            "listing-001",
+            {
+              id: "listing-001",
+              publicId: "pub-1",
+              title: "Camera body",
+              sellerAgentPreset: "verifier",
+              sellerAgentEmoji: "owl",
+              sellerAgentAccent: "#3b82f6",
+            },
+          ],
+        ]),
+      );
+
+      const res = await app.inject({
+        method: "GET",
+        url: "/negotiations/sessions?user_id=buyer-001&role=BUYER",
+        headers: AUTH_HEADERS,
+      });
+      const row = res.json().sessions[0];
+      expect(row.listing).toEqual({ public_id: "pub-1", title: "Camera body" });
+      // The viewer's own agent — not the seller's.
+      expect(row.agent).toEqual({ preset_id: "hunter", emoji: "panda", accent_color: "#ec4899" });
+      expect(row.last_sender_role).toBe("BUYER");
+      expect(row.paused_for_buyer).toBe(false);
+      // Identity only: the buyer's strategy never rides along.
+      expect(JSON.stringify(row)).not.toContain("123456");
+      expect(mockGetLatestRoundsBySessionIds).toHaveBeenCalledTimes(1);
+    });
+
+    it("gives each seller row the seller agent from the listing", async () => {
+      mockGetSessionsByUserId.mockResolvedValue([{ ...mockSession, sellerId: "buyer-001" }]);
+      mockGetListingPlaybackSummariesByInternalIds.mockResolvedValue(
+        new Map([
+          [
+            "listing-001",
+            {
+              id: "listing-001",
+              publicId: "pub-1",
+              title: "Camera body",
+              sellerAgentPreset: "verifier",
+              sellerAgentEmoji: "owl",
+              sellerAgentAccent: "not-a-colour",
+            },
+          ],
+        ]),
+      );
+
+      const res = await app.inject({
+        method: "GET",
+        url: "/negotiations/sessions?user_id=buyer-001&role=SELLER",
+        headers: AUTH_HEADERS,
+      });
+      const row = res.json().sessions[0];
+      expect(row.agent).toEqual({ preset_id: "verifier", emoji: "owl", accent_color: null });
+      expect(row.last_sender_role).toBeNull();
     });
   });
 

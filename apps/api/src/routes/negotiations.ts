@@ -47,7 +47,10 @@ import {
   resumeSellerSoftAutoAfterTimeout,
   setPartyControlMode,
 } from "../services/control-mode.service.js";
-import { getListingPlaybackSummaryByInternalId } from "../services/draft.service.js";
+import {
+  getListingPlaybackSummariesByInternalIds,
+  getListingPlaybackSummaryByInternalId,
+} from "../services/draft.service.js";
 import {
   resolveSoftManualWaitingWithoutContext,
   softManualWaitingBodyForParty,
@@ -69,6 +72,7 @@ import {
 } from "../services/negotiation-auto-play.service.js";
 import { evaluateNegotiationStartReadiness } from "../services/negotiation-readiness.service.js";
 import {
+  getLatestRoundsBySessionIds,
   getRoundsBySessionId,
   recordPauseAnswersOnRound,
 } from "../services/negotiation-round.service.js";
@@ -303,20 +307,60 @@ export function registerNegotiationRoutes(
           | "WAITING") ?? undefined,
       );
 
+      // Enough for a dashboard row to show who, about what, and what the
+      // agent is doing — batched, so a long list is still three queries.
+      const viewerSide = role === "BUYER" ? "BUYER" : "SELLER";
+      const [latestRounds, listings] = await Promise.all([
+        getLatestRoundsBySessionIds(
+          db,
+          sessions.map((s) => s.id),
+        ),
+        getListingPlaybackSummariesByInternalIds(
+          db,
+          sessions.map((s) => s.listingId),
+        ),
+      ]);
+
       return reply.send({
-        sessions: sessions.map((s) => ({
-          id: s.id,
-          group_id: s.groupId,
-          listing_id: s.listingId,
-          role: s.role,
-          status: s.status,
-          current_round: s.currentRound,
-          last_offer_price_minor: s.lastOfferPriceMinor,
-          version: s.version,
-          expires_at: s.expiresAt,
-          created_at: s.createdAt,
-          updated_at: s.updatedAt,
-        })),
+        sessions: sessions.map((s) => {
+          const latest = latestRounds.get(s.id);
+          const listing = listings.get(s.listingId);
+          const agent =
+            viewerSide === "BUYER"
+              ? {
+                  preset_id: extractBuyerNegotiationAgentField(
+                    s.negotiationAgentSnapshot,
+                    "preset_id",
+                  ),
+                  emoji: extractBuyerNegotiationAgentField(s.negotiationAgentSnapshot, "emoji"),
+                  accent_color: resolveAgentAccent(
+                    extractBuyerNegotiationAgentField(s.negotiationAgentSnapshot, "accent_color"),
+                  ),
+                }
+              : {
+                  preset_id: listing?.sellerAgentPreset ?? null,
+                  emoji: listing?.sellerAgentEmoji ?? null,
+                  accent_color: resolveAgentAccent(listing?.sellerAgentAccent),
+                };
+          return {
+            id: s.id,
+            group_id: s.groupId,
+            listing_id: s.listingId,
+            role: s.role,
+            status: s.status,
+            current_round: s.currentRound,
+            last_offer_price_minor: s.lastOfferPriceMinor,
+            version: s.version,
+            expires_at: s.expiresAt,
+            created_at: s.createdAt,
+            updated_at: s.updatedAt,
+            listing: listing ? { public_id: listing.publicId, title: listing.title } : null,
+            // This viewer's own agent: identity only, never its strategy.
+            agent,
+            last_sender_role: latest?.senderRole ?? null,
+            paused_for_buyer: pendingBuyerPauseAsks(s, latest?.metadata).length > 0,
+          };
+        }),
       });
     },
   );
@@ -355,16 +399,7 @@ export function registerNegotiationRoutes(
       extractBuyerNegotiationAgentField(session.negotiationAgentSnapshot, "accent_color"),
     );
 
-    const latestRound = rounds.at(-1);
-    const latestMeta = (latestRound?.metadata as Record<string, unknown> | null) ?? null;
-    const heldForCriteriaPause = isSellerCriteriaPauseReasoning(latestMeta?.reasoning);
-    const pauseSnapshot =
-      getNegotiationAutoPlayContext(session.negotiationAgentSnapshot)?.buyerSnapshot ??
-      session.negotiationAgentSnapshot;
-    const pendingPauseAsks =
-      heldForCriteriaPause && !latestMeta?.buyer_pause_answers
-        ? unresolvedBuyerPauseAsks(pauseSnapshot)
-        : [];
+    const pendingPauseAsks = pendingBuyerPauseAsks(session, rounds.at(-1)?.metadata);
 
     return reply.send({
       session: {
@@ -1467,6 +1502,24 @@ export function registerNegotiationRoutes(
 
 function isAuthorizedSessionCreator(actorId: string, data: CreateSessionBody): boolean {
   return data.role === "BUYER" ? data.buyer_id === actorId : data.seller_id === actorId;
+}
+
+/**
+ * The checks the round loop is holding for the buyer to answer, if the latest
+ * round is a criteria pause they have not answered yet. One definition for the
+ * session payload and the session list, so a dashboard row never says a
+ * negotiation needs an answer while the negotiation screen says it does not.
+ */
+function pendingBuyerPauseAsks(
+  session: { negotiationAgentSnapshot: Record<string, unknown> },
+  latestRoundMetadata: unknown,
+) {
+  const meta = (latestRoundMetadata as Record<string, unknown> | null) ?? null;
+  if (!isSellerCriteriaPauseReasoning(meta?.reasoning) || meta?.buyer_pause_answers) return [];
+  const snapshot =
+    getNegotiationAutoPlayContext(session.negotiationAgentSnapshot)?.buyerSnapshot ??
+    session.negotiationAgentSnapshot;
+  return unresolvedBuyerPauseAsks(snapshot);
 }
 
 // Pull one buyer-side agent field out of negotiation_agent_snapshot. Sessions created

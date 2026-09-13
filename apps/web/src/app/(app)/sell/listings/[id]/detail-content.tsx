@@ -12,17 +12,19 @@ import {
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
+  type NegotiationListItem,
+  NegotiationRosterRow,
+} from "@/components/negotiations/negotiation-roster-row";
+import {
   BackLink,
   Badge,
   Button,
   CopyButton,
   EmptyState,
-  ListRow,
   PageHeader,
   StatTile,
 } from "@/components/ui";
 import { api } from "@/lib/api-client";
-import { formatTimeAgo } from "@/lib/format";
 import { useAmplitude } from "@/providers/amplitude-provider";
 import { AttestationWizard } from "./attestation-wizard";
 import type { ListingDetail } from "./page";
@@ -36,27 +38,7 @@ interface AttestationStatus {
   createdAt?: string;
 }
 
-interface NegotiationSession {
-  id: string;
-  listing_id: string;
-  status: string;
-  current_round: number;
-  last_offer_price_minor: number | null;
-  created_at: string;
-  updated_at: string;
-}
-
-type StatusTone = "gold" | "success" | "info" | "warning" | "error" | "neutral";
-
-const STATUS_TONE: Record<string, StatusTone> = {
-  ACTIVE: "gold",
-  NEAR_DEAL: "success",
-  ACCEPTED: "success",
-  REJECTED: "error",
-  STALLED: "warning",
-  WAITING: "warning",
-  EXPIRED: "neutral",
-};
+type NegotiationSession = NegotiationListItem;
 
 function formatMinorPrice(priceMinor: number | null): string {
   if (priceMinor === null) return "—";
@@ -135,18 +117,17 @@ export function DetailContent({
   };
 
   const totalCount = sessions.length;
-  const withOffers = sessions.filter((s) => s.last_offer_price_minor !== null);
+  // The API sends this numeric column as a string ("890000"). Summing it
+  // unconverted concatenated the offers, so the average was nonsense as soon as
+  // a listing had two of them.
+  const offers = sessions
+    .map((s) => Number(s.last_offer_price_minor))
+    .filter((minor, i) => sessions[i].last_offer_price_minor !== null && Number.isFinite(minor));
   const avgOffer =
-    withOffers.length > 0
-      ? Math.round(
-          withOffers.reduce((acc, s) => acc + (s.last_offer_price_minor ?? 0), 0) /
-            withOffers.length,
-        )
+    offers.length > 0
+      ? Math.round(offers.reduce((acc, minor) => acc + minor, 0) / offers.length)
       : null;
-  const bestOffer =
-    withOffers.length > 0
-      ? Math.max(...withOffers.map((s) => s.last_offer_price_minor ?? 0))
-      : null;
+  const bestOffer = offers.length > 0 ? Math.max(...offers) : null;
 
   return (
     <main className="mx-auto min-h-[calc(100vh-4rem)] max-w-7xl px-4 py-6 sm:p-6">
@@ -282,18 +263,11 @@ export function DetailContent({
       ) : (
         <div className="space-y-3">
           {sessions.map((neg) => (
-            <ListRow
+            <NegotiationRosterRow
               key={neg.id}
-              title={<span className="font-mono">{neg.id.slice(0, 8)}...</span>}
-              badges={
-                <Badge tone={STATUS_TONE[neg.status] ?? "neutral"} size="sm">
-                  {neg.status}
-                </Badge>
-              }
-              meta={`Round ${neg.current_round} · Last offer: ${formatMinorPrice(neg.last_offer_price_minor)}`}
-              trailing={
-                <span className="text-ink-muted text-xs">{formatTimeAgo(neg.updated_at)}</span>
-              }
+              negotiation={neg}
+              side="SELLER"
+              href={`/sell/negotiations/${neg.id}`}
             />
           ))}
         </div>

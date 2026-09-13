@@ -208,7 +208,7 @@ function PreFightAgent({
           repeat: Infinity,
           ease: "easeInOut",
         }}
-        className="relative flex h-20 w-20 sm:h-24 sm:w-24 items-center justify-center rounded-2xl"
+        className="relative flex h-20 w-20 sm:h-24 sm:w-24 items-center justify-center rounded-full"
         style={{
           background: `linear-gradient(135deg, ${agent.accentColor}26, ${agent.accentColor}0a)`,
           border: `1px solid ${agent.accentColor}55`,
@@ -219,7 +219,7 @@ function PreFightAgent({
         <AgentIcon agent={agent} size={36} />
         <motion.span
           aria-hidden
-          className="absolute inset-0 rounded-2xl"
+          className="absolute inset-0 rounded-full"
           style={{ border: `1px solid ${agent.accentColor}` }}
           animate={{ opacity: [0.6, 0, 0.6], scale: [1, 1.08, 1] }}
           transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}

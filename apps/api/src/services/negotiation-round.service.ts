@@ -1,4 +1,4 @@
-import { and, type Database, eq, negotiationRounds, sql } from "@haggle/db";
+import { and, type Database, desc, eq, inArray, negotiationRounds, sql } from "@haggle/db";
 
 type SenderRole = "BUYER" | "SELLER";
 type MessageType = "OFFER" | "COUNTER" | "ACCEPT" | "REJECT" | "ESCALATE";
@@ -65,6 +65,31 @@ export async function getRoundsBySessionId(db: Database, sessionId: string) {
     .from(negotiationRounds)
     .where(eq(negotiationRounds.sessionId, sessionId))
     .orderBy(negotiationRounds.roundNo);
+}
+
+/**
+ * The latest round of each session, keyed by session id — what a list needs to
+ * say whose turn it is and whether the loop paused, without loading every
+ * transcript. One DISTINCT ON query however many sessions are listed.
+ */
+export async function getLatestRoundsBySessionIds(db: Database, sessionIds: string[]) {
+  if (sessionIds.length === 0) return new Map<string, LatestRound>();
+  const rows = await db
+    .selectDistinctOn([negotiationRounds.sessionId], {
+      sessionId: negotiationRounds.sessionId,
+      senderRole: negotiationRounds.senderRole,
+      metadata: negotiationRounds.metadata,
+    })
+    .from(negotiationRounds)
+    .where(inArray(negotiationRounds.sessionId, sessionIds))
+    .orderBy(negotiationRounds.sessionId, desc(negotiationRounds.roundNo));
+  return new Map<string, LatestRound>(rows.map((r) => [r.sessionId, r]));
+}
+
+export interface LatestRound {
+  sessionId: string;
+  senderRole: "BUYER" | "SELLER";
+  metadata: unknown;
 }
 
 export async function getRoundByIdempotencyKey(db: Database, sessionId: string, key: string) {

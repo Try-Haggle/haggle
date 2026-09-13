@@ -33,7 +33,18 @@ const SELLER_CLOSED_STATUSES = new Set(["ACCEPTED", "REJECTED", "EXPIRED", "SUPE
  * controls: Soft Auto lets Haggle AI drive seller Soft turns; Soft Manual
  * surfaces the seller action bar (SoT auto-manual-control-mode-sot.md).
  */
-export function SellerNegotiation({ initialPayload }: { initialPayload: SessionResponse }) {
+export function SellerNegotiation({
+  initialPayload,
+  replay = false,
+}: {
+  initialPayload: SessionResponse;
+  /**
+   * `?replay=1` from the arena's "Watch replay" link. The link is drawn by the
+   * shared arena whenever a negotiation has settled, but only the buyer's page
+   * read the flag, so on this page it reloaded the same finished view.
+   */
+  replay?: boolean;
+}) {
   const [payload, setPayload] = useState(initialPayload);
   const [localInflight, setLocalInflight] = useState(false);
   const sessionId = payload.session.id;
@@ -77,6 +88,19 @@ export function SellerNegotiation({ initialPayload }: { initialPayload: SessionR
   const showSellerManualBar =
     sellerCanAct && (sellerIsManual || !serverHasControlModes || control.syncState === "stubbed");
 
+  // Replay is a finished story told again: no controls, nothing live, and the
+  // way back is to this negotiation rather than to the dashboard.
+  if (replay && isSettled) {
+    return (
+      <PlaybackArena
+        data={data}
+        backHref={`/sell/negotiations/${sessionId}`}
+        backLabel="Back to negotiation"
+        noDealCta={{ href: "/sell/dashboard", label: "Back to dashboard" }}
+      />
+    );
+  }
+
   return (
     <>
       <div className="mx-auto max-w-6xl px-3 pt-3 sm:px-6">
@@ -93,6 +117,7 @@ export function SellerNegotiation({ initialPayload }: { initialPayload: SessionR
         data={data}
         mode="live"
         liveTerminal={isSettled}
+        pausedForBuyer={payload.paused_for_buyer ?? false}
         connectionLabel={connectionMode === "ws" ? "Live updates" : "Checking for updates"}
         backHref="/sell/dashboard"
         backLabel="Dashboard"

@@ -2,7 +2,7 @@
 
 import { MessageSquare, Search } from "lucide-react";
 import Link from "next/link";
-import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { NegotiationRosterRow } from "@/components/negotiations/negotiation-roster-row";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ListRow } from "@/components/ui/list-row";
 import { Price } from "@/components/ui/price";
@@ -11,26 +11,6 @@ import type { ActiveNegotiation, ViewedListing } from "./page";
 import { RecommendedForYou } from "./recommended";
 
 const RECENTLY_VIEWED_INITIAL_SHOW = 4;
-
-const STATUS_TONE: Record<string, BadgeProps["tone"]> = {
-  ACTIVE: "gold",
-  NEAR_DEAL: "success",
-  ACCEPTED: "success",
-  REJECTED: "error",
-  STALLED: "warning",
-  WAITING: "warning",
-  EXPIRED: "neutral",
-};
-
-function formatMinorPrice(priceMinor: number | null): string {
-  if (priceMinor === null) return "—";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(priceMinor / 100);
-}
 
 export function BuyerDashboardContent({
   userId,
@@ -111,25 +91,11 @@ export function BuyerDashboardContent({
       ) : (
         <div className="space-y-3">
           {activeNegotiations.map((neg) => (
-            <ListRow
+            <NegotiationRosterRow
               key={neg.id}
+              negotiation={neg}
+              side="BUYER"
               href={`/buy/negotiations/${neg.id}`}
-              showChevron
-              leading={
-                <div className="flex size-12 items-center justify-center rounded-lg bg-surface-sunken text-action-primary">
-                  <MessageSquare className="size-5" />
-                </div>
-              }
-              title={<span className="font-mono">{neg.id.slice(0, 8)}...</span>}
-              badges={
-                <Badge tone={STATUS_TONE[neg.status] ?? "neutral"} size="sm">
-                  {neg.status}
-                </Badge>
-              }
-              meta={`Round ${neg.current_round} · Last offer: ${formatMinorPrice(neg.last_offer_price_minor)}`}
-              trailing={
-                <span className="text-ink-muted text-xs">{formatTimeAgo(neg.updated_at)}</span>
-              }
             />
           ))}
         </div>

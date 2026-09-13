@@ -15,10 +15,10 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { NegotiationRosterRow } from "@/components/negotiations/negotiation-roster-row";
 import {
   Alert,
   Badge,
-  type BadgeProps,
   buttonVariants,
   EmptyState,
   IconButton,
@@ -34,15 +34,6 @@ import type { DraftSummary, ListingSummary, SellerNegotiation } from "./page";
 function byRecentActivity(a: SellerNegotiation, b: SellerNegotiation): number {
   return Date.parse(b.updated_at) - Date.parse(a.updated_at);
 }
-
-const NEGOTIATION_STATUS_TONE: Record<string, BadgeProps["tone"]> = {
-  ACTIVE: "info",
-  NEAR_DEAL: "warning",
-  ACCEPTED: "success",
-  REJECTED: "error",
-  EXPIRED: "neutral",
-  STALLED: "warning",
-};
 
 export function DashboardContent({
   claimResult,
@@ -160,7 +151,12 @@ export function DashboardContent({
       ) : (
         <div className="mb-8 space-y-3">
           {[...negotiations].sort(byRecentActivity).map((negotiation) => (
-            <NegotiationCard key={negotiation.id} negotiation={negotiation} />
+            <NegotiationRosterRow
+              key={negotiation.id}
+              negotiation={negotiation}
+              side="SELLER"
+              href={`/sell/negotiations/${negotiation.id}`}
+            />
           ))}
         </div>
       )}
@@ -188,35 +184,6 @@ export function DashboardContent({
         </div>
       )}
     </main>
-  );
-}
-
-function NegotiationCard({ negotiation }: { negotiation: SellerNegotiation }) {
-  const lastOffer =
-    negotiation.last_offer_price_minor === null
-      ? "—"
-      : formatPrice(negotiation.last_offer_price_minor / 100);
-
-  return (
-    <ListRow
-      href={`/sell/negotiations/${negotiation.id}`}
-      showChevron
-      leading={
-        <div className="flex size-12 items-center justify-center rounded-lg bg-surface-sunken text-action-primary">
-          <MessageSquare className="size-5" />
-        </div>
-      }
-      title={<span className="font-mono">{negotiation.id.slice(0, 8)}...</span>}
-      badges={
-        <Badge tone={NEGOTIATION_STATUS_TONE[negotiation.status] ?? "neutral"} size="sm">
-          {negotiation.status}
-        </Badge>
-      }
-      meta={`Round ${negotiation.current_round} · Last offer: ${lastOffer}`}
-      trailing={
-        <span className="text-ink-muted text-xs">{formatTimeAgo(negotiation.updated_at)}</span>
-      }
-    />
   );
 }
 

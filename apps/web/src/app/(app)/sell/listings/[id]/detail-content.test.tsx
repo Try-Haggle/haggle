@@ -86,3 +86,59 @@ describe("seller listing delete", () => {
     expect(screen.queryByRole("button", { name: "Delete listing" })).not.toBeInTheDocument();
   });
 });
+
+describe("seller listing negotiation history", () => {
+  beforeEach(() => {
+    mocks.get.mockReset();
+  });
+
+  function session(id: string, lastOfferMinor: string | null, listingId = "draft-1") {
+    return {
+      id,
+      listing_id: listingId,
+      status: "ACTIVE",
+      current_round: 2,
+      // The API sends this numeric column as a string.
+      last_offer_price_minor: lastOfferMinor,
+      created_at: "2026-09-10T00:00:00.000Z",
+      updated_at: "2026-09-11T00:00:00.000Z",
+      last_sender_role: "BUYER",
+    };
+  }
+
+  it("averages offers as numbers, not by concatenating the strings the API sends", async () => {
+    mocks.get.mockImplementation(async (url: string) =>
+      url.startsWith("/negotiations/sessions")
+        ? {
+            sessions: [
+              session("a1111111-1111-4111-8111-111111111111", "100000"),
+              session("a2222222-2222-4222-8222-222222222222", "200000"),
+              session("a3333333-3333-4333-8333-333333333333", null),
+              session("a4444444-4444-4444-8444-444444444444", "900000", "another-listing"),
+            ],
+          }
+        : {},
+    );
+    render(<DetailContent listing={listing()} sellerId="seller-1" />);
+
+    await waitFor(() =>
+      expect(screen.getByText("Total Negotiations").previousElementSibling).toHaveTextContent("3"),
+    );
+    expect(screen.getByText("Avg. Offer Price").previousElementSibling).toHaveTextContent("$1,500");
+    expect(screen.getByText("Best Offer").previousElementSibling).toHaveTextContent("$2,000");
+  });
+
+  it("links each negotiation and shows its agent's state", async () => {
+    mocks.get.mockImplementation(async (url: string) =>
+      url.startsWith("/negotiations/sessions")
+        ? { sessions: [session("a1111111-1111-4111-8111-111111111111", "100000")] }
+        : {},
+    );
+    render(<DetailContent listing={listing()} sellerId="seller-1" />);
+
+    const link = await screen.findByRole("link", { name: /a1111111/ });
+    expect(link).toHaveAttribute("href", "/sell/negotiations/a1111111-1111-4111-8111-111111111111");
+    // The buyer moved last, so the seller's agent is working on a reply.
+    expect(screen.getByText(/Thinking · Round 2/)).toBeInTheDocument();
+  });
+});

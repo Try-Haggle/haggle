@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { AlertCircle, Play, Radio, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { negotiationAgentState } from "@/lib/negotiation-agent-state";
 import { ArenaHeader } from "./arena-header";
 import { ChatTimeline } from "./chat-timeline";
 import { FactorsPanel } from "./factors-panel";
@@ -12,7 +13,7 @@ import { PlaybackControls } from "./playback-controls";
 import { PreFight } from "./pre-fight";
 import { ProgressBar } from "./progress-bar";
 import { ResultReveal } from "./result-reveal";
-import type { PlaybackResponse } from "./types";
+import type { FinalStatus, PlaybackResponse } from "./types";
 import {
   type PlaybackEngine,
   usePlaybackEngine,
@@ -30,6 +31,12 @@ interface PlaybackArenaProps {
   onLiveRetry?: () => void;
   /** Checks the round loop stopped on, waiting for this buyer to answer. */
   pauseChecks?: PauseCheck[] | null;
+  /**
+   * The loop is paused for the buyer, seen from a screen that cannot answer —
+   * the seller's. Without it the seller watched the buyer's agent "thinking"
+   * through a pause while their dashboard said it was the buyer's turn.
+   */
+  pausedForBuyer?: boolean;
   onPauseAnswer?: (stances: Array<{ checkId: string; stance: string }>) => Promise<void>;
   /** Top-left back link. Defaults to the listing the buyer came from. */
   backHref?: string;
@@ -60,6 +67,7 @@ export function PlaybackArena({
   liveError = null,
   onLiveRetry,
   pauseChecks = null,
+  pausedForBuyer = false,
   onPauseAnswer,
   backHref,
   backLabel = "Back to listing",
@@ -94,7 +102,7 @@ export function PlaybackArena({
   // Paused means the rounds have stopped ON PURPOSE, waiting on this buyer. It must
   // silence the "thinking" dots — otherwise the screen claims work is in flight while it
   // is really waiting for a human, which is exactly how the pause read as a hang.
-  const isPaused = isLive && !liveTerminal && (pauseChecks?.length ?? 0) > 0;
+  const isPaused = isLive && !liveTerminal && ((pauseChecks?.length ?? 0) > 0 || pausedForBuyer);
 
   const [showPreFight, setShowPreFight] = useState(!isLive);
   const [focusedRoundIndex, setFocusedRoundIndex] = useState<number | null>(null);
@@ -137,6 +145,34 @@ export function PlaybackArena({
     : engine.status === "PLAYING" && engine.currentRoundIndex < rounds.length
       ? (rounds[engine.currentRoundIndex]?.sender ?? null)
       : null;
+
+  // What each agent's avatar shows. Replay tells the story in order, so its
+  // outcome only lands once the replay does; live shows where things stand.
+  const presenceStatus = isLive
+    ? liveTerminal
+      ? statusFromFinal(session.finalStatus)
+      : "ACTIVE"
+    : engine.status === "COMPLETE"
+      ? statusFromFinal(session.finalStatus)
+      : "ACTIVE";
+  const presenceInput = {
+    status: presenceStatus,
+    lastSender: lastVisibleRound?.sender ?? null,
+    pausedForBuyer: isPaused,
+    // Live: the side whose turn it is, unless a failed round means nobody is
+    // working. Replay: the sender of the round being animated, but only while
+    // it is still being thought out or typed.
+    activeRole: isLive
+      ? liveError
+        ? null
+        : undefined
+      : engine.status !== "COMPLETE" && engine.phase !== "settled"
+        ? (rounds[engine.currentRoundIndex]?.sender ?? null)
+        : undefined,
+    surface: "arena" as const,
+  };
+  const buyerState = negotiationAgentState({ ...presenceInput, side: "BUYER" });
+  const sellerState = negotiationAgentState({ ...presenceInput, side: "SELLER" });
 
   // Focused round (FactorsPanel target). Defaults to last visible settled round.
   const focusedRound = useMemo(() => {
@@ -247,7 +283,8 @@ export function PlaybackArena({
                 <ArenaHeader
                   buyerAgent={session.buyerAgent}
                   sellerAgent={session.sellerAgent}
-                  activeRole={activeRole}
+                  buyerState={buyerState}
+                  sellerState={sellerState}
                   currentRound={Math.min(engine.currentRoundIndex + 1, session.roundsTotal)}
                   currentPrice={currentPrice}
                   previousPrice={previousPrice}
@@ -392,4 +429,11 @@ function BackgroundOrbs() {
       />
     </>
   );
+}
+
+/** The playback contract's final status, back in the server's vocabulary. */
+function statusFromFinal(finalStatus: FinalStatus): string {
+  if (finalStatus === "ESCALATED") return "STALLED";
+  if (finalStatus === "IN_PROGRESS") return "ACTIVE";
+  return finalStatus;
 }

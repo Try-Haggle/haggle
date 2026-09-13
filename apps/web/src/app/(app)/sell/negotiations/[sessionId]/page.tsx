@@ -12,8 +12,10 @@ import { SellerNegotiation } from "./seller-negotiation";
  */
 export default async function SellerNegotiationPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ sessionId: string }>;
+  searchParams: Promise<{ replay?: string }>;
 }) {
   const supabase = await createClient();
   const {
@@ -23,6 +25,7 @@ export default async function SellerNegotiationPage({
   if (!user) redirect("/claim");
 
   const { sessionId } = await params;
+  const { replay } = await searchParams;
 
   let payload: SessionResponse | null = null;
   try {
@@ -33,5 +36,5 @@ export default async function SellerNegotiationPage({
   if (!payload) redirect("/sell/dashboard");
 
   // Participation is enforced server-side by the API; reaching here means access.
-  return <SellerNegotiation initialPayload={payload} />;
+  return <SellerNegotiation initialPayload={payload} replay={replay === "1"} />;
 }
