@@ -104,6 +104,8 @@ export function agentStrategySnapshotFromState(
     // The face the seller chose (or the preset's own). It rides the listing's
     // snapshot so the buyer-safe view can show it — a face is not posture.
     emoji: ep.emoji,
+    // Its colour, for the same reason. `#rrggbb`, already kept readable.
+    accentColor: ep.accentColor,
     weights: { ...ep.weights },
     source: state.source.kind,
     sourceId: state.source.id,
@@ -148,6 +150,7 @@ export function AgentBuilder({
       name: finalName,
       role,
       emoji: ep.emoji,
+      accentColor: ep.accentColor,
       negotiationAgentPresetId: value.agent.presetId,
       weights: { ...ep.weights },
       engineParams: engineParamsFromPreset(ep),
@@ -177,6 +180,11 @@ export function AgentBuilder({
     // Identity, not strategy — same rule as the studio: no "customized", but
     // a change the user expects to keep, so it dirties the build.
     onChange({ ...value, agent: { ...value.agent, emoji: animal }, dirty: true });
+  };
+
+  const handleAccentChange = (accentColor: string) => {
+    if (!value) return;
+    onChange({ ...value, agent: { ...value.agent, accentColor }, dirty: true });
   };
 
   const handleOverridesApply = (o: AdvancedOverrides) => {
@@ -234,7 +242,11 @@ export function AgentBuilder({
       }
       right={
         <>
-          <FaceCard effective={effective} onAvatarChange={handleAvatarChange} />
+          <FaceCard
+            effective={effective}
+            onAvatarChange={handleAvatarChange}
+            onAccentChange={handleAccentChange}
+          />
           <RightSidebar
             effective={effective}
             hasOverrides={value ? isBuilderCustomized(value) : false}
@@ -286,7 +298,11 @@ export function AgentBuilder({
               />
             </div>
 
-            <FaceCard effective={effective} onAvatarChange={handleAvatarChange} />
+            <FaceCard
+              effective={effective}
+              onAvatarChange={handleAvatarChange}
+              onAccentChange={handleAccentChange}
+            />
 
             <RightSidebar
               effective={effective}
@@ -419,9 +435,11 @@ function LeftColumn({
 function FaceCard({
   effective,
   onAvatarChange,
+  onAccentChange,
 }: {
   effective?: NegotiationAgentPreset;
   onAvatarChange: (animal: AgentAnimal) => void;
+  onAccentChange: (hex: string) => void;
 }) {
   if (!effective) return null;
   return (
@@ -429,10 +447,12 @@ function FaceCard({
       <AgentAvatarPicker
         value={effective.emoji}
         onChange={onAvatarChange}
+        accent={effective.accentColor}
+        onAccentChange={onAccentChange}
         trigger={
           <button
             type="button"
-            aria-label="Change face"
+            aria-label="Change avatar"
             className="flex size-12 shrink-0 cursor-pointer items-center justify-center rounded-full text-[22px] transition-transform hover:scale-105 focus-visible:outline-2 focus-visible:outline-focus focus-visible:outline-offset-2"
             style={{
               backgroundColor: `color-mix(in srgb, ${effective.accentColor} 14%, transparent)`,
@@ -444,8 +464,10 @@ function FaceCard({
         }
       />
       <div className="min-w-0">
-        <p className="font-bold text-[11px] text-ink-secondary uppercase tracking-wider">Face</p>
-        <p className="text-[12px] text-ink-muted">Tap to change — buyers see it on your listing.</p>
+        <p className="font-bold text-[11px] text-ink-secondary uppercase tracking-wider">Avatar</p>
+        <p className="text-[12px] text-ink-muted">
+          Tap to change the animal and color — buyers see both on your listing.
+        </p>
       </div>
     </div>
   );

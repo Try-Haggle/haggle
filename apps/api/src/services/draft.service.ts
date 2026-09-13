@@ -711,6 +711,10 @@ export async function getListingPlaybackSummaryByInternalId(db: Database, listin
       // The face the seller picked, so the arena shows the same agent the
       // buyer met on the listing. A slug — no posture travels with it.
       sellerAgentEmoji: sql<string | null>`${listingDrafts.negotiationAgentSnapshot}->>'emoji'`,
+      // And its colour — raw here; the route resolves it before it leaves.
+      sellerAgentAccent: sql<
+        string | null
+      >`${listingDrafts.negotiationAgentSnapshot}->>'accentColor'`,
     })
     .from(listingsPublished)
     .innerJoin(listingDrafts, eq(listingDrafts.id, listingsPublished.draftId))

@@ -22,6 +22,8 @@ export interface ListingDetail {
   sellerAgentPreset: string | null;
   /** The seller's chosen face for the agent. Absent on older listings. */
   sellerAgentEmoji?: string | null;
+  /** The seller's chosen colour, `#rrggbb`. Absent on older listings. */
+  sellerAgentAccent?: string | null;
   sellingDeadline: string | null;
   /** The seller's REQUIRED category criteria (buyer-safe: id + ask). */
   sellerRequiredCriteria: Array<{ checkId: string; ask: string }> | null;

@@ -12,7 +12,7 @@ describe("AgentBuilder face", () => {
     const value = createBuilderState({ side: role, presetId: "hunter" });
     render(<AgentBuilder role={role} value={value} onChange={onChange} embedded />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Change face" }));
+    fireEvent.click(screen.getByRole("button", { name: "Change avatar" }));
     fireEvent.click(screen.getByRole("button", { name: "owl" }));
 
     expect(onChange).toHaveBeenCalledTimes(1);
@@ -29,5 +29,27 @@ describe("AgentBuilder face", () => {
     expect(agentStrategySnapshotFromState(base).emoji).toBe("fox");
     const chosen = { ...base, agent: { ...base.agent, emoji: "owl" } };
     expect(agentStrategySnapshotFromState(chosen).emoji).toBe("owl");
+  });
+
+  it("lets the seller pick a colour too, as identity rather than strategy", () => {
+    const onChange = vi.fn();
+    const role = "seller" as const;
+    const value = createBuilderState({ side: role, presetId: "hunter" });
+    render(<AgentBuilder role={role} value={value} onChange={onChange} embedded />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Change avatar" }));
+    fireEvent.click(screen.getByRole("button", { name: "indigo" }));
+
+    const next = onChange.mock.calls.at(-1)?.[0];
+    expect(next.agent.accentColor).toBe("#6366f1");
+    expect(next.dirty).toBe(true);
+    expect(next.agent.weights).toBeUndefined();
+  });
+
+  it("puts the chosen colour on the listing snapshot, and the preset's own when none was chosen", () => {
+    const base = createBuilderState({ side: "seller", presetId: "hunter" });
+    expect(agentStrategySnapshotFromState(base).accentColor).toBe("#ef4444");
+    const chosen = { ...base, agent: { ...base.agent, accentColor: "#6366f1" } };
+    expect(agentStrategySnapshotFromState(chosen).accentColor).toBe("#6366f1");
   });
 });

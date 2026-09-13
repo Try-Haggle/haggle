@@ -3,6 +3,7 @@ import { type DisputeReasonCode, DisputeService, REASON_CODE_REGISTRY } from "@h
 import {
   DEFAULT_NEGOTIATION_AGENT_PRESET_ID,
   getNegotiationAgentPreset,
+  normalizeAgentAccent,
   unresolvedSellerRequirements,
 } from "@haggle/shared";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -95,6 +96,12 @@ const weightsSchema = z.object({
 });
 const agentConfigSchema = z.object({
   emoji: z.string().optional(),
+  // Must match the REST schema: haggle_update_agent replaces the whole config
+  // with the parsed object, so a field missing here is silently erased.
+  accentColor: z
+    .string()
+    .optional()
+    .transform((v) => normalizeAgentAccent(v) ?? undefined),
   basePresetId: z.string().optional(),
   negotiationAgentPresetId: z.string().optional(),
   weights: weightsSchema.optional(),

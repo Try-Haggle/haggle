@@ -19,6 +19,7 @@ import {
   negotiationAgents,
   or,
 } from "@haggle/db";
+import { normalizeAgentAccent } from "@haggle/shared";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireAuth } from "../middleware/require-auth.js";
@@ -47,6 +48,12 @@ const weightsSchema = z.object({
  *  `NegotiationAgent` type in @haggle/shared modulo top-level columns. */
 const negotiationAgentConfigSchema = z.object({
   emoji: z.string().optional(),
+  /** `#rrggbb`. Normalized here; anything unusable is dropped rather than
+   *  failing the save, and the agent falls back to its preset's colour. */
+  accentColor: z
+    .string()
+    .optional()
+    .transform((v) => normalizeAgentAccent(v) ?? undefined),
   basePresetId: z.string().optional(),
   negotiationAgentPresetId: z.string().optional(),
   weights: weightsSchema.optional(),

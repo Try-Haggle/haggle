@@ -197,6 +197,7 @@ export function ListingDetailV2({
         ? {
             ...merged,
             emoji: saved.emoji ?? merged.emoji,
+            accentColor: saved.accentColor ?? merged.accentColor,
             copy: { ...merged.copy, buyer: { ...merged.copy.buyer, name: saved.name } },
           }
         : merged;
@@ -390,6 +391,7 @@ export function ListingDetailV2({
                 <OpponentCard
                   presetId={listing.sellerAgentPreset}
                   emoji={listing.sellerAgentEmoji ?? null}
+                  accent={listing.sellerAgentAccent ?? null}
                   isOwner={isOwner}
                 />
                 <TrustScoreChip trust={listing.sellerTrust} className="mt-2" />

@@ -122,6 +122,7 @@ export function BuyerLandingV2({ listing, user, isOwner, from, footerSlot }: Buy
             id: agent.id,
             name: agent.name,
             emoji: agent.emoji ?? null,
+            accentColor: agent.accentColor ?? null,
             presetId,
             // Only a customized agent carries weights; without them the
             // selection resolves to the bare preset, which is correct.
@@ -148,11 +149,11 @@ export function BuyerLandingV2({ listing, user, isOwner, from, footerSlot }: Buy
   async function handleStart(selection: AgentSelection, strategy: StrategyOverride | null) {
     const presetId = selection.kind === "preset" ? selection.id : selection.presetId;
     const savedId = selection.kind === "saved" ? selection.id : null;
-    // A saved agent carries the face its owner chose; a bare preset wears its
-    // own, which the server resolves, so only the saved case sends one.
-    const selectedFace = savedId
-      ? (savedAgents.find((a) => a.id === savedId)?.emoji ?? null)
-      : null;
+    // A saved agent carries the face and colour its owner chose; a bare preset
+    // wears its own, which the server resolves, so only the saved case sends them.
+    const savedPick = savedId ? savedAgents.find((a) => a.id === savedId) : undefined;
+    const selectedFace = savedPick?.emoji ?? null;
+    const selectedAccent = savedPick?.accentColor ?? null;
     const memory = briefMemory ?? (savedId ? savedMemory[savedId] : undefined);
     const answered = new Set(
       (memory?.categoryCriteria ?? [])
@@ -177,6 +178,7 @@ export function BuyerLandingV2({ listing, user, isOwner, from, footerSlot }: Buy
         // Identity, not strategy: keeps the agent the buyer picked wearing the
         // same face once the negotiation opens.
         agent_emoji: selectedFace ?? undefined,
+        agent_accent: selectedAccent ?? undefined,
         agent_weights: strategy?.weights,
         // Sparse by design: absent knobs resolve from the preset server-side, so
         // an untuned pick sends no overrides at all rather than a full copy of

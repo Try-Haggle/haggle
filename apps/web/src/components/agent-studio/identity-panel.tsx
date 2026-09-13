@@ -62,6 +62,8 @@ interface IdentityPanelProps {
   onNameChange?: (name: string) => void;
   /** Pick a face. Absent (read-only surfaces) leaves the chip static. */
   onAvatarChange?: (animal: AgentAnimal) => void;
+  /** Accent colour, `#rrggbb`, always readable. Absent → no colour section. */
+  onAccentChange?: (hex: string) => void;
   /** Live weight edits from the inline tuner. */
   onWeightsChange?: (weights: NegotiationWeights) => void;
   /** Drop all overrides, back to the bare preset. Shown only when customized. */
@@ -89,6 +91,7 @@ export function AgentIdentityPanel({
   name,
   onNameChange,
   onAvatarChange,
+  onAccentChange,
   onWeightsChange,
   onResetToPreset,
   onOpenAdvanced,
@@ -149,6 +152,8 @@ export function AgentIdentityPanel({
                 <AgentAvatarPicker
                   value={effective.emoji}
                   onChange={onAvatarChange}
+                  accent={effective.accentColor}
+                  onAccentChange={onAccentChange}
                   trigger={
                     <button
                       type="button"
@@ -230,6 +235,8 @@ export function AgentIdentityPanel({
             <AgentAvatarPicker
               value={effective.emoji}
               onChange={onAvatarChange}
+              accent={effective.accentColor}
+              onAccentChange={onAccentChange}
               className="block w-full"
               trigger={
                 <button
@@ -252,6 +259,11 @@ export function AgentIdentityPanel({
                   >
                     {avatarName ?? "Choose an avatar"}
                   </span>
+                  <span
+                    aria-hidden="true"
+                    className="size-3.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: effective.accentColor }}
+                  />
                   <ChevronDown className="size-4 shrink-0 text-ink-muted" aria-hidden="true" />
                 </button>
               }

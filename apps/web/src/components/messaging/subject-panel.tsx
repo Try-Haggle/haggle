@@ -156,6 +156,7 @@ export function SubjectPanel({
               <OpponentCard
                 presetId={listing.sellerAgentPreset}
                 emoji={listing.sellerAgentEmoji ?? null}
+                accent={listing.sellerAgentAccent ?? null}
                 isOwner={isOwner}
               />
             </>

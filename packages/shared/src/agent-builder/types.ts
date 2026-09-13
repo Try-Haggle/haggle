@@ -38,6 +38,11 @@ export interface AgentBuilderAgent {
    * it never counts as "customized" and survives a reset to the preset.
    */
   emoji?: string;
+  /**
+   * User-chosen accent, `#rrggbb`. Absent means the preset's own colour. Same
+   * standing as `emoji`: identity, never "customized", survives a reset.
+   */
+  accentColor?: string;
   /** 4D weight vector. Overrides preset weights when present. */
   weights?: NegotiationWeights;
   /** Per-knob overrides for the rest of EngineParameters (weights live above). */

@@ -284,6 +284,9 @@ export function AgentStudio({
         // user will expect Save to keep, so it dirties the build.
         updateState((prev) => ({ ...prev, agent: { ...prev.agent, emoji: animal }, dirty: true }))
       }
+      onAccentChange={(accentColor) =>
+        updateState((prev) => ({ ...prev, agent: { ...prev.agent, accentColor }, dirty: true }))
+      }
       onWeightsChange={(weights) =>
         updateState((prev) => ({
           ...prev,

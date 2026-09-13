@@ -2,6 +2,7 @@ import { type Database, sql } from "@haggle/db";
 import {
   buyerChoiceOptionsForCheck,
   type CategoryCriterion,
+  resolveAgentAccent,
   unresolvedSellerRequirements,
 } from "@haggle/shared";
 import type { FastifyInstance } from "fastify";
@@ -350,6 +351,9 @@ export function registerNegotiationRoutes(
       session.negotiationAgentSnapshot,
       "emoji",
     );
+    const buyerNegotiationAgentAccent = resolveAgentAccent(
+      extractBuyerNegotiationAgentField(session.negotiationAgentSnapshot, "accent_color"),
+    );
 
     const latestRound = rounds.at(-1);
     const latestMeta = (latestRound?.metadata as Record<string, unknown> | null) ?? null;
@@ -378,6 +382,7 @@ export function registerNegotiationRoutes(
         updated_at: session.updatedAt,
         buyer_negotiation_agent_preset_id: buyerNegotiationAgentPresetId,
         buyer_negotiation_agent_emoji: buyerNegotiationAgentEmoji,
+        buyer_negotiation_agent_accent: buyerNegotiationAgentAccent,
         driver: session.driver === "mcp" ? "mcp" : "web",
         chat_url: negotiationChatUrl(session.id),
         // Soft control_mode — mutually visible (CU-ready for M2)
@@ -396,6 +401,7 @@ export function registerNegotiationRoutes(
               category: listing.category,
               seller_agent_preset: listing.sellerAgentPreset,
               seller_agent_emoji: listing.sellerAgentEmoji,
+              seller_agent_accent: resolveAgentAccent(listing.sellerAgentAccent),
             }
           : null,
       },
@@ -1466,10 +1472,10 @@ function isAuthorizedSessionCreator(actorId: string, data: CreateSessionBody): b
 // Pull one buyer-side agent field out of negotiation_agent_snapshot. Sessions created
 // by POST /negotiations/start nest the agent under buyer_requested_strategy.agent;
 // older code paths may store it at negotiation_agent_snapshot.agent directly. Only
-// identity fields (preset id, face) are read here — the rest of the strategy stays private.
+// identity fields (preset id, face, colour) are read here — the rest of the strategy stays private.
 function extractBuyerNegotiationAgentField(
   snapshot: Record<string, unknown> | null | undefined,
-  field: "preset_id" | "emoji",
+  field: "preset_id" | "emoji" | "accent_color",
 ): string | null {
   if (!snapshot || typeof snapshot !== "object") return null;
   const buyerStrategy = (snapshot as Record<string, unknown>).buyer_requested_strategy as

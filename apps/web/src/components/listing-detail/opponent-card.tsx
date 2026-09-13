@@ -30,6 +30,8 @@ interface OpponentCardProps {
   presetId: string | null;
   /** The seller's chosen face. Falls back to the preset's own when absent. */
   emoji?: string | null;
+  /** The seller's chosen colour. Falls back to the preset's own when absent. */
+  accent?: string | null;
   /**
    * Owner viewing their own listing. The same agent is the buyer's opponent
    * and the seller's representative — only the framing differs, so this card
@@ -42,12 +44,13 @@ interface OpponentCardProps {
 export function OpponentCard({
   presetId,
   emoji = null,
+  accent: chosenAccent = null,
   isOwner = false,
   className,
 }: OpponentCardProps) {
   const preset = presetId ? getNegotiationAgentPreset(presetId) : undefined;
   const copy = preset?.copy.seller;
-  const accent = preset?.accentColor ?? "var(--action-secondary)";
+  const accent = chosenAccent ?? preset?.accentColor ?? "var(--action-secondary)";
 
   return (
     <motion.section

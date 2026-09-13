@@ -7,6 +7,7 @@
  * the newest one.
  */
 
+import { resolveAgentAccent } from "@haggle/shared";
 import { parseListingParcel, parseSellerFulfillmentOffer } from "../lib/negotiation-fulfillment.js";
 import {
   extractSellerProductFacts,
@@ -48,6 +49,10 @@ export function toPublicListingView(row: PublishedListingRow): PublicListingView
       // about how the agent negotiates; absent on listings published before
       // faces existed, and the web falls back to the preset's own.
       sellerAgentEmoji: typeof cfg.emoji === "string" ? cfg.emoji : null,
+      // Its colour, likewise identity only. Normalized and kept readable so a
+      // malformed snapshot value cannot reach a text colour; null before
+      // colours existed, and the web falls back to the preset's.
+      sellerAgentAccent: resolveAgentAccent(cfg.accentColor),
       specs: extractSellerProductFacts(cfg),
       // Check id + ask only: no stance, leverage, or floor.
       sellerRequiredCriteria: required_criteria,

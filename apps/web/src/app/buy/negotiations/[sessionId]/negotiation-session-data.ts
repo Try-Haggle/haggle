@@ -6,6 +6,8 @@ export type ServerSession = {
   buyer_negotiation_agent_preset_id: string | null;
   /** The face the buyer picked. Absent on sessions started before faces. */
   buyer_negotiation_agent_emoji?: string | null;
+  /** The colour the buyer picked, `#rrggbb`. Absent before colours. */
+  buyer_negotiation_agent_accent?: string | null;
   driver?: "web" | "mcp";
   chat_url?: string;
   /**
@@ -26,6 +28,8 @@ export type ServerSession = {
     seller_agent_preset: string | null;
     /** The face the seller picked. Absent on listings published before faces. */
     seller_agent_emoji?: string | null;
+    /** The colour the seller picked, `#rrggbb`. Absent before colours. */
+    seller_agent_accent?: string | null;
   } | null;
 };
 
@@ -105,14 +109,15 @@ function chatMessageForRound(round: ServerRound, offerMajor: number, currency = 
 }
 
 /**
- * `emoji` is the face its owner picked. Without it the arena fell back to the
- * preset's own animal, so an agent the buyer met on the listing changed face
- * the moment the negotiation opened.
+ * `emoji` and `accent` are the face and colour its owner picked. Without them
+ * the arena fell back to the preset's own, so an agent the buyer met on the
+ * listing changed appearance the moment the negotiation opened.
  */
 function agentCardFor(
   presetId: string | null | undefined,
   role: "buyer" | "seller",
   emoji?: string | null,
+  accent?: string | null,
 ): AgentCard {
   const preset = presetId ? getNegotiationAgentPreset(presetId) : null;
   if (preset) {
@@ -120,7 +125,7 @@ function agentCardFor(
       presetId: preset.id,
       name: preset.copy[role].name,
       tagline: preset.copy[role].tagline,
-      accentColor: preset.accentColor,
+      accentColor: accent ?? preset.accentColor,
       emoji: emoji ?? preset.emoji,
     };
   }
@@ -190,11 +195,13 @@ export function transformNegotiationPlayback(payload: SessionResponse): Playback
     session.buyer_negotiation_agent_preset_id,
     "buyer",
     session.buyer_negotiation_agent_emoji,
+    session.buyer_negotiation_agent_accent,
   );
   const sellerAgent = agentCardFor(
     session.listing?.seller_agent_preset ?? null,
     "seller",
     session.listing?.seller_agent_emoji,
+    session.listing?.seller_agent_accent,
   );
   const terminal = isTerminalNegotiationStatus(session.status);
   const firstRound = rounds[0];

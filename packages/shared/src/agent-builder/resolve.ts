@@ -7,6 +7,7 @@
  * there is ONE implementation shared by every surface.
  */
 
+import { resolveAgentAccent } from "../agent-presets/accent.js";
 import {
   getNegotiationAgentPreset,
   NEGOTIATION_AGENT_PRESETS,
@@ -38,6 +39,7 @@ function basePreset(id: NegotiationAgentPresetId): NegotiationAgentPreset {
  */
 export function resolveEffectivePreset(state: AgentBuilderState): NegotiationAgentPreset {
   const base = basePreset(state.agent.presetId);
+  const accent = resolveAgentAccent(state.agent.accentColor);
   return {
     ...base,
     ...(state.agent.weights ? { weights: { ...state.agent.weights } } : {}),
@@ -46,6 +48,9 @@ export function resolveEffectivePreset(state: AgentBuilderState): NegotiationAge
     // already reads `effective.emoji` — the panel, the roster, the config
     // that gets saved — shows it without knowing where it came from.
     ...(state.agent.emoji ? { emoji: state.agent.emoji } : {}),
+    // The chosen colour, likewise — normalized and kept readable on the way in,
+    // so a malformed or pale stored value can never reach a text colour.
+    ...(accent ? { accentColor: accent } : {}),
   };
 }
 
@@ -115,6 +120,7 @@ export function builderStateFromAgentRow(
       presetId: agent.negotiationAgentPresetId ?? DEFAULT_PRESET_ID,
       name: agent.name,
       emoji: agent.emoji,
+      accentColor: agent.accentColor,
       weights: agent.weights ? { ...agent.weights } : undefined,
       engineParams: agent.engineParams ? { ...agent.engineParams } : undefined,
       categoryAnswers: agent.categoryAnswers,

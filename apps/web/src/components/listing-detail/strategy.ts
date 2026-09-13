@@ -33,7 +33,7 @@ export function mergeOverride(
   return { ...preset, ...defined, weights: { ...weights } };
 }
 
-/** Re-label a merged preset with a saved agent's own name and emoji, on the
+/** Re-label a merged preset with a saved agent's own name, face and colour, on the
  *  side that is picking. Without it, choosing "Firm lister" produced a chat
  *  that introduced itself as "Patient Lister". */
 export function nameAfterSavedAgent(
@@ -45,6 +45,7 @@ export function nameAfterSavedAgent(
   return {
     ...merged,
     emoji: saved.emoji ?? merged.emoji,
+    accentColor: saved.accentColor ?? merged.accentColor,
     copy: { ...merged.copy, [role]: { ...merged.copy[role], name: saved.name } },
   };
 }

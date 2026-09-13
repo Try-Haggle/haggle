@@ -10,6 +10,7 @@ import {
   type CategoryCriterion,
   type EngineParameters,
   getNegotiationAgentPreset,
+  normalizeAgentAccent,
   presetToEngineParameters,
 } from "@haggle/shared";
 import { z } from "zod";
@@ -83,6 +84,8 @@ export const startBuyerNegotiationSchema = z.object({
   /** The face the buyer picked for this agent. Identity only; bounded so a
    *  client cannot smuggle a payload through it. */
   agent_emoji: z.string().min(1).max(40).optional(),
+  /** The colour the buyer picked, `#rrggbb`. Identity only; bounded the same way. */
+  agent_accent: z.string().min(1).max(20).optional(),
   agent_weights: z.record(z.string(), z.number()).optional(),
   agent_overrides: z.record(z.string(), z.unknown()).optional(),
   negotiation_agent_builder_memory: z
@@ -336,6 +339,7 @@ export async function startBuyerNegotiation(
     agent: {
       preset_id: body.negotiation_agent_preset_id,
       emoji: body.agent_emoji ?? null,
+      accent_color: normalizeAgentAccent(body.agent_accent),
       weights: body.agent_weights ?? null,
       overrides: body.agent_overrides ?? null,
     },

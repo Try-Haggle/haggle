@@ -21,6 +21,8 @@ export interface NegotiationAgent {
   name: string;
   description?: string;
   emoji?: string;
+  /** Chosen accent, `#rrggbb`. Absent → the preset's accent. */
+  accentColor?: string;
   role?: AgentRole;
 
   /** Preset this agent was forked from (e.g. "balancer"). */

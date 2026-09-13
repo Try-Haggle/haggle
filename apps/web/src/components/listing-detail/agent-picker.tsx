@@ -26,6 +26,8 @@ export interface SavedAgentOption {
   id: string;
   name: string;
   emoji: string | null;
+  /** The colour its owner chose, `#rrggbb`. Absent → the archetype's. */
+  accentColor?: string | null;
   /** Archetype this agent was forked from — resolves its base strategy. */
   presetId: string;
   /**
@@ -90,6 +92,7 @@ export function AgentPicker({
       : undefined;
   const savedName = savedRow?.name;
   const savedEmoji = savedRow?.emoji ?? undefined;
+  const accent = savedRow?.accentColor ?? preset?.accentColor;
 
   return (
     <section className={className}>
@@ -170,8 +173,8 @@ export function AgentPicker({
                       <span
                         className="flex size-11 shrink-0 items-center justify-center rounded-full text-xl"
                         style={{
-                          backgroundColor: `color-mix(in srgb, ${preset.accentColor} 14%, transparent)`,
-                          border: `1px solid color-mix(in srgb, ${preset.accentColor} 32%, transparent)`,
+                          backgroundColor: `color-mix(in srgb, ${accent} 14%, transparent)`,
+                          border: `1px solid color-mix(in srgb, ${accent} 32%, transparent)`,
                         }}
                         aria-hidden="true"
                       >

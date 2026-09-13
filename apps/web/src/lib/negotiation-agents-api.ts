@@ -20,6 +20,8 @@ export type NegotiationAgentRole = "buyer" | "seller" | "both";
 /** Fields persisted inside `negotiation_agents.negotiation_agent_config`. */
 export interface NegotiationAgentConfig {
   emoji?: string;
+  /** `#rrggbb`. */
+  accentColor?: string;
   basePresetId?: string;
   negotiationAgentPresetId?: NegotiationAgentPresetId;
   weights?: NegotiationWeights;
@@ -108,6 +110,7 @@ export function rowToNegotiationAgent(row: NegotiationAgentRow): NegotiationAgen
     name: row.name,
     description: row.description ?? undefined,
     emoji: cfg.emoji,
+    accentColor: cfg.accentColor,
     role: row.role,
     basePresetId: cfg.basePresetId,
     negotiationAgentPresetId: cfg.negotiationAgentPresetId,

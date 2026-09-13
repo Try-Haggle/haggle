@@ -96,6 +96,7 @@ function configFromState(
   const effective = resolveEffectivePreset(state);
   return {
     emoji: effective.emoji,
+    accentColor: effective.accentColor,
     basePresetId: state.agent.presetId,
     negotiationAgentPresetId: state.agent.presetId,
     weights: { ...effective.weights },

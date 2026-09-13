@@ -727,6 +727,7 @@ export function NewListingWizard({
             role: "seller",
             config: {
               emoji: ep.emoji,
+              accentColor: ep.accentColor,
               basePresetId: agentValue!.agent.presetId,
               negotiationAgentPresetId: agentValue!.agent.presetId,
               weights: { ...ep.weights },

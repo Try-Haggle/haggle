@@ -109,6 +109,44 @@ describe("sellerAgentEmoji (toPublicListingView)", () => {
   });
 });
 
+describe("sellerAgentAccent (toPublicListingView)", () => {
+  const row = (accentColor: unknown) => ({
+    publicId: "cam-2",
+    title: "Camera",
+    sellerId: "seller-1",
+    negotiationAgentSnapshot: {
+      preset: "verifier",
+      ...(accentColor === undefined ? {} : { accentColor }),
+      engineParams: { u_threshold: 0.6, anchor_ratio: 0.7 },
+    },
+  });
+
+  it("passes the seller's chosen colour through, normalized", () => {
+    expect(toPublicListingView(row("#EC4899")).listing.sellerAgentAccent).toBe("#ec4899");
+  });
+
+  it("is null on listings published before colours existed", () => {
+    expect(toPublicListingView(row(undefined)).listing.sellerAgentAccent).toBeNull();
+  });
+
+  it("is null for a value that is not a colour, rather than leaking it", () => {
+    expect(toPublicListingView(row("javascript:alert(1)")).listing.sellerAgentAccent).toBeNull();
+    expect(toPublicListingView(row({ r: 1 })).listing.sellerAgentAccent).toBeNull();
+  });
+
+  it("never hands a buyer a colour too pale to read", () => {
+    const accent = toPublicListingView(row("#ffffff")).listing.sellerAgentAccent;
+    expect(accent).not.toBe("#ffffff");
+    expect(accent).toMatch(/^#[0-9a-f]{6}$/);
+  });
+
+  it("adds a colour without loosening the redaction", () => {
+    const json = JSON.stringify(toPublicListingView(row("#ec4899")).listing);
+    expect(json).not.toContain("u_threshold");
+    expect(json).not.toContain("anchor_ratio");
+  });
+});
+
 describe("MCP publicListingView", () => {
   it("puts required_criteria {checkId, ask} on get_listing", () => {
     const view = publicListingView({

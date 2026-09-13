@@ -107,6 +107,32 @@ describe("negotiation live session data", () => {
     expect(transformed.session.buyerAgent.presetId).toBe("hunter");
   });
 
+  it("keeps each agent wearing the colour its owner picked, falling back per side", () => {
+    const transformed = transformNegotiationPlayback({
+      session: {
+        id: "66666666-6666-4666-8666-666666666666",
+        status: "ACTIVE",
+        current_round: 1,
+        last_offer_price_minor: null,
+        buyer_negotiation_agent_preset_id: "hunter",
+        buyer_negotiation_agent_accent: "#ec4899",
+        listing: {
+          public_id: "pub-1",
+          title: "Camera",
+          photo_url: null,
+          target_price: "900.00",
+          category: "cameras",
+          seller_agent_preset: "verifier",
+          // Seller never picked one: the arena shows the preset's own blue.
+          seller_agent_accent: null,
+        },
+      },
+      rounds: [round()],
+    });
+    expect(transformed.session.buyerAgent.accentColor).toBe("#ec4899");
+    expect(transformed.session.sellerAgent.accentColor).toBe("#3b82f6");
+  });
+
   it("falls back to each preset's own face on sessions started before faces existed", () => {
     const transformed = transformNegotiationPlayback({
       session: {

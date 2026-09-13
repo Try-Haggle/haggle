@@ -1,4 +1,11 @@
 export {
+  AGENT_ACCENT_SWATCHES,
+  accentContrast,
+  normalizeAgentAccent,
+  readableAgentAccent,
+  resolveAgentAccent,
+} from "./accent.js";
+export {
   AGENT_ANIMALS,
   type AgentAnimal,
   isAgentAnimal,

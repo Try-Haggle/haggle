@@ -83,7 +83,7 @@ export function AgentRoster({
                   <RosterRow
                     key={agent.id}
                     emoji={agent.emoji ?? base?.emoji ?? "✦"}
-                    accent={base?.accentColor ?? "var(--action-primary)"}
+                    accent={agent.accentColor ?? base?.accentColor ?? "var(--action-primary)"}
                     name={agent.name}
                     hint={agent.description ?? base?.copy[role].tagline ?? "Custom agent"}
                     selected={selectedKey === `saved:${agent.id}`}
@@ -182,7 +182,7 @@ export function AgentAvatarStrip({
       return {
         key: `saved:${agent.id}`,
         emoji: agent.emoji ?? base?.emoji ?? "✦",
-        accent: base?.accentColor ?? "var(--action-primary)",
+        accent: agent.accentColor ?? base?.accentColor ?? "var(--action-primary)",
         label: agent.name,
         select: { kind: "saved", id: agent.id } as StudioSelection,
       };

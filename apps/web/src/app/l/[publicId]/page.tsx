@@ -20,6 +20,8 @@ interface ListingData {
   sellerAgentPreset: string | null;
   /** The seller's chosen face for the agent. Absent on older listings. */
   sellerAgentEmoji?: string | null;
+  /** The seller's chosen colour, `#rrggbb`. Absent on older listings. */
+  sellerAgentAccent?: string | null;
   sellingDeadline: string | null;
   sellerRequiredCriteria: Array<{ checkId: string; ask: string }> | null;
   sellerFulfillmentOffer?: {
