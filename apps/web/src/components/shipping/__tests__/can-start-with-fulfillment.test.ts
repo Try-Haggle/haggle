@@ -1,6 +1,7 @@
 /**
  * D1: physical (carrier) listing CTA requires delivery address.
  * Digital / non-carrier paths stay exempt (A4 no-shipment).
+ * Eng2: saved-address confirm keeps start blocked while pending.
  */
 
 import { describe, expect, it } from "vitest";
@@ -35,6 +36,7 @@ function carrierNoAddress(): PreNegotiationFulfillmentValue {
 function carrierWithAddress(): PreNegotiationFulfillmentValue {
   return {
     ...carrierNoAddress(),
+    addressSource: "new",
     address: COMPLETE_ADDR,
   };
 }
@@ -70,6 +72,24 @@ describe("canStartWithFulfillment (D1 physical address gate)", () => {
       methods: ["local_pickup"],
       preferred: "local_pickup",
       address: EMPTY_ADDR,
+    };
+    expect(canStartWithFulfillment(value)).toBe(true);
+  });
+
+  it("blocks start while saved-address confirm is pending (even if address filled)", () => {
+    const value: PreNegotiationFulfillmentValue = {
+      ...carrierWithAddress(),
+      addressSource: "pending",
+      address: COMPLETE_ADDR,
+    };
+    expect(canStartWithFulfillment(value)).toBe(false);
+  });
+
+  it("allows start after buyer confirms saved address", () => {
+    const value: PreNegotiationFulfillmentValue = {
+      ...carrierWithAddress(),
+      addressSource: "default",
+      address: COMPLETE_ADDR,
     };
     expect(canStartWithFulfillment(value)).toBe(true);
   });

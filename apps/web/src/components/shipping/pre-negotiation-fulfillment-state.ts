@@ -12,10 +12,18 @@ import {
   type ShippingAddressInput,
 } from "@/lib/shipping-address";
 
+/**
+ * Address gate for physical start:
+ * - pending: saved address loaded; buyer has not confirmed this session yet
+ * - default: buyer confirmed "use this saved address"
+ * - new: buyer chose a different address (or had none saved)
+ */
+export type AddressSource = "pending" | "default" | "new";
+
 export interface PreNegotiationFulfillmentValue {
   methods: FulfillmentMethod[];
   preferred?: FulfillmentMethod;
-  addressSource: "default" | "new";
+  addressSource: AddressSource;
   address: ShippingAddressInput;
   saveAddress: boolean;
   travel_radius_miles?: number;
@@ -47,5 +55,7 @@ export function canStartWithFulfillment(value: PreNegotiationFulfillmentValue): 
   // Non-carrier / digital no-shipment paths stay exempt.
   if (value.methods.length === 0) return false;
   if (!value.methods.includes("carrier")) return true;
+  // Saved-address confirm: do not start until the buyer confirms this session.
+  if (value.addressSource === "pending") return false;
   return isCompleteShippingAddress(value.address);
 }

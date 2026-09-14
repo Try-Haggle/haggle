@@ -58,6 +58,40 @@ export function formatAddressLine(address: Pick<ShippingAddressInput, "city" | "
   return `${address.city}, ${address.state} ${address.zip}`;
 }
 
+/** Enough to recognize a saved address without dumping the full street line. */
+export function formatAddressConfirmPreview(
+  address: Pick<ShippingAddressInput, "name" | "street1" | "city" | "state" | "zip"> & {
+    street2?: string | null;
+    phone?: string | null;
+  },
+): string {
+  const cityLine = formatAddressLine(address);
+  const name = address.name.trim();
+  const nameBit = name
+    ? (() => {
+        const parts = name.split(/\s+/).filter(Boolean);
+        if (parts.length === 0) return "";
+        if (parts.length === 1) return parts[0]!;
+        const last = parts[parts.length - 1]!;
+        return `${parts[0]} ${last.charAt(0)}.`;
+      })()
+    : "";
+  const street = address.street1.trim();
+  let streetBit = "";
+  if (street) {
+    const tokens = street.split(/\s+/).filter(Boolean);
+    if (tokens.length === 1) {
+      const t = tokens[0]!;
+      streetBit = t.length <= 4 ? `${t.charAt(0)}•••` : `${t.slice(0, 2)}•••`;
+    } else {
+      const first = tokens[0]!;
+      const last = tokens[tokens.length - 1]!;
+      streetBit = `${first} ••• ${last}`;
+    }
+  }
+  return [nameBit, cityLine, streetBit].filter(Boolean).join(" · ");
+}
+
 export function isCompleteShippingAddress(address: ShippingAddressInput): boolean {
   return (
     address.name.trim().length > 0 &&

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SelectableOptionCard } from "@/components/ui/selectable-option-card";
 import { api } from "@/lib/api-client";
@@ -16,13 +17,14 @@ import {
 import {
   clearPendingDefaultAddress,
   EMPTY_SHIPPING_ADDRESS,
-  formatAddressLine,
+  formatAddressConfirmPreview,
   isDefaultSavedAddress,
   readPendingDefaultAddress,
   type SavedAddress,
   savedAddressToInput,
   toApiAddress,
 } from "@/lib/shipping-address";
+import { useLocale } from "@/providers/locale-provider";
 import { CarrierPriorityPicker } from "./carrier-priority-picker";
 import type { PreNegotiationFulfillmentValue } from "./pre-negotiation-fulfillment-state";
 import { ShippingAddressFields } from "./shipping-address-fields";
@@ -46,6 +48,7 @@ export function PreNegotiationFulfillment({
   value: PreNegotiationFulfillmentValue;
   onChange: (next: PreNegotiationFulfillmentValue) => void;
 }) {
+  const { t } = useLocale();
   const available = offeredMethods(offer);
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const defaultAddress = savedAddresses.find(isDefaultSavedAddress) ?? savedAddresses[0] ?? null;
@@ -75,10 +78,18 @@ export function PreNegotiationFulfillment({
         setSavedAddresses(addresses);
         const preferred = addresses.find(isDefaultSavedAddress) ?? addresses[0];
         if (!preferred) return;
+        // Do not fill the address yet — require explicit confirm this session.
+        // Keep EMPTY so canStart stays false and D2 quotes only the confirmed address.
+        const current = valueRef.current;
+        if (current.addressSource !== "new" || isCompleteish(current)) {
+          // Buyer already chose (or typed); do not override.
+          return;
+        }
         onChangeRef.current({
-          ...valueRef.current,
-          addressSource: "default",
-          address: savedAddressToInput(preferred),
+          ...current,
+          addressSource: "pending",
+          address: EMPTY_SHIPPING_ADDRESS,
+          saveAddress: false,
         });
       })
       .catch(() => {
@@ -97,8 +108,31 @@ export function PreNegotiationFulfillment({
     });
   };
 
+  const confirmSavedAddress = () => {
+    if (!defaultAddress) return;
+    onChange({
+      ...value,
+      addressSource: "default",
+      address: savedAddressToInput(defaultAddress),
+      saveAddress: false,
+    });
+  };
+
+  const chooseDifferentAddress = () => {
+    onChange({
+      ...value,
+      addressSource: "new",
+      // Clear so start/quote cannot reuse the previously confirmed saved address.
+      address: EMPTY_SHIPPING_ADDRESS,
+      saveAddress: signedIn,
+    });
+  };
+
   const needsAddress = value.methods.includes("carrier");
   const needsTravel = value.methods.some((method) => method !== "carrier");
+  const showConfirm = needsAddress && !!defaultAddress && value.addressSource === "pending";
+  const showSavedSummary = needsAddress && !!defaultAddress && value.addressSource === "default";
+  const showAddressForm = needsAddress && (value.addressSource === "new" || !defaultAddress);
 
   return (
     <section className="rounded-2xl border border-line bg-surface-raised p-6">
@@ -208,53 +242,81 @@ export function PreNegotiationFulfillment({
 
       {needsAddress && (
         <div className="mt-5 space-y-4">
-          {defaultAddress && (
-            <div className="grid gap-3">
-              <SelectableOptionCard
-                selected={value.addressSource === "default"}
-                title={`Use ${defaultAddress.label ?? "saved"} address`}
-                description={`${defaultAddress.name} · ${formatAddressLine(defaultAddress)}`}
-                onClick={() =>
-                  onChange({
-                    ...value,
-                    addressSource: "default",
-                    address: savedAddressToInput(defaultAddress),
-                  })
-                }
-              />
-              <SelectableOptionCard
-                selected={value.addressSource === "new"}
-                title="Ship to a different address"
-                description="Enter a new destination for this deal."
-                onClick={() =>
-                  onChange({
-                    ...value,
-                    addressSource: "new",
-                    address: value.addressSource === "new" ? value.address : EMPTY_SHIPPING_ADDRESS,
-                    saveAddress: signedIn,
-                  })
-                }
-              />
+          {showConfirm && defaultAddress && (
+            <div className="rounded-xl border border-line bg-surface-sunken p-4 space-y-4">
+              <div>
+                <p className="text-sm font-semibold text-ink">
+                  {t("shipping.addressConfirm.prompt")}
+                </p>
+                <p className="mt-2 text-sm text-ink-secondary">
+                  {formatAddressConfirmPreview(defaultAddress)}
+                </p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button type="button" variant="primary" fullWidth onClick={confirmSavedAddress}>
+                  {t("shipping.addressConfirm.useThis")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  fullWidth
+                  onClick={chooseDifferentAddress}
+                >
+                  {t("shipping.addressConfirm.useOther")}
+                </Button>
+              </div>
             </div>
           )}
 
-          {(value.addressSource === "new" || !defaultAddress) && (
-            <ShippingAddressFields
-              idPrefix="nego-ship"
-              value={value.address}
-              onChange={(address) => onChange({ ...value, address })}
-            />
+          {showSavedSummary && defaultAddress && (
+            <div className="rounded-xl border border-line bg-surface-sunken px-4 py-3 space-y-2">
+              <p className="text-sm font-medium text-ink">
+                {t("shipping.addressConfirm.usingSaved")}
+              </p>
+              <p className="text-sm text-ink-secondary">
+                {formatAddressConfirmPreview(defaultAddress)}
+              </p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="px-0"
+                onClick={chooseDifferentAddress}
+              >
+                {t("shipping.addressConfirm.useOther")}
+              </Button>
+            </div>
           )}
 
-          {signedIn && (value.addressSource === "new" || !defaultAddress) && (
-            <label className="flex items-center gap-2 text-sm text-ink-secondary">
-              <input
-                type="checkbox"
-                checked={value.saveAddress}
-                onChange={(event) => onChange({ ...value, saveAddress: event.target.checked })}
+          {showAddressForm && (
+            <>
+              {defaultAddress && value.addressSource === "new" && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="px-0"
+                  onClick={confirmSavedAddress}
+                >
+                  {t("shipping.addressConfirm.useThis")}
+                </Button>
+              )}
+              <ShippingAddressFields
+                idPrefix="nego-ship"
+                value={value.address}
+                onChange={(address) => onChange({ ...value, address })}
               />
-              Save as my default address
-            </label>
+              {signedIn && (
+                <label className="flex items-center gap-2 text-sm text-ink-secondary">
+                  <input
+                    type="checkbox"
+                    checked={value.saveAddress}
+                    onChange={(event) => onChange({ ...value, saveAddress: event.target.checked })}
+                  />
+                  Save as my default address
+                </label>
+              )}
+            </>
           )}
 
           <p className="text-xs text-ink-muted">
@@ -264,5 +326,17 @@ export function PreNegotiationFulfillment({
         </div>
       )}
     </section>
+  );
+}
+
+/** True when the buyer already typed/confirmed an address this session. */
+function isCompleteish(value: PreNegotiationFulfillmentValue): boolean {
+  return (
+    value.addressSource === "default" ||
+    value.addressSource === "pending" ||
+    value.address.name.trim().length > 0 ||
+    value.address.street1.trim().length > 0 ||
+    value.address.city.trim().length > 0 ||
+    value.address.zip.trim().length > 0
   );
 }
