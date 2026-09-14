@@ -5,12 +5,10 @@ import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import { ArrowRight, Info } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { CreditBalanceStrip } from "@/components/credit-balance/credit-balance-strip";
 import { InsufficientCreditsAlert } from "@/components/credit-balance/insufficient-credits-alert";
 import { TrustScoreChip } from "@/components/trust/trust-score-chip";
 import { Button, Drawer } from "@/components/ui";
 import { buttonVariants } from "@/components/ui/button";
-import { useCreditBalance } from "@/hooks/use-credit-balance";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { type AgentChatThread, agentChatThread, newChatVisitId } from "@/lib/agent-chat-thread";
 import { cn } from "@/lib/cn";
@@ -136,7 +134,6 @@ export function ListingDetailV2({
   const [message, setMessage] = useState("");
   const [insufficientCredits, setInsufficientCredits] =
     useState<ReturnType<typeof parseInsufficientCredits>>(null);
-  const creditBalance = useCreditBalance({ enabled: !!viewer });
   const [panelOpen, setPanelOpen] = useState(false);
   /**
    * The panel edits a DRAFT selection, committed when it closes.
@@ -536,11 +533,6 @@ export function ListingDetailV2({
             >
               {/* On mobile the rail's CTA — and the error line under it — is
                   gone, so a failed start would otherwise say nothing at all. */}
-              {viewer && (
-                <div className="mx-auto max-w-7xl px-4 pt-2.5 sm:px-6">
-                  <CreditBalanceStrip state={creditBalance} loading={creditBalance.loading} />
-                </div>
-              )}
               {status === "error" && insufficientCredits && (
                 <div className="mx-auto max-w-7xl px-4 pt-2.5 sm:px-6">
                   <InsufficientCreditsAlert info={insufficientCredits} />

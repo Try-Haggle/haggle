@@ -14,9 +14,9 @@ import {
 
 /**
  * Address gate for physical start:
- * - pending: saved address loaded; buyer has not confirmed this session yet
- * - default: buyer confirmed "use this saved address"
- * - new: buyer chose a different address (or had none saved)
+ * - default: account has a saved shipping address and we use it for quote/start
+ * - new: buyer typed a new address (or had none saved / opted out of saved)
+ * - pending: legacy unused gate from the confirm-click flow (kept for defensive checks)
  */
 export type AddressSource = "pending" | "default" | "new";
 
@@ -55,7 +55,7 @@ export function canStartWithFulfillment(value: PreNegotiationFulfillmentValue): 
   // Non-carrier / digital no-shipment paths stay exempt.
   if (value.methods.length === 0) return false;
   if (!value.methods.includes("carrier")) return true;
-  // Saved-address confirm: do not start until the buyer confirms this session.
+  // Legacy pending gate: never start/quote on an unconfirmed empty pending state.
   if (value.addressSource === "pending") return false;
   return isCompleteShippingAddress(value.address);
 }

@@ -10,7 +10,6 @@ import {
 import { ArrowRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { AgentBuilder } from "@/app/(app)/sell/agents/_components/AgentBuilder";
-import { CreditBalanceStrip } from "@/components/credit-balance/credit-balance-strip";
 import { InsufficientCreditsAlert } from "@/components/credit-balance/insufficient-credits-alert";
 import { Nav } from "@/components/nav";
 import {
@@ -24,7 +23,6 @@ import { BackLink } from "@/components/ui/back-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Price } from "@/components/ui/price";
-import { useCreditBalance } from "@/hooks/use-credit-balance";
 import { ApiError } from "@/lib/api-client";
 import { parseInsufficientCredits } from "@/lib/credit-balance";
 import { formatPriceStr } from "@/lib/format";
@@ -146,7 +144,6 @@ export function BuyerLanding({
   const [negotiationMessage, setNegotiationMessage] = useState("");
   const [insufficientCredits, setInsufficientCredits] =
     useState<ReturnType<typeof parseInsufficientCredits>>(null);
-  const creditBalance = useCreditBalance({ enabled: !!user });
   const [hfmiData, setHfmiData] = useState<HfmiData | null>(null);
   const sellerOffer = parseSellerFulfillmentOffer(listing.sellerFulfillmentOffer);
   const listingParcel = parseListingParcel(listing.parcel);
@@ -415,11 +412,6 @@ export function BuyerLanding({
                 </div>
               ) : (
                 <>
-                  {user && (
-                    <div className="mb-3">
-                      <CreditBalanceStrip state={creditBalance} loading={creditBalance.loading} />
-                    </div>
-                  )}
                   <Button
                     fullWidth
                     loading={negotiationState === "loading"}

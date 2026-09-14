@@ -4,7 +4,9 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNotificationContext } from "@/app/(app)/_components/notification-provider";
+import { CreditBalanceChip } from "@/components/credit-balance/credit-balance-chip";
 import { Avatar, Logo, NavTab, NotificationItem, Spinner } from "@/components/ui";
+import { useCreditBalance } from "@/hooks/use-credit-balance";
 import { useMessagesUnreadCount } from "@/hooks/use-messages-unread";
 import { useTheme } from "@/hooks/use-theme";
 import { type Notification, notificationApi } from "@/lib/api-client";
@@ -129,6 +131,7 @@ export function Nav({ userEmail, userName, userAvatarUrl, modeOverride }: NavPro
   };
 
   const messagesUnreadCount = useMessagesUnreadCount();
+  const creditBalance = useCreditBalance();
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === "dark";
 
@@ -193,26 +196,30 @@ export function Nav({ userEmail, userName, userAvatarUrl, modeOverride }: NavPro
 
           {/* User menu */}
           <div className="relative" ref={menuRef}>
-            <button
-              type="button"
-              onClick={() => setMenuOpen(!menuOpen)}
-              className="flex cursor-pointer items-center gap-2 text-ink-secondary text-sm transition-colors hover:text-ink"
-            >
-              <Avatar src={userAvatarUrl} name={userName || userEmail} size="sm" />
-              <svg
-                viewBox="0 0 24 24"
-                width="14"
-                height="14"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
+            <div className="flex items-center gap-2">
+              <CreditBalanceChip state={creditBalance} loading={creditBalance.loading} />
+              <button
+                type="button"
+                onClick={() => setMenuOpen(!menuOpen)}
+                className="flex cursor-pointer items-center gap-2 text-ink-secondary text-sm transition-colors hover:text-ink"
+                aria-label="Account menu"
               >
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </button>
+                <Avatar src={userAvatarUrl} name={userName || userEmail} size="sm" />
+                <svg
+                  viewBox="0 0 24 24"
+                  width="14"
+                  height="14"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+            </div>
 
             {menuOpen && (
               <div className="absolute right-0 mt-2 w-56 rounded-xl border border-line bg-surface-raised py-1 shadow-card">
