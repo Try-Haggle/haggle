@@ -510,7 +510,7 @@ export function BuyerLanding({
                         setNegotiationState("error");
                         setNegotiationMessage(
                           insufficient
-                            ? (apiErr?.message ?? "Insufficient Soft credits.")
+                            ? (apiErr?.message ?? "Insufficient Haggle credits.")
                             : (apiErr?.message ??
                                 apiErr?.code ??
                                 "Couldn't reach Haggle. Check your connection and try again."),

@@ -1,6 +1,6 @@
 import Fastify, { type FastifyRequest } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import { DEFAULT_API_LOCALE, parseAcceptLanguage } from "../lib/request-locale.js";
+import { API_LOCALES, DEFAULT_API_LOCALE, parseAcceptLanguage } from "../lib/request-locale.js";
 import localePlugin from "../middleware/locale.js";
 
 describe("parseAcceptLanguage", () => {
@@ -8,6 +8,12 @@ describe("parseAcceptLanguage", () => {
     expect(parseAcceptLanguage(undefined)).toBe(DEFAULT_API_LOCALE);
     expect(parseAcceptLanguage("")).toBe("en");
     expect(parseAcceptLanguage("   ")).toBe("en");
+  });
+
+  it("allowlists only en|ko for display locale (no ES/ZH UI under Scope A)", () => {
+    expect(API_LOCALES).toEqual(["en", "ko"]);
+    expect(parseAcceptLanguage("es")).toBe("en");
+    expect(parseAcceptLanguage("zh-CN,zh;q=0.9")).toBe("en");
   });
 
   it("picks the first supported tag, including regional forms", () => {

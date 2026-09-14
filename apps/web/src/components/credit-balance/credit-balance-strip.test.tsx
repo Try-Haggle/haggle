@@ -9,7 +9,7 @@ describe("CreditBalanceStrip", () => {
         state={{ source: "api", balance: 200, unlimited: false, accountId: "a" }}
       />,
     );
-    expect(screen.getByTestId("credit-balance-value")).toHaveTextContent("Soft credits: 200");
+    expect(screen.getByTestId("credit-balance-value")).toHaveTextContent("Haggle credits: 200");
     expect(screen.getByTestId("credit-balance-strip")).toHaveAttribute("data-source", "api");
   });
 
@@ -25,7 +25,7 @@ describe("CreditBalanceStrip", () => {
         }}
       />,
     );
-    expect(screen.getByTestId("credit-balance-value")).toHaveTextContent("Soft credits: —");
+    expect(screen.getByTestId("credit-balance-value")).toHaveTextContent("Haggle credits: —");
     expect(screen.getByTestId("credit-balance-stub")).toHaveTextContent(/C1 lands/i);
   });
 

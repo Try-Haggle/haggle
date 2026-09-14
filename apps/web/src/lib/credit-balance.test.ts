@@ -74,7 +74,7 @@ describe("credit-balance (SoT §6 shapes)", () => {
         unlimited: false,
         accountId: null,
       }),
-    ).toBe("Soft credits: —");
+    ).toBe("Haggle credits: —");
     expect(
       creditBalanceShortLabel({
         source: "api",
@@ -82,7 +82,7 @@ describe("credit-balance (SoT §6 shapes)", () => {
         unlimited: false,
         accountId: "a",
       }),
-    ).toBe("Soft credits: 42");
+    ).toBe("Haggle credits: 42");
   });
 
   it("fetches GET /credits/balance when C1 present", async () => {
