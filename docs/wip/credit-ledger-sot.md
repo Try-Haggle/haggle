@@ -1,6 +1,7 @@
 # Credit Ledger — Source of Truth (C0)
 
-> **Status:** Docs-first product/engineering SoT for the **AI Soft credit balance ledger**. C0 locks the model; C1+ owns wallet/schema/API wiring.
+> **Status:** Docs-first product/engineering SoT for the **Haggle credits** balance ledger (internal Soft AI meter). C0 locks the model; C1+ owns wallet/schema/API wiring.
+> **Product name (external / UI):** **Haggle credits** — not “Soft AI credits” / “Soft credits”. Protocol identifiers Soft Auto / Soft Manual / Hard / Soft stay unchanged. See [i18n-scope-a-sot.md](./i18n-scope-a-sot.md).
 > **Scope:** Account credit **balance** + append-only **ledger entries** (grant / debit / idempotency). Policy quotes stay in `packages/commerce-core/src/negotiation-credit-policy.ts` — this SoT is the wallet that will consume those numbers.
 > **Created:** 2026-09-10 (Eng1 ticket C0)
 > **Base:** `origin/staging` @ `266782f`
@@ -15,11 +16,11 @@ This document locks **what** to build for the ledger. It is not a code-change au
 
 Existing `trust-ledger*` surfaces (`packages/commerce-core/src/trust-ledger.ts`, `packages/db/src/schema/trust-ledger.ts`, trust penalty / settlement reliability / onchain trust profile) are **trust and settlement reputation**.
 
-They are **NOT** the AI Soft credit balance wallet.
+They are **NOT** the **Haggle credits** balance wallet.
 
 | Concept | Module | Meaning |
 | --- | --- | --- |
-| **Credit ledger (this SoT)** | C0/C1 — new | Integer Soft-AI credits: grants in, Soft charge debits out |
+| **Credit ledger (this SoT)** | C0/C1 — new | Integer **Haggle credits**: grants in, Soft Auto charge debits out |
 | **Trust ledger** | `trust-ledger*` | Reputation / settlement reliability / penalties — orthogonal |
 
 Do not reuse trust tables, trust scores, or trust APIs as the credit balance store.
@@ -28,17 +29,17 @@ Do not reuse trust tables, trust scores, or trust APIs as the credit balance sto
 
 ## 1. What the credit ledger is
 
-Credits meter **Haggle-hosted AI Soft turns only** (see [auto-manual SoT §5](./auto-manual-control-mode-sot.md)). They are an abuse brake and Soft AI cost meter, not payment for goods.
+**Haggle credits** meter **Haggle-hosted AI Soft Preference turns only** (see [auto-manual SoT §5](./auto-manual-control-mode-sot.md)) — the AI-driven side of Soft Preference (plain language: **AI 흥정**; human-driven Soft Manual is **사람 흥정**). They are an abuse brake and AI Soft cost meter, not payment for goods. Protocol names **Soft Auto** / **Soft Manual** / **Hard** / **Soft** stay unchanged.
 
 | Term | Meaning |
 | --- | --- |
-| **Balance** | Non-negative integer Soft credits owned by an account (actor). Derived as sum of ledger entries (or maintained as a denormalized row that must stay consistent with entries). |
+| **Balance** | Non-negative integer **Haggle credits** owned by an account (actor). Derived as sum of ledger entries (or maintained as a denormalized row that must stay consistent with entries). |
 | **Grant** | Credit increase (signup, attendance, funded bonus, …). Always appends a ledger entry. |
-| **Debit** | Credit decrease for Soft AI charge (session band / Auto-ON differential). Always appends a ledger entry when debiting is required. |
+| **Debit** | Credit decrease for **Haggle credits** Soft Auto charge (session band / Auto-ON differential). Always appends a ledger entry when debiting is required. |
 | **Policy** | Quote helpers and grant constants in `negotiation-credit-policy.ts` — **not** a wallet. |
 | **Ledger** | Append-only store that applies those policy numbers with idempotency and env rules (this SoT). |
 
-**Fee unchanged.** Platform success fee remains **1.5%** and is orthogonal to Soft credits ([credit notes §2](../meetings/2026-08-28-credit-hold-model-discussion.md)).
+**Fee unchanged.** Platform success fee remains **1.5%** and is orthogonal to **Haggle credits** ([credit notes §2](../meetings/2026-08-28-credit-hold-model-discussion.md)).
 
 ---
 
@@ -46,7 +47,7 @@ Credits meter **Haggle-hosted AI Soft turns only** (see [auto-manual SoT §5](./
 
 ### 2.1 Balance
 
-- One Soft-credit balance per account (actor).
+- One **Haggle credits** balance per account (actor).
 - Balance must never go negative under production debit rules.
 - Read path: expose current balance for UI (§6).
 - Write path: **only** via ledger entries (grant or debit). No silent balance mutation.
@@ -60,7 +61,7 @@ Each entry is immutable once written. Minimum fields (names illustrative; C1 own
 | `id` | Stable entry id |
 | `account_id` / `actor_id` | Owner |
 | `delta` | Signed integer: `+N` grant, `-N` debit |
-| `reason` / `kind` | Grant reason or debit kind (Soft AI charge, differential, …) |
+| `reason` / `kind` | Grant reason or debit kind (Haggle credits Soft Auto charge, differential, …) |
 | `idempotency_key` | Unique per logical event (see §2.3) |
 | `ref` | Optional session / negotiation / grant context ids |
 | `created_at` | Append time |
@@ -72,7 +73,7 @@ Balance after entry `i` = sum of all `delta` for that account through `i` (or eq
 
 - Every grant and every debit **must** carry an `idempotency_key` unique for that logical event.
 - Replaying the same key returns the prior entry / outcome — **no double grant, no double debit**.
-- Soft AI charge keys must survive retries and concurrent Auto toggles: callers lock the session row so two concurrent toggles cannot double-charge (TOCTOU) — same rule as `quoteSoftAiCreditDifferential` in policy.
+- Soft Auto **Haggle credits** charge keys must survive retries and concurrent Auto toggles: callers lock the session row so two concurrent toggles cannot double-charge (TOCTOU) — same rule as `quoteSoftAiCreditDifferential` in policy.
 
 Suggested key shapes (C1 may refine):
 
@@ -84,39 +85,39 @@ Suggested key shapes (C1 may refine):
 | Funded each side | `grant:funded:{order_or_intent_id}:{side}` |
 | Release no dispute | `grant:release_no_dispute:{order_id}:{side}` |
 | Invite first funded | `grant:invite_first_funded:{invite_id}` |
-| Soft AI debit / differential | `debit:soft_ai:{session_id}:{charged_base_target}` (or equivalent band watermark) |
+| Soft Auto Haggle-credits debit / differential | `debit:soft_ai:{session_id}:{charged_base_target}` (or equivalent band watermark) |
 
 ### 2.4 Debit vs grant
 
 | Direction | When | Policy source |
 | --- | --- | --- |
 | **Grant** | Signup, attendance streak, first complete listing, FUNDED, release without dispute, invite first funded | `CREDIT_GRANTS` / `attendanceGrantAmount` / constants in policy |
-| **Debit** | Soft AI band charge and Auto-ON differentials (§3) | `quoteNegotiationCredits` / `quoteSoftAiCreditDifferential` / Soft band matrix |
+| **Debit** | Soft Auto band charge and Auto-ON differentials (§3) | `quoteNegotiationCredits` / `quoteSoftAiCreditDifferential` / Soft band matrix |
 
-No refund when Auto turns OFF after a charge ([auto-manual SoT §5.1](./auto-manual-control-mode-sot.md)). Do not invent negative grants to undo Soft charges.
+No refund when Auto turns OFF after a charge ([auto-manual SoT §5.1](./auto-manual-control-mode-sot.md)). Do not invent negative grants to undo Soft Auto **Haggle credits** charges.
 
 ---
 
-## 3. Charge timing (Soft AI band / Auto ON differential)
+## 3. Charge timing (Soft Auto Haggle-credits band / Auto ON differential)
 
 **Encode exactly** from [auto-manual SoT §5 · §5.1](./auto-manual-control-mode-sot.md) and policy Soft helpers.
 
-### 3.1 Band quote (buyer Soft AI credits)
+### 3.1 Band quote (buyer **Haggle credits**)
 
-| Situation | Credits (buyer, our AI Soft only) |
+| Situation | **Haggle credits** (buyer, our Soft Auto / AI 흥정 only) |
 | --- | --- |
 | **Both Auto** | **Pro 10 / Flash 4** |
 | **Exactly one Soft side Auto** (buyer Manual + seller AI, or seller Manual + buyer Auto) | **Half: Pro 5 / Flash 2** |
 | **Both Manual** | **0** |
 
 - Listing tier: Pro when published ask ≥ ~$100 (`CREDIT_PRO_ASK_THRESHOLD_MINOR`); else Flash.
-- **Manual sides do not consume** Haggle Soft AI credits for that party’s Soft drafting.
+- **Manual sides do not consume** **Haggle credits** for that party’s Soft drafting (사람 흥정 / Soft Manual).
 - Seller Soft AI base on the buyer Soft matrix stays **0** in `quoteNegotiationCredits` for `role: "seller"`; seller better-model **+5** is **out of scope** for C0/C1 ledger wiring (§5).
 
 ### 3.2 When to debit
 
-1. **Initial Soft AI charge** — when a session first incurs a non-zero Soft AI band (typically start / first Soft AI work under Auto), debit the quoted band (or record charged-base watermark = 0 → band).
-2. **Auto ON differential (§5.1)** — if Auto is ever turned ON such that the applicable Soft AI band **rises**, debit **`max(0, target_base - already_charged_base)`** (lift toward Pro10 / Flash4 as appropriate). Use `quoteSoftAiCreditDifferential`.
+1. **Initial Soft Auto Haggle-credits charge** — when a session first incurs a non-zero Soft Auto band (typically start / first Soft Auto / AI 흥정 work under Auto), debit the quoted band (or record charged-base watermark = 0 → band).
+2. **Auto ON differential (§5.1)** — if Auto is ever turned ON such that the applicable Soft Auto **Haggle credits** band **rises**, debit **`max(0, target_base - already_charged_base)`** (lift toward Pro10 / Flash4 as appropriate). Use `quoteSoftAiCreditDifferential`.
 3. **Auto OFF** — **no refund**. Credits already taken stay taken. Charged-base watermark does not decrease.
 4. **Both Manual (band zero)** — debit **0**; still allowed to keep policy/quote flags for UI.
 
@@ -125,7 +126,7 @@ No refund when Auto turns OFF after a charge ([auto-manual SoT §5.1](./auto-man
 When debiting is required (production, `creditsAreUnlimited() === false`):
 
 1. Compute `charge_total` from policy (non-unlimited).
-2. If `charge_total > 0` and balance &lt; `charge_total` → **refuse** Soft AI work that needs that charge; surface insufficient credit (§6).
+2. If `charge_total > 0` and balance &lt; `charge_total` → **refuse** Soft Auto / AI 흥정 work that needs that charge; surface insufficient **Haggle credits** (§6).
 3. Else append debit entry + update balance atomically with idempotency.
 
 ---
@@ -142,11 +143,11 @@ From [credit notes §3](../meetings/2026-08-28-credit-hold-model-discussion.md) 
 
 Encode exactly:
 
-- Staging/local: when unlimited, **skip balance check and skip debit**. Soft AI proceeds without reducing balance.
+- Staging/local: when unlimited, **skip balance check and skip debit**. Soft Auto / AI 흥정 proceeds without reducing balance.
 - **Keep policy flags / quotes** (`unlimited: true`, band, modes, target base, charged-base watermark math). Quotes and differentials still compute; only the wallet debit + insufficient gate are bypassed (`charge_total` may be reported as 0 while `charge_base` / watermark still advance in session state as policy defines).
-- Production: **must debit** when Soft AI charge &gt; 0. Never ship production with unlimited bypass left on (`CREDIT_UNLIMITED_IS_TEMPORARY` / `CREDIT_UNLIMITED_ENVS` — turn off before credits go live; W2026-08-22-05).
+- Production: **must debit** when Soft Auto **Haggle credits** charge &gt; 0. Never ship production with unlimited bypass left on (`CREDIT_UNLIMITED_IS_TEMPORARY` / `CREDIT_UNLIMITED_ENVS` — turn off before **Haggle credits** go live; W2026-08-22-05).
 
-Grants may still be recorded in staging/local for dogfood of grant paths; unlimited only relaxes **Soft AI debit + balance gate**, not the existence of the ledger.
+Grants may still be recorded in staging/local for dogfood of grant paths; unlimited only relaxes **Soft Auto Haggle-credits debit + balance gate**, not the existence of the ledger.
 
 ---
 
@@ -166,8 +167,8 @@ Grants may still be recorded in staging/local for dogfood of grant paths; unlimi
 **Out of C0/C1 ledger product scope:**
 
 - Seller better-model upgrade **+5** (`CREDIT_OWN_BETTER_MODEL`) — cite only; [auto-manual SoT §5.2](./auto-manual-control-mode-sot.md). Mode SoT does not require it; do not block C1 on it.
-- Paid top-up / selling credits — not sold now (credit notes).
-- Community / likes / SNS / review grants — explicitly do not create for credits.
+- Paid top-up / selling **Haggle credits** — not sold now (credit notes).
+- Community / likes / SNS / review grants — explicitly do not create for **Haggle credits**.
 
 ---
 
@@ -177,9 +178,9 @@ C0 locks **which** surfaces; C1+ wires them.
 
 | Surface | Behavior |
 | --- | --- |
-| **Balance display** | Show current Soft credit balance to the signed-in account (Settings and/or negotiation chrome). Staging/local may show balance and an “unlimited / not debiting” affordance when `creditsAreUnlimited()` is true. |
-| **Insufficient credits** | When production (or any env with debit enabled) would charge Soft AI and balance &lt; required charge: block that Soft AI action and show a clear insufficient-credits state (copy + next step). Do not silently proceed. |
-| **Quote / charge preview (optional)** | May show Soft band quote (Pro10/Flash4 / half / 0) from policy without implying payment. |
+| **Balance display** | Show current **Haggle credits** balance to the signed-in account (Settings and/or negotiation chrome). Staging/local may show balance and an “unlimited / not debiting” affordance when `creditsAreUnlimited()` is true. |
+| **Insufficient credits** | When production (or any env with debit enabled) would charge Soft Auto **Haggle credits** and balance &lt; required charge: block that Soft Auto / AI 흥정 action and show a clear insufficient-**Haggle credits** state (copy + next step). Do not silently proceed. |
+| **Quote / charge preview (optional)** | May show Soft Auto **Haggle credits** band quote (Pro10/Flash4 / half / 0) from policy without implying payment. |
 | **Grant feedback (optional)** | Toast or history line when a grant lands (signup, attendance, …). |
 
 MCP / agent surfaces should be able to read balance and receive a stable insufficient error code when debit is required and balance is too low (exact code names in C1).
@@ -190,8 +191,8 @@ MCP / agent surfaces should be able to read balance and receive a stable insuffi
 
 | Topic | Where it lives | Note |
 | --- | --- | --- |
-| Real-money rails / Stripe Crypto Onramp / PAN | [staging-onramp-test-mode-map.md](./staging-onramp-test-mode-map.md) | Fiat→USDC test path; **not** Soft credits |
-| Fake-money / fake-address Stage 1 loop | [fake-money-fake-address-e2e-test-plan.md](./fake-money-fake-address-e2e-test-plan.md) | Settlement rehearsal without real money — **orthogonal** to Soft credit ledger |
+| Real-money rails / Stripe Crypto Onramp / PAN | [staging-onramp-test-mode-map.md](./staging-onramp-test-mode-map.md) | Fiat→USDC test path; **not** Haggle credits |
+| Fake-money / fake-address Stage 1 loop | [fake-money-fake-address-e2e-test-plan.md](./fake-money-fake-address-e2e-test-plan.md) | Settlement rehearsal without real money — **orthogonal** to Haggle credits ledger |
 | Trust / settlement reputation | `trust-ledger*` | §0 — not credit balance |
 | Seller better-model +5 | Policy constant + auto-manual §5.2 | Later product |
 | Hard Authority / 1.5% fee | Core protocol / fee notes | Unchanged by this ledger |
@@ -205,8 +206,8 @@ C0 is **docs only**. C1 implements ledger storage + debit/grant APIs against thi
 - Policy-only today: `packages/commerce-core/src/negotiation-credit-policy.ts` (`creditsAreUnlimited`, Soft band, differential, `CREDIT_GRANTS`).
 - Add wallet/ledger schema + services that **call** policy for amounts; do not duplicate Pro10/Flash4/half/0 tables in app code.
 - Session Soft charge watermark (`already_charged_base`) must live with the negotiation/session so differentials stay correct across toggles.
-- Production path: check balance → idempotent debit → then Soft AI. Staging/local unlimited: skip check+debit, keep quotes/flags.
-- Never write Soft credits into `trust-ledger*` tables.
+- Production path: check balance → idempotent debit → then Soft Auto / AI 흥정. Staging/local unlimited: skip check+debit, keep quotes/flags.
+- Never write **Haggle credits** into `trust-ledger*` tables.
 
 ---
 
@@ -214,21 +215,23 @@ C0 is **docs only**. C1 implements ledger storage + debit/grant APIs against thi
 
 | Doc | Role |
 | --- | --- |
-| [auto-manual-control-mode-sot.md](./auto-manual-control-mode-sot.md) §5 · §5.1 · §5.2 | Soft AI credit bands, differential, no refund, +5 out of mode scope |
+| [auto-manual-control-mode-sot.md](./auto-manual-control-mode-sot.md) §5 · §5.1 · §5.2 | **Haggle credits** Soft Auto bands, differential, no refund, +5 out of mode scope |
 | [2026-08-28-credit-hold-model-discussion.md](../meetings/2026-08-28-credit-hold-model-discussion.md) §3 | Signup 200, attendance, `CREDIT_UNLIMITED_*` / `creditsAreUnlimited()` |
 | `packages/commerce-core/src/negotiation-credit-policy.ts` | Policy constants + quote/differential helpers (not wallet) |
 | [staging-onramp-test-mode-map.md](./staging-onramp-test-mode-map.md) | Real-money onramp test map — out of scope for C0/C1 ledger |
 | [fake-money-fake-address-e2e-test-plan.md](./fake-money-fake-address-e2e-test-plan.md) | Fake-money Stage 1 — out of scope for C0/C1 ledger |
-| `packages/commerce-core/src/trust-ledger.ts` / `packages/db/src/schema/trust-ledger.ts` | Trust/settlement reputation — **not** credit balance |
+| `packages/commerce-core/src/trust-ledger.ts` / `packages/db/src/schema/trust-ledger.ts` | Trust/settlement reputation — **not** Haggle credits balance |
+| [i18n-scope-a-sot.md](./i18n-scope-a-sot.md) | Scope A i18n policy; external name **Haggle credits**; Soft Auto/Manual protocol names kept |
 
 ---
 
 ## 10. Decision checklist (encode exactly)
 
 - [x] Balance + append-only ledger entries for grant and debit; idempotency on every write
-- [x] Charge timing = Soft AI band quote + Auto ON differential; Manual side / both Manual = 0; Auto OFF = no refund ([auto-manual §5.1](./auto-manual-control-mode-sot.md))
+- [x] Charge timing = Soft Auto **Haggle credits** band quote + Auto ON differential; Manual side / both Manual = 0; Auto OFF = no refund ([auto-manual §5.1](./auto-manual-control-mode-sot.md))
 - [x] Staging/local: `creditsAreUnlimited()` true → **skip balance check & debit**; keep policy flags; production **must debit**
 - [x] Grants keep code constants (signup **200**, attendance 10/+1/cap20, …); seller better-model **+5** out of scope
-- [x] UI surfaces: balance display + insufficient-credits gate (plus optional quote/grant feedback)
-- [x] Explicit: existing `trust-ledger*` = trust/settlement reputation, **NOT** credit balance
+- [x] UI surfaces: **Haggle credits** balance display + insufficient-credits gate (plus optional quote/grant feedback)
+- [x] Explicit: existing `trust-ledger*` = trust/settlement reputation, **NOT** Haggle credits balance
+- [x] External / SoT / balance UI product name = **Haggle credits** (Soft AI credits renamed); Soft Auto/Manual / Hard/Soft protocol identifiers unchanged ([i18n-scope-a-sot.md](./i18n-scope-a-sot.md))
 - [x] Real-money onramp + fake-money plans cited as **out of scope** for C0/C1 ledger
