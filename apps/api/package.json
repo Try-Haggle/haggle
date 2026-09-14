@@ -50,7 +50,7 @@
     "@supabase/supabase-js": "^2.99.0",
     "dotenv": "^16.4.0",
     "drizzle-orm": "^0.45.2",
-    "fastify": "^5.12.3",
+    "fastify": "^5.12.4",
     "fastify-plugin": "^5.0.0",
     "jsonwebtoken": "^9.0.0",
     "openai": "^6.33.0",
