@@ -54,37 +54,37 @@ Users may change preference in Settings anytime; the next new session applies it
 
 ---
 
-## 5. Credits (our AI side only)
+## 5. Credits (our AI side only) — **Haggle credits**
 
-Credits meter **Haggle-hosted AI Soft turns only**. Manual sides do not consume Haggle AI credits for that party’s Soft drafting.
+**Haggle credits** meter **Haggle-hosted Soft Auto / AI 흥정 turns only** (Soft Preference when Haggle AI drafts). Soft Manual sides (**사람 흥정**) do not consume **Haggle credits** for that party’s Soft drafting. Protocol identifiers **Soft Auto** / **Soft Manual** / **Hard** / **Soft** stay unchanged. External/SoT/balance UI name: **Haggle credits** (not “Soft AI credits”). See [i18n-scope-a-sot.md](./i18n-scope-a-sot.md).
 
-Baseline listing-tier draft numbers (buyer charge when our AI runs), from meetings credit notes:
+Baseline listing-tier draft numbers (buyer charge when our Soft Auto runs), from meetings credit notes:
 
-| Listing model band | Full Auto session (both Auto) | Buyer Manual + seller AI | Both Manual |
+| Listing model band | Full Auto session (both Soft Auto) | Buyer Soft Manual + seller Soft Auto | Both Soft Manual |
 | --- | --- | --- | --- |
 | Pro (≥ ~$100 ask) | **10** | **5** | **0** |
 | Flash (< ~$100 ask) | **4** | **2** | **0** |
 
 Encode exactly:
 
-| Situation | Credits (buyer, our AI Soft only) |
+| Situation | **Haggle credits** (buyer, our Soft Auto / AI 흥정 only) |
 | --- | --- |
-| **Both Auto** | **Pro 10 / Flash 4** |
-| **Buyer Manual + seller AI (Auto)** | **5 / 2** |
-| **Both Manual** | **0** |
+| **Both Soft Auto** | **Pro 10 / Flash 4** |
+| **Buyer Soft Manual + seller Soft Auto** | **5 / 2** |
+| **Both Soft Manual** | **0** |
 
-**Derived (same principle — our AI Soft only):** seller Manual + buyer Auto still runs buyer Soft AI → charge the half band (**5 / 2**). Manual never bills Haggle AI for a Manual side. If product later splits buyer-AI-only vs seller-AI-only, update this SoT; do not invent a different number in M1 without a product decision.
+**Derived (same principle — our Soft Auto / AI 흥정 only):** seller Soft Manual + buyer Soft Auto still runs buyer Soft Auto → charge the half band (**5 / 2**). Soft Manual never bills **Haggle credits** for a Soft Manual side. If product later splits buyer-AI-only vs seller-AI-only, update this SoT; do not invent a different number in M1 without a product decision.
 
-### 5.1 Differential when Auto is ever turned ON
+### 5.1 Differential when Soft Auto is ever turned ON
 
-- If a party (or session) starts without full Auto billing and **Auto is ever turned ON** such that Haggle AI Soft work begins, charge the **differential** to reach the applicable band (**+5 / +2** vs the Manual-reduced amount, i.e. lift toward Pro10 / Flash4 as appropriate).
-- **Turning Auto OFF again = no refund.** Credits already taken stay taken.
-- Do not refund when switching Manual after Auto has already been ON in that session.
+- If a party (or session) starts without full Soft Auto billing and **Soft Auto is ever turned ON** such that Haggle Soft Auto / AI 흥정 work begins, charge the **differential** to reach the applicable **Haggle credits** band (**+5 / +2** vs the Soft Manual-reduced amount, i.e. lift toward Pro10 / Flash4 as appropriate).
+- **Turning Soft Auto OFF again = no refund.** **Haggle credits** already taken stay taken.
+- Do not refund when switching Soft Manual after Soft Auto has already been ON in that session.
 
 ### 5.2 Out of M0 scope (cite only)
 
 - Seller better-model upgrade **+5** (Pro cap) — later; see credit discussion. Mode SoT does not block or require it.
-- Staging/local unlimited credit flags remain as in credit notes; production must debit when credits are enabled. Balance/ledger wallet SoT: [credit-ledger-sot.md](./credit-ledger-sot.md) (C0).
+- Staging/local unlimited **Haggle credits** flags remain as in credit notes; production must debit when credits are enabled. Balance/ledger wallet SoT: [credit-ledger-sot.md](./credit-ledger-sot.md) (C0).
 
 ---
 
@@ -133,7 +133,7 @@ When implementing later:
 - Persist per-party `control_mode` on the negotiation session (or equivalent), default `auto`.
 - Apply Settings default only at session create.
 - Serialize mode changes behind in-flight Soft AI completion for that party.
-- Credit quote/debit uses §5 matrix; differential on first Auto-ON that expands our AI Soft work.
+- **Haggle credits** quote/debit uses §5 matrix; differential on first Soft Auto-ON that expands our Soft Auto / AI 흥정 work.
 - Seller Manual watchdog uses §7 draft timers → Soft Auto resume + notify.
 - Expose counterpart mode on get-negotiation / MCP / CU-ready surfaces.
 
@@ -147,7 +147,8 @@ When implementing later:
 | [product-decisions-2026-09-07.md](./product-decisions-2026-09-07.md) | Staging product decision index (cross-link) |
 | [2026-08-28-credit-hold-model-discussion.md](../meetings/2026-08-28-credit-hold-model-discussion.md) | Pro10 / Flash4 / +5 draft credit numbers; 1.5% fee |
 | [2026-08-29-branch-meeting-brief.md](../meetings/2026-08-29-branch-meeting-brief.md) | Meeting brief restating Flash 4, Pro 10 |
-| [credit-ledger-sot.md](./credit-ledger-sot.md) | C0 Soft credit **balance/ledger** SoT (grants/debits/idempotency; not trust-ledger) |
+| [credit-ledger-sot.md](./credit-ledger-sot.md) | C0 **Haggle credits** **balance/ledger** SoT (grants/debits/idempotency; not trust-ledger) |
+| [i18n-scope-a-sot.md](./i18n-scope-a-sot.md) | Scope A i18n; external name **Haggle credits**; Soft Auto/Manual protocol names kept |
 
 ---
 
@@ -156,7 +157,7 @@ When implementing later:
 - [x] Default Auto ON; no forced choice at start; Settings holds default preference
 - [x] Toggle anytime mid-session; handoff after in-flight API finishes
 - [x] Both buyer and seller can Manual
-- [x] Credits = our AI side only: both Auto → buyer Pro10/Flash4; buyer Manual + seller AI → 5/2; both Manual → 0; Auto ever ON → charge differential 5/2; off again → no refund
+- [x] **Haggle credits** = our Soft Auto / AI 흥정 only: both Soft Auto → buyer Pro10/Flash4; buyer Soft Manual + seller Soft Auto → 5/2; both Soft Manual → 0; Soft Auto ever ON → charge differential 5/2; off again → no refund
 - [x] Seller Manual timeout (draft 30m first / 2h later) → Soft Auto resume + notify + can Manual again (not choose/cancel)
 - [x] Counterpart mode mutually visible (CU-ready label)
 - [x] Hard Authority unchanged; Soft only is mode
