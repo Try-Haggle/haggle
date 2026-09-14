@@ -27,6 +27,14 @@ type MessageTree = {
       label: string;
     };
   };
+  shipping: {
+    addressConfirm: {
+      prompt: string;
+      useThis: string;
+      useOther: string;
+      usingSaved: string;
+    };
+  };
 };
 
 const en: MessageTree = {
@@ -35,6 +43,14 @@ const en: MessageTree = {
       title: "Language",
       hint: "This is the language of the Haggle website. It does not change how agents negotiate.",
       label: "Display language",
+    },
+  },
+  shipping: {
+    addressConfirm: {
+      prompt: "Receive at this address?",
+      useThis: "Use this address",
+      useOther: "Use a different address",
+      usingSaved: "Using your saved address",
     },
   },
 };
@@ -46,6 +62,14 @@ const ko: DeepPartial<MessageTree> = {
       title: "언어",
       hint: "Haggle 웹사이트의 표시 언어입니다. 에이전트가 협상하는 방식은 바뀌지 않습니다.",
       label: "표시 언어",
+    },
+  },
+  shipping: {
+    addressConfirm: {
+      prompt: "이 주소로 받을까요?",
+      useThis: "이 주소로",
+      useOther: "다른 곳으로",
+      usingSaved: "저장된 주소로 받습니다",
     },
   },
 };

@@ -47,4 +47,13 @@ describe("i18n", () => {
     expect(acceptLanguageHeader("en")).toBe("en");
     expect(acceptLanguageHeader("ko")).toBe("ko,en;q=0.8");
   });
+
+  it("localizes saved-address confirm copy", () => {
+    expect(t("en", "shipping.addressConfirm.prompt")).toBe("Receive at this address?");
+    expect(t("en", "shipping.addressConfirm.useThis")).toBe("Use this address");
+    expect(t("en", "shipping.addressConfirm.useOther")).toBe("Use a different address");
+    expect(t("ko", "shipping.addressConfirm.prompt")).toBe("이 주소로 받을까요?");
+    expect(t("ko", "shipping.addressConfirm.useThis")).toBe("이 주소로");
+    expect(t("ko", "shipping.addressConfirm.useOther")).toBe("다른 곳으로");
+  });
 });
