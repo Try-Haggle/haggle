@@ -27,7 +27,7 @@ describe("CreditBalanceSettings", () => {
     get.mockReset();
   });
 
-  it("renders Soft AI credits section and cites stub when C1 missing", async () => {
+  it("renders Haggle credits section and cites stub when C1 missing", async () => {
     get.mockRejectedValue(new ApiError(404, "NOT_FOUND"));
     render(<CreditBalanceSettings />);
     expect(screen.getByTestId("credit-balance-settings")).toBeInTheDocument();

@@ -21,8 +21,8 @@ export function CreditBalanceSettings() {
         {CREDIT_BALANCE_UI.sectionTitle}
       </h2>
       <p className="text-sm text-ink-muted mb-4">
-        Soft AI credits meter Haggle-hosted Soft turns only. Hard Authority, fees, and settlement
-        are unchanged. Server ledger is source of truth — this UI does not invent credit math.
+        Haggle credits meter Haggle-hosted Soft turns only. Hard Authority, fees, and settlement are
+        unchanged. Server ledger is source of truth — this UI does not invent credit math.
       </p>
 
       <div className="flex flex-wrap items-center justify-between gap-3">

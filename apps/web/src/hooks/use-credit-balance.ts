@@ -32,7 +32,7 @@ export function useCreditBalance(opts?: { enabled?: boolean }) {
       const next = await fetchCreditBalance();
       setState(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load Soft credits.");
+      setError(err instanceof Error ? err.message : "Could not load Haggle credits.");
       setState({
         source: "stub",
         balance: null,

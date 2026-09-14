@@ -21,24 +21,24 @@ export const INSUFFICIENT_CREDITS_CODE = "INSUFFICIENT_CREDITS";
 
 /** CU-ready short labels (SoT §6; agent-surface friendly). */
 export const CREDIT_BALANCE_UI = {
-  /** Settings / chrome section title */
-  sectionTitle: "Soft AI credits",
+  /** Settings / chrome section title (i18n A / credit-ledger §6: Haggle credits) */
+  sectionTitle: "Haggle credits",
   /** Compact chrome label prefix */
-  stripLabel: "Soft credits",
+  stripLabel: "Haggle credits",
   /** When balance is known */
-  balanceLabel: (n: number) => `Soft credits: ${n}`,
+  balanceLabel: (n: number) => `Haggle credits: ${n}`,
   /** When C1 API unavailable */
-  stubLabel: "Soft credits: —",
+  stubLabel: "Haggle credits: —",
   /** Staging/local unlimited affordance (SoT §4 / §6) */
   unlimitedLabel: "Unlimited (not debiting)",
   /** Insufficient gate title */
-  insufficientTitle: "Insufficient Soft credits",
-  /** Insufficient next step */
+  insufficientTitle: "Insufficient Haggle credits",
+  /** Insufficient next step — Soft Manual is protocol name (keep) */
   insufficientNext: "Add credits or switch Soft to Manual, then try again.",
   /** Stub tolerance note */
   stubNote: "Balance preview — ledger API when C1 lands",
   /** Loading */
-  loadingLabel: "Soft credits: …",
+  loadingLabel: "Haggle credits: …",
 } as const;
 
 /**

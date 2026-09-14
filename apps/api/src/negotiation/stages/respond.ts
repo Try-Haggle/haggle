@@ -33,8 +33,10 @@ export function respond(input: RespondInput): RespondOutput {
 /**
  * Resolve response locale.
  *
- * Default is English. Do not infer locale from message script (Hangul ≠ Korean UI).
- * An explicit session locale (from Accept-Language / account setting) wins.
+ * Default is English (i18n Scope A: agent dialogue stays EN SoT).
+ * Do not infer locale from message script (Hangul ≠ Korean UI).
+ * UI display locale (`Accept-Language` / `haggle-locale`) must not set this —
+ * only an explicit negotiation-session `preferred_locale` / `detected_locale` wins.
  */
 function resolveLocale(memory: import("../types.js").CoreMemory): SupportedLocale {
   const sessionAny = memory.session as Record<string, unknown>;

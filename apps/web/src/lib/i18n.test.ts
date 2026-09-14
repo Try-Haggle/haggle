@@ -5,6 +5,7 @@ import {
   DEFAULT_LOCALE,
   isLocale,
   LOCALE_STORAGE_KEY,
+  LOCALES,
   readDocumentLocale,
   t,
 } from "./i18n";
@@ -18,8 +19,11 @@ describe("i18n", () => {
 
   it("defaults to English and only accepts known locales", () => {
     expect(DEFAULT_LOCALE).toBe("en");
+    expect(LOCALES).toEqual(["en", "ko"]);
     expect(isLocale("en")).toBe(true);
     expect(isLocale("ko")).toBe(true);
+    expect(isLocale("es")).toBe(false);
+    expect(isLocale("zh")).toBe(false);
     expect(isLocale("fr")).toBe(false);
     expect(isLocale(null)).toBe(false);
   });

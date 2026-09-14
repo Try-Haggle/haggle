@@ -25,7 +25,7 @@ export class InsufficientCreditsError extends Error {
   readonly balance: number;
 
   constructor(input: { accountId: string; required: number; balance: number }) {
-    super(`Insufficient Soft AI credits: need ${input.required}, balance ${input.balance}`);
+    super(`Insufficient Haggle credits: need ${input.required}, balance ${input.balance}`);
     this.name = "InsufficientCreditsError";
     this.accountId = input.accountId;
     this.required = input.required;

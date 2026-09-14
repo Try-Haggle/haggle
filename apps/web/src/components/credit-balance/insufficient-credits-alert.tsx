@@ -13,7 +13,7 @@ export interface InsufficientCreditsAlertProps {
 }
 
 /**
- * Insufficient Soft credits gate (credit-ledger-sot.md §6).
+ * Insufficient Haggle credits gate (credit-ledger-sot.md §6).
  * Shown at start / Auto ON when the server refuses Soft AI charge.
  */
 export function InsufficientCreditsAlert({ info, className }: InsufficientCreditsAlertProps) {
