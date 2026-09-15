@@ -10,17 +10,19 @@ Short SoT for staging/product alignment. Prefer these over older ticket wording 
 - **Digital / A4 no-shipment** (`fulfillment_type` digital paths): exempt from address + quote gates.
 - Code locks: `delivery-address-start-gate`, `shipping-quote-before-start`, start-buyer goldens.
 
-### 1.1 Saved address confirm (physical UX; Eng1 SoT / Eng2 web)
+### 1.1 Saved address default-use (physical UX; Eng1 SoT / Eng2 web)
 
 Reinforces D1/D2; does not relax gates. Priority below **9/18 real-money R2**.
 
-- **No saved address** (or guest): keep current blank form → quote → start.
-- **Saved address present:** show confirm **“이 주소로 받을까요?”** with **이 주소로** / **다른 곳으로** before quote/start — do not present a blank form as the first step.
-- **다른 곳으로:** existing new-address input, then quote → start.
-- **Quote binding:** D2 quote must use **only** the address confirmed (or newly entered) **this** start attempt — never reuse a quote computed for a different address.
-- **PII:** minimize full-address exposure on the confirm UI (masked city · ST · ZIP / label; avoid street/phone dump on confirm).
-- **Digital:** still exempt (no confirm / address / quote).
-- **SoT:** [saved-address-confirm-sot.md](./saved-address-confirm-sot.md). Eng2 owns web; this file + that SoT are docs-only for Eng1.
+**UX correction (2026-09-15):** when a saved address exists, **default = proceed with that address** for quote and start. Do **not** require clicking **「이 주소로」 / “use this address”** as the primary path. The only interrupt is opt-out to a different address.
+
+- **No saved address** (or guest): keep current blank/new-input form → quote → start.
+- **Saved address present:** **default-use** the preferred saved address (default if set, else first saved) for D2 quote and start — no forced confirm click.
+- **다른 곳으로 / “use a different address” (only interrupt):** clear/show new-address input → complete address → **re-quote** → start. Must not silently keep the saved address as the start payload.
+- **Quote binding:** D2 quote must use **only** the address in force for **this** start attempt (default saved, or newly entered after opt-out) — never reuse a quote computed for a different address.
+- **PII:** minimize full-address exposure on the default-saved surface (masked city · ST · ZIP / label; avoid street/phone dump).
+- **Digital:** still exempt (no saved-address UX / address / quote).
+- **SoT:** [saved-address-confirm-sot.md](./saved-address-confirm-sot.md). Eng2 owns web; this file + that SoT are docs-only for Eng1. Credits UI move is Eng2 only.
 
 ## 2. MCP `haggle_get_negotiation` defaults to full transcript + offers (E1)
 
@@ -66,4 +68,4 @@ Per-party Soft-side **Auto / Manual** (default Auto ON; no forced start choice; 
 ## Related PRs
 
 - D1 [#143](https://github.com/Try-Haggle/haggle/pull/143), D2 [#142](https://github.com/Try-Haggle/haggle/pull/142), D3 [#141](https://github.com/Try-Haggle/haggle/pull/141), E1 [#144](https://github.com/Try-Haggle/haggle/pull/144), B5 money-guard, superseded A3 [#120](https://github.com/Try-Haggle/haggle/pull/120).
-- Saved-address confirm SoT: [saved-address-confirm-sot.md](./saved-address-confirm-sot.md) (Eng1 docs; Eng2 web).
+- Saved-address default-use SoT: [saved-address-confirm-sot.md](./saved-address-confirm-sot.md) (Eng1 docs; Eng2 web — default-use saved, opt-out **다른 곳으로** only).
