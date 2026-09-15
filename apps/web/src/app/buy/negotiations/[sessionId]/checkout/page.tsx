@@ -10,6 +10,7 @@ import {
   isCheckoutReady,
   toPositiveMinor,
 } from "../checkout-contract";
+import type { CheckoutAgreementDisplay } from "../checkout-full-agreement";
 import { CheckoutPayment } from "./checkout-payment";
 
 export const metadata: Metadata = {
@@ -36,6 +37,8 @@ interface SettlementApprovalResponse {
     currency: string;
     fulfillment_type?: string;
   };
+  agreement: CheckoutAgreementDisplay;
+  agreement_ready: boolean;
 }
 
 interface ShippingReadinessResponse {
@@ -74,7 +77,7 @@ export default async function NegotiationCheckoutPage({
   }
 
   const { session } = sessionResponse;
-  const { approval } = approvalResponse;
+  const { approval, agreement, agreement_ready } = approvalResponse;
   const amountMinor = toPositiveMinor(approval.final_amount_minor);
   const checkoutReady = isCheckoutReady({
     sessionId: session.id,
@@ -85,7 +88,13 @@ export default async function NegotiationCheckoutPage({
     approval,
   });
 
-  if (!checkoutReady || amountMinor === null || !session.listing) {
+  if (
+    !checkoutReady ||
+    amountMinor === null ||
+    !session.listing ||
+    !agreement_ready ||
+    !agreement
+  ) {
     redirect(`/buy/negotiations/${sessionId}`);
   }
 
@@ -110,7 +119,7 @@ export default async function NegotiationCheckoutPage({
         <PageHeader
           icon={<LockKeyhole className="size-6" />}
           title="Secure checkout"
-          subtitle="Review the accepted deal before authorizing payment."
+          subtitle="Confirm the full Soft agreement, then pay as agreed."
           backHref={`/buy/negotiations/${sessionId}`}
           backLabel="Back to negotiation"
           actions={
@@ -128,6 +137,8 @@ export default async function NegotiationCheckoutPage({
               currency={approval.currency}
               requiresShipping={requiresShipping}
               physicalShippingReadiness={physicalShippingReadiness}
+              agreement={agreement}
+              leaveHref={`/buy/negotiations/${sessionId}`}
             />
           </Card>
 

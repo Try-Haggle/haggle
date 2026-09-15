@@ -99,6 +99,11 @@ import {
 import { createX402PaymentRequirement } from "../payments/x402-requirements.js";
 import { type AdminActionType, writeAuditLog } from "../services/admin-action-log.service.js";
 import {
+  getSoftAgreementAckError,
+  type SoftAgreementAck,
+  verifySoftAgreementTermsHash,
+} from "../services/checkout-full-agreement.js";
+import {
   CONDITIONAL_SETTLEMENT_RETRY_AFTER_SECONDS,
   conditionalSettlementConfirmationRetry,
   evaluateConditionalSettlementFinality,
@@ -234,6 +239,14 @@ const preparePaymentSchema = z
         buyer_approved_rules: z.boolean().optional(),
         stripe_fallback: z.boolean().optional(),
         stablecoin_not_investment: z.boolean().optional(),
+      })
+      .optional(),
+    soft_agreement_ack: z
+      .object({
+        version: z.string().max(INPUT_LIMITS.shortTextChars),
+        source: z.string().max(INPUT_LIMITS.shortTextChars),
+        terms_hash: z.string().max(INPUT_LIMITS.mediumTextChars),
+        attested_at: z.string().datetime().max(INPUT_LIMITS.mediumTextChars),
       })
       .optional(),
   })
@@ -2518,6 +2531,27 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       });
     }
 
+    // Soft → Hard gate: buyer must click 이대로 결제 in the web UI.
+    // Tool/MCP/agent attest cannot substitute (source must be buyer_ui_cta).
+    if (!parsed.data.soft_agreement_ack) {
+      return reply.code(400).send({
+        error: "SOFT_AGREEMENT_ACK_REQUIRED",
+        message:
+          "Hard payment requires the buyer to confirm full Soft terms via 이대로 결제 (buyer_ui_cta). Tool/MCP attest is not accepted.",
+      });
+    }
+    // Reject non-buyer_ui_cta before any Hard persistence lookup (비위임).
+    const softAckShapeError = getSoftAgreementAckError(
+      parsed.data.soft_agreement_ack as SoftAgreementAck,
+      null,
+    );
+    if (softAckShapeError) {
+      return reply.code(400).send({
+        error: "SOFT_AGREEMENT_ACK_INVALID",
+        message: softAckShapeError,
+      });
+    }
+
     const actor = {
       actor_id: request.user!.id,
       actor_role: "buyer" as const,
@@ -2529,6 +2563,19 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     }
     if (settlementApproval.terms.buyer_id !== actor.actor_id) {
       return reply.code(404).send({ error: "SETTLEMENT_APPROVAL_NOT_FOUND" });
+    }
+
+    // Recompute Soft terms hash from stored snapshot — fail-close on mismatch.
+    const softAckHashError = await verifySoftAgreementTermsHash(
+      db,
+      settlementApproval.id,
+      parsed.data.soft_agreement_ack as SoftAgreementAck,
+    );
+    if (softAckHashError) {
+      return reply.code(400).send({
+        error: "SOFT_AGREEMENT_ACK_INVALID",
+        message: softAckHashError,
+      });
     }
 
     let ready;

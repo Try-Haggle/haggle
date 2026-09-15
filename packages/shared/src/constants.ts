@@ -33,3 +33,11 @@ export const PAYMENT_DISCLOSURE_TEXT_HASH =
 
 // TODO(post-mvp): Add payment-related constants (USDC decimals, escrow timeouts, etc.)
 // TODO(post-mvp): Add supported chain IDs for Base L2
+
+/** Soft → Hard checkout gate: buyer must click 이대로 결제 in the web UI. */
+export const SOFT_AGREEMENT_ACK_VERSION = "haggle-soft-agreement-ack-v1";
+
+/** Only buyer UI CTA may attest Soft terms. Tool/MCP/agent attest is rejected. */
+export const SOFT_AGREEMENT_ACK_SOURCE_BUYER_UI_CTA = "buyer_ui_cta" as const;
+
+export const SOFT_AGREEMENT_ACK_SOURCES = [SOFT_AGREEMENT_ACK_SOURCE_BUYER_UI_CTA] as const;

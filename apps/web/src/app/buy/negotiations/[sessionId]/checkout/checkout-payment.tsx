@@ -1,7 +1,14 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useState } from "react";
 import { Spinner } from "@/components/ui";
+import { createSoftAgreementAck } from "@/lib/soft-agreement-ack";
+import {
+  type CheckoutAgreementDisplay,
+  isFullAgreementRenderable,
+} from "../checkout-full-agreement";
+import { CheckoutFullAgreement } from "../checkout-full-agreement-panel";
 
 const WalletPaymentClient = dynamic(
   () => import("./wallet-payment-client").then((module) => module.WalletPaymentClient),
@@ -26,6 +33,37 @@ export function CheckoutPayment(props: {
     live_label_max_minor: number;
     missing: string[];
   } | null;
+  agreement: CheckoutAgreementDisplay;
+  leaveHref: string;
 }) {
-  return <WalletPaymentClient {...props} />;
+  const [confirmed, setConfirmed] = useState(false);
+  const [softAgreementAck, setSoftAgreementAck] = useState<ReturnType<
+    typeof createSoftAgreementAck
+  > | null>(null);
+
+  if (!confirmed || !softAgreementAck) {
+    return (
+      <CheckoutFullAgreement
+        agreement={props.agreement}
+        leaveHref={props.leaveHref}
+        onConfirm={() => {
+          if (!isFullAgreementRenderable(props.agreement)) return;
+          // Buyer UI CTA only — never tool/MCP mint.
+          setSoftAgreementAck(createSoftAgreementAck(props.agreement.terms_hash));
+          setConfirmed(true);
+        }}
+      />
+    );
+  }
+
+  return (
+    <WalletPaymentClient
+      settlementApprovalId={props.settlementApprovalId}
+      amountMinor={props.amountMinor}
+      currency={props.currency}
+      requiresShipping={props.requiresShipping}
+      physicalShippingReadiness={props.physicalShippingReadiness}
+      softAgreementAck={softAgreementAck}
+    />
+  );
 }

@@ -142,3 +142,24 @@ export function clearPendingDefaultAddress() {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(PENDING_DEFAULT_ADDRESS_KEY);
 }
+
+/** Full Soft-agreed address lines for checkout confirm (not the masked start cue). */
+export function formatFullShippingAddressLines(
+  address: Pick<ShippingAddressInput, "name" | "street1" | "city" | "state" | "zip"> & {
+    street2?: string | null;
+    country?: string | null;
+    phone?: string | null;
+  },
+): string[] {
+  const lines: string[] = [];
+  if (address.name.trim()) lines.push(address.name.trim());
+  if (address.street1.trim()) lines.push(address.street1.trim());
+  if (address.street2?.trim()) lines.push(address.street2.trim());
+  const cityBit = [address.city.trim(), `${address.state.trim()} ${address.zip.trim()}`.trim()]
+    .filter(Boolean)
+    .join(", ");
+  if (cityBit) lines.push(cityBit);
+  if (address.country && address.country !== "US") lines.push(address.country);
+  if (address.phone?.trim()) lines.push(address.phone.trim());
+  return lines;
+}

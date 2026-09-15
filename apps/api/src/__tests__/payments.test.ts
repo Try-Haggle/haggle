@@ -51,6 +51,32 @@ import {
 } from "./fixtures/fake-money-stage1.js";
 import { ADMIN_HEADERS, AUTH_HEADERS, closeTestApp, getTestApp } from "./helpers.js";
 
+vi.mock("../services/checkout-full-agreement.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/checkout-full-agreement.js")>();
+  const termsHash = "sha256:test-soft-agreement-terms";
+  return {
+    ...actual,
+    loadCheckoutAgreementDisplay: vi.fn().mockResolvedValue({
+      terms_hash: termsHash,
+    }),
+    verifySoftAgreementTermsHash: vi.fn(async (_db, _id, ack) =>
+      actual.getSoftAgreementAckError(ack, termsHash),
+    ),
+  };
+});
+
+const TEST_SOFT_TERMS_HASH = "sha256:test-soft-agreement-terms";
+
+function softAgreementAck(overrides: Record<string, unknown> = {}) {
+  return {
+    version: "haggle-soft-agreement-ack-v1",
+    source: "buyer_ui_cta",
+    terms_hash: TEST_SOFT_TERMS_HASH,
+    attested_at: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
 // --- Mock service layers ---
 vi.mock("../services/payment-record.service.js", () => ({
   createAgentPaymentGrantRecord: vi.fn().mockResolvedValue(null),
@@ -542,6 +568,7 @@ describe("Payment routes", () => {
         headers: { authorization: `Bearer ${token}` },
         payload: {
           settlement_approval_id: "6f3f3657-8f1d-4c32-91a8-faf5bfc3a111",
+          soft_agreement_ack: softAgreementAck(),
         },
       });
 
@@ -604,6 +631,7 @@ describe("Payment routes", () => {
         headers: { authorization: `Bearer ${token}` },
         payload: {
           settlement_approval_id: "00000000-0000-4000-a000-000000000099",
+          soft_agreement_ack: softAgreementAck(),
           payment_disclosure_ack: {
             version: PAYMENT_DISCLOSURE_VERSION,
             text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
@@ -655,6 +683,7 @@ describe("Payment routes", () => {
       headers: AUTH_HEADERS,
       payload: {
         settlement_approval_id: "00000000-0000-4000-a000-000000000099",
+        soft_agreement_ack: softAgreementAck(),
         payment_disclosure_ack: {
           version: PAYMENT_DISCLOSURE_VERSION,
           text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
@@ -689,6 +718,7 @@ describe("Payment routes", () => {
       headers: AUTH_HEADERS,
       payload: {
         settlement_approval_id: "00000000-0000-4000-a000-000000000099",
+        soft_agreement_ack: softAgreementAck(),
         payment_disclosure_ack: {
           version,
           text_hash: textHash,
@@ -709,6 +739,38 @@ describe("Payment routes", () => {
     expect(mockGetSettlementApprovalById).not.toHaveBeenCalled();
     expect(mockEnsureCommerceOrderForApproval).not.toHaveBeenCalled();
     expect(mockCreateStoredPaymentIntent).not.toHaveBeenCalled();
+  });
+
+  it("requires soft agreement acknowledgement before Hard payment prepare", async () => {
+    mockGetSettlementApprovalById.mockClear();
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/prepare",
+      headers: AUTH_HEADERS,
+      payload: {
+        settlement_approval_id: "00000000-0000-4000-a000-000000000099",
+        // intentionally omit soft_agreement_ack
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("SOFT_AGREEMENT_ACK_REQUIRED");
+    expect(mockGetSettlementApprovalById).not.toHaveBeenCalled();
+  });
+
+  it("rejects tool/MCP soft agreement attest (이대로 결제 비위임)", async () => {
+    mockGetSettlementApprovalById.mockClear();
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/prepare",
+      headers: AUTH_HEADERS,
+      payload: {
+        settlement_approval_id: "00000000-0000-4000-a000-000000000099",
+        soft_agreement_ack: softAgreementAck({ source: "mcp_tool" }),
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("SOFT_AGREEMENT_ACK_INVALID");
+    expect(String(res.json().message)).toMatch(/buyer_ui_cta/);
   });
 
   // GET /payments/:id
@@ -2807,7 +2869,10 @@ describe("Payment routes", () => {
     const res = await app.inject({
       method: "POST",
       url: "/payments/prepare",
-      payload: { settlement_approval_id: "test" },
+      payload: {
+        settlement_approval_id: "test",
+        soft_agreement_ack: softAgreementAck(),
+      },
     });
     expect(res.statusCode).toBe(401);
     expect(res.json().error).toBe("AUTH_REQUIRED");
@@ -2825,6 +2890,7 @@ describe("Payment routes", () => {
       headers: AUTH_HEADERS,
       payload: {
         settlement_approval_id: "00000000-0000-4000-a000-000000000099",
+        soft_agreement_ack: softAgreementAck(),
         settlement_approval: {
           id: "00000000-0000-4000-a000-000000000099",
           approval_state: "APPROVED",
@@ -2917,6 +2983,7 @@ describe("Payment routes", () => {
       headers: AUTH_HEADERS,
       payload: {
         settlement_approval_id: "00000000-0000-4000-a000-000000000099",
+        soft_agreement_ack: softAgreementAck(),
         payment_disclosure_ack: {
           version: PAYMENT_DISCLOSURE_VERSION,
           text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
@@ -2949,6 +3016,7 @@ describe("Payment routes", () => {
       headers: AUTH_HEADERS,
       payload: {
         settlement_approval_id: "00000000-0000-4000-a000-000000000099",
+        soft_agreement_ack: softAgreementAck(),
         payment_disclosure_ack: {
           version: PAYMENT_DISCLOSURE_VERSION,
           text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
@@ -2980,6 +3048,7 @@ describe("Payment routes", () => {
       headers: AUTH_HEADERS,
       payload: {
         settlement_approval_id: "not-a-uuid",
+        soft_agreement_ack: softAgreementAck(),
         payment_disclosure_ack: {
           version: PAYMENT_DISCLOSURE_VERSION,
           text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
@@ -3044,6 +3113,7 @@ describe("Payment routes", () => {
       headers: AUTH_HEADERS,
       payload: {
         settlement_approval_id: sessionId,
+        soft_agreement_ack: softAgreementAck(),
         shipping_execution_mode: "physical_live",
         payment_disclosure_ack: {
           version: PAYMENT_DISCLOSURE_VERSION,
@@ -3113,6 +3183,7 @@ describe("Payment routes", () => {
       headers: AUTH_HEADERS,
       payload: {
         settlement_approval_id: sessionId,
+        soft_agreement_ack: softAgreementAck(),
         payment_disclosure_ack: {
           version: PAYMENT_DISCLOSURE_VERSION,
           text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
@@ -3235,6 +3306,7 @@ describe("Payment routes", () => {
       },
       payload: {
         settlement_approval_id: sessionId,
+        soft_agreement_ack: softAgreementAck(),
         shipping_execution_mode: "integration_manual",
         payment_disclosure_ack: {
           version: PAYMENT_DISCLOSURE_VERSION,
@@ -3384,6 +3456,7 @@ describe("Payment routes", () => {
       headers: AUTH_HEADERS,
       payload: {
         settlement_approval_id: "00000000-0000-4000-a000-000000000099",
+        soft_agreement_ack: softAgreementAck(),
         payment_disclosure_ack: {
           version: PAYMENT_DISCLOSURE_VERSION,
           text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
@@ -3449,6 +3522,7 @@ describe("Payment routes", () => {
         headers: AUTH_HEADERS,
         payload: {
           settlement_approval_id: sessionId,
+          soft_agreement_ack: softAgreementAck(),
           shipping_execution_mode: "physical_live",
           payment_disclosure_ack: {
             version: PAYMENT_DISCLOSURE_VERSION,
@@ -3553,6 +3627,7 @@ describe("Payment routes", () => {
       headers: AUTH_HEADERS,
       payload: {
         settlement_approval_id: sessionId,
+        soft_agreement_ack: softAgreementAck(),
         shipping_execution_mode: "physical_live",
         payment_disclosure_ack: {
           version: PAYMENT_DISCLOSURE_VERSION,
@@ -3703,6 +3778,7 @@ describe("Payment routes", () => {
       headers: AUTH_HEADERS,
       payload: {
         settlement_approval_id: sessionId,
+        soft_agreement_ack: softAgreementAck(),
         payment_disclosure_ack: {
           version: PAYMENT_DISCLOSURE_VERSION,
           text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
@@ -3836,6 +3912,7 @@ describe("Payment routes", () => {
       headers: AUTH_HEADERS,
       payload: {
         settlement_approval_id: sessionId,
+        soft_agreement_ack: softAgreementAck(),
         payment_disclosure_ack: {
           version: PAYMENT_DISCLOSURE_VERSION,
           text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
