@@ -78,8 +78,8 @@ export function PreNegotiationFulfillment({
         setSavedAddresses(addresses);
         const preferred = addresses.find(isDefaultSavedAddress) ?? addresses[0];
         if (!preferred) return;
-        // Do not fill the address yet — require explicit confirm this session.
-        // Keep EMPTY so canStart stays false and D2 quotes only the confirmed address.
+        // Default = use the saved address for quote/start (no confirm-click gate).
+        // Confirmed-address-only quote rule: only a filled default/new address is quoted.
         const current = valueRef.current;
         if (current.addressSource !== "new" || isCompleteish(current)) {
           // Buyer already chose (or typed); do not override.
@@ -87,8 +87,8 @@ export function PreNegotiationFulfillment({
         }
         onChangeRef.current({
           ...current,
-          addressSource: "pending",
-          address: EMPTY_SHIPPING_ADDRESS,
+          addressSource: "default",
+          address: savedAddressToInput(preferred),
           saveAddress: false,
         });
       })
@@ -122,7 +122,7 @@ export function PreNegotiationFulfillment({
     onChange({
       ...value,
       addressSource: "new",
-      // Clear so start/quote cannot reuse the previously confirmed saved address.
+      // Clear form so quote/start cannot reuse the saved address (force re-quote).
       address: EMPTY_SHIPPING_ADDRESS,
       saveAddress: signedIn,
     });
@@ -130,7 +130,6 @@ export function PreNegotiationFulfillment({
 
   const needsAddress = value.methods.includes("carrier");
   const needsTravel = value.methods.some((method) => method !== "carrier");
-  const showConfirm = needsAddress && !!defaultAddress && value.addressSource === "pending";
   const showSavedSummary = needsAddress && !!defaultAddress && value.addressSource === "default";
   const showAddressForm = needsAddress && (value.addressSource === "new" || !defaultAddress);
 
@@ -242,47 +241,17 @@ export function PreNegotiationFulfillment({
 
       {needsAddress && (
         <div className="mt-5 space-y-4">
-          {showConfirm && defaultAddress && (
-            <div className="rounded-xl border border-line bg-surface-sunken p-4 space-y-4">
+          {showSavedSummary && defaultAddress && (
+            <div className="rounded-xl border border-line bg-surface-sunken px-4 py-3 space-y-3">
               <div>
-                <p className="text-sm font-semibold text-ink">
-                  {t("shipping.addressConfirm.prompt")}
+                <p className="text-sm font-medium text-ink">
+                  {t("shipping.addressConfirm.usingSaved")}
                 </p>
-                <p className="mt-2 text-sm text-ink-secondary">
+                <p className="mt-1 text-sm text-ink-secondary">
                   {formatAddressConfirmPreview(defaultAddress)}
                 </p>
               </div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <Button type="button" variant="primary" fullWidth onClick={confirmSavedAddress}>
-                  {t("shipping.addressConfirm.useThis")}
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  fullWidth
-                  onClick={chooseDifferentAddress}
-                >
-                  {t("shipping.addressConfirm.useOther")}
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {showSavedSummary && defaultAddress && (
-            <div className="rounded-xl border border-line bg-surface-sunken px-4 py-3 space-y-2">
-              <p className="text-sm font-medium text-ink">
-                {t("shipping.addressConfirm.usingSaved")}
-              </p>
-              <p className="text-sm text-ink-secondary">
-                {formatAddressConfirmPreview(defaultAddress)}
-              </p>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="px-0"
-                onClick={chooseDifferentAddress}
-              >
+              <Button type="button" variant="secondary" size="sm" onClick={chooseDifferentAddress}>
                 {t("shipping.addressConfirm.useOther")}
               </Button>
             </div>
