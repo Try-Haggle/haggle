@@ -3,9 +3,7 @@
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useNotificationContext } from "@/app/(app)/_components/notification-provider";
-import { CreditBalanceChip } from "@/components/credit-balance/credit-balance-chip";
 import { NavTab } from "@/components/ui";
-import { useCreditBalance } from "@/hooks/use-credit-balance";
 import { useMessagesUnreadCount } from "@/hooks/use-messages-unread";
 
 type Mode = "selling" | "buying";
@@ -216,7 +214,6 @@ export function BottomNav() {
   const { unreadCount } = useNotificationContext();
   // One tab covers both halves, so its dot has to cover both too.
   const messagesUnread = useMessagesUnreadCount();
-  const creditBalance = useCreditBalance();
 
   // Derive mode from path
   const pathMode: Mode | null = pathname.startsWith("/buy")
@@ -259,21 +256,6 @@ export function BottomNav() {
                 ? // Both halves of the inbox light the same tab.
                   pathname.startsWith("/messages") || pathname.startsWith("/notifications")
                 : pathname.startsWith(tab.href);
-
-          if (tab.label === "Profile") {
-            return (
-              <div key={tab.href} className="flex items-center gap-1">
-                <CreditBalanceChip state={creditBalance} loading={creditBalance.loading} />
-                <NavTab
-                  href={tab.href}
-                  label={tab.label}
-                  variant="stacked"
-                  icon={tab.icon}
-                  active={isActive}
-                />
-              </div>
-            );
-          }
 
           return (
             <NavTab

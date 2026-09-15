@@ -3,13 +3,16 @@
 import { ArrowRightLeft, LogOut, Settings } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { CreditBalanceChip } from "@/components/credit-balance/credit-balance-chip";
 import { ListRow } from "@/components/ui";
+import { useCreditBalance } from "@/hooks/use-credit-balance";
 import { createClient } from "@/lib/supabase/client";
 
 export default function ProfilePage() {
   const router = useRouter();
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
+  const creditBalance = useCreditBalance();
 
   useEffect(() => {
     const supabase = createClient();
@@ -49,7 +52,10 @@ export default function ProfilePage() {
 
       {/* User info */}
       <div className="rounded-xl border border-line bg-surface-raised p-4 mb-4">
-        <p className="text-sm text-ink-muted">Signed in as</p>
+        <div className="flex items-center gap-2">
+          <p className="text-sm text-ink-muted">Signed in as</p>
+          <CreditBalanceChip state={creditBalance} loading={creditBalance.loading} />
+        </div>
         <p className="mt-1 font-medium text-ink">{displayName}</p>
         <p className="text-sm text-ink-secondary">{email}</p>
       </div>

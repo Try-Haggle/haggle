@@ -29,18 +29,6 @@ vi.mock("@/hooks/use-messages-unread", () => ({
   useMessagesUnreadCount: () => messagesUnread,
 }));
 
-vi.mock("@/hooks/use-credit-balance", () => ({
-  useCreditBalance: () => ({
-    source: "api" as const,
-    balance: 12,
-    unlimited: false,
-    accountId: "acct_test",
-    loading: false,
-    error: null,
-    reload: async () => {},
-  }),
-}));
-
 beforeEach(() => {
   pathname = "/messages";
   query = new URLSearchParams();
@@ -120,15 +108,5 @@ describe("Inbox tab", () => {
     const { container } = render(<BottomNav />);
 
     expect(container.querySelector(".bg-error")).toBeNull();
-  });
-});
-
-describe("Profile credits chip", () => {
-  it("shows Haggle credits beside Profile on browse", () => {
-    pathname = "/browse";
-    render(<BottomNav />);
-
-    expect(screen.getByTestId("credit-balance-chip")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Profile/ })).toBeInTheDocument();
   });
 });
