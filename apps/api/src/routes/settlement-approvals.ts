@@ -1,6 +1,10 @@
 import { type Database, eq, settlementApprovals } from "@haggle/db";
 import type { FastifyInstance } from "fastify";
 import { requireAuth } from "../middleware/require-auth.js";
+import {
+  isCheckoutAgreementRenderable,
+  loadCheckoutAgreementDisplay,
+} from "../services/checkout-full-agreement.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -96,7 +100,12 @@ export function registerSettlementApprovalRoutes(app: FastifyInstance, db: Datab
           .send({ error: "FORBIDDEN", message: "You do not have access to this resource" });
       }
 
-      return reply.send({ approval: mapRow(row) });
+      const agreement = await loadCheckoutAgreementDisplay(db, row);
+      return reply.send({
+        approval: mapRow(row),
+        agreement,
+        agreement_ready: isCheckoutAgreementRenderable(agreement),
+      });
     },
   );
 

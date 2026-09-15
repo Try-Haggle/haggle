@@ -80,6 +80,12 @@ const props = {
     live_label_max_minor: 5000,
     missing: [],
   },
+  softAgreementAck: {
+    version: "haggle-soft-agreement-ack-v1",
+    source: "buyer_ui_cta",
+    terms_hash: "sha256:test-soft-agreement-terms",
+    attested_at: "2026-09-15T00:00:00.000Z",
+  },
 };
 
 const WALLET_A = "0x0000000000000000000000000000000000000001" as const;

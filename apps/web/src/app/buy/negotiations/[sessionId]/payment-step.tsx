@@ -118,6 +118,13 @@ type PaymentStepStatus =
   | "complete"
   | "error";
 
+interface SoftAgreementAckPayload {
+  version: string;
+  source: string;
+  terms_hash: string;
+  attested_at: string;
+}
+
 interface PaymentStepProps {
   settlementApprovalId: string;
   amountMinor: number;
@@ -128,6 +135,7 @@ interface PaymentStepProps {
     live_label_max_minor: number;
     missing: string[];
   } | null;
+  softAgreementAck: SoftAgreementAckPayload;
 }
 
 interface ConditionalSettlementRequest {
@@ -274,6 +282,7 @@ export function PaymentStep({
   currency,
   requiresShipping,
   physicalShippingReadiness,
+  softAgreementAck,
 }: PaymentStepProps) {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
@@ -424,6 +433,7 @@ export function PaymentStep({
           ? { shipping_execution_mode: shippingExecutionMode }
           : {}),
         payment_disclosure_ack: paymentDisclosureAck,
+        soft_agreement_ack: softAgreementAck,
       });
       const intentId = data.intent?.id;
       const preparedOrderId = data.order?.id;

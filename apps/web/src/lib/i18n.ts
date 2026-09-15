@@ -35,6 +35,31 @@ type MessageTree = {
       usingSaved: string;
     };
   };
+  checkout: {
+    fullAgreement: {
+      title: string;
+      subtitle: string;
+      price: string;
+      address: string;
+      fulfillment: string;
+      fees: string;
+      item: string;
+      shipping: string;
+      shippingNa: string;
+      feeWallet: string;
+      feeCard: string;
+      buyerPaysWallet: string;
+      buyerPaysCard: string;
+      feeNote: string;
+      criteria: string;
+      criteriaNone: string;
+      sellerValue: string;
+      buyerAnswer: string;
+      cta: string;
+      changeHint: string;
+      leave: string;
+    };
+  };
 };
 
 const en: MessageTree = {
@@ -51,6 +76,33 @@ const en: MessageTree = {
       useThis: "Use this address",
       useOther: "Use a different address",
       usingSaved: "Using your saved address",
+    },
+  },
+  checkout: {
+    fullAgreement: {
+      title: "Confirm agreed terms",
+      subtitle:
+        "Review the full Soft deal before payment. Card or wallet opens only after you confirm.",
+      price: "Agreed price",
+      address: "Address",
+      fulfillment: "Shipping / pickup",
+      fees: "Fees and total",
+      item: "Item",
+      shipping: "Shipping",
+      shippingNa: "N/A",
+      feeWallet: "Haggle fee (wallet 1.5%)",
+      feeCard: "Buyer fee (card 3.0%)",
+      buyerPaysWallet: "Buyer pays (wallet)",
+      buyerPaysCard: "Buyer pays (card)",
+      feeNote:
+        "Exact rail total is confirmed again on the next step before authorization. Seller net is rail-independent.",
+      criteria: "Seller criteria",
+      criteriaNone: "None for this listing",
+      sellerValue: "Seller",
+      buyerAnswer: "Your answer",
+      cta: "Pay as agreed",
+      changeHint: "Need to change a term?",
+      leave: "Leave checkout",
     },
   },
 };
@@ -70,6 +122,32 @@ const ko: DeepPartial<MessageTree> = {
       useThis: "이 주소로",
       useOther: "다른 곳으로",
       usingSaved: "저장된 주소로 받습니다",
+    },
+  },
+  checkout: {
+    fullAgreement: {
+      title: "합의 내용 확인",
+      subtitle: "결제 전에 Soft 합의 전체를 확인하세요. 카드/지갑은 확인 후에만 열립니다.",
+      price: "합의 가격",
+      address: "주소",
+      fulfillment: "배송 / 픽업",
+      fees: "수수료와 합계",
+      item: "상품",
+      shipping: "배송비",
+      shippingNa: "해당 없음",
+      feeWallet: "Haggle 수수료 (지갑 1.5%)",
+      feeCard: "구매자 수수료 (카드 3.0%)",
+      buyerPaysWallet: "구매자 결제액 (지갑)",
+      buyerPaysCard: "구매자 결제액 (카드)",
+      feeNote:
+        "레일별 최종 금액은 다음 단계에서 다시 확인합니다. 판매자 수령액은 레일과 무관합니다.",
+      criteria: "판매자 조건",
+      criteriaNone: "이 리스팅에 해당 조건 없음",
+      sellerValue: "판매자",
+      buyerAnswer: "내 답변",
+      cta: "이대로 결제",
+      changeHint: "내용을 바꿔야 하나요?",
+      leave: "결제 나가기",
     },
   },
 };
