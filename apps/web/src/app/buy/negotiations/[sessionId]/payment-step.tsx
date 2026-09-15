@@ -769,7 +769,11 @@ export function PaymentStep({
             </section>
           )}
 
-          <section className="space-y-3" aria-labelledby="payment-method-heading">
+          <section
+            className="space-y-3"
+            aria-labelledby="payment-method-heading"
+            data-testid="checkout-payment-rail"
+          >
             <div>
               <h3 id="payment-method-heading" className="font-medium text-ink text-sm">
                 Choose a payment method

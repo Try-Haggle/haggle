@@ -77,7 +77,7 @@ export default async function NegotiationCheckoutPage({
   }
 
   const { session } = sessionResponse;
-  const { approval, agreement, agreement_ready } = approvalResponse;
+  const { approval, agreement } = approvalResponse;
   const amountMinor = toPositiveMinor(approval.final_amount_minor);
   const checkoutReady = isCheckoutReady({
     sessionId: session.id,
@@ -88,16 +88,12 @@ export default async function NegotiationCheckoutPage({
     approval,
   });
 
-  if (
-    !checkoutReady ||
-    amountMinor === null ||
-    !session.listing ||
-    !agreement_ready ||
-    !agreement
-  ) {
+  // Soft SoT: ACCEPTED checkout always mounts Soft panel first.
+  // Incomplete Soft (agreement_ready=false) → Soft UI with disabled CTA; never skip Soft to show rail.
+  // Only leave checkout when the deal itself is not ready or Soft payload is missing entirely.
+  if (!checkoutReady || amountMinor === null || !session.listing || !agreement) {
     redirect(`/buy/negotiations/${sessionId}`);
   }
-
   const money = { currency: approval.currency, amount_minor: amountMinor };
   let physicalShippingReadiness: ShippingReadinessResponse["physical_live"] | null = null;
   try {

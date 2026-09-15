@@ -23,6 +23,10 @@ const WalletPaymentClient = dynamic(
   },
 );
 
+/**
+ * Soft → Hard gate (SoT checkout-full-agreement): Soft panel + CTA first;
+ * PaymentStep / rail must not mount until buyer_ui_cta Soft ack.
+ */
 export function CheckoutPayment(props: {
   settlementApprovalId: string;
   amountMinor: number;
@@ -36,12 +40,14 @@ export function CheckoutPayment(props: {
   agreement: CheckoutAgreementDisplay;
   leaveHref: string;
 }) {
-  const [confirmed, setConfirmed] = useState(false);
   const [softAgreementAck, setSoftAgreementAck] = useState<ReturnType<
     typeof createSoftAgreementAck
   > | null>(null);
 
-  if (!confirmed || !softAgreementAck) {
+  const softConfirmed = softAgreementAck !== null && isFullAgreementRenderable(props.agreement);
+
+  // Mandatory Soft-before-rail: never mount WalletPaymentClient / PaymentStep until Soft CTA.
+  if (!softConfirmed || !softAgreementAck) {
     return (
       <CheckoutFullAgreement
         agreement={props.agreement}
@@ -50,7 +56,6 @@ export function CheckoutPayment(props: {
           if (!isFullAgreementRenderable(props.agreement)) return;
           // Buyer UI CTA only — never tool/MCP mint.
           setSoftAgreementAck(createSoftAgreementAck(props.agreement.terms_hash));
-          setConfirmed(true);
         }}
       />
     );
