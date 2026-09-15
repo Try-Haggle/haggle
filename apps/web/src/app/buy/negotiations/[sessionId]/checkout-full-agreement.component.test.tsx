@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { LocaleProvider } from "@/providers/locale-provider";
-import type { CheckoutAgreementDisplay } from "./checkout-full-agreement-panel";
+import type { CheckoutAgreementDisplay } from "./checkout-full-agreement";
 import { CheckoutFullAgreement } from "./checkout-full-agreement-panel";
 
 const agreement: CheckoutAgreementDisplay = {
