@@ -5,8 +5,8 @@
 
 ## 핵심 결론 (SOT 반영용)
 - ✅ V1~V7 규칙 실제 구현·가동 (`validator.ts`).
-- ⚠️ **HARD 위반도 실제로는 차단 안 됨** — auto-fix 2회 후 위반이 남아도 그대로 통과. `'BLOCK'`은 감사 로그 라벨일 뿐 실행을 막지 않음.
-- ⚠️ **"가격 lock" 없음** — `respond.ts`에 clamp/lock 전무. 코드의 유일한 가격 개입은 V1 위반 시 floor로 덮어쓰기(soft, 2회 한정). 최종가는 결국 LLM/skill의 `decision.price`.
+- ⚠️ **HARD 위반도 실제로는 차단 안 됨** — auto-fix 2회 후 위반이 남아도 그대로 통과. `'BLOCK'`은 감사 로그 라벨일 뿐 실행을 막지 않음. **할 일로 유지** ([`../SOT.md`](../SOT.md) §5.5, 백로그 #10). AI가 가격을 더 결정할수록 결정적 브레이크(Referee HARD 규칙)는 더 필수다.
+- ⚠️ **"가격 lock" 없음** — `respond.ts`에 clamp/lock 전무. 코드의 유일한 가격 개입은 V1 위반 시 floor로 덮어쓰기(soft, 2회 한정). 최종가가 LLM/skill의 `decision.price`인 것은 이상형과 같다(SOT §0.2). 엔진 추천가로 그 값을 되돌리는 것은 할 일이 아니다. 열린 갭은 HARD 미차단이다.
 - 💀 `ViolationTracker`(세션 위반 누적·lite 모드 전환) **미사용** — 정의+테스트만. → 항상 `full` 모드(V1~V7 전부 평가).
 - 🚧 Stage 4.5 skill validate hook: 현재 `console.info` 로깅만, 검증에 미반영("Future: merge").
 

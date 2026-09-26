@@ -3,6 +3,8 @@
 **이 문서가 Decide가 보는 입력의 변경 기준이다.**
 코드와 이 문서가 어긋나면 이 문서를 먼저 고치고, 인코더와 계약 테스트를 같이 맞춘다.
 
+**결정권 (CTO, 정행 확인 2026-09-26):** 최종 가격과 메시지는 LLM이 결정한다. 엔진(engine-core / coach)은 추천가와 검증 보조를 제공한다. 엔진이 결정을 내리고 AI가 보조한다는 전제는 두지 않는다. Advisor의 Faratin 숫자는 추천이지 타결가가 아니다. 코드 validate(Referee HARD)는 가격을 대신 정하지 않고, 위반을 막는 결정적 브레이크다. 그 브레이크는 아직 실제로 차단하지 않는다 — [`SOT.md`](./SOT.md) §5.5 · 백로그 #10. AI가 가격을 더 결정할수록 이 브레이크는 더 필수다.
+
 | 역할 | 문서 |
 |------|------|
 | 올리기 → 라운드 → 타결 전체 흐름 | [`tag-spec-fewshot.md`](./tag-spec-fewshot.md) |
@@ -92,13 +94,13 @@ DeepSeek prefix cache는 메시지 앞에서부터 같아야 한다. 역할과 F
 | Knowledge | `getLLMContext()` + decide `categoryBrief` | 이번 품목 지식. 대본 아님 |
 | Valuation | decide `valuationRules` | 칸이 가격에 어떻게 닿는지. 카테고리 고정 $표 금지(`$50-80/단계` 같은 밴드). `collectSkillSlots`가 달러표를 버린다. 옷·차도 같다 |
 | Tactics | decide `tactics` | `tactic_used` 후보 |
-| Advisor | decide advisories (Faratin 포함) | 이번 라운드 양보 속도. 오프닝·타결가 아님. 무시해도 됨 |
+| Advisor | decide advisories (Faratin 포함) | 추천가·이번 라운드 양보 속도. 최종 가격이 아님. 무시해도 됨 |
 | Market | context/decide 시세 + 매칭된 시세 스킬 | 이번 제품 참고가. 오프닝·타결가가 아님 |
-| Constraints | validate peek HARD/SOFT | 글로 알림. 코드 validate가 권위 |
+| Constraints | validate peek HARD/SOFT | 글로 알림. 코드 validate는 위반 차단의 권위이지, 가격 결정이 아니다 |
 | Tone | respond peek | Decide가 쓰는 `message` 말투 |
 | Services | 이미 받은 인증/시세 사실 | 호출이 아님. 공개된 값만 |
 
-스킬은 조언이다. 바닥·호가·후퇴 금지·HARD criteria가 이긴다. 추천가와 시세 스킬은 고정가가 아니다. 스킬이 HNP issue id를 만들지 않는다. 비공개 작전(`P:`)은 스냅샷과 MEMO에만 있고 HNP에 안 실린다.
+스킬은 조언이다. 최종 가격과 메시지는 LLM이 결정한다. 추천가와 시세 스킬은 고정가가 아니다. 바닥·호가·후퇴 금지·HARD criteria는 그 값을 추천가로 대체하지 않고, 위반을 막는 쪽이다. HARD의 실행 차단은 아직 미완([`SOT.md`](./SOT.md) §5.5, 백로그 #10). 스킬이 HNP issue id를 만들지 않는다. 비공개 작전(`P:`)은 스냅샷과 MEMO에만 있고 HNP에 안 실린다.
 
 ---
 
@@ -113,7 +115,7 @@ DeepSeek prefix cache는 메시지 앞에서부터 같아야 한다. 역할과 F
 | 사실 | LISTING 답, STRATEGY 필수/선호, BOX | 품목 대본, 가상 형제 순위 |
 | HARD | 실패면 HOLD. 돈으로 고치지 않음 | 가격만 깎아 통과 |
 | SOFT | 호가는 그 칸을 이미 반영한 값이 아님. 칸이 다르면 가격이나 대사 중 하나는 달라야 함. 이 카피는 수요·공급으로 읽음 | `/step` 표, 랭크 자리 지정 |
-| 코드 | 바닥 아래·호가 위·후퇴 금지. Decide 모델은 공개 호가 + 서버 entitlement ([`decide-model-routing.md`](./decide-model-routing.md)) | 타결가 고르기, `if (category)`로 모델 고르기 |
+| 코드 | 추천가·검증 보조. 바닥 아래·호가 위·후퇴 금지. Decide 모델은 공개 호가 + 서버 entitlement ([`decide-model-routing.md`](./decide-model-routing.md)) | 최종 가격·메시지 결정, 추천가를 타결가로 쓰기, `if (category)`로 모델 고르기 |
 
 모델이 이 품목을 모르거나 이번 매물 시세가 필요하면 엔진을 두껍게 하지 않고 태그로 붙는 스킬을 쓴다. 매칭이 없으면 칸이 비고 위 네 줄만 남는다. 사다리가 약하면 그 카테고리 스킬을 보강한다.
 
