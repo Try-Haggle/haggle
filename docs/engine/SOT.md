@@ -22,7 +22,7 @@
 | 📄 | 설계만 존재 — 코드 없음 |
 | ❓ | 미확인 — 코드 대조 필요 |
 
-**문서 메타:** 현재 저장소 코드 대조 2026-08-24 (Decide 시스템=프로토콜 범례+criteria 카드. 공개 이력은 HNP, 비공개는 S/B/C MEMO. memo-codec은 persist 해시) · 최초 통합 2026-07 · 통합 출처 `docs/engine/legacy/01~31_*.md` (v1.0.0~v1.1.0 혼재 원본 28개, 1차 백업 보존)
+**문서 메타:** 현재 저장소 코드 대조 2026-08-24 (Decide 시스템=프로토콜 범례+criteria 카드. 공개 이력은 HNP, 비공개는 S/B/C MEMO. memo-codec은 persist 해시) · 결정권 이상형 2026-09-26 (CTO, 정행 확인) · 최초 통합 2026-07 · 통합 출처 `docs/engine/legacy/01~31_*.md` (v1.0.0~v1.1.0 혼재 원본 28개, 1차 백업 보존)
 
 **폴더 구조:** `SOT.md`(이 문서, 엔진 이상형+현황) · [`tag-spec-fewshot.md`](./tag-spec-fewshot.md)(사람·에이전트 전체 흐름) · [`criteria-and-issues.md`](./criteria-and-issues.md)(criteria vs HNP issues) · [`decide-prompt-contract.md`](./decide-prompt-contract.md)(Decide 입력) · [`decide-model-routing.md`](./decide-model-routing.md)(Decide 모델 카탈로그·정책) · [`hnp-compact-state.md`](./hnp-compact-state.md)(공개 압축) · `legacy/` · `reference/`
 
@@ -31,17 +31,19 @@
 ## 0. 목표 & 비전
 
 ### 0.1 이 엔진이 하는 일
-Haggle 협상 엔진은 **AI 에이전트가 사람 대신 가격을 협상**하도록 만드는 계산·의사결정 코어입니다. 판매자/구매자가 각자의 목표가·마지노선·성향을 설정하면, 에이전트가 상대와 라운드를 주고받으며 **양쪽에 공정한 합의점**을 찾습니다.
+Haggle 협상 엔진은 **AI 에이전트가 사람 대신 가격을 협상**할 때 추천가와 검증을 제공하는 계산 코어입니다. 판매자/구매자가 각자의 목표가·마지노선·성향을 설정하면, 에이전트가 상대와 라운드를 주고받으며 **양쪽에 공정한 합의점**을 찾습니다. 최종 가격과 메시지는 LLM이 결정합니다(§0.2).
 
 ### 0.2 설계 철학 (이상형)
-1. **결정론** — 동일 입력 → 동일 출력. 난수 없음.
+**결정권:** 최종 가격과 메시지는 LLM이 결정한다. 엔진(engine-core / coach)은 추천가와 검증 보조를 제공한다. 엔진이 결정을 내리고 AI가 보조한다는 전제는 두지 않는다. (CTO, 정행 확인 2026-09-26)
+
+1. **결정론** — 추천가·검증 수학은 동일 입력 → 동일 출력. 난수 없음. 이 결정론은 그 수학 레이어에 한정하며, 최종 가격의 결정권은 LLM에 있다.
 2. **제한된 출력** — 모든 효용 차원 `V ∈ [0,1]`, `U_total ∈ [0,1]`.
 3. **역할 대칭** — 구매자/판매자 수식 구조 동일, 파라미터 방향만 반대.
 4. **양쪽 공정** — 구매자 AI ≠ 플랫폼 AI. 크로스프레셔도 실제 BATNA만 사용, 허위 금지.
 5. **저비용** — Codec 압축 + DeepSeek V4 Pro. 고정 비용을 가정하지 않고 실측 token/latency와 설정된 모델 단가로 관리.
 6. **Stateless 엔진** — 수평 확장 가능.
 
-> **현황 총평:** 🚧 위 철학 중 *결정론·제한출력·역할대칭*은 순수 수학 레이어(`engine-core`)에서 지켜지나, 그 레이어가 **프로덕션 결정 경로에서 우회**되어 있습니다(§1.3). 실제 결정은 LLM이 내리고 엔진은 보조(추천가·검증)만 합니다. 이 괴리가 이 문서 전반의 핵심 known issue입니다.
+> **현황 총평:** ✅ 역할 분담은 위 결정권과 같다. 프로덕션에서 최종 가격·메시지는 LLM이 결정하고, 엔진은 추천가·검증 보조를 제공한다(§1.3·§1.4). *결정론·제한출력·역할대칭*은 추천가·검증의 수학 레이어(`engine-core`) 성질이지, 최종 결정을 엔진으로 되돌릴 이유가 아니다. 이 분담은 known issue가 아니다. 열린 할 일은 box [min,max] clamp + Referee HARD가 실제로 차단하지 않는 것이다(§5.5, 백로그 #10). AI가 가격을 더 결정할수록 결정적 브레이크(Referee HARD 규칙)는 더 필수다.
 
 ---
 
@@ -54,20 +56,20 @@ L1 Skill     비즈니스 로직 오케스트레이션 (DB/API/LLM 접근 가능
 L2 Engine    순수 수학 (DB/API/LLM 호출 금지, 외부 의존성 0, ~200μs/계산)
 L3 Wire+Data 프로토콜 직렬화(HNP) + Redis(hot) / PostgreSQL(cold)
 ```
-엔진 코어(L2)는 효용 계산기 · 의사결정기 · 양보 곡선 · 상대 모델 · 일괄 평가기로 구성되며, **"LLM은 협상가, 엔진은 심판(Referee)"** 이 v2.0 설계의 핵심 비유입니다.
+엔진 코어(L2)는 효용 계산기 · 양보 곡선 · 상대 모델 · 일괄 평가기로 구성된다. **이상형 (CTO, 정행 확인 2026-09-26):** LLM이 최종 가격과 메시지를 결정하고, 엔진(engine-core / coach)은 추천가와 검증 보조를 제공한다. 엔진이 결정을 내리고 AI가 보조한다는 전제는 두지 않는다. Referee는 그 검증 보조의 구현 이름이지, 최종 가격의 결정자가 아니다.
 
 ### 1.2 이상형 — 실행 파이프라인 (v2.0)
-매 라운드 **6-Stage**를 돕니다. LLM이 2개 스테이지(Understand·Decide)를 담당하고, 엔진은 Validate에서 검증·교정합니다.
+매 라운드 **6-Stage**를 돕니다. 최종 가격·메시지는 Decide의 LLM이 결정하고, 엔진(engine-core / coach)은 추천가와 Validate의 검증 보조를 제공한다.
 ```
 1 UNDERSTAND [LLM]  상대 제안 해석
 2 CONTEXT    [Code] 메모리+코칭+스킬 조립
 3 DECIDE     [LLM]  의사결정 + 역제안 생성
-4 VALIDATE   [Code] Referee 검증·교정
+4 VALIDATE   [Code] Referee 검증 보조
 5 RESPOND    [Code] 구조화 메시지 렌더
 6 PERSIST    [Code] 상태 저장
 ```
 
-### 1.3 현황 — 실제 실행 경로 ✅ (경로) / 🚧 (역할 분담)
+### 1.3 현황 — 실제 실행 경로 ✅ (경로·역할 분담)
 프로덕션 라운드는 **단일 경로**로만 실행됩니다. 여러 진입점이 모두 하나의 executor로 수렴:
 ```
 POST /negotiations/start · /sessions/:id/offers · MCP hnp_submit_offer
@@ -81,10 +83,10 @@ POST /negotiations/start · /sessions/:id/offers · MCP hnp_submit_offer
 - ✅ 6-Stage 파이프라인은 실제로 구현·가동 (프로덕션 유일 경로).
 - ✅ Stage 1 Understand: 설계는 LLM 파싱이나 **현재는 정규식/휴리스틱**. 구조화 오퍼(숫자)면 우회. → 라운드당 실제 LLM 콜은 **Stage 3 Decide 최대 1회**.
 
-### 1.4 현황 — known issue: 엔진 코어 우회 🚧
-- `engine-core`의 `computeUtility`/`makeDecision`(4D 효용 → ACCEPT/REJECT)과 `engine-session`의 `executeRound`는 **데모·CLI·테스트 전용**입니다. `executor-factory.ts` 주석에 명시, 어떤 프로덕션 라우트도 호출 안 함.
-- 단, **가격 계산 함수**(`computeCounterOffer`, Faratin)는 engine-core 것을 코치가 import해 씀 → "엔진이 죽음"이 아니라 **"엔진의 의사결정 경로가 죽음"**이 정확.
-- **할 일:** 엔진 코어를 권위 있는 advisory로 다시 결정 경로에 연결할지 결정 (§5.5, §11 참조).
+### 1.4 현황 — 의도된 흐름: 엔진 코어는 추천·검증 보조 ✅
+- 프로덕션에서 최종 가격·메시지는 LLM(Decide)이 결정한다. `engine-core`의 `computeUtility`/`makeDecision`(4D 효용 → ACCEPT/REJECT)과 `engine-session`의 `executeRound`가 **데모·CLI·테스트 전용**인 것은 우회 버그가 아니다. `executor-factory.ts` 주석대로 프로덕션 라우트는 이들을 최종 결정으로 호출하지 않는다.
+- **가격 계산 함수**(`computeCounterOffer`, Faratin)는 engine-core 것을 코치가 import해 **추천가**로 쓴다. 엔진(engine-core / coach)의 역할은 추천가와 검증 보조다. "엔진의 의사결정 경로가 죽었다"가 아니라 **결정권은 LLM, 엔진은 보조**가 맞다.
+- 이 분리는 known issue가 아니다. 열린 할 일은 box [min,max] clamp + Referee HARD가 실제로 차단하지 않는 것이다(§5.5, 백로그 #10). AI가 가격을 더 결정할수록 그 결정적 브레이크는 더 필수다.
 
 ---
 
@@ -195,7 +197,7 @@ coach.ts:101 / :115          params?.anchor_ratio / params?.beta
 | `w_rep` · `w_info` · `v_s_base` · `n_threshold` · `gamma` | 🚧 미소비 | engine-core 순수함수(비활성)에서만 |
 | `market_utilization` · `cross_pressure_sensitivity` · `r_score_minimum` · `i_completeness_minimum` · `late_round_aggression_modifier` | 💀 죽음 | 읽는 런타임 코드 전무. 앞 4개는 스냅샷 화이트리스트에도 없어 영속화조차 안 됨 |
 
-> **핵심:** `beta`·`anchor_ratio`조차 최종가를 직접 정하지 않고 **LLM 프롬프트의 추천가(recommended_price) 계산 입력**입니다. LLM이 유효 가격을 반환하면 최종 COUNTER는 LLM 값으로 대체(`decide.ts:84`).
+> **핵심:** `beta`·`anchor_ratio`는 최종가를 직접 정하지 않는다. **추천가(recommended_price) 계산 입력**이고, LLM이 유효 가격을 반환하면 최종 COUNTER는 LLM 값이다(`decide.ts:84`). 이것이 §0.2 이상형이다.
 
 > **프롬프트에도 안 감(추가 검증):** `/start`가 스냅샷에 넣는 `agent_weights`·`agent_overrides:{alpha,u_threshold,…}`는 `strategy_context`에 저장되지만, **LLM 프롬프트 STRATEGY 블록은 이를 렌더하지 않습니다** — `encodeStrategyContext`(`deepseek-adapter.ts:380`)는 `persona` + **빌더챗 메모리(tone·dealBreakers·urgency·mustEmphasize·mustHave·avoid·notes)만** 넣음. 즉 숫자 파라미터 15개는 advisory 텍스트로도 LLM에 도달하지 않는 **죽은 데이터**. → **LLM에 실제로 닿는 유일한 전략 채널 = 빌더챗 메모리**(숫자 성향이 아님).
 
@@ -214,15 +216,15 @@ coach.ts:101 / :115          params?.anchor_ratio / params?.beta
 | n_threshold | 12 | 10 | 12 | 10 |
 
 ### 4.4 할 일 — 미사용 필드를 살리는 법
-관여시킬 지점은 둘: **(A)** LLM 프롬프트로 가는 추천가·유틸, **(B)** LLM이 못 뒤집는 룰/레퍼리 게이트.
+관여시킬 지점은 둘: **(A)** 추천가·유틸(LLM이 읽는 보조), **(B)** LLM이 못 뒤집는 안전 브레이크(box [min,max] clamp + Referee HARD, §5.5). 최종 가격·메시지는 LLM이 결정한다(§0.2).
 
 | 필드 | 방법 | 난이도 |
 |------|------|--------|
 | weights | `coach.ts:163` 하드코딩 → `params.weights`. **단, 프로덕션 프롬프트는 utility를 안 실음(§5.4) → 프롬프트에도 추가해야 실제 효과** | 🟢이나 헛수고 주의 |
 | alpha·v_t_floor | `V_t = max(v_t_floor, (1−time_pressure)^alpha)`로 recommended_price 곡선에 접기 (검증된 채널) | 🟡 |
-| u_threshold·u_aspiration | decide/룰에서 `u_total`과 비교해 ACCEPT/NEAR_DEAL/COUNTER 게이트 | 🟡 리스크 |
+| u_threshold·u_aspiration | 추천가·검증 힌트의 입력. 엔진이 ACCEPT/REJECT를 확정하지 않음 | 🟡 리스크 |
 | w_rep·v_s_base·gamma… | V_r·V_s·경쟁 계산해 유틸 주입 (r_score/관계 데이터 배선 필요) | 🟠 |
-| **근본** | 매 라운드 `NegotiationContext` 조립 → engine-core `computeUtility`/`makeDecision` advisory 호출 → **17개 필드 전부 자동 활성** | 🟠 |
+| **근본** | 17개 필드를 추천가·검증 보조에 반영. `makeDecision`으로 최종 ACCEPT/REJECT를 대체하지 않음 | 🟠 |
 
 ---
 
@@ -273,7 +275,7 @@ coach.ts:101 / :115          params?.anchor_ratio / params?.beta
 
 ### 5.3 현황 — Coach vs Briefing 🚧 `referee/coach.ts · briefing.ts`
 executor는 매 라운드 **coach와 briefing을 둘 다** 호출하며, 역할이 다릅니다:
-- **coach (`@deprecated` 딱지지만 여전히 LIVE)** → `memory.coaching`으로 들어가 하네스 baseline·로그에 쓰인다. **Decide 유저 프롬프트의 `C:`에는 `rec$`를 넣지 않는다.** Faratin 숫자는 `FaratinCoachingSkill` → `## Skills → Advisor`로만 보인다. **"briefing이 coach를 대체" 설계는 미완성** — `@deprecated`는 오해를 부르는 상태.
+- **coach (`@deprecated` 딱지지만 여전히 LIVE)** → `memory.coaching`으로 들어가 추천가(baseline)·로그에 쓰인다. 추천가는 최종가가 아니다(§0.2). **Decide 유저 프롬프트의 `C:`에는 `rec$`를 넣지 않는다.** Faratin 숫자는 `FaratinCoachingSkill` → `## Skills → Advisor`로만 보인다. **"briefing이 coach를 대체" 설계는 미완성** — `@deprecated`는 오해를 부르는 상태.
   - ✅ phase별 recommended_price(코치/스킬 계산): OPENING `target×(1±margin)` · BARGAINING Faratin · CLOSING 확정가. 라이브 타결 경로가 아니다.
 - **briefing (facts-only)** → `context.briefing`으로 들어가 **Validate 스테이지**에 쓰임. 가격 앵커 아님. temperature 분기에 쓰이지 않음.
 - ⚠️ **utility_snapshot이 두 곳에서 서로 다른 하드코딩 가중치로 중복 계산** — coach(`0.5/0.2/0.15/0.15`, `coach.ts:163`)·briefing(`0.5/0.2/0.3`, `briefing.ts:63`). 둘 다 사용자 weights 무시. coach만 trust score를 u_risk로 반영, briefing은 u_risk=0.5 고정.
@@ -286,14 +288,14 @@ executor는 매 라운드 **coach와 briefing을 둘 다** 호출하며, 역할�
 - 🔎 프롬프트 STRATEGY 블록 = persona + **빌더챗 메모리만**(숫자 파라미터 미도달, §4.2). `encodeDelta`(차등 컨텍스트)는 decide 경로에서 **죽은 코드**(`prevMemory=undefined`로 호출 → 항상 full).
 - ✅ **태그·스펙·few-shot** — 설계 [`tag-spec-fewshot.md`](./tag-spec-fewshot.md) · 이름 [`criteria-and-issues.md`](./criteria-and-issues.md). 시스템 프롬프트는 criteria 범례와 **이번 태그가 연 카드**를 매 Decide 호출에 넣는다 (`criteria-fewshot.ts`). 이번 매물 칸 값은 유저 프롬프트 LISTING / STRATEGY.
 - ✅ **Decide가 보는 입력** — 산 경로·블록·넣지 않는 것: [`decide-prompt-contract.md`](./decide-prompt-contract.md). 공개 이력은 `HNP:` 하나. 비공개 숫자는 `MEMO:`의 `S:`/`B:`/`C:`. 말한 턴이 없으면 가격 fact를 HNP act로 바꾼다. `HIST`는 내지 않는다. `memo-codec`(`NS:`/`RM:`)은 persist 해시.
-- ✅ **스킬 칸** — 파이프라인이 decide/validate/respond 훅을 모아 `encodeSkillSlots`로 시스템 프롬프트 `## Skills`(Knowledge/Valuation/Tactics/Advisor/Market/Constraints/Tone/Services)에 넣는다. L2/L3 덤프는 Decide가 안 읽음. 스킬은 조언, BOX·바닥·HARD가 이김. HNP 와이어에 스킬 본문 없음.
+- ✅ **스킬 칸** — 파이프라인이 decide/validate/respond 훅을 모아 `encodeSkillSlots`로 시스템 프롬프트 `## Skills`(Knowledge/Valuation/Tactics/Advisor/Market/Constraints/Tone/Services)에 넣는다. L2/L3 덤프는 Decide가 안 읽음. 스킬과 추천가는 조언이다. box [min,max] clamp·바닥·HARD가 안전 브레이크이고, 그 실행 차단은 아직 미완(§5.5, #10). HNP 와이어에 스킬 본문 없음.
 - ✅ **공통 엔진 vs 스킬** — 엔진은 사실·HARD 게이트·SOFT 민감도(호가는 미조정, 수요·공급으로 이 카피를 읽음)·클립만. 품목 지식·시세는 태그로 붙는 스킬. `if (category)` 분기는 엔진에 없음. 경계 표 [`decide-prompt-contract.md`](./decide-prompt-contract.md) 「공통 엔진 vs 카테고리 스킬」.
 - ✅ **Decide 기억** — 공개 흐름은 HNP compact state. 최근 창으로 앞 대화를 버리지 않는다. 설계 [`hnp-compact-state.md`](./hnp-compact-state.md).
 
 ### 5.5 현황 — Referee / Validate 🚧 `referee/validator.ts` → 상세 [`reference/referee.md`](./reference/referee.md)
 - ✅ 7규칙 실제 가동. V1~V3 HARD(V1 가격 floor 초과→floor / V2 phase 미허용 action→allowed[0] / V3 라운드소진 COUNTER→REJECT), V4~V7 SOFT(역전·정체·일방양보·양보폭과다, auto-fix 없음).
-- ⚠️ **HARD도 실제로는 차단 안 됨** — auto-fix `MAX_RETRY=2` 후 위반 남아도 그대로 통과. `'BLOCK'`은 감사 라벨일 뿐 실행 미차단.
-- ⚠️ **"가격 lock" 없음** — `respond.ts`에 clamp/lock 전무. 코드의 유일한 가격 개입은 V1 위반 시 floor 덮어쓰기(soft, 2회). 최종가는 결국 LLM/skill `decision.price`.
+- ⚠️ **HARD도 실제로는 차단 안 됨** — auto-fix `MAX_RETRY=2` 후 위반 남아도 그대로 통과. `'BLOCK'`은 감사 라벨일 뿐 실행 미차단. **할 일로 유지.** AI가 가격을 더 결정할수록 결정적 브레이크(Referee HARD 규칙)는 더 필수다.
+- ⚠️ **"가격 lock" 없음** — `respond.ts`에 clamp/lock 전무. 코드의 유일한 가격 개입은 V1 위반 시 floor 덮어쓰기(soft, 2회). 최종가는 LLM/skill `decision.price`(§0.2). 열린 갭은 box [min,max] clamp + HARD 실제 차단이다(백로그 #10). clamp는 추천가로 최종 가격을 대체하는 것이 아니라 하한/상한 브레이크다.
 - 💀 `ViolationTracker`(세션 위반 누적·lite 모드 전환) 미사용 → 항상 `full`. 🚧 Stage 4.5 skill validate hook의 **코드 병합**은 아직 로깅만. 같은 규칙 텍스트는 Decide 전 peek로 `## Skills → Constraints`에 들어간다.
 
 ---
@@ -310,10 +312,10 @@ V_s = clamp( v_s_base + n_success/n_threshold − 0.3·n_dispute_losses, 0, 1 )
 ```
 로그를 쓰는 이유: 마지노선 근처 1달러는 민감, 목표가 근처 1달러는 둔감. `V_s_base=0.5`로 초면을 중립 처리.
 
-**현황:** 🚧 advisory. engine-core에 정확히 구현돼 있으나 **프로덕션 결정엔 미사용**. 코치는 단순화된 `u_price·0.5 + u_time·0.2 + u_risk·0.15 + u_quality·0.15`(하드코딩)만 계산하고, 그마저 프롬프트에 안 실림(§5.4).
-**할 일:** §4.4 근본 해법.
+**현황:** 🚧 advisory. engine-core에 정확히 구현돼 있으나 **프로덕션 최종 결정에는 쓰지 않는다** — 이것이 §0.2 이상형이다. 코치는 단순화된 `u_price·0.5 + u_time·0.2 + u_risk·0.15 + u_quality·0.15`(하드코딩)만 계산하고, 그마저 프롬프트에 안 실림(§5.4).
+**할 일:** 최종 결정을 이 함수로 되돌리지 않는다. 반영할 곳은 추천가·검증 보조(§4.4). 결정적 브레이크는 box [min,max] clamp + HARD이고, 그 강제는 아직 할 일이다(§5.5, #10).
 
-### 6.2 Faratin 양보 곡선 ✅ (가격 결정 핵심)
+### 6.2 Faratin 양보 곡선 ✅ (추천가 계산)
 **이상형:**
 ```
 P(t) = P_start + (P_limit − P_start) × (t/T)^(1/β)      t/T는 [0,1] clamp
@@ -345,6 +347,7 @@ P(t) = P_start + (P_limit − P_start) × (t/T)^(1/β)      t/T는 [0,1] clamp
 ## 7. 의사결정 전술
 
 ### 7.1 이상형 — 규칙 (우선순위 순)
+최종 가격·메시지의 이상형은 §0.2다. LLM이 결정하고, 엔진은 추천가와 검증 보조를 제공한다. 아래 효용 임계는 engine-core에 남아 있는 비활성 경로이며, 프로덕션 결정권이 아니다.
 ```
 0. 처리불가 요소(번들/조건부/트레이드인) → ESCALATE
 1. u_total ≥ U_aspiration → ACCEPT
@@ -357,7 +360,7 @@ P(t) = P_start + (P_limit − P_start) × (t/T)^(1/β)      t/T는 [0,1] clamp
 ```
 전술 엔진(설계): 미러링, 상대패턴×단계 매트릭스.
 
-**현황:** 🚧 위 규칙은 engine-core `makeDecision`(비활성 경로)에 있음. **프로덕션 ACCEPT/REJECT는 LLM**이 내린다. `encodeClosingHint`는 작은 갭만 알리고 ACCEPT를 숫자로 못 박지 않는다. `u_total` 기반 임계 게이트는 실제로 안 돎(u_threshold/u_aspiration 미소비). 코치가 `suggested_tactic`을 파생해 프롬프트로 전달하나 강제력 없음. 전술 매트릭스·미러링 미구현. 시스템 프롬프트에 역할별 강제 규칙(구매자는 자기 이전 제안보다 낮게 못 부름, 판매자는 floor 밑 금지)이 있음.
+**현황:** ✅ 프로덕션 ACCEPT/REJECT·가격은 LLM이 내린다(§0.2). 위 임계는 engine-core `makeDecision`(비활성)에만 있고, 최종 결정으로 되돌리지 않는다. 결정적 브레이크는 box [min,max] clamp + HARD이며 아직 실제로 차단하지 않는다(§5.5, #10). `encodeClosingHint`는 작은 갭만 알리고 ACCEPT를 숫자로 못 박지 않는다. `u_total` 임계 게이트는 실제로 안 돎(u_threshold/u_aspiration 미소비). 코치가 `suggested_tactic`을 파생해 프롬프트로 전달하나 강제력 없음. 전술 매트릭스·미러링 미구현. 시스템 프롬프트에 역할별 강제 규칙(구매자는 자기 이전 제안보다 낮게 못 부름, 판매자는 floor 밑 금지)이 있음.
 
 ---
 
@@ -405,6 +408,7 @@ P(t) = P_start + (P_limit − P_start) × (t/T)^(1/β)      t/T는 [0,1] clamp
 
 ### 🧭 확정 설계 결정 — 하이브리드 결정 = **하네스(Harness): box + autonomy 다이얼**
 > 출처: 팀 리뷰 로그 F0/F4/F5(2026-07) → 미팅 확정(2026-07). 이 절이 이전 "엔진이 단일 가격을 결정" 방향을 **대체**한다.
+LLM 최종 결정(§0.2, 2026-09-26 확인) 범위 안에서 clamp가 하한/상한 브레이크로 동작.
 
 **문제:** "가격은 LLM이 정한다"(§1.4·§5.4)는 *현재 구현*일 뿐 원칙이 아니다. 그렇다고 엔진이 단일 가격을 결정하면(순수 수학) — 어떤 AI를 쓰든 같은 값이 나와 **모델·스킬이 협상 품질을 못 바꾼다**(모델 선택·스킬 마켓의 가치 소멸). 반대로 LLM에 전권을 주면 모델·요청마다 흔들려 **불공정·비결정**.
 
@@ -464,10 +468,12 @@ aim   = clamp(aim, box.min, box.max)                # ★ 안전: box 안으로
 
 우선순위는 "실제 협상 품질에 미치는 영향" 기준.
 
+> **백로그 #10은 열린 할 일이다.** box [min,max] clamp + Referee HARD가 결정적 브레이크다. 둘 다 아직 실제로 차단하지 않는다(§5.5). AI가 가격을 더 결정할수록 결정적 브레이크(Referee HARD 규칙)는 더 필수다.
+
 | # | 갭 | 현재 | 목표(SOT) | 규모 |
 |---|-----|------|-----------|------|
-| 1 | 파라미터 사장 | beta·anchor_ratio만 작동 | 17개 필드 협상에 관여 | 🟠 (근본: engine-core 재연결) |
-| 2 | 효용함수 미사용 | 하드코딩 u_total, 프롬프트 미도달 | 사용자 weights 반영 → 결정 | 🟡 |
+| 1 | 파라미터 사장 | beta·anchor_ratio만 작동 | 17개 필드가 추천가·검증 보조에 관여. 최종 결정은 LLM | 🟠 |
+| 2 | 효용함수 미사용 | 하드코딩 u_total, 프롬프트 미도달 | 사용자 weights를 추천가·검증 보조에 반영 | 🟡 |
 | 3 | 연속 시간 미반영 | round 비율 근사 | 실 마감시각 + α·v_t_floor | 🟡 |
 | 4 | 상대모델 거침 | EMA 3버킷 | AI가 `OpponentEstimate` 추정 → box 조준점 이동(레버 A) | 🟠 |
 | 5 | 동적 β 없음 | β 고정 | 경쟁·상대반응 조정 | 🟡 |
@@ -475,7 +481,7 @@ aim   = clamp(aim, box.min, box.max)                # ★ 안전: box 안으로
 | 7 | 전술/미러링 없음 | suggested_tactic 텍스트만 | 전술 매트릭스 강제 | 🟡 |
 | 8 | 1:N 전체 dormant | 그룹 미생성 → 크로스프레셔·batchEvaluate·supersede·anti-sniping 도달 불가 | `/start` 그룹 생성 or 별도 트리거 | 🟠 |
 | 9 | 카테고리/IMEI 하드코딩 | 기본 스킬이 `electronics-iphone-pro-v1`(IMEI_REQUIRED 내장), 카테고리 무관 적용 | 카테고리별 스킬·term 일반화 (§2.3) | 🟡 |
-| 10 | Referee가 box 미강제 | floor까지만 clamp, HARD 'BLOCK' 라벨뿐 | **box [min,max] clamp** + HARD 실제 차단 | 🟡 |
+| 10 | Referee가 box 미강제 | floor까지만 clamp, `'BLOCK'`은 라벨뿐 | **box [min,max] clamp** + **HARD 실제 차단** (결정적 브레이크) | 🟡 |
 | 13 | 하네스 box 미배선 | LLM이 최종가 덮어씀(무제한, floor만 clamp) | 엔진 box·baseline을 LLM 하드 제약으로 + autonomy 다이얼 | 🟠 (결정부 핵심) |
 | 14 | intelligence 로그 부분 | coaching·utility·tokens 저장, delta/clamp/model/skill 없음 | 결정 trace 확장(RoundExplainability) → autonomy·모델·스킬 학습 | 🟢 |
 | 11 | 무결성 검증 미작동 | memo/체인 해시 write-only | verify 런타임 연결 + 온체인 앵커 | 🟡 |
@@ -512,8 +518,8 @@ aim   = clamp(aim, box.min, box.max)                # ★ 안전: box 안으로
 | StrategyParams | 결정이 실제 읽는 CoreMemory 서브셋 |
 | phase / status | 협상 국면(5) / 세션 생명주기(11) |
 | β (beta) | 양보 속도. 낮을수록 고집(Boulware) |
-| Coach | 매 라운드 추천가(LLM 앵커) 생성 |
-| Referee | LLM 결정 규칙 검증 (Validate) |
+| Coach | 매 라운드 추천가(보조, 타결가 아님) 생성 |
+| Referee | LLM 결정의 검증 보조 (Validate). box [min,max] clamp + HARD가 결정적 브레이크여야 하나 아직 미차단 (§5.5, #10) |
 | BATNA | 최선의 대안 (크로스프레셔 주입값) |
 
 ---
