@@ -335,7 +335,74 @@ The seller LLM (`decide.ts`) does not read `buyer_requested_strategy` or `buyer_
 
 ---
 
-## 8. Related docs
+## 9. `haggle_claim` (MCP) — pending CTO decision
+
+`haggle_claim` claims ownership of a published listing (a listing draft). It does not claim a negotiation session, and it is not a guest→account merge. **CTO decides. Current behavior stays until then.** This section does not pick an option.
+
+### Registration
+
+Registered in `apps/api/src/mcp/tools/index.ts:743-805` (tool name `"haggle_claim"`). Description string at `apps/api/src/mcp/tools/index.ts:745`.
+
+### Input and auth
+
+- **Input:** `claim_token` (`z.string().min(1)`) (`apps/api/src/mcp/tools/index.ts:747`).
+- **Auth/scope:** `requireActorWithScope("listings")` (`apps/api/src/mcp/tools/index.ts:750`) — the connected MCP user must hold the `listings` scope.
+
+### Service
+
+`claimListing` (`apps/api/src/services/draft.service.ts:1066-1101`):
+
+- Finds a draft whose `claimToken` matches and whose status is `"published"` (`draft.service.ts:1072-1075`). No such row → `invalid_token`.
+- Draft already has a `userId` → `already_claimed` (`draft.service.ts:1081-1083`).
+- `claimExpiresAt` has passed → `expired` (`draft.service.ts:1086-1088`).
+- Otherwise `UPDATE listing_drafts SET userId = caller, updatedAt` (`draft.service.ts:1091-1097`).
+
+**Side effects:** one DB write that makes the caller the listing's seller/owner. No money, no settlement, and no negotiation-session or deal-state change.
+
+**Note (observation, not a decision):** the `UPDATE` is keyed by draft id only, not `WHERE user_id IS NULL`, so the `already_claimed` check is read-then-write (not atomic). The claim token is not cleared after a successful claim.
+
+### Token source
+
+`publishDraft` mints a 24h claim token only when the draft has no owner (`apps/api/src/services/draft.service.ts:350-355`). Every current publish caller requires an owned draft:
+
+- MCP `haggle_publish_listing` uses `requireOwnedDraft` (`apps/api/src/mcp/tools/index.ts:295` tool, `:318`). An unowned draft is `DRAFT_UNCLAIMED` (`apps/api/src/mcp/tools/platform.ts:191-196`).
+- REST `POST /api/drafts/:id/publish` checks `draft.userId === user` (`apps/api/src/routes/drafts.ts:163-172`).
+- `createAndPublishOwnedListing` (`apps/api/src/services/draft.service.ts:63`, publish at `:95`).
+
+No live staging publish path was found that mints a new claim token. Legacy rows that already hold tokens were not checked in the DB — **not verified against DB**.
+
+### Relation to buyers
+
+A listing must be claimed (it must have a seller) before a buyer can start. Start returns **409** `LISTING_UNCLAIMED` (`apps/api/src/services/start-buyer-negotiation.service.ts:235-236`). Claiming is a seller-side action.
+
+### REST equivalents
+
+`apps/api/src/routes/claim.ts`:
+
+- `POST /api/claim` (`claim.ts:21`) calls the same `claimListing` (`claim.ts:33`). `requireAuth` only. Maps `invalid_token` → **404**, `expired` → **410**, `already_claimed` → **409** (`claim.ts:36-41`).
+- `POST /claim/negotiation-sessions` (`claim.ts:53`) is a different feature: guest-buyer session merge after sign-up. It requires a proof-of-possession per `guest_buyer_id` (`claim.ts:66-73`, **403** `POP_REQUIRED`) and moves `negotiation_sessions.buyer_id` and matching `settlement_approvals.buyer_id` / `terms_snapshot.buyer_id` to the new user, skipping sessions that already have a commerce order (`claim.ts:83-126`). There is no MCP tool for the session merge.
+
+PR #191 (Eng2, A1, open at time of writing) blocks both REST claim routes for MCP tokens. The MCP tool `haggle_claim` stays allowed (per PR #191).
+
+### Does an external buyer agent need `haggle_claim`?
+
+No. The tool claims listing (seller) ownership. The buyer flow never calls it. Buyer MCP needs are start / get / play / `answer_pause` / `hnp_*` / `create_checkout` / `get_order` / `get_shipment`. It matters only for a seller agent linking an unowned published listing, and no live publish path mints new tokens (see Token source). Not verified against DB.
+
+### Options
+
+Do not decide here. The CTO decides. Current state is unchanged until then.
+
+| Option | What it would change | Pros | Cons |
+| --- | --- | --- | --- |
+| **(a) Keep for MCP with constraints** | Keep the `listings` scope. Make the claim atomic (`WHERE user_id IS NULL`). Clear the token after use. Rate-limit. | No behavior change for seller agents. Parity with the ChatGPT-widget seller flow. | Keeps a token-bearer ownership transfer on the MCP surface. Inconsistent with #191 blocking the REST equivalent. |
+| **(b) Block for MCP tokens** | The tool returns an error, as the REST routes do under #191. | Consistent with A1. Smallest attack surface. Buyer flow unaffected. | Any seller-agent flow that relies on it breaks (none found on live publish paths). Needs a web claim path for legacy tokens. |
+| **(c) Move to web-only** | Remove the MCP tool. Claim via the web with a JWT session. | Ownership changes only through a human web session. Matches the M-2 "human on the web" spirit. | Removes an MCP capability. Docs and tests for the ChatGPT widget flow must be updated. |
+
+**Status: pending CTO. No change until decided.**
+
+---
+
+## 10. Related docs
 
 - [product-decisions-2026-09-07.md](./product-decisions-2026-09-07.md) — D1 / D2
 - [saved-address-confirm-sot.md](./saved-address-confirm-sot.md)
