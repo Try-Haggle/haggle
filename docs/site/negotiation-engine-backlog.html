@@ -324,10 +324,10 @@ applyFeatures(features, ctx, categoryRules) → { ctx', adjustments[], missing[]
   <details class="ticket">
     <summary><span class="ino">12</span><span class="it">HAGGLE-12 · 비용 계측 부분 구현 (쉬운 윈)</span><span class="chips"><span class="imp lo">⚪ 낮음</span><span class="eff">🟢 작음</span><span class="todo">아직 할 일</span></span></summary>
     <div class="tbody">
-      <div class="field"><div class="flabel">문제</div><div class="val">토큰은 실측 저장하나 <b>USD 비용은 계산만 하고 DB에 저장 안 함</b>, 세션당 집계도 없다. 단가 env 미설정이면 telemetry 비용은 null. 관측성 이슈(협상 품질 무관), 노력은 작음.</div></div>
-      <div class="field"><div class="flabel warn">현재 동작</div><div class="val"><code>usdCost = tokens/1000 × 0.0007</code> 계산·반환만, DB 미기록. 정확 비용은 <code>LLM_PRICE_DEEPSEEK_V4_PRO_*</code> env 설정 시에만.<span class="fileref">pipeline.ts:271 · llm-cost.ts</span></div></div>
-      <div class="field"><div class="flabel ok">목표</div><div class="val">단가 env 설정 + 라운드/세션 비용 저장 + 세션 합계 read model.</div></div>
-      <div class="field"><div class="flabel">손볼 곳</div><div class="val fileref">pipeline/executor(persist cost) · llm-telemetry · env 설정</div></div>
+      <div class="field"><div class="flabel">문제</div><div class="val">토큰은 실측 저장하나 <b>USD 비용은 계산만 하고 DB에 저장 안 함</b>, 세션당 집계도 없다. DeepSeek Flash/Pro telemetry 비용은 내장 단가표로 계산된다(env 불필요). 관측성 이슈(협상 품질 무관), 노력은 작음.</div></div>
+      <div class="field"><div class="flabel warn">현재 동작</div><div class="val"><code>usdCost = tokens/1000 × 0.0007</code> 계산·반환만, DB 미기록. DeepSeek Flash/Pro는 <code>llm-cost.ts</code> 내장 단가표(피크/오프피크 + cache hit/miss)로 계산하고 <code>LLM_PRICE_*</code>는 DeepSeek에 적용되지 않음; per-model(<code>LLM_PRICE_&lt;MODEL_KEY&gt;_*</code>)/global(<code>LLM_PRICE_INPUT_PER_1M_USD</code>/<code>LLM_PRICE_OUTPUT_PER_1M_USD</code>) env는 DeepSeek 외 모델에만; 알 수 없는 id는 global env(또는 그 id의 per-model env)가 있으면 그 단가, 없으면 null.<span class="fileref">pipeline.ts:271 · llm-cost.ts</span></div></div>
+      <div class="field"><div class="flabel ok">목표</div><div class="val">라운드/세션 비용 저장 + 세션 합계 read model.</div></div>
+      <div class="field"><div class="flabel">손볼 곳</div><div class="val fileref">pipeline/executor(persist cost) · llm-telemetry</div></div>
     </div>
   </details>
 </section>
