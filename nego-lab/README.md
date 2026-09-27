@@ -228,18 +228,22 @@ pnpm --filter @haggle/nego-lab clean --db --results      # 둘 다
 
 ## 6. 비용 모델
 
-`src/cost.ts`에 정의. 실측 기준값:
+`src/cost.ts`에 정의.
+
+현재 기본 모델은 DeepSeek Flash다(`deepseek-flash`, V4.1-Flash, 별칭 `deepseek-v4-flash`). 2026-09-27(#184)부터 전 구간 Flash. 1M 토큰: 피크(01:00–04:00·06:00–10:00 UTC) 입력 cache miss $0.30, cache hit $0.006, 출력 $1.20. 오프피크는 절반($0.15 / $0.003 / $0.60).
+
+아래 **라운드당 ≈ $0.01**과 표는 2026-07-17 V4 Pro reasoning(~2.4k 토큰/라운드, 대시보드 실측)이다. Flash로 다시 잰 숫자는 없다. `USD_PER_ROUND_CALL = 0.01`은 코드 그대로이고, 이 값을 보수적 상한으로 둔다.
 
 - 협상 1건 ≈ 최대 8라운드, 라운드당 1 DeepSeek 호출
-- **라운드당 ≈ $0.01** (DeepSeek V4 Pro reasoning, ~2.4k 토큰/라운드, 대시보드 실측)
+- **라운드당 ≈ $0.01** — Pro 시절(2026-07-17) 실측. 현재 Flash 단가가 아님. 상한으로 유지
 
-| 실행 | 협상 수 | 최대 비용 |
+| 실행 | 협상 수 | 최대 비용 (Pro 시절 상한) |
 |------|--------:|----------:|
 | A ×1 | 16 | ~$1.3 |
 | all ×1 | 32 | ~$2.6 |
 | all ×3 | 96 | ~$7.7 |
 
-> 실제로는 8라운드 전에 타결되는 경우가 많아 상한보다 싸다. 단가가 바뀌면
+> 실제로는 8라운드 전에 타결되는 경우가 많아 상한보다 싸다. 이 상한을 바꾸려면
 > `cost.ts`의 `USD_PER_ROUND_CALL`만 고치면 dry-run/러너 추정이 함께 갱신된다.
 
 ---
@@ -302,5 +306,5 @@ nego-lab/
 
 ---
 
-*실제 구현 최종 결정 경로는 `apps/api/src/negotiation/pipeline`이며 DeepSeek V4 Pro가
+*실제 구현 최종 결정 경로는 `apps/api/src/negotiation/pipeline`이며 DeepSeek Flash(`deepseek-flash`, 2026-09-27 전 구간 Flash, #184)가
 최종 가격/메시지를 정한다. 엔진 현황은 `docs/engine/SOT.md` 참고.*
