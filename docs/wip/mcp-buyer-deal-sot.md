@@ -10,6 +10,8 @@ Prefer this file over older MCP tool-name notes when they conflict on the stagin
 
 **Principle.** MCP follows the web's required pre-negotiation flow exactly (staging `9f2203d`, web as-is). Haggle adds no MCP-only required items and provides no new defaults beyond the web's.
 
+**외부 에이전트는 MCP 도구만 쓴다 (external agents use MCP tools only).** The official path is the MCP tools (`haggle_start_negotiation`, `haggle_answer_pause`, `haggle_play_next`, `hnp_*`, etc.). The required questions (`pendingBuyerQuestions()`) and the 409 rules apply there. REST called with an MCP token returns **403** `MCP_TOKEN_NOT_ALLOWED` per PR #191 (tip `dbaf9c5`), including `POST /negotiations/start` and `POST /negotiations/sessions/:id/pause/answer`, so REST cannot bypass those rules. See §7.
+
 ---
 
 ## 0. Scope and non-goals
@@ -86,7 +88,7 @@ This replaces today's dollar-float `budgetMax` and the silent drop of bad values
 
 Confirm-before-payment **cannot be turned off**. `AUTO_APPROVE` from MCP or HNP → **400** (do not ignore it silently).
 
-A deal started over MCP does **not** create an auto-`APPROVED` settlement. It waits for human approval. Payment is approved only by the human's web confirmation, never by an agent token. The web checkout flow is unchanged this round.
+A deal started over MCP does **not** create an auto-`APPROVED` settlement. It waits for human approval. Payment is approved only by the human's web confirmation, never by an agent token. The web checkout flow is unchanged this round. Stage 1's first item (§3; also §6) is this rule on the tool paths: stop `hnp_accept` and `haggle_play_next` / `haggle_play_until` from creating an auto-`APPROVED` settlement via `create_settlement`. Approval only by the human on the web.
 
 ### M-3 — Arrival deadline
 
@@ -144,6 +146,8 @@ This does not conflict with "an external agent needs no web-created Haggle agent
 ---
 
 ## 3. Stage 1 contract — MCP start
+
+**First item (M-2; §6).** Stop `hnp_accept` (scope check at `apps/api/src/mcp/tools/index.ts:635`; tool `:627-665`) and `haggle_play_next` / `haggle_play_until` (the pipeline dispatches `negotiation.agreed` at `apps/api/src/negotiation/pipeline/executor.ts:1185`) from creating an auto-`APPROVED` settlement via `create_settlement` (`apps/api/src/lib/action-handlers.ts:22-25` handler, `APPROVED` write at `:47-54`). Approval only by the human on the web.
 
 Passed through to the same start service (`start-buyer-negotiation.service.ts`). No new negotiation logic. Scope: `negotiate`.
 
@@ -266,6 +270,8 @@ Output rules are M-6: no draft, private, or deleted listings; no seller floor or
 - [ ] An MCP token → **403** `MCP_TOKEN_NOT_ALLOWED` on the A1 routes. One shared preHandler, `denyMcpToken`: every REST route that dispatches `negotiation.agreed`, `POST /payments/prepare`, mutating `/payments/:id/*` including authorize, settlement-approvals routes, and listing claim. MCP tool paths stay unchanged.
 - [ ] `GET /settlement-approvals/:id` with an MCP token → **403** `MCP_TOKEN_NOT_ALLOWED` (no `terms_hash`, no buyer address).
 - [ ] Every REST route that dispatches `negotiation.agreed`, with an MCP token → **403** `MCP_TOKEN_NOT_ALLOWED` (not only PATCH accept).
+- [ ] Widened #191 routes: an MCP token → **403** `MCP_TOKEN_NOT_ALLOWED` on confirm-delivery (`POST`, `apps/api/src/routes/orders.ts:178`), OAuth consent (`POST /oauth/consent`, `apps/api/src/routes/mcp-oauth.ts:98`), and the orders, addresses, shipments, disputes, settlement-releases, negotiations, and groups routes.
+- [ ] REST `POST /negotiations/start` and pause/answer with an MCP token → **403** `MCP_TOKEN_NOT_ALLOWED`.
 
 ### Nonce (A3)
 
@@ -275,10 +281,11 @@ Output rules are M-6: no draft, private, or deleted listings; no seller floor or
 
 ## 6. Delivery order
 
-1. **#189** merges first after QA.
-2. **A1** (Eng2) is top priority and runs in parallel. This docs PR is not blocked by it.
-3. **#189** follow-ups.
-4. Implementation: **Stage 1** (including A2, A3, M-2, and B-h), then **Stage 2**.
+1. **#189** merges after QA.
+2. **A1** (#191, Eng2) is top priority and runs in parallel. This docs PR is not blocked by it.
+3. **A2** (Eng2), right after #191 merge, ahead of #189 follow-ups.
+4. **#189** follow-ups.
+5. **Stage 1** (first item: stop the auto-`APPROVED` settlement from `hnp_accept` / `haggle_play_next` / `haggle_play_until` — M-2, §3; then the rest, including A3 and B-h), then **Stage 2**.
 
 ---
 
@@ -294,30 +301,26 @@ Causes: `apps/api/src/middleware/auth.ts:60-66` falls through to the MCP resolve
 
 #### Fix plan
 
-**A1** (Eng2, separate small PR, first, top priority). One shared Fastify preHandler, `denyMcpToken`: `tokenKind === "mcp"` → **403** `MCP_TOKEN_NOT_ALLOWED`. Apply it to:
+**A1** (Eng2, PR #191, separate small PR, first, top priority). One shared Fastify preHandler, `denyMcpToken`: `tokenKind === "mcp"` → **403** `MCP_TOKEN_NOT_ALLOWED`. Per PR #191 the deny set is wider than the original list. Apply it to:
 
 - every REST route that dispatches `negotiation.agreed` (not only PATCH accept)
 - `POST /payments/prepare`
 - the mutating `/payments/:id/*` routes, including authorize
 - the settlement-approvals routes: `GET /settlement-approvals/:id` (blocks `terms_hash` and buyer address) and the mutating routes
 - listing claim
+- confirm-delivery (`POST` at `apps/api/src/routes/orders.ts:178`)
+- OAuth consent (`POST /oauth/consent`, `apps/api/src/routes/mcp-oauth.ts:98`)
+- the orders, addresses, shipments, disputes, settlement-releases, negotiations, and groups routes
 
-MCP tool paths are unchanged in A1. This docs PR does not wait on A1 (§6).
+MCP tool paths are unchanged in A1. This docs PR does not wait on A1 (§6). External agents use MCP tools only (Principle): REST with an MCP token, including `POST /negotiations/start` and `POST /negotiations/sessions/:id/pause/answer`, returns **403** `MCP_TOKEN_NOT_ALLOWED` (PR #191, tip `dbaf9c5`) and cannot bypass `pendingBuyerQuestions()` or the 409 rules.
 
-**A2** (later, Stage 1). `requireAuth` rejects MCP tokens by default, with an allowlist of permitted routes. Write that allowlist in this doc **before** implementation. The placeholder below is not the allowlist.
+**A2 = default deny** (Eng2, right after #191 merges, ahead of the #189 follow-ups — §6). MCP tokens get **403** `MCP_TOKEN_NOT_ALLOWED` on all REST outside `/mcp`. The REST allowlist starts **empty**; entries are decided one by one.
+
+Per PR #191, `denyMcpToken` is also added to: settlement-releases buyer-confirm, `POST` / `DELETE /wallets`, complete-test-buffer, shipments event, reviewer vote.
+
+Payout wallet selection (primary-only; block payout if none) is a separate follow-up ticket (Eng2).
 
 **A3** (later, Stage 1). Replace the `buyer_ui_cta` string with a one-time nonce bound to the session and the user, issued by a JWT-only route. This supersedes the old `buyer_ui_cta` forgery-hardening residual. Removing the auto-`APPROVED` settlement for MCP-started deals, and discarding accept's `transaction_signals` (`AUTO_APPROVE` / `settled`; `apps/api/src/hnp/accept-session.ts:440-447`), are part of implementing **M-2**, not A3.
-
-#### A2 MCP-token REST allowlist — TBD
-
-**Not decided.** Do not implement A2 from this list. `haggle_*` / `hnp_*` tools call services directly and may need **no** REST allowlist entry. Candidates below are needs to decide, not permissions.
-
-| Candidate | Why it is listed | Status |
-| --- | --- | --- |
-| No REST entries | Tools call services in-process (`haggle_*`, `hnp_*`), so the allowlist may be empty | **TBD — not decided** |
-| REST reads mirroring `haggle_whoami`, `haggle_search_listings`, `haggle_get_listing`, `haggle_get_negotiation`, `haggle_get_order`, `haggle_get_shipment` | Only if a client calls REST instead of the tool | **TBD — not decided** |
-| REST writes mirroring `haggle_start_negotiation`, `haggle_play_next`, `haggle_answer_pause`, `hnp_submit_offer`, `haggle_reject_negotiation`, `haggle_builder_chat_turn` | Same. Tools already call the services | **TBD — not decided** |
-| A1 deny set: `negotiation.agreed` REST routes, `POST /payments/prepare`, mutating `/payments/:id/*` (including authorize), `GET /settlement-approvals/:id` and mutating settlement-approvals, and listing claim | Listed so they are not copied onto the allowlist by accident. Whether any of them is ever allowed is a separate decision. MCP tool paths, including `hnp_accept`, are not this row | **TBD — not decided** |
 
 ### B — Passed
 
@@ -335,7 +338,7 @@ The seller LLM (`decide.ts`) does not read `buyer_requested_strategy` or `buyer_
 
 ---
 
-## 9. `haggle_claim` (MCP) — pending CTO decision
+## 8. `haggle_claim` (MCP) — pending CTO decision
 
 `haggle_claim` claims ownership of a published listing (a listing draft). It does not claim a negotiation session, and it is not a guest→account merge. **CTO decides. Current behavior stays until then.** This section does not pick an option.
 
@@ -402,7 +405,7 @@ Do not decide here. The CTO decides. Current state is unchanged until then.
 
 ---
 
-## 10. Related docs
+## 9. Related docs
 
 - [product-decisions-2026-09-07.md](./product-decisions-2026-09-07.md) — D1 / D2
 - [saved-address-confirm-sot.md](./saved-address-confirm-sot.md)
