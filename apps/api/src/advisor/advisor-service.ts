@@ -16,6 +16,7 @@
 
 import type { Database } from "@haggle/db";
 import { advisorMessages, and, desc, eq, inArray } from "@haggle/db";
+import { getDefaultDeepSeekModel } from "../negotiation/decide-model.js";
 import { buildCanaryInstruction, generateCanary } from "../negotiation/guards/prompt-guard.js";
 import { resolveAdvisorCanarySecret } from "./advisor-canary.js";
 import { assembleAdvisorContext } from "./advisor-context.js";
@@ -270,7 +271,7 @@ export async function chat(
 
   const advisorMsg = await saveMessage(db, dispute_id, advisorRole(user_role), finalContent, {
     tokens_used: llmResponse.usage.prompt_tokens + llmResponse.usage.completion_tokens,
-    model: process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro",
+    model: getDefaultDeepSeekModel(),
     cost_usd: costUsd,
     strength,
     blocked: !outputGuard.safe,

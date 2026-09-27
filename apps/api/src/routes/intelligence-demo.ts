@@ -3,6 +3,7 @@ import { type Database, sql } from "@haggle/db";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { callLLM } from "../negotiation/adapters/deepseek-client.js";
+import { getDefaultDeepSeekModel } from "../negotiation/decide-model.js";
 import { getAgentVoiceProfile } from "../negotiation/negotiation-agent-voice-profiles.js";
 import {
   type AdvisorCandidatePlan,
@@ -1284,7 +1285,7 @@ function buildNegotiationAgentBuilderTurnCost(usage: {
   const estimatedUsd = prompt * INPUT_TOKEN_USD + completion * OUTPUT_TOKEN_USD;
 
   return {
-    model: process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro",
+    model: getDefaultDeepSeekModel(),
     tokens: {
       prompt,
       completion,

@@ -58,10 +58,19 @@
 
 2026-09-27 정행 결정: $100 이상 포함 전 구간 V4.1-Flash. 이유: AA 지능지수 Flash 39 vs Pro 36, 속도 약 2.5배, 원가 약 1/4, 동시성 2500 vs 500. 리스크: 사실 정확도(AA-Omniscience) 약함 — 가격 clamp·서버 검증으로 완화.
 
+- 모든 LLM 경로(빌더, advisor, 분쟁 T1 resolution assessor, 데모)도 기본 Flash.
+- 모델 env(`DEEPSEEK_MODEL` / `DEEPSEEK_FLASH_MODEL` / `BUILDER_LLM_MODEL` / `DISPUTE_AI_*`)는 Flash id만 허용. 빈 값은 미설정. Pro·알 수 없는 값은 경고 후 `deepseek-flash`.
+- `DEEPSEEK_MODEL`은 일반 기본(기본 `deepseek-flash`). Pro id는 `DEEPSEEK_PRO_MODEL`.
+- 새 세션: 리스팅 `seller_requested_model`, 클라이언트 스냅샷의 `allowed_model` / `pro_model_credit`, 시작 body의 `requested_model` / `pro_model_credit`는 권한이 아님 → Flash.
+- 진행 중 세션에 이미 저장된 Pro는 유지.
+- 알 수 없는 모델 id 비용은 null(추정 안 함).
+- 크레딧 $100 티어(Pro 10 / Flash 4)는 정행 결정 대기로 변경 없음.
+- 판매자 모델 업그레이드(+5 크레딧)는 향후.
+
 | 모델 id | env | 언제 고르나 |
 |---------|-----|-------------|
 | `deepseek-flash` | `DEEPSEEK_FLASH_MODEL`, 별칭 `deepseek-v4-flash` | 모든 협상 턴 기본 |
-| `deepseek-v4-pro` | `DEEPSEEK_MODEL` | 코드 폴백·서버가 명시 허용한 경우만, 기본 호출 0 |
+| `deepseek-v4-pro` | `DEEPSEEK_PRO_MODEL` | 코드 폴백·서버가 명시 허용한 경우만, 기본 호출 0 |
 
 > 대체됨 (2026-09-27): 아래 $100 임계 표는 역사 기록이다. 기본 호출은 호가로 Pro를 고르지 않는다.
 

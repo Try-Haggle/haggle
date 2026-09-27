@@ -372,9 +372,31 @@ describe("dispute AI API service", () => {
     expect(completeJson).toHaveBeenCalledTimes(2);
   });
 
-  it("uses a stronger default model for Resolution Assessor than Case Guide", () => {
-    expect(resolveDisputeAiModel("resolution_assessor")).toBe("deepseek-v4-pro");
-    expect(resolveDisputeAiModel("case_guide")).toBe("deepseek-v4-flash");
+  it("defaults both dispute AI roles to Flash", () => {
+    vi.stubEnv("DISPUTE_AI_RESOLUTION_ASSESSOR_MODEL", "");
+    vi.stubEnv("DISPUTE_AI_CASE_GUIDE_MODEL", "");
+    vi.stubEnv("DISPUTE_AI_MODEL", "");
+    vi.stubEnv("DEEPSEEK_MODEL", "");
+    vi.stubEnv("DEEPSEEK_FLASH_MODEL", "");
+    expect(resolveDisputeAiModel("resolution_assessor")).toBe("deepseek-flash");
+    expect(resolveDisputeAiModel("case_guide")).toBe("deepseek-flash");
+    vi.unstubAllEnvs();
+  });
+
+  it("rejects a Pro dispute AI env id and still lets explicit options win", () => {
+    vi.stubEnv("DISPUTE_AI_RESOLUTION_ASSESSOR_MODEL", "deepseek-v4-pro");
+    vi.stubEnv("DISPUTE_AI_CASE_GUIDE_MODEL", "");
+    vi.stubEnv("DISPUTE_AI_MODEL", "");
+    vi.stubEnv("DEEPSEEK_MODEL", "");
+    vi.stubEnv("DEEPSEEK_FLASH_MODEL", "");
+    expect(resolveDisputeAiModel("resolution_assessor")).toBe("deepseek-flash");
+    expect(
+      resolveDisputeAiModel("resolution_assessor", {
+        resolutionAssessorModel: "deepseek-v4-pro",
+      }),
+    ).toBe("deepseek-v4-pro");
+    expect(resolveDisputeAiModel("case_guide", { model: "explicit-model" })).toBe("explicit-model");
+    vi.unstubAllEnvs();
   });
 
   it("allows role-specific dispute AI model overrides", async () => {

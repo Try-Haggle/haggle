@@ -66,6 +66,7 @@ function modelEnvKey(model: string): string {
 
 export function isDeepSeekV4Flash(model: string): boolean {
   const id = model.toLowerCase();
+  if (id.includes("pro")) return false;
   return id.includes("deepseek-v4-flash") || id.includes("deepseek-flash");
 }
 
@@ -113,6 +114,7 @@ export function estimateLlmCostUsd(
 ): LlmCostEstimate | null {
   if (!model || !usage) return null;
 
+  // Unknown model ids stay unpriced (null). Do not default them to Flash rates.
   const deepSeekRates = isDeepSeekV4Pro(model)
     ? DEEPSEEK_V4_PRO_RATES
     : isDeepSeekV4Flash(model)

@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { EventDispatcher } from "../lib/event-dispatcher.js";
 import { executeGroupOrchestration } from "../lib/group-executor.js";
 import { requireAuth } from "../middleware/require-auth.js";
+import { stripClientModelEntitlement } from "../negotiation/decide-model.js";
 import {
   createGroup,
   getGroupById,
@@ -149,7 +150,7 @@ export function registerGroupRoutes(
         buyerId: data.buyer_id,
         sellerId: data.seller_id,
         counterpartyId: data.counterparty_id,
-        negotiationAgentSnapshot: data.negotiation_agent_snapshot,
+        negotiationAgentSnapshot: stripClientModelEntitlement(data.negotiation_agent_snapshot),
         groupId: group.id,
         expiresAt: data.expires_at ? new Date(data.expires_at) : undefined,
       });

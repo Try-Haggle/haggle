@@ -112,8 +112,24 @@ describe("llm-cost", () => {
     }
     expect(isDeepSeekV4Flash("deepseek-v4-pro")).toBe(false);
     expect(isDeepSeekV4Flash("deepseek-v4-pro-custom")).toBe(false);
+    expect(isDeepSeekV4Flash("deepseek-flash-pro")).toBe(false);
+    expect(isDeepSeekV4Pro("deepseek-flash-pro")).toBe(false);
     expect(isDeepSeekV4Pro("deepseek-v4-pro")).toBe(true);
     expect(isDeepSeekV4Pro("deepseek-v4-pro-custom")).toBe(true);
+    expect(
+      estimateLlmCostUsd("deepseek-flash-pro", {
+        promptTokens: 1_000_000,
+        completionTokens: 1_000_000,
+        totalTokens: 2_000_000,
+      }),
+    ).toBeNull();
+    expect(
+      estimateLlmCostUsd("not-a-known-model", {
+        promptTokens: 1,
+        completionTokens: 1,
+        totalTokens: 2,
+      }),
+    ).toBeNull();
   });
 
   it("prices Flash and the legacy alias at the published peak and off-peak rates", () => {

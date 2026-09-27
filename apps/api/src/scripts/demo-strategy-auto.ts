@@ -4,7 +4,7 @@
  * 1) 판매자(Bob) 리스팅 + 전략 미리 생성
  * 2) 구매자(Alice) 전략 생성
  * 3) 엔진(executeRound)이 양쪽 자동 협상 — 라운드별 결정
- * 4) DeepSeek V4 Pro가 양쪽 자연어 메시지 생성
+ * 4) DeepSeek Flash가 양쪽 자연어 메시지 생성
  * 5) HTML 대시보드 출력 (전략 시각화 + 라운드별 프로토콜)
  *
  * Usage:
@@ -22,10 +22,12 @@ import {
   type RoundResult,
 } from "@haggle/engine-session";
 
+import { getDefaultDeepSeekModel } from "../negotiation/decide-model.js";
+
 // ─── Config ──────────────────────────────────────────────────
 
 const DEEPSEEK_API_BASE = "https://api.deepseek.com/v1";
-const MODEL = process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro";
+const MODEL = getDefaultDeepSeekModel();
 const PRICE_INPUT_PER_M = 0.2;
 const PRICE_OUTPUT_PER_M = 0.5;
 

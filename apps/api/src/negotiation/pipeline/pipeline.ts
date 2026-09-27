@@ -23,7 +23,7 @@ import type {
   UnderstandOutput,
 } from "./types.js";
 
-// Token cost estimate: ~$0.0007 per 1K tokens (deepseek-v4-pro avg of cache-miss input + output)
+// Token cost estimate: ~$0.0007 per 1K tokens (rough estimate; Flash is the default model now)
 const USD_PER_1K_TOKENS = 0.0007;
 
 /**
