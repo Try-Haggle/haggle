@@ -35,4 +35,4 @@ pnpm --filter @haggle/nego-lab compare-fewshot -- --group F --repeat 1 --yes
 
 반복 1회면 협상 4건(스테이징만), 상한 약 **$0.32**. `--retail-ab`면 8건, 상한 약 **$0.64**.
 
-각 건과 잡 끝에 DeepSeek 실측 토큰·캐시 히트·추정 요금(`tokens=… $… cache …%`)을 찍는다. 요금은 V4 Pro 피크/오프피크 + cache hit/miss. 대시보드 청구와 1센트 단위로 다를 수 있다.
+각 건과 잡 끝에 DeepSeek 실측 토큰·캐시 히트·추정 요금(`tokens=… $… cache …%`)을 찍는다. 요금은 호출 모델 id를 `estimateLlmCostUsd`에 넣어 고른다(기본 `deepseek-flash`: 피크/오프피크 + cache hit/miss). 대시보드 청구와 1센트 단위로 다를 수 있다.

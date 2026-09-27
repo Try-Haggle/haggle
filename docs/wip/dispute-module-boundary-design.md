@@ -108,7 +108,8 @@ Cost tracking:
 - `withLLMTelemetry` emits `costUsd` and `costMinorUsd` in structured logs and persists `cost_minor` in DB telemetry mode;
 - pricing is resolved from model-specific env overrides first, then global overrides, then built-in defaults for known xAI models;
 - supported overrides are `LLM_PRICE_<MODEL>_INPUT_PER_1M_USD`, `LLM_PRICE_<MODEL>_OUTPUT_PER_1M_USD`, `LLM_PRICE_INPUT_PER_1M_USD`, and `LLM_PRICE_OUTPUT_PER_1M_USD`;
-- built-in prices are estimates and must be updated or overridden when provider pricing changes.
+- these overrides do not apply to DeepSeek Pro/Flash ids (`deepseek-v4-pro`, `deepseek-flash`, `deepseek-v4-flash`): those use the built-in peak/off-peak + cache hit/miss table and ignore `LLM_PRICE_*` (no override; a price change is a code change);
+- built-in xAI prices are estimates and must be updated or overridden when provider pricing changes.
 
 Video evidence:
 

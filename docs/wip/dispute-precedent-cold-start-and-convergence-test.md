@@ -2,7 +2,7 @@
 
 ## 목적과 범위
 
-이 문서는 staging에서 실제 PostgreSQL, DeepSeek V4 Pro, 분쟁 API를 사용해 다음 두 질문을 검증하는 실행 기준이다.
+이 문서는 staging에서 실제 PostgreSQL, DeepSeek Flash(`deepseek-flash`, 2026-09-27 전 구간 Flash, #184), 분쟁 API를 사용해 다음 두 질문을 검증하는 실행 기준이다.
 
 1. 승인 판례가 없을 때도 Resolution Assessor가 플랫폼 기준과 현재 증거만으로 안전하게 판단하는가?
 2. 승인 판례가 축적될수록 같은 사실에 대한 판단이 안정되면서도 다수 결과 하나로 편향되지 않는가?

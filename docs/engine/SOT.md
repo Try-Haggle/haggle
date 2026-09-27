@@ -40,7 +40,7 @@ Haggle 협상 엔진은 **AI 에이전트가 사람 대신 가격을 협상**할
 2. **제한된 출력** — 모든 효용 차원 `V ∈ [0,1]`, `U_total ∈ [0,1]`.
 3. **역할 대칭** — 구매자/판매자 수식 구조 동일, 파라미터 방향만 반대.
 4. **양쪽 공정** — 구매자 AI ≠ 플랫폼 AI. 크로스프레셔도 실제 BATNA만 사용, 허위 금지.
-5. **저비용** — Codec 압축 + DeepSeek V4 Pro. 고정 비용을 가정하지 않고 실측 token/latency와 설정된 모델 단가로 관리.
+5. **저비용** — Codec 압축 + DeepSeek Flash(`deepseek-flash`, 2026-09-27 전 구간 Flash, #184). 고정 비용을 가정하지 않고 실측 token/latency와 설정된 모델 단가로 관리.
 6. **Stateless 엔진** — 수평 확장 가능.
 
 > **현황 총평:** ✅ 역할 분담은 위 결정권과 같다. 프로덕션에서 최종 가격·메시지는 LLM이 결정하고, 엔진은 추천가·검증 보조를 제공한다(§1.3·§1.4). *결정론·제한출력·역할대칭*은 추천가·검증의 수학 레이어(`engine-core`) 성질이지, 최종 결정을 엔진으로 되돌릴 이유가 아니다. 이 분담은 known issue가 아니다. 열린 할 일은 box [min,max] clamp + Referee HARD가 실제로 차단하지 않는 것이다(§5.5, 백로그 #10). AI가 가격을 더 결정할수록 결정적 브레이크(Referee HARD 규칙)는 더 필수다.
@@ -78,7 +78,7 @@ POST /negotiations/start · /sessions/:id/offers · MCP hnp_submit_offer
       ├ reconstructCoreMemory            상태 → 라운드 작업본
       ├ computeCoachingAsync             추천가·유틸 스냅샷 (referee/coach.ts)
       └ executePipeline                  6-Stage (pipeline/pipeline.ts)
-            └ decide → LLM(DeepSeek V4 Pro)이 최종 가격·메시지 작성
+            └ decide → LLM(DeepSeek Flash, deepseek-flash, 2026-09-27 전 구간, #184)이 최종 가격·메시지 작성
 ```
 - ✅ 6-Stage 파이프라인은 실제로 구현·가동 (프로덕션 유일 경로).
 - ✅ Stage 1 Understand: 설계는 LLM 파싱이나 **현재는 정규식/휴리스틱**. 구조화 오퍼(숫자)면 우회. → 라운드당 실제 LLM 콜은 **Stage 3 Decide 최대 1회**.
@@ -372,7 +372,7 @@ P(t) = P_start + (P_limit − P_start) × (t/T)^(1/β)      t/T는 [0,1] clamp
 - ✅ Decide 모델은 카탈로그에서 id를 고른다(`decide-model.ts`). Flash/Pro는 지금 칸이 둘인 것뿐이다. 표는 [`decide-model-routing.md`](./decide-model-routing.md). 타임아웃 기본 180초(`DEEPSEEK_TIMEOUT_MS`, 10–300초). temperature 기본 0.5 — 샘플러일 뿐 추론 스위치가 아니다. `DEEPSEEK_TEMPERATURE` 또는 `StageConfig.temperature`로 바꾼다(`0`–`2`). DB `reasoning_used`는 호환용으로 false.
 - ✅ 프롬프트용 `S:/B:/C:`는 `decide-user-prompt.ts`가 `MEMO:` 아래로 넣는다. `memo-codec.ts`의 `NS:/PT:/RM:`는 persist 해시 전용이다. `context.ts`의 `memo_snapshot`은 해시 입력이지 Decide 프롬프트가 아니다. 계약 [`decide-prompt-contract.md`](./decide-prompt-contract.md).
 - ✅ 토큰은 DeepSeek API 실측(`usage.prompt_tokens/completion_tokens`) → 라운드별 `negotiation_rounds.llm_tokens_used` 저장. latency와 token usage는 telemetry에도 수집된다.
-- 🚧 **정확한 USD 비용은 단가 설정이 필요** — `LLM_PRICE_DEEPSEEK_V4_PRO_INPUT_PER_1M_USD`와 `LLM_PRICE_DEEPSEEK_V4_PRO_OUTPUT_PER_1M_USD`(또는 global 가격 env)가 모두 있어야 telemetry cost가 계산된다. 미설정 시 null이다. pipeline의 `tokens/1000 × 0.0007`은 입출력 미분리 러프 추정이며 DB에 저장되지 않는다.
+- ✅ **DeepSeek USD 비용은 코드 내장 단가표** — Flash/Pro id는 `estimateLlmCostUsd`가 피크/오프피크 + cache hit/miss 표(`DEEPSEEK_V4_FLASH_RATES` / `DEEPSEEK_V4_PRO_RATES`, `llm-cost.ts`)로 계산하고 바로 반환한다. `LLM_PRICE_*`는 읽지 않는다. 기본은 Flash(`deepseek-flash`, 별칭 `deepseek-v4-flash`). 피크(01:00–04:00·06:00–10:00 UTC) 1M 토큰은 입력 cache miss $0.30, cache hit $0.006, 출력 $1.20이고, 오프피크는 절반($0.15 / $0.003 / $0.60)이다. `LLM_PRICE_<MODEL_KEY>_INPUT_PER_1M_USD` / `_OUTPUT_PER_1M_USD`에서 MODEL_KEY는 모델 id를 대문자로 바꾸고 영숫자 외 문자를 `_`로 바꾼 값이다(`deepseek-flash` → `DEEPSEEK_FLASH`, `deepseek-v4-flash` → `DEEPSEEK_V4_FLASH`). `LLM_PRICE_DEEPSEEK_FLASH_*`, `LLM_PRICE_DEEPSEEK_V4_FLASH_*`, `LLM_PRICE_DEEPSEEK_V4_PRO_*` 이름은 그 패턴으로 생기지만 현재 DeepSeek id에는 적용되지 않는다(override 불가). 단가를 바꾸려면 코드를 고쳐야 한다. per-model env 다음 global `LLM_PRICE_INPUT_PER_1M_USD` / `LLM_PRICE_OUTPUT_PER_1M_USD`, 그다음 `DEFAULT_MODEL_PRICING`인 `resolveLlmModelPricing`은 DeepSeek 외 모델(예: grok-*)에만 탄다. 알 수 없는 모델 id는 cost null이다. pipeline의 `tokens/1000 × 0.0007`은 입출력 미분리 러프 추정이며 DB에 저장되지 않는다.
 - 🚧 **세션당 정확 비용 집계 없음** — `LLM_TELEMETRY=db`에서 호출별 row는 저장하지만 세션 합계 read model이 없다. DB telemetry의 `reasoningUsed`도 현재 false로 고정되어 실제 요청 모드와 어긋날 수 있다.
 
 ---
@@ -487,7 +487,7 @@ aim   = clamp(aim, box.min, box.max)                # ★ 안전: box 안으로
 | 13 | 하네스 box 미배선 | LLM이 최종가 덮어씀(무제한, floor만 clamp) | 엔진 box·baseline을 LLM 하드 제약으로 + autonomy 다이얼 | 🟠 (결정부 핵심) |
 | 14 | intelligence 로그 부분 | coaching·utility·tokens 저장, delta/clamp/model/skill 없음 | 결정 trace 확장(RoundExplainability) → autonomy·모델·스킬 학습 | 🟢 |
 | 11 | 무결성 검증 미작동 | memo/체인 해시 write-only | verify 런타임 연결 + 온체인 앵커 | 🟡 |
-| 12 | 비용 계측 부분 구현 | 실측 token/latency 있음, 단가 미설정 시 비용 null, 세션 집계 없음 | DeepSeek 단가 설정 + reasoning mode 전달 + 세션 집계 | 🟢 |
+| 12 | 비용 계측 부분 구현 | 실측 token/latency 있음. DeepSeek 비용은 내장 단가표(env override 불가). 세션 집계 없음 | reasoning mode 전달 + 세션 집계 | 🟢 |
 | — | **조사 백로그** | 협상 엔진 주요 경로 코드 검증 **완료.** 남은 미확인 없음(신규 발견 시 추가) | — | — |
 
 ---
