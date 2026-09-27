@@ -1,15 +1,20 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api-client";
+import { LocaleProvider } from "@/providers/locale-provider";
 import type { SessionResponse } from "./negotiation-session-data";
 
 const mocks = vi.hoisted(() => ({
   refresh: vi.fn(),
   get: vi.fn(),
   post: vi.fn(),
-  control: {
-    pendingTarget: null as "manual" | "auto" | null,
-  },
+  patch: vi.fn(),
+  /**
+   * `real` uses the production hook (pendingTarget moves with queue/PATCH).
+   * `snapshot-gap` drops pendingTarget when local inflight clears, which is the
+   * window the post-POST `manualHandoff` snapshot exists to cover.
+   */
+  controlMode: "real" as "real" | "snapshot-gap",
 }));
 
 vi.mock("next/navigation", () => ({
@@ -17,30 +22,80 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/components/control-mode/control-mode-panel", () => ({
-  ControlModePanel: () => <div data-testid="control-mode-panel" />,
+  ControlModePanel: (props: {
+    controller?: {
+      requestMode?: (mode: "auto" | "manual") => void;
+      ownMode?: string;
+      pendingTarget?: string | null;
+    };
+  }) => (
+    <div data-testid="control-mode-panel">
+      <span data-testid="control-own-mode">{props.controller?.ownMode}</span>
+      <span data-testid="control-pending">{props.controller?.pendingTarget ?? "none"}</span>
+      <button type="button" onClick={() => props.controller?.requestMode?.("manual")}>
+        Switch to Manual
+      </button>
+      <button type="button" onClick={() => props.controller?.requestMode?.("auto")}>
+        Switch to Auto
+      </button>
+    </div>
+  ),
 }));
 
-vi.mock("@/hooks/use-session-control-mode", () => ({
-  useSessionControlMode: (opts: {
+vi.mock("@/hooks/use-session-control-mode", async (importOriginal) => {
+  const React = await import("react");
+  const actual = await importOriginal<typeof import("@/hooks/use-session-control-mode")>();
+
+  function useSnapshotGap(opts: {
+    localInflight: boolean;
     serverSession?: { buyer_control_mode?: string | null } | null;
-  }) => {
+  }) {
+    const pendingRef = React.useRef<"manual" | "auto" | null>(null);
+    const prevInflight = React.useRef(opts.localInflight);
+    const [, setVersion] = React.useState(0);
+    // Same render that publishes localInflight=false drops the queued target,
+    // so the post-POST check can no longer see it on the live ref.
+    if (prevInflight.current && !opts.localInflight) {
+      pendingRef.current = null;
+    }
+    prevInflight.current = opts.localInflight;
     const isManual = opts.serverSession?.buyer_control_mode === "manual";
+    const requestMode = (next: "auto" | "manual") => {
+      pendingRef.current = next;
+      setVersion((version) => version + 1);
+    };
     return {
       enabled: true,
       party: "buyer" as const,
       ownMode: isManual ? ("manual" as const) : ("auto" as const),
       peerMode: "auto" as const,
-      pendingTarget: mocks.control.pendingTarget,
-      inflight: false,
+      pendingTarget: pendingRef.current,
+      inflight: opts.localInflight,
       syncState: "idle" as const,
       error: null,
+      insufficientCredits: null,
       isManual,
       isAuto: !isManual,
-      requestMode: () => undefined,
-      toggle: () => undefined,
+      failedTarget: null,
+      manualSwitchFailed: false,
+      requestMode,
+      toggle: () => requestMode(isManual ? "auto" : "manual"),
+      clearFailure: () => undefined,
+      retry: () => undefined,
     };
-  },
-}));
+  }
+
+  return {
+    useSessionControlMode: (opts: Parameters<typeof actual.useSessionControlMode>[0]) => {
+      const real = actual.useSessionControlMode({
+        ...opts,
+        enabled: mocks.controlMode === "snapshot-gap" ? false : opts.enabled,
+      });
+      const gap = useSnapshotGap(opts);
+      return mocks.controlMode === "snapshot-gap" ? gap : real;
+    },
+  };
+});
 
 vi.mock("@/hooks/use-negotiation-ws", () => ({
   useNegotiationWs: () => ({ connectionMode: "polling" }),
@@ -48,13 +103,15 @@ vi.mock("@/hooks/use-negotiation-ws", () => ({
 
 vi.mock("@/lib/api-client", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/api-client")>();
-  return { ...original, api: { get: mocks.get, post: mocks.post } };
+  return { ...original, api: { get: mocks.get, post: mocks.post, patch: mocks.patch } };
 });
 
 import { LiveNegotiation } from "./live-negotiation";
 
 beforeEach(() => {
-  mocks.control.pendingTarget = null;
+  mocks.controlMode = "real";
+  mocks.patch.mockReset();
+  mocks.patch.mockResolvedValue({ buyer_control_mode: "manual", seller_control_mode: "auto" });
 });
 
 function payload(status = "ACTIVE", rounds = 1): SessionResponse {
@@ -547,7 +604,6 @@ describe("LiveNegotiation — switching Auto off during a round", () => {
     mocks.refresh.mockReset();
     mocks.get.mockReset();
     mocks.post.mockReset();
-    mocks.control.pendingTarget = null;
     window.sessionStorage.clear();
     mocks.get.mockReturnValue(new Promise(() => undefined));
   });
@@ -601,20 +657,33 @@ describe("LiveNegotiation — switching Auto off during a round", () => {
   });
 
   it("does not send another auto-play round when Manual is queued during an in-flight POST", async () => {
-    const initial = payload("CREATED", 0);
+    // pendingTarget is manual only while the POST is in flight. The render that
+    // clears local inflight drops it, so the live ref is false at the post-POST
+    // check. Stopping depends on the manualHandoff snapshot taken before that.
+    mocks.controlMode = "snapshot-gap";
+    const running = payload("ACTIVE", 1);
     let resolvePost: ((value: unknown) => void) | undefined;
-    mocks.get.mockReset().mockResolvedValue(payload("ACTIVE", 1));
+    let releaseReload: ((value: SessionResponse) => void) | undefined;
+    let gets = 0;
+    mocks.get.mockReset().mockImplementation(() => {
+      gets += 1;
+      if (gets === 1) return Promise.resolve(running);
+      return new Promise<SessionResponse>((resolve) => {
+        releaseReload = resolve;
+      });
+    });
     mocks.post.mockImplementation(
       () =>
         new Promise((resolve) => {
           resolvePost = resolve;
         }),
     );
-    const view = render(<LiveNegotiation initialPayload={initial} />);
+    render(<LiveNegotiation initialPayload={payload("CREATED", 0)} />);
 
     await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1));
-    mocks.control.pendingTarget = "manual";
-    view.rerender(<LiveNegotiation initialPayload={initial} />);
+    expect(screen.getByTestId("control-pending")).toHaveTextContent("none");
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Manual" }));
+    expect(screen.getByTestId("control-pending")).toHaveTextContent("manual");
 
     await act(async () => {
       resolvePost?.({
@@ -622,11 +691,63 @@ describe("LiveNegotiation — switching Auto off during a round", () => {
         session_status: "ACTIVE",
         current_round: 1,
       });
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(screen.getByTestId("control-pending")).toHaveTextContent("none"));
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      releaseReload?.(running);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("control-pending")).not.toHaveTextContent("manual");
+    expect(screen.queryByText(ROUND_FAILED)).not.toBeInTheDocument();
+  });
+
+  it("does not POST auto-play again when Manual is pressed during a concurrent-modification retry", async () => {
+    const running = payload("CREATED", 0);
+    let rejectPost: ((reason: unknown) => void) | undefined;
+    let resolvePatch: ((value: unknown) => void) | undefined;
+    mocks.get.mockReset().mockResolvedValue(running);
+    mocks.post.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectPost = reject;
+        }),
+    );
+    mocks.patch.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePatch = resolve;
+        }),
+    );
+    render(<LiveNegotiation initialPayload={running} />);
+
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Manual" }));
+    expect(mocks.patch).not.toHaveBeenCalled();
+    expect(screen.getByTestId("control-pending")).toHaveTextContent("manual");
+
+    await act(async () => {
+      rejectPost?.(new ApiError(409, "CONCURRENT_MODIFICATION"));
+    });
+    await waitFor(() => expect(mocks.patch).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("control-pending")).toHaveTextContent("manual");
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 800));
     });
 
     expect(mocks.post).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(ROUND_FAILED)).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolvePatch?.({ buyer_control_mode: "manual", seller_control_mode: "auto" });
+    });
   });
 
   it("still shows the round error for an internal auto-play failure", async () => {
@@ -645,5 +766,211 @@ describe("LiveNegotiation — switching Auto off during a round", () => {
 
     expect(await screen.findByText(ROUND_FAILED)).toBeInTheDocument();
     expect(screen.queryByTestId("buyer-manual-action-bar")).not.toBeInTheDocument();
+  });
+});
+
+function renderLive(ui: SessionResponse) {
+  return render(
+    <LocaleProvider>
+      <LiveNegotiation initialPayload={ui} />
+    </LocaleProvider>,
+  );
+}
+
+/**
+ * Manual PATCH rejected while a concurrent-modification retry is waiting.
+ * Auto-play must stay stopped (no automatic runner restart) until the buyer chooses.
+ */
+describe("LiveNegotiation — Manual PATCH failure", () => {
+  beforeEach(() => {
+    mocks.refresh.mockReset();
+    mocks.get.mockReset();
+    mocks.post.mockReset();
+    window.sessionStorage.clear();
+    mocks.get.mockResolvedValue(payload("ACTIVE", 0));
+  });
+
+  async function failManualDuringRetry() {
+    let rejectPost: ((reason: unknown) => void) | undefined;
+    mocks.post.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectPost = reject;
+        }),
+    );
+    mocks.patch.mockRejectedValue(new Error("network down"));
+    renderLive(payload("CREATED", 0));
+
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Manual" }));
+    await act(async () => {
+      rejectPost?.(new ApiError(409, "CONCURRENT_MODIFICATION"));
+    });
+
+    const notice = await screen.findByTestId("manual-switch-failed");
+    expect(within(notice).getByText("Manual switch failed")).toBeInTheDocument();
+    expect(within(notice).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(within(notice).getByRole("button", { name: "Continue Auto" })).toBeInTheDocument();
+    await waitFor(() => expect(mocks.patch).toHaveBeenCalled());
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 800));
+    });
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("control-own-mode")).toHaveTextContent(/^auto$/);
+    return notice;
+  }
+
+  it("stops auto-play and shows Retry and Continue Auto after the Manual PATCH rejects", async () => {
+    await failManualDuringRetry();
+    expect(mocks.patch).toHaveBeenCalledTimes(1);
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+  });
+
+  it("resumes auto-play only after Continue Auto", async () => {
+    const notice = await failManualDuringRetry();
+    mocks.get
+      .mockReset()
+      .mockResolvedValueOnce(payload("ACTIVE", 0))
+      .mockResolvedValue(payload("ACCEPTED", 1));
+    mocks.post.mockResolvedValue({
+      complete: true,
+      session_status: "ACCEPTED",
+      current_round: 1,
+    });
+
+    fireEvent.click(within(notice).getByRole("button", { name: "Continue Auto" }));
+
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    expect(mocks.post).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId("manual-switch-failed")).not.toBeInTheDocument();
+    expect(screen.getByTestId("control-own-mode")).toHaveTextContent(/^auto$/);
+  });
+
+  it("re-sends the Manual PATCH when Retry is clicked", async () => {
+    const notice = await failManualDuringRetry();
+    let resolvePatch: ((value: unknown) => void) | undefined;
+    mocks.patch.mockReset();
+    mocks.patch.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePatch = resolve;
+        }),
+    );
+
+    fireEvent.click(within(notice).getByRole("button", { name: "Retry" }));
+
+    await waitFor(() => expect(mocks.patch).toHaveBeenCalledTimes(1));
+    expect(mocks.patch).toHaveBeenCalledWith(
+      "/negotiations/sessions/11111111-1111-4111-8111-111111111111/control-mode",
+      { control_mode: "manual" },
+    );
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolvePatch?.({ buyer_control_mode: "manual", seller_control_mode: "auto" });
+    });
+  });
+});
+
+describe("LiveNegotiation — auto rounds keep running", () => {
+  beforeEach(() => {
+    mocks.refresh.mockReset();
+    mocks.get.mockReset();
+    mocks.post.mockReset();
+    window.sessionStorage.clear();
+  });
+
+  it("runs three consecutive auto rounds without stopping", async () => {
+    let posts = 0;
+    mocks.get.mockImplementation(async () =>
+      posts >= 3 ? payload("ACCEPTED", 3) : payload("ACTIVE", posts),
+    );
+    mocks.post.mockImplementation(async () => {
+      posts += 1;
+      return {
+        complete: posts >= 3,
+        session_status: posts >= 3 ? "ACCEPTED" : "ACTIVE",
+        current_round: posts,
+      };
+    });
+
+    render(<LiveNegotiation initialPayload={payload("CREATED", 0)} />);
+
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(3));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(mocks.post).toHaveBeenCalledTimes(3);
+    expect(screen.queryByTestId("manual-switch-failed")).not.toBeInTheDocument();
+  });
+
+  it("resumes auto-play after Manual is switched to Auto", async () => {
+    // GETs stay pending until after the optimistic Auto render. The drive loop's
+    // first loadSession then returns auto before that setPayload commits, which
+    // is the window a render-only serverManual ref would still say Manual.
+    const activeAuto = {
+      ...payload("ACTIVE", 0),
+      session: { ...payload("ACTIVE", 0).session, buyer_control_mode: "auto" as const },
+    };
+    const acceptedAuto = {
+      ...payload("ACCEPTED", 1),
+      session: { ...payload("ACCEPTED", 1).session, buyer_control_mode: "auto" as const },
+    };
+    let posts = 0;
+    let released = false;
+    const waiters: Array<(value: SessionResponse) => void> = [];
+    const sessionForGet = () => (posts > 0 ? acceptedAuto : activeAuto);
+    mocks.get.mockImplementation(
+      () =>
+        new Promise<SessionResponse>((resolve) => {
+          if (released) {
+            resolve(sessionForGet());
+            return;
+          }
+          waiters.push(resolve);
+        }),
+    );
+    mocks.patch.mockResolvedValue({
+      buyer_control_mode: "auto",
+      seller_control_mode: "auto",
+    });
+    mocks.post.mockImplementation(async () => {
+      posts += 1;
+      return { complete: true, session_status: "ACCEPTED", current_round: 1 };
+    });
+
+    render(<LiveNegotiation initialPayload={manualPayload("ACTIVE", 0)} />);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    expect(mocks.post).not.toHaveBeenCalled();
+    expect(screen.getByTestId("control-own-mode")).toHaveTextContent(/^manual$/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Auto" }));
+    await waitFor(() => expect(mocks.patch).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mocks.post).not.toHaveBeenCalled();
+    expect(waiters.length).toBeGreaterThan(0);
+
+    released = true;
+    const pending = waiters.splice(0);
+    await act(async () => {
+      for (const resolve of pending) resolve(sessionForGet());
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("control-own-mode")).toHaveTextContent(/^auto$/);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    expect(mocks.post).toHaveBeenCalledTimes(1);
   });
 });

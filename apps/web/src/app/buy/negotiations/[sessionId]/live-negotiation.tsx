@@ -12,6 +12,7 @@ import {
   clearNegotiationRunToken,
   getNegotiationRunToken,
 } from "@/lib/negotiation-auto-play-token";
+import { useLocale } from "@/providers/locale-provider";
 import {
   isTerminalNegotiationStatus,
   type SessionResponse,
@@ -174,15 +175,20 @@ export function LiveNegotiation({
   // Prefer Manual stop *after* in-flight Soft API completes — never abort mid-call (SoT §3).
   const preferManualRef = useRef(buyerIsManual);
   preferManualRef.current = buyerIsManual;
-  // Queued Manual is visible here before `isManual` flips (the PATCH waits for the
-  // in-flight round). The drive loop reads this ref so it does not have to restart.
+  // Queued or applying Manual is visible here before `isManual` flips. The drive
+  // loop reads this ref so it does not have to restart.
   const pendingManualRef = useRef(control.pendingTarget === "manual");
   pendingManualRef.current = control.pendingTarget === "manual";
+  // Failed Manual PATCH: stay stopped until the buyer clicks Retry or Continue Auto.
+  const manualSwitchFailedRef = useRef(control.manualSwitchFailed);
+  manualSwitchFailedRef.current = control.manualSwitchFailed;
   const wasManualRef = useRef(buyerIsManual);
   useEffect(() => {
     const wasManual = wasManualRef.current;
     wasManualRef.current = buyerIsManual;
     // Manual → Auto: restart Soft AI drive loop.
+    // A failed Manual PATCH must not auto-resume, even if optimistic mode flickers.
+    if (manualSwitchFailedRef.current) return;
     if (wasManual && !buyerIsManual && !isTerminal && !isSpectator) {
       setRunnerAttempt((n) => n + 1);
     }
@@ -192,14 +198,20 @@ export function LiveNegotiation({
     if (isSpectator) return;
     if (isTerminalNegotiationStatus(initialPayload.session.status)) return;
     // Soft Manual with nothing in flight: do not start Soft AI turns (SoT §1).
-    // A queued Manual switch is the same stop — do not send another auto-play POST.
-    if (preferManualRef.current || pendingManualRef.current) return;
+    // A queued Manual switch, or a failed Manual PATCH, is the same stop.
+    if (preferManualRef.current || pendingManualRef.current || manualSwitchFailedRef.current) {
+      return;
+    }
     if (runnerAttempt > 0) setUpdateError(false);
     let cancelled = false;
     let activeRoundController: AbortController | null = null;
     const sessionId = initialPayload.session.id;
 
-    const manualHandoffRequested = () => pendingManualRef.current || preferManualRef.current;
+    // Do not read payload.session here. That ref would stay manual until
+    // setPayload re-renders, and a Manual → Auto restart would bail before POST.
+    // Fresh server mode is `current.session.buyer_control_mode` after each GET.
+    const manualHandoffRequested = () =>
+      pendingManualRef.current || preferManualRef.current || manualSwitchFailedRef.current;
 
     async function loadSession(): Promise<SessionResponse> {
       const next = await api.get<SessionResponse>(`/negotiations/sessions/${sessionId}`);
@@ -215,16 +227,16 @@ export function LiveNegotiation({
       try {
         let current = await loadSession();
         while (!cancelled && !isTerminalNegotiationStatus(current.session.status)) {
-          // Mid-session toggle to Manual: stop driving after the current call
-          // completes (SoT §3 handoff). Re-check each loop iteration — including
-          // a Manual switch that is only queued while this POST was in flight.
+          // Before every auto-play POST, including the iteration after a
+          // CONCURRENT_MODIFICATION retry: pending Manual, preferred Manual,
+          // a failed Manual switch, or this GET's buyer_control_mode.
           if (cancelled) return;
           if (manualHandoffRequested() || current.session.buyer_control_mode === "manual") {
             return;
           }
           const runToken = getNegotiationRunToken(sessionId);
-          // Snapshot before the next await. Flushing the queued PATCH clears
-          // pendingTarget while loadSession is in flight, so the ref can look idle.
+          // Snapshot before the next await. A render during loadSession can
+          // clear the live refs; this captured flag still stops the loop.
           let manualHandoff = false;
           try {
             activeRoundController = new AbortController();
@@ -382,6 +394,17 @@ export function LiveNegotiation({
           controller={control}
         />
       </div>
+      {control.manualSwitchFailed && (
+        <div className="mx-auto max-w-6xl px-3 pt-3 sm:px-6">
+          <ManualSwitchFailedNotice
+            onRetry={() => control.requestMode("manual")}
+            onContinueAuto={() => {
+              control.clearFailure();
+              setRunnerAttempt((n) => n + 1);
+            }}
+          />
+        </div>
+      )}
       <PlaybackArena
         data={data}
         checkoutHref={checkoutHref}
@@ -411,6 +434,34 @@ export function LiveNegotiation({
         <BuyerManualActionBar sessionId={payload.session.id} onDone={reload} />
       )}
     </>
+  );
+}
+
+/**
+ * Manual PATCH failed. Auto-play stays stopped until the buyer picks Retry or Continue Auto.
+ */
+function ManualSwitchFailedNotice({
+  onRetry,
+  onContinueAuto,
+}: {
+  onRetry: () => void;
+  onContinueAuto: () => void;
+}) {
+  const { t } = useLocale();
+  return (
+    <div data-testid="manual-switch-failed">
+      <Alert tone="error" title={t("negotiation.live.manualSwitchFailed.title")}>
+        <p>{t("negotiation.live.manualSwitchFailed.body")}</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Button type="button" size="sm" onClick={onRetry}>
+            {t("negotiation.live.manualSwitchFailed.retry")}
+          </Button>
+          <Button type="button" size="sm" variant="secondary" onClick={onContinueAuto}>
+            {t("negotiation.live.manualSwitchFailed.continueAuto")}
+          </Button>
+        </div>
+      </Alert>
+    </div>
   );
 }
 

@@ -43,6 +43,14 @@ export function useSessionControlMode(opts: {
   const server = modesFromServerSession(serverSession, party);
   const [optimisticOwn, setOptimisticOwn] = useState<ControlMode | null>(null);
   const [queuedMode, setQueuedMode] = useState<ControlMode | null>(null);
+  /**
+   * Mode whose PATCH is in flight. Set before the request and cleared only in
+   * the same update that reflects the result (or on error). Covers the flush
+   * window where `queuedMode` is already null and the server has not moved.
+   */
+  const [applyingTarget, setApplyingTarget] = useState<ControlMode | null>(null);
+  /** Last requested mode whose PATCH rejected. Not a pending handoff. */
+  const [failedTarget, setFailedTarget] = useState<ControlMode | null>(null);
   const [syncState, setSyncState] = useState<ControlModeSyncState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [insufficientCredits, setInsufficientCredits] = useState<InsufficientCreditsInfo | null>(
@@ -61,12 +69,17 @@ export function useSessionControlMode(opts: {
   const ownDisplayed = optimisticOwn ?? server.own;
   const peerDisplayed = server.peer; // never optimistic / never client-claimed
   const inflight = localInflight || server.inflight;
-  const pendingTarget = queuedMode ?? server.ownPending;
+  // Flush clears `queuedMode` before the PATCH returns. `applyingTarget` covers
+  // that window; server pending covers a handoff the server already recorded.
+  const pendingTarget = queuedMode ?? applyingTarget ?? server.ownPending;
 
   const applyMode = useCallback(
     async (next: ControlMode) => {
       if (applyingRef.current) return;
       applyingRef.current = true;
+      // Latch before the await so pendingTarget cannot drop while the PATCH is open.
+      setApplyingTarget(next);
+      setFailedTarget(null);
       setSyncState("saving");
       setError(null);
       setInsufficientCredits(null);
@@ -76,6 +89,8 @@ export function useSessionControlMode(opts: {
           // M1 not merged: keep SoT UX; do not invent peer mode or credits.
           setOptimisticOwn(next);
           setQueuedMode(null);
+          setApplyingTarget(null);
+          setFailedTarget(null);
           setSyncState("stubbed");
           await onApplied?.();
           return;
@@ -88,16 +103,23 @@ export function useSessionControlMode(opts: {
               ? Boolean(result.data.buyer_pending_control_mode)
               : Boolean(result.data.seller_pending_control_mode));
           if (pending) {
+            // Same update as clearing the latch: queuedMode keeps pendingTarget set.
             setQueuedMode(next);
+            setApplyingTarget(null);
+            setFailedTarget(null);
             setSyncState("handoff");
           } else {
             setOptimisticOwn(next);
             setQueuedMode(null);
+            setApplyingTarget(null);
+            setFailedTarget(null);
             setSyncState("idle");
           }
           await onApplied?.();
         }
       } catch (err) {
+        setApplyingTarget(null);
+        setFailedTarget(next);
         setSyncState("error");
         const insufficient = parseInsufficientCredits(err);
         if (insufficient) {
@@ -115,6 +137,8 @@ export function useSessionControlMode(opts: {
   );
 
   // Flush queued handoff once local Soft API inflight clears (SoT §3).
+  // Publish `applyingTarget` before clearing the queue so pendingTarget never
+  // renders null between those two updates.
   useEffect(() => {
     if (!enabled) return;
     if (!queuedMode) return;
@@ -122,20 +146,29 @@ export function useSessionControlMode(opts: {
       setSyncState((s) => (s === "saving" ? s : "handoff"));
       return;
     }
+    if (applyingRef.current) return;
+    if (applyingTarget !== queuedMode) {
+      setApplyingTarget(queuedMode);
+      return;
+    }
     const next = queuedMode;
     setQueuedMode(null);
     void applyMode(next);
-  }, [enabled, queuedMode, inflight, applyMode]);
+  }, [enabled, queuedMode, inflight, applyMode, applyingTarget]);
 
   const requestMode = useCallback(
     (next: ControlMode) => {
       if (!enabled) return;
+      // Same early-out as before: no-op when the displayed mode already matches
+      // and nothing is queued or applying. A failed PATCH leaves pendingTarget
+      // null, so Retry (requestMode of the other mode) still proceeds.
       if (next === ownDisplayed && !pendingTarget) return;
       setError(null);
       setInsufficientCredits(null);
       if (inflight) {
         // Do not cancel/abort the in-flight call — queue for after (SoT §3).
         setQueuedMode(next);
+        setFailedTarget(null);
         setSyncState("handoff");
         return;
       }
@@ -143,6 +176,18 @@ export function useSessionControlMode(opts: {
     },
     [enabled, ownDisplayed, pendingTarget, inflight, applyMode],
   );
+
+  const clearFailure = useCallback(() => {
+    setFailedTarget(null);
+    setError(null);
+    setInsufficientCredits(null);
+    setSyncState((current) => (current === "error" ? "idle" : current));
+  }, []);
+
+  const retry = useCallback(() => {
+    if (!failedTarget) return;
+    requestMode(failedTarget);
+  }, [failedTarget, requestMode]);
 
   const toggle = useCallback(() => {
     requestMode(ownDisplayed === "auto" ? "manual" : "auto");
@@ -154,6 +199,10 @@ export function useSessionControlMode(opts: {
     ownMode: ownDisplayed,
     peerMode: peerDisplayed,
     pendingTarget,
+    /** Mode whose last PATCH failed, if any. Distinct from `pendingTarget`. */
+    failedTarget,
+    /** Buyer/seller asked for Manual and the PATCH rejected. Loop must stay stopped. */
+    manualSwitchFailed: failedTarget === "manual",
     inflight,
     syncState,
     error,
@@ -162,6 +211,10 @@ export function useSessionControlMode(opts: {
     isManual: ownDisplayed === "manual",
     isAuto: ownDisplayed === "auto",
     requestMode,
+    /** Re-send the PATCH for `failedTarget`. */
+    retry,
+    /** Drop the failed-PATCH latch without sending another PATCH. */
+    clearFailure,
     toggle,
   };
 }
