@@ -61,6 +61,13 @@ export interface RoundExecutionInput {
   /** Per-round situational data (trust score, elapsed time, etc.) from API layer */
   roundData: Partial<RoundData>;
   nowMs: number;
+  /**
+   * Party whose Soft AI in-flight claim this call already holds.
+   * Set only by auto-play after `claimSoftAiInflightUnderLock` succeeds.
+   * Never copied from request input. Pending Manual for that party may finish;
+   * committed Manual still rejects.
+   */
+  softAiInflightClaim?: "buyer" | "seller";
 }
 
 export interface RoundExecutionResult {

@@ -1,6 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetRateLimitsForTests } from "../middleware/rate-limit.js";
+import {
+  claimSoftAiInflightUnderLock,
+  SoftManualWaitingError,
+} from "../services/control-mode.service.js";
 import { createNegotiationAutoPlaySetup } from "../services/negotiation-auto-play.service.js";
 import { closeTestApp, getTestApp } from "./helpers.js";
 
@@ -355,6 +359,7 @@ vi.mock("../services/control-mode.service.js", async (importOriginal) => {
   return {
     ...actual,
     markSoftAiInflight: vi.fn().mockResolvedValue(true),
+    claimSoftAiInflightUnderLock: vi.fn().mockResolvedValue({ ok: true, version: 2 }),
     clearSoftAiInflightAndApplyPending: vi.fn().mockResolvedValue(null),
     resumeSellerSoftAutoAfterTimeout: vi.fn().mockResolvedValue({ resumed: false }),
   };
@@ -474,6 +479,8 @@ describe("Negotiation API", () => {
     mockGetRoundsBySessionId.mockResolvedValue([]);
     mockGetRoundByIdempotencyKey.mockResolvedValue(null);
     mockExecuteNegotiationRound.mockReset();
+    vi.mocked(claimSoftAiInflightUnderLock).mockReset();
+    vi.mocked(claimSoftAiInflightUnderLock).mockResolvedValue({ ok: true, version: 2 });
     mockExecuteGroupOrchestration.mockResolvedValue([]);
     mockExecuteGroupTerminal.mockResolvedValue([]);
     mockLoadUserMemoryBrief.mockResolvedValue(null);
@@ -875,6 +882,78 @@ describe("Negotiation API", () => {
       expect(mockSetSessionPerspective).not.toHaveBeenCalled();
     });
 
+    it("returns 409 SOFT_MANUAL_WAITING when the draft party's pending mode is manual", async () => {
+      const { setup, session } = autoPlayFixture();
+      mockGetSessionById.mockResolvedValue({
+        ...session,
+        sellerPendingControlMode: "manual" as const,
+      });
+      mockGetRoundsBySessionId.mockResolvedValue([]);
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/sess-001/auto-play/next",
+        payload: { run_token: setup.runToken },
+      });
+
+      expect(res.statusCode).toBe(409);
+      expect(res.json()).toMatchObject({
+        error: "SOFT_MANUAL_WAITING",
+        waiting_for_manual: true,
+        party: "seller",
+        buyer_control_mode: "auto",
+        seller_control_mode: "auto",
+      });
+      expect(claimSoftAiInflightUnderLock).not.toHaveBeenCalled();
+      expect(mockSetSessionPerspective).not.toHaveBeenCalled();
+      expect(mockExecuteNegotiationRound).not.toHaveBeenCalled();
+    });
+
+    it("returns 409 SOFT_MANUAL_WAITING when the in-lock claim sees Manual", async () => {
+      const { setup, session } = autoPlayFixture();
+      mockGetSessionById.mockResolvedValue(session);
+      mockGetRoundsBySessionId.mockResolvedValue([]);
+      vi.mocked(claimSoftAiInflightUnderLock).mockResolvedValue({
+        ok: false,
+        reason: "manual",
+        session: {
+          id: session.id,
+          buyerId: session.buyerId,
+          sellerId: session.sellerId,
+          status: session.status,
+          version: session.version + 1,
+          buyerControlMode: "auto",
+          sellerControlMode: "manual",
+          buyerPendingControlMode: null,
+          sellerPendingControlMode: null,
+          softAiInflightParty: null,
+          buyerSoftAiCreditsCharged: 0,
+          sellerManualSince: null,
+          sellerManualTimeoutPhase: null,
+          negotiationAgentSnapshot: {},
+        },
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/sess-001/auto-play/next",
+        payload: { run_token: setup.runToken },
+      });
+
+      expect(res.statusCode).toBe(409);
+      expect(res.json()).toMatchObject({
+        error: "SOFT_MANUAL_WAITING",
+        waiting_for_manual: true,
+        party: "seller",
+        buyer_control_mode: "auto",
+        seller_control_mode: "manual",
+        session_status: session.status,
+        current_round: session.currentRound,
+      });
+      expect(mockSetSessionPerspective).not.toHaveBeenCalled();
+      expect(mockExecuteNegotiationRound).not.toHaveBeenCalled();
+    });
+
     it("preserves AUTO_PLAY_CONTEXT_MISSING for Soft Auto when context is missing", async () => {
       const session = {
         ...mockSession,
@@ -1013,6 +1092,7 @@ describe("Negotiation API", () => {
         sessionId: "sess-001",
         senderRole: "BUYER",
         offerPriceMinor: 9_000,
+        softAiInflightClaim: "seller",
         idempotencyKey: "auto-sess-001-r1",
         protocol: expect.objectContaining({
           capability: "hnp.core.negotiation",
@@ -1054,6 +1134,9 @@ describe("Negotiation API", () => {
         offerPriceMinor: 42_000,
         messageText: message,
       });
+      expect(mockExecuteNegotiationRound.mock.calls[0]?.[1]).not.toHaveProperty(
+        "softAiInflightClaim",
+      );
     });
   });
 
@@ -1942,6 +2025,36 @@ describe("Negotiation API", () => {
       });
       expect(res.statusCode).toBe(410);
       expect(res.json().error).toBe("SESSION_EXPIRED");
+    });
+
+    it("returns 409 SOFT_MANUAL_WAITING when the executor rejects a Manual party", async () => {
+      mockGetSessionById.mockResolvedValue(mockSession);
+      mockExecuteNegotiationRound.mockRejectedValue(
+        new SoftManualWaitingError({
+          party: "buyer",
+          buyerControlMode: "manual",
+          sellerControlMode: "auto",
+          sessionStatus: "ACTIVE",
+          currentRound: 2,
+        }),
+      );
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/sess-001/offers",
+        headers: AUTH_HEADERS,
+        payload: VALID_OFFER_PAYLOAD,
+      });
+      expect(res.statusCode).toBe(409);
+      expect(res.json()).toEqual({
+        error: "SOFT_MANUAL_WAITING",
+        waiting_for_manual: true,
+        party: "buyer",
+        buyer_control_mode: "manual",
+        seller_control_mode: "auto",
+        session_status: "ACTIVE",
+        current_round: 2,
+      });
     });
 
     it("returns 409 for CONCURRENT_MODIFICATION", async () => {

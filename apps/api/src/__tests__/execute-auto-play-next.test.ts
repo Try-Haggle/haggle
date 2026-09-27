@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildHostHnpOfferEnvelope } from "../hnp/host-envelope.js";
 import { submitHnpOffer } from "../hnp/submit-offer.js";
+import { claimSoftAiInflightUnderLock } from "../services/control-mode.service.js";
 import { executeAutoPlayNext } from "../services/execute-auto-play-next.service.js";
 import {
   getNegotiationAutoPlayContext,
@@ -61,6 +62,7 @@ vi.mock("../services/control-mode.service.js", async (importOriginal) => {
     isSellerManualTimedOut: vi.fn(() => false),
     resumeSellerSoftAutoAfterTimeout: vi.fn(async () => ({ resumed: false, view: null })),
     markSoftAiInflight: vi.fn(async () => true),
+    claimSoftAiInflightUnderLock: vi.fn(async () => ({ ok: true as const, version: 2 })),
     clearSoftAiInflightAndApplyPending: vi.fn(async () => null),
     controlModeFromSessionRecord: vi.fn((session: Record<string, unknown>) =>
       actual.controlModeFromSessionRecord({
@@ -71,6 +73,17 @@ vi.mock("../services/control-mode.service.js", async (importOriginal) => {
         version: Number(session.version ?? 1),
         buyerControlMode: (session.buyerControlMode as "auto" | "manual" | undefined) ?? "auto",
         sellerControlMode: (session.sellerControlMode as "auto" | "manual" | undefined) ?? "auto",
+        buyerPendingControlMode: session.buyerPendingControlMode as
+          | "auto"
+          | "manual"
+          | null
+          | undefined,
+        sellerPendingControlMode: session.sellerPendingControlMode as
+          | "auto"
+          | "manual"
+          | null
+          | undefined,
+        softAiInflightParty: session.softAiInflightParty as "buyer" | "seller" | null | undefined,
         negotiationAgentSnapshot:
           (session.negotiationAgentSnapshot as Record<string, unknown>) ?? {},
       }),
@@ -259,6 +272,7 @@ describe("executeAutoPlayNext user-specified counter", () => {
         requireSignature: false,
       }),
     );
+    expect(vi.mocked(submitHnpOffer).mock.calls[0]?.[2]).not.toHaveProperty("softAiInflightClaim");
   });
 
   it("after persisted BUYER round (plan SELLER incoming) forces BUYER COUNTER 42000 — not 409, not 49500", async () => {
@@ -366,7 +380,11 @@ describe("executeAutoPlayNext user-specified counter", () => {
     expect(submitHnpOffer).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ priceMinor: 49500, senderRole: "SELLER" }),
-      expect.objectContaining({ messageText: "autoplay seller", requireSignature: false }),
+      expect.objectContaining({
+        messageText: "autoplay seller",
+        requireSignature: false,
+        softAiInflightClaim: "buyer",
+      }),
     );
   });
 });
@@ -591,5 +609,138 @@ describe("executeAutoPlayNext Soft Manual vs AUTO_PLAY_CONTEXT_MISSING (Eng1 M4)
     expect(result.status).toBe(409);
     expect(result.body.error).toBe("SOFT_MANUAL_WAITING");
     expect(result.body.error).not.toBe("AUTO_PLAY_CONTEXT_MISSING");
+  });
+
+  it("returns 409 SOFT_MANUAL_WAITING when the draft party's pending mode is manual", async () => {
+    vi.mocked(submitHnpOffer).mockClear();
+    vi.mocked(setSessionPerspective).mockClear();
+    vi.mocked(claimSoftAiInflightUnderLock).mockClear();
+    vi.mocked(getSessionById).mockResolvedValue({
+      id: "sess-1",
+      driver: "web",
+      buyerId: "buyer-1",
+      sellerId: "seller-1",
+      status: "ACTIVE",
+      currentRound: 1,
+      version: 4,
+      negotiationAgentSnapshot: { keep: true },
+      buyerControlMode: "auto",
+      sellerControlMode: "auto",
+      buyerPendingControlMode: "manual",
+      softAiInflightParty: "buyer",
+    } as never);
+    vi.mocked(getNegotiationAutoPlayContext).mockReturnValue({
+      maxRounds: 8,
+      buyerSnapshot: { side: "buyer" },
+      sellerSnapshot: { side: "seller" },
+    } as never);
+    vi.mocked(getRoundsBySessionId).mockResolvedValue([
+      { roundNo: 1, senderRole: "BUYER", priceminor: "45000" },
+    ] as never);
+    vi.mocked(planNegotiationAutoPlayRound).mockReturnValue({
+      roundNo: 2,
+      senderRole: "SELLER",
+      responderRole: "BUYER",
+      responderSnapshot: { side: "buyer" },
+      offerPriceMinor: 45000,
+      messageText: "hi",
+    } as never);
+
+    const result = await executeAutoPlayNext({} as never, {
+      sessionId: "sess-1",
+      actor: { id: "buyer-1", role: "user" },
+      expectedDriver: "web",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      status: 409,
+      body: {
+        error: "SOFT_MANUAL_WAITING",
+        waiting_for_manual: true,
+        party: "buyer",
+        buyer_control_mode: "auto",
+        seller_control_mode: "auto",
+      },
+    });
+    expect(claimSoftAiInflightUnderLock).not.toHaveBeenCalled();
+    expect(setSessionPerspective).not.toHaveBeenCalled();
+    expect(submitHnpOffer).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 SOFT_MANUAL_WAITING when the in-lock claim sees Manual", async () => {
+    vi.mocked(submitHnpOffer).mockClear();
+    vi.mocked(setSessionPerspective).mockClear();
+    vi.mocked(claimSoftAiInflightUnderLock).mockReset();
+    vi.mocked(claimSoftAiInflightUnderLock).mockResolvedValue({
+      ok: false,
+      reason: "manual",
+      session: {
+        id: "sess-1",
+        buyerId: "buyer-1",
+        sellerId: "seller-1",
+        status: "ACTIVE",
+        version: 5,
+        buyerControlMode: "auto",
+        sellerControlMode: "manual",
+        buyerPendingControlMode: null,
+        sellerPendingControlMode: null,
+        softAiInflightParty: null,
+        buyerSoftAiCreditsCharged: 0,
+        sellerManualSince: null,
+        sellerManualTimeoutPhase: null,
+        negotiationAgentSnapshot: {},
+      },
+    });
+    vi.mocked(getSessionById).mockResolvedValue({
+      id: "sess-1",
+      driver: "web",
+      buyerId: "buyer-1",
+      sellerId: "seller-1",
+      status: "ACTIVE",
+      currentRound: 0,
+      version: 2,
+      negotiationAgentSnapshot: { keep: true },
+      buyerControlMode: "auto",
+      sellerControlMode: "auto",
+    } as never);
+    vi.mocked(getNegotiationAutoPlayContext).mockReturnValue({
+      maxRounds: 8,
+      buyerSnapshot: { side: "buyer" },
+      sellerSnapshot: { side: "seller" },
+    } as never);
+    vi.mocked(getRoundsBySessionId).mockResolvedValue([] as never);
+    vi.mocked(planNegotiationAutoPlayRound).mockReturnValue({
+      roundNo: 1,
+      senderRole: "BUYER",
+      responderRole: "SELLER",
+      responderSnapshot: { side: "seller" },
+      offerPriceMinor: 9000,
+      messageText: "hi",
+    } as never);
+
+    const result = await executeAutoPlayNext({} as never, {
+      sessionId: "sess-1",
+      actor: { id: "buyer-1", role: "user" },
+      expectedDriver: "web",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      status: 409,
+      body: {
+        error: "SOFT_MANUAL_WAITING",
+        waiting_for_manual: true,
+        party: "seller",
+        buyer_control_mode: "auto",
+        seller_control_mode: "manual",
+        session_status: "ACTIVE",
+        current_round: 0,
+      },
+    });
+    expect(setSessionPerspective).not.toHaveBeenCalled();
+    expect(submitHnpOffer).not.toHaveBeenCalled();
+    vi.mocked(claimSoftAiInflightUnderLock).mockReset();
+    vi.mocked(claimSoftAiInflightUnderLock).mockResolvedValue({ ok: true, version: 2 });
   });
 });

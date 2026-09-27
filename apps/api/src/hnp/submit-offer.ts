@@ -1,6 +1,10 @@
 import type { Database } from "@haggle/db";
 import type { EventDispatcher } from "../lib/event-dispatcher.js";
 import { getExecutor } from "../lib/executor-factory.js";
+import {
+  SoftManualWaitingError,
+  softManualWaitingBodyFromError,
+} from "../services/control-mode.service.js";
 import { validateHnpIngress } from "../services/hnp-ingress.service.js";
 import type { HnpOfferEnvelope } from "./envelope-schema.js";
 import { normalizeSubmitOffer } from "./normalize-offer.js";
@@ -27,6 +31,11 @@ export async function submitHnpOffer(
     messageText?: string;
     eventDispatcher?: EventDispatcher;
     requireSignature?: boolean;
+    /**
+     * Set only by auto-play after claimSoftAiInflightUnderLock succeeds.
+     * Not read from the envelope or any other request field.
+     */
+    softAiInflightClaim?: "buyer" | "seller";
   },
 ): Promise<SubmitHnpOfferResult> {
   const nowMs = Date.now();
@@ -44,20 +53,31 @@ export async function submitHnpOffer(
     return { ok: false, status: hnpIngress.status, body: hnpIngress.body };
   }
 
-  const result = await getExecutor()(
-    db,
-    {
-      sessionId: envelope.session_id,
-      offerPriceMinor: normalized.offerPriceMinor,
-      messageText: options?.messageText,
-      senderRole: normalized.senderRole,
-      idempotencyKey: normalized.idempotencyKey,
-      protocol: normalized.protocol,
-      roundData: {},
-      nowMs,
-    },
-    options?.eventDispatcher,
-  );
+  let result: Awaited<ReturnType<ReturnType<typeof getExecutor>>>;
+  try {
+    result = await getExecutor()(
+      db,
+      {
+        sessionId: envelope.session_id,
+        offerPriceMinor: normalized.offerPriceMinor,
+        messageText: options?.messageText,
+        senderRole: normalized.senderRole,
+        idempotencyKey: normalized.idempotencyKey,
+        protocol: normalized.protocol,
+        roundData: {},
+        nowMs,
+        ...(options?.softAiInflightClaim
+          ? { softAiInflightClaim: options.softAiInflightClaim }
+          : {}),
+      },
+      options?.eventDispatcher,
+    );
+  } catch (err) {
+    if (err instanceof SoftManualWaitingError) {
+      return { ok: false, status: 409, body: softManualWaitingBodyFromError(err) };
+    }
+    throw err;
+  }
 
   return {
     ok: true,

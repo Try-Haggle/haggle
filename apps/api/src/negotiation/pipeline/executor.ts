@@ -18,6 +18,11 @@ import type { EventDispatcher, PipelineEvent } from "../../lib/event-dispatcher.
 import type { RoundExecutionInput, RoundExecutionResult } from "../../lib/negotiation-executor.js";
 import { mapRawToDbSession } from "../../lib/negotiation-executor.js";
 import type { DbRound, DbSession } from "../../lib/session-reconstructor.js";
+import {
+  controlModeFromLockedRow,
+  SoftManualWaitingError,
+  softAiDraftBlockedUnderLock,
+} from "../../services/control-mode.service.js";
 import { recordRoundConversationSignals } from "../../services/conversation-signal-sink.js";
 import { loadEvermemoBrief } from "../../services/evermemo-bridge.service.js";
 import { getL5SignalsProvider } from "../../services/l5-signals.service.js";
@@ -175,6 +180,25 @@ export async function executeStagedNegotiationRound(
     if (!lockedRow) throw new Error(`SESSION_NOT_FOUND: ${input.sessionId}`);
 
     const dbSession = mapRawToDbSession(lockedRow);
+
+    // Acting party is the locked session role (set by setSessionPerspective), not the
+    // offer sender. Re-read that party's mode before any write or LLM work.
+    const actingParty = dbSession.role === "SELLER" ? "seller" : "buyer";
+    if (
+      softAiDraftBlockedUnderLock(lockedRow, actingParty, {
+        inflightClaim: input.softAiInflightClaim,
+      })
+    ) {
+      const lockedModes = controlModeFromLockedRow(lockedRow);
+      const currentRound = Number(dbSession.currentRound);
+      throw new SoftManualWaitingError({
+        party: actingParty,
+        buyerControlMode: lockedModes.buyerControlMode,
+        sellerControlMode: lockedModes.sellerControlMode,
+        sessionStatus: dbSession.status || lockedModes.status,
+        currentRound: Number.isFinite(currentRound) ? currentRound : 0,
+      });
+    }
 
     // 2. Terminal check
     if (TERMINAL_STATUSES.has(dbSession.status)) {

@@ -10,11 +10,12 @@ import {
   SELLER_CRITERIA_PAUSE_MARKER,
 } from "../negotiation/phase/seller-criteria-pause.js";
 import {
+  claimSoftAiInflightUnderLock,
   clearSoftAiInflightAndApplyPending,
   controlModeFromSessionRecord,
   isSellerManualTimedOut,
-  markSoftAiInflight,
   resumeSellerSoftAutoAfterTimeout,
+  softManualWaitingBodyFromLockedRow,
 } from "./control-mode.service.js";
 import {
   applyUserSpecifiedAutoPlayCounter,
@@ -69,7 +70,7 @@ export function softAiDraftPartyFromRounds(
   return responderRole === "BUYER" ? "buyer" : "seller";
 }
 
-/** 409 SOFT_MANUAL_WAITING when Soft AI would draft for a Manual party. */
+/** 409 SOFT_MANUAL_WAITING when Soft AI would draft for a Manual party, including pending Manual. */
 export function softManualWaitingBodyForParty(
   session: {
     status: string;
@@ -93,7 +94,11 @@ export function softManualWaitingBodyForParty(
 ): SoftManualWaitingBody | null {
   const softModes = controlModeFromSessionRecord(session);
   const mode = party === "buyer" ? softModes.buyerControlMode : softModes.sellerControlMode;
-  if (mode === "manual" && !(party === "buyer" && userCounter)) {
+  const pending =
+    party === "buyer" ? softModes.buyerPendingControlMode : softModes.sellerPendingControlMode;
+  // Pending Manual is the in-flight handoff (SoT §3). Buyer Manual + a
+  // user-specified counter stays a human Soft turn (SoT §12).
+  if ((mode === "manual" || pending === "manual") && !(party === "buyer" && userCounter)) {
     return {
       error: "SOFT_MANUAL_WAITING",
       waiting_for_manual: true,
@@ -323,16 +328,30 @@ export async function executeAutoPlayNext(
 
   const softAiDraft = !userCounter;
   if (softAiDraft) {
-    const inflightClaimed = await markSoftAiInflight(
-      db,
-      liveSession.id,
-      responderParty,
-      liveSession.version,
-    );
-    if (!inflightClaimed) {
+    const claim = await claimSoftAiInflightUnderLock(db, {
+      sessionId: liveSession.id,
+      party: responderParty,
+      expectedVersion: liveSession.version,
+    });
+    if (!claim.ok) {
+      if (claim.reason === "manual") {
+        return {
+          ok: false,
+          status: 409,
+          body: softManualWaitingBodyFromLockedRow(
+            claim.session,
+            responderParty,
+            liveSession.currentRound,
+          ),
+        };
+      }
+      if (claim.reason === "not_found") {
+        return { ok: false, status: 404, body: { error: "SESSION_NOT_FOUND" } };
+      }
       return { ok: false, status: 409, body: { error: "CONCURRENT_MODIFICATION" } };
     }
-    liveSession = (await getSessionById(db, liveSession.id)) ?? liveSession;
+    const refreshed = await getSessionById(db, liveSession.id);
+    liveSession = refreshed ?? { ...liveSession, version: claim.version };
   }
 
   const claimed = await setSessionPerspective(
@@ -365,6 +384,8 @@ export async function executeAutoPlayNext(
       messageText: plan.messageText,
       eventDispatcher: input.eventDispatcher,
       requireSignature: false,
+      // Only after claimSoftAiInflightUnderLock succeeded. Not taken from the request.
+      ...(softAiDraft ? { softAiInflightClaim: responderParty } : {}),
     });
     if (!submitted.ok) {
       if (softAiDraft) {

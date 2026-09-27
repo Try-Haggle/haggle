@@ -40,13 +40,16 @@ import {
   isAttemptControlRateLimited,
 } from "../services/attempt-control.service.js";
 import {
+  claimSoftAiInflightUnderLock,
   clearSoftAiInflightAndApplyPending,
   controlModeFromSessionRecord,
   isSellerManualTimedOut,
-  markSoftAiInflight,
   partyForActor,
   resumeSellerSoftAutoAfterTimeout,
+  SoftManualWaitingError,
   setPartyControlMode,
+  softManualWaitingBodyFromError,
+  softManualWaitingBodyFromLockedRow,
 } from "../services/control-mode.service.js";
 import {
   getListingPlaybackSummariesByInternalIds,
@@ -655,6 +658,9 @@ export function registerNegotiationRoutes(
 
         return reply.code(result.idempotent ? 200 : 201).send(responseBody);
       } catch (err) {
+        if (err instanceof SoftManualWaitingError) {
+          return reply.code(409).send(softManualWaitingBodyFromError(err));
+        }
         const message = err instanceof Error ? err.message : String(err);
 
         if (message.startsWith("SESSION_NOT_FOUND")) {
@@ -1207,16 +1213,30 @@ export function registerNegotiationRoutes(
       // Soft AI handoff lock only when Haggle AI drafts (not user-specified counter).
       const softAiDraft = !userCounter;
       if (softAiDraft) {
-        const inflightClaimed = await markSoftAiInflight(
-          db,
-          liveSession.id,
-          responderParty,
-          liveSession.version,
-        );
-        if (!inflightClaimed) {
+        const claim = await claimSoftAiInflightUnderLock(db, {
+          sessionId: liveSession.id,
+          party: responderParty,
+          expectedVersion: liveSession.version,
+        });
+        if (!claim.ok) {
+          if (claim.reason === "manual") {
+            return reply
+              .code(409)
+              .send(
+                softManualWaitingBodyFromLockedRow(
+                  claim.session,
+                  responderParty,
+                  liveSession.currentRound,
+                ),
+              );
+          }
+          if (claim.reason === "not_found") {
+            return reply.code(404).send({ error: "SESSION_NOT_FOUND" });
+          }
           return reply.code(409).send({ error: "CONCURRENT_MODIFICATION" });
         }
-        liveSession = (await getSessionById(db, liveSession.id)) ?? liveSession;
+        const refreshed = await getSessionById(db, liveSession.id);
+        liveSession = refreshed ?? { ...liveSession, version: claim.version };
       }
 
       const claimed = await setSessionPerspective(
@@ -1249,6 +1269,8 @@ export function registerNegotiationRoutes(
           messageText: plan.messageText,
           eventDispatcher,
           requireSignature: false,
+          // Only after claimSoftAiInflightUnderLock succeeded. Not taken from the request.
+          ...(softAiDraft ? { softAiInflightClaim: responderParty } : {}),
         });
         if (!submitted.ok) {
           if (softAiDraft) {
