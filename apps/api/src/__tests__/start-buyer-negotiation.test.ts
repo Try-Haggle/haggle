@@ -25,4 +25,14 @@ describe("startBuyerNegotiationSchema buyerCriteria", () => {
     if (!parsed.success) return;
     expect(parsed.data.buyerCriteria).toBeUndefined();
   });
+
+  it("strips a legacy requested_model instead of rejecting the body", () => {
+    const parsed = startBuyerNegotiationSchema.safeParse({
+      ...base,
+      requested_model: "deepseek-v4-pro",
+    });
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+    expect(parsed.data).not.toHaveProperty("requested_model");
+  });
 });

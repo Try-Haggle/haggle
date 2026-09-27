@@ -115,9 +115,9 @@ export const startBuyerNegotiationSchema = z.object({
     .max(24 * 14)
     .optional(),
   fulfillment: fulfillmentPreferenceSchema.optional(),
-  // Client hint only; never entitlement.
+  // Client hint only; never entitlement. z.object strips unknown keys, so a
+  // client that still sends requested_model does not get a 400.
   pro_model_credit: z.boolean().optional(),
-  requested_model: z.string().min(1).max(80).optional(),
   /** Soft control_mode for the starting buyer (default Auto). Party-only — cannot set seller. */
   buyer_control_mode: z.enum(["auto", "manual"]).optional(),
 });
@@ -391,7 +391,7 @@ export async function startBuyerNegotiation(
   };
   const sellerNegotiationAgentPresetId = listingContext.sellerNegotiationAgentPresetId;
   const defaultRoute = resolveDecideModel({ publishedAskMinor: askMinor });
-  // body.pro_model_credit / body.requested_model: client hint only; never entitlement.
+  // body.pro_model_credit: client hint only; never entitlement.
   const sellerAllowedModel = resolveNewSessionAllowedModel(listingSnapshot.seller_requested_model);
   const sellerOwnBetter = sellerAllowedModel !== defaultRoute.model;
   // Soft control_mode default Auto/Auto at start (SoT §2). Settings preference

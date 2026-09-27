@@ -59,10 +59,10 @@ flowchart LR
 |---|---|---|
 | `packages/engine-core` | 효용, 의사결정 규칙, Faratin 역제안 가격 등 순수 계산 | 없음 |
 | `packages/engine-session` | 전략 조립, 상태 전이, 라운드·그룹 오케스트레이션 타입과 순수 함수 | 없음 |
-| `apps/api/src/negotiation/pipeline` | 프로덕션 6-stage 라운드 실행 | 협상 테이블, DeepSeek V4 Pro, Skill/referee 연결 |
+| `apps/api/src/negotiation/pipeline` | 프로덕션 6-stage 라운드 실행 | 협상 테이블, DeepSeek V4.1-Flash(`deepseek-flash`), Skill/referee 연결 |
 | `apps/api/src/routes/negotiations.ts` | 시작, 제안, 재개 등 HTTP 진입점 | 트랜잭션과 권한 경계 |
 
-현재 프로덕션에서는 DeepSeek V4 Pro가 최종 가격과 메시지를 만들고, `engine-core`의 Faratin 계산이 추천 가격 코칭에 사용된다. `engine-session.executeRound`와 `engine-core.makeDecision`은 시뮬레이션·데모·테스트에서는 사용되지만 프로덕션 최종 결정 경로는 아니다. 이 역할 차이와 known issue의 기준은 [협상 엔진 SOT](../engine/SOT.md)다.
+현재 프로덕션에서는 DeepSeek V4.1-Flash(`deepseek-flash`, 2026-09-27 전 구간 Flash)가 최종 가격과 메시지를 만들고, `engine-core`의 Faratin 계산이 추천 가격 코칭에 사용된다. `engine-session.executeRound`와 `engine-core.makeDecision`은 시뮬레이션·데모·테스트에서는 사용되지만 프로덕션 최종 결정 경로는 아니다. 이 역할 차이와 known issue의 기준은 [협상 엔진 SOT](../engine/SOT.md)다.
 
 영속화는 다음처럼 나뉜다.
 

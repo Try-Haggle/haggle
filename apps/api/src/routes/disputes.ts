@@ -4890,6 +4890,8 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
           appeal,
         });
       }
+      // Do not drop a COMPLETED verdict only because the default model changed
+      // (2026-09-27 all-Flash). Reviewers must not see it change mid-review.
       const previousAssessment = metadata.ai_resolution_assessor;
       if (
         !parsed.data.force &&
@@ -4902,7 +4904,6 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
           currentEvidenceHash &&
         (previousAssessment as Record<string, unknown>).policy_version ===
           DISPUTE_AI_POLICY_VERSION &&
-        (previousAssessment as Record<string, unknown>).model === currentAssessmentModel &&
         (previousAssessment as Record<string, unknown>).precedent_snapshot_hash ===
           precedentSnapshot.sha256
       ) {
