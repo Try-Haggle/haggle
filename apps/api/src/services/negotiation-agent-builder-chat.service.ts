@@ -10,6 +10,7 @@ import {
 // (FastifyInstance import removed — this is now a pure service file)
 import { z } from "zod";
 import { callLLM } from "../negotiation/adapters/deepseek-client.js";
+import { getBuilderLlmModel } from "../negotiation/decide-model.js";
 import { getAgentVoiceProfile } from "../negotiation/negotiation-agent-voice-profiles.js";
 import {
   type AdvisorCandidatePlan,
@@ -1275,21 +1276,15 @@ ${
 Candidate planner:
 ${usePlanner ? formatCandidatePlanForPrompt(initialCandidatePlan) : "None — no listing context."}`;
 
-  // deepseek-v4-pro is a REASONING model: it emits reasoning_content before the JSON
-  // answer, so a full builder turn commonly runs ~30s — right at callLLM's default 30s
-  // ceiling, which surfaced as intermittent timeout 502s as the conversation (and its
-  // context) grew. Give it a generous token budget (avoid truncation) AND a longer
-  // timeout so the reasoning can finish. (A faster model like deepseek-v4-flash would
-  // cut latency, but that's a separate model-quality decision.)
+  // A builder turn can run ~30s and used to hit callLLM's 30s ceiling (timeout
+  // 502s as context grew). Keep a generous token budget and timeout so the turn
+  // can finish. The builder model defaults to Flash. BUILDER_LLM_MODEL may name
+  // another Flash id for this path only; Pro or unknown values fall back to Flash.
   const response = await callLLM(advisorSystemPrompt, advisorUserPrompt, {
     correlationId: "intelligence-demo-advisor-turn",
     maxTokens: 6000,
     timeoutMs: 90_000,
-    // G-PERF: the builder defaults to the global model (deepseek-v4-pro — a reasoning
-    // model whose quality matters for structured criteria extraction). Set
-    // BUILDER_LLM_MODEL (e.g. deepseek-v4-flash) to A/B a faster model on the builder
-    // path ONLY, without touching the negotiation-runtime model.
-    ...(process.env.BUILDER_LLM_MODEL ? { model: process.env.BUILDER_LLM_MODEL } : {}),
+    model: getBuilderLlmModel(),
   });
 
   if (response.finish_reason === "length") {
@@ -1704,7 +1699,7 @@ function buildNegotiationAgentBuilderTurnCost(usage: {
   const estimatedUsd = prompt * INPUT_TOKEN_USD + completion * OUTPUT_TOKEN_USD;
 
   return {
-    model: process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro",
+    model: getBuilderLlmModel(),
     tokens: {
       prompt,
       completion,

@@ -34,7 +34,8 @@ const DEFAULT_MODEL_PRICING: Record<string, LlmModelPricing> = {
   "grok-4-fast": { inputUsdPer1MTokens: 0.2, outputUsdPer1MTokens: 0.5 },
   "grok-4.1-fast": { inputUsdPer1MTokens: 0.2, outputUsdPer1MTokens: 0.5 },
   "deepseek-v4-pro": { inputUsdPer1MTokens: 0.66, outputUsdPer1MTokens: 1.98 },
-  "deepseek-v4-flash": { inputUsdPer1MTokens: 0.22, outputUsdPer1MTokens: 0.66 },
+  "deepseek-flash": { inputUsdPer1MTokens: 0.3, outputUsdPer1MTokens: 1.2 },
+  "deepseek-v4-flash": { inputUsdPer1MTokens: 0.3, outputUsdPer1MTokens: 1.2 },
 };
 
 /** DeepSeek V4 Pro published rates (2026-08-16). Peak = 01:00–04:00 and 06:00–10:00 UTC. */
@@ -43,10 +44,14 @@ const DEEPSEEK_V4_PRO_RATES = {
   peak: { miss: 1.32, hit: 0.044, output: 3.96 },
 } as const;
 
-/** Flash is 1/3 of Pro, same cache/peak shape, until a published table lands. */
+/**
+ * DeepSeek Flash published rates
+ * (https://api-docs.deepseek.com/quick_start/pricing, checked 2026-09-27).
+ * Legacy id `deepseek-v4-flash` is billed at this Flash price.
+ */
 const DEEPSEEK_V4_FLASH_RATES = {
-  offPeak: { miss: 0.22, hit: 0.007333, output: 0.66 },
-  peak: { miss: 0.44, hit: 0.014667, output: 1.32 },
+  offPeak: { miss: 0.15, hit: 0.003, output: 0.6 },
+  peak: { miss: 0.3, hit: 0.006, output: 1.2 },
 } as const;
 
 function parseNonNegativeNumber(raw: string | undefined): number | null {
@@ -59,12 +64,16 @@ function modelEnvKey(model: string): string {
   return model.toUpperCase().replace(/[^A-Z0-9]+/g, "_");
 }
 
-export function isDeepSeekV4Pro(model: string): boolean {
-  return model.toLowerCase().includes("deepseek-v4-pro");
+export function isDeepSeekV4Flash(model: string): boolean {
+  const id = model.toLowerCase();
+  if (id.includes("pro")) return false;
+  return id.includes("deepseek-v4-flash") || id.includes("deepseek-flash");
 }
 
-export function isDeepSeekV4Flash(model: string): boolean {
-  return model.toLowerCase().includes("deepseek-v4-flash");
+export function isDeepSeekV4Pro(model: string): boolean {
+  const id = model.toLowerCase();
+  if (isDeepSeekV4Flash(id)) return false;
+  return id.includes("deepseek-v4-pro");
 }
 
 export function isDeepSeekPeakUtc(at: Date = new Date()): boolean {
@@ -105,6 +114,7 @@ export function estimateLlmCostUsd(
 ): LlmCostEstimate | null {
   if (!model || !usage) return null;
 
+  // Unknown model ids stay unpriced (null). Do not default them to Flash rates.
   const deepSeekRates = isDeepSeekV4Pro(model)
     ? DEEPSEEK_V4_PRO_RATES
     : isDeepSeekV4Flash(model)

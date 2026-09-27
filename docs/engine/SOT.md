@@ -281,7 +281,7 @@ executor는 매 라운드 **coach와 briefing을 둘 다** 호출하며, 역할�
 - ⚠️ **utility_snapshot이 두 곳에서 서로 다른 하드코딩 가중치로 중복 계산** — coach(`0.5/0.2/0.15/0.15`, `coach.ts:163`)·briefing(`0.5/0.2/0.3`, `briefing.ts:63`). 둘 다 사용자 weights 무시. coach만 trust score를 u_risk로 반영, briefing은 u_risk=0.5 고정.
 
 ### 5.4 현황 — LLM Decide & 프롬프트 🚧 `stages/decide.ts · adapters/deepseek-adapter.ts`
-- ✅ executor는 **`DeepSeekAdapter`를 고정 사용**(`executor.ts:70`). 클라이언트는 OpenAI-compatible DeepSeek 엔드포인트(`api.deepseek.com/v1`)와 `DEEPSEEK_API_KEY`를 사용(`deepseek-client.ts`). Decide는 턴마다 모델 id를 골라 `callLLM` body에 넣는다. 카테고리·구매자 목표가 아니라 **공개 호가 + 서버가 허용한 모델**. 카탈로그·정책은 [`decide-model-routing.md`](./decide-model-routing.md). Phase 0 카탈로그는 Flash와 Pro 두 칸. `pro_model_credit`는 임시 boolean — 클라이언트를 믿지 않는다. 라우터 `decide-model.ts`.
+- ✅ executor는 **`DeepSeekAdapter`를 고정 사용**(`executor.ts:70`). 클라이언트는 OpenAI-compatible DeepSeek 엔드포인트(`api.deepseek.com/v1`)와 `DEEPSEEK_API_KEY`를 사용(`deepseek-client.ts`). Decide는 턴마다 모델 id를 골라 `callLLM` body에 넣는다. 카테고리·구매자 목표가 아니라 **공개 호가 + 서버가 허용한 모델**. 호가로 Pro를 고르던 라우팅은 2026-09-27 결정으로 대체됨. 카탈로그·정책은 [`decide-model-routing.md`](./decide-model-routing.md). Phase 0 카탈로그는 Flash와 Pro 두 칸. `pro_model_credit`는 임시 boolean — 클라이언트를 믿지 않는다. 라우터 `decide-model.ts`.
 - ✅ 프로덕션 프롬프트 `C:` 라인은 `tactic|opp|conv|tp`만 실음. Faratin 달러는 Advisor 칸. utility_snapshot/weights는 미도달(`decide-user-prompt.ts`).
 - ✅ decide 흐름: `skill.evaluateOffer`(룰 baseline) → **OPENING/BARGAINING의 COUNTER**면 LLM. LLM이 유효 COUNTER 가격(또는 ACCEPT/REJECT/HOLD) 반환 시 대체. 타임아웃·파싱 실패 시 **직전 호가 반복 또는 HOLD**. Faratin 공식으로 숫자를 채우지 않는다(`decide.ts`).
 - 🎯 **`encodeClosingHint`**: 갭이 작아도 ACCEPT를 강제하지 않는다. 이 매물 SOFT에 맞을 때만 닫으라고 한다. 추천가를 타결가로 쓰지 말라고 한다.

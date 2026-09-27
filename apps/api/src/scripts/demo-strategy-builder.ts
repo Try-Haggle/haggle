@@ -2,7 +2,7 @@
  * Haggle 대화형 전략 빌더 + 자동 협상 데모
  *
  * 기존 인프라를 재사용:
- *  - callLLM (negotiation/adapters/deepseek-client) — DeepSeek V4 Pro 호출
+ *  - callLLM (negotiation/adapters/deepseek-client) — DeepSeek Flash 호출
  *  - executeRound (@haggle/engine-session) — 엔진 라운드 실행
  *  - TemplateMessageRenderer — 메시지 렌더링
  *  - negotiation-simulate 패턴 — 인메모리 시뮬레이션
@@ -29,6 +29,7 @@ import {
 
 // Reuse existing DeepSeek client
 import { callLLM } from "../negotiation/adapters/deepseek-client.js";
+import { getDefaultDeepSeekModel } from "../negotiation/decide-model.js";
 // Reuse existing message renderer
 import { TemplateMessageRenderer } from "../negotiation/rendering/message-renderer.js";
 
@@ -649,7 +650,7 @@ server.listen(PORT, () => {
   Haggle 대화형 전략 빌더 + 자동 협상
   ========================================
   ${ITEM}
-  Model: ${process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro"}
+  Model: ${getDefaultDeepSeekModel()}
   API Key: ${process.env.DEEPSEEK_API_KEY ? "loaded" : "MISSING"}
   Using: callLLM (deepseek-client), executeRound (engine-session)
   http://localhost:${PORT}

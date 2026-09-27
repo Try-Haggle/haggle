@@ -1,6 +1,7 @@
 import { PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it, vi } from "vitest";
 import { resolveAdvisorCanarySecret } from "../advisor/advisor-canary.js";
+import { getModel } from "../advisor/advisor-llm.js";
 import { buildAdvisorHistoryFilter } from "../advisor/advisor-service.js";
 
 vi.mock("@haggle/db", async (importOriginal) => importOriginal());
@@ -27,6 +28,19 @@ describe("advisor history role isolation", () => {
     expect(query.params).toEqual([DISPUTE_ID, "buyer_advisor", "buyer_user"]);
     expect(query.params).not.toContain("seller_advisor");
     expect(query.params).not.toContain("seller_user");
+  });
+});
+
+describe("advisor llm default model", () => {
+  it("uses Flash when DEEPSEEK_MODEL is unset or not a flash id", () => {
+    vi.stubEnv("DEEPSEEK_MODEL", "");
+    vi.stubEnv("DEEPSEEK_FLASH_MODEL", "");
+    expect(getModel()).toBe("deepseek-flash");
+    vi.stubEnv("DEEPSEEK_MODEL", "deepseek-v4-pro");
+    expect(getModel()).toBe("deepseek-flash");
+    vi.stubEnv("DEEPSEEK_MODEL", "garbage-model");
+    expect(getModel()).toBe("deepseek-flash");
+    vi.unstubAllEnvs();
   });
 });
 

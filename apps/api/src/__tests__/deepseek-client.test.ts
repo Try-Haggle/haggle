@@ -17,7 +17,7 @@ function mockFetchResponse(body: unknown, status = 200) {
 
 beforeEach(() => {
   vi.stubEnv("DEEPSEEK_API_KEY", "test-key-123");
-  vi.stubEnv("DEEPSEEK_MODEL", "deepseek-v4-pro");
+  vi.stubEnv("DEEPSEEK_MODEL", "deepseek-flash");
   vi.stubEnv("LLM_TELEMETRY", "0");
 });
 
@@ -118,6 +118,36 @@ describe("callLLM", () => {
     const callArgs = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(callArgs[1].headers.Authorization).toBe("Bearer test-key-123");
     expect(callArgs[1].headers["Content-Type"]).toBe("application/json");
+  });
+
+  it("requests deepseek-flash when DEEPSEEK_MODEL is unset", async () => {
+    vi.stubEnv("DEEPSEEK_MODEL", "");
+    vi.stubEnv("DEEPSEEK_FLASH_MODEL", "");
+    globalThis.fetch = mockFetchResponse({
+      choices: [{ message: { content: "{}" }, finish_reason: "stop" }],
+      usage: {},
+    });
+
+    await callLLM("system", "user");
+
+    const callArgs = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const body = JSON.parse(callArgs[1].body as string);
+    expect(body.model).toBe("deepseek-flash");
+  });
+
+  it("falls back to deepseek-flash when DEEPSEEK_MODEL is Pro", async () => {
+    vi.stubEnv("DEEPSEEK_MODEL", "deepseek-v4-pro");
+    vi.stubEnv("DEEPSEEK_FLASH_MODEL", "");
+    globalThis.fetch = mockFetchResponse({
+      choices: [{ message: { content: "{}" }, finish_reason: "stop" }],
+      usage: {},
+    });
+
+    await callLLM("system", "user");
+
+    const callArgs = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const body = JSON.parse(callArgs[1].body as string);
+    expect(body.model).toBe("deepseek-flash");
   });
 
   it("uses structured output (json_object)", async () => {

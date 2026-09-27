@@ -3135,6 +3135,31 @@ describe("Group API", () => {
       expect(res.statusCode).toBe(201);
       expect(res.json().session).toBeDefined();
     });
+
+    it("drops client model entitlement before creating the session", async () => {
+      mockGetGroupById.mockResolvedValue(mockGroup);
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/groups/group-001/sessions",
+        headers: AUTH_HEADERS,
+        payload: {
+          ...VALID_SESSION_PAYLOAD,
+          negotiation_agent_snapshot: {
+            ...VALID_SESSION_PAYLOAD.negotiation_agent_snapshot,
+            allowed_model: "deepseek-v4-pro",
+            pro_model_credit: true,
+          },
+        },
+      });
+      expect(res.statusCode).toBe(201);
+      const snapshot = mockCreateSession.mock.calls[0]?.[1]?.negotiationAgentSnapshot as Record<
+        string,
+        unknown
+      >;
+      expect(snapshot.allowed_model).toBeUndefined();
+      expect(snapshot.pro_model_credit).toBeUndefined();
+      expect(snapshot.must_have).toEqual(["battery >= 90%"]);
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════════

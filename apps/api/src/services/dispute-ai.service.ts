@@ -15,6 +15,7 @@ import {
   validateResolutionAssessorOutput,
 } from "@haggle/dispute-core";
 import { estimateLlmCostUsd, type LlmCostEstimate } from "../lib/llm-cost.js";
+import { getDefaultDeepSeekModel, readFlashRoleEnv } from "../negotiation/decide-model.js";
 
 export interface DisputeAiProviderResponse {
   content: string;
@@ -370,7 +371,7 @@ export function createXaiDisputeAiProvider(
   // Backward-compatible export name. The dispute AI provider now uses DeepSeek.
   return createDeepSeekDisputeAiProvider({
     ...options,
-    model: options.model ?? process.env.DISPUTE_AI_MODEL,
+    model: options.model ?? readFlashRoleEnv("DISPUTE_AI_MODEL"),
   });
 }
 
@@ -399,19 +400,17 @@ export function resolveDisputeAiModel(
     return (
       options.resolutionAssessorModel ??
       options.model ??
-      process.env.DISPUTE_AI_RESOLUTION_ASSESSOR_MODEL ??
-      process.env.DISPUTE_AI_MODEL ??
-      process.env.DEEPSEEK_MODEL ??
-      "deepseek-v4-pro"
+      readFlashRoleEnv("DISPUTE_AI_RESOLUTION_ASSESSOR_MODEL") ??
+      readFlashRoleEnv("DISPUTE_AI_MODEL") ??
+      getDefaultDeepSeekModel()
     );
   }
   return (
     options.caseGuideModel ??
     options.model ??
-    process.env.DISPUTE_AI_CASE_GUIDE_MODEL ??
-    process.env.DISPUTE_AI_MODEL ??
-    process.env.DEEPSEEK_MODEL ??
-    "deepseek-v4-flash"
+    readFlashRoleEnv("DISPUTE_AI_CASE_GUIDE_MODEL") ??
+    readFlashRoleEnv("DISPUTE_AI_MODEL") ??
+    getDefaultDeepSeekModel()
   );
 }
 
