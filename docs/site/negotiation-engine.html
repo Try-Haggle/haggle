@@ -222,7 +222,7 @@ CLOSING→NEAR_DEAL</div>
   <div class="cap" id="decide" data-nav="↳ Decide (LLM)" data-nav-sub>
     <div class="cap-head"><span class="cap-t">Stage 3 — Decide (LLM)</span><span class="cap-badge badge b-warn">🚧</span></div>
     <div class="block now warn"><div class="bl">현황</div>
-      <p>✅ 어댑터 <b>DeepSeekAdapter 하드코딩</b>(<code>executor.ts:70</code>), DeepSeek(<code>api.deepseek.com/v1</code>), 모델 <code>DEEPSEEK_MODEL ?? deepseek-v4-pro</code>. 다른 어댑터 코드에 없음.</p>
+      <p>✅ 어댑터 <b>DeepSeekAdapter 하드코딩</b>(<code>executor.ts:70</code>), DeepSeek(<code>api.deepseek.com/v1</code>), 모델 <code>DEEPSEEK_MODEL ?? deepseek-flash</code>(2026-09-27 전 구간 Flash). 다른 어댑터 코드에 없음.</p>
       <p>✅ 프롬프트 <code>C:</code> 라인은 <code>rec$..|tactic|opp|conv|tp</code>만 — <b>recommended_price만 하드 앵커, utility/weights 미도달</b>(<code>deepseek-adapter.ts:212</code>).</p>
       <p>🎯 <b>ACCEPT를 유도하는 gap 휴리스틱 = <code>encodeClosingHint</code></b>(<code>:317</code>): 서버가 gap 계산 → <b>gap&lt;5%/&lt;$5 → "ACCEPT하라"</b>를 프롬프트에 직접 주입. §7의 그 휴리스틱.</p>
       <p>🔎 STRATEGY 블록 = persona + <b>빌더챗 메모리만</b>(숫자 파라미터 미도달, §4). <code>encodeDelta</code> 차등컨텍스트는 decide 경로에서 죽은 코드(prevMemory=undefined).</p>
@@ -299,7 +299,7 @@ CLOSING→NEAR_DEAL</div>
   <h2 class="title">LLM 통합</h2>
   <div class="callout co-ok">
     <div class="ct">현황 <span class="badge b-ok">✅</span></div>
-    <div>💀 <b>"라운드당 2회"는 틀림 → 실제 1회(Decide만)</b>. Respond는 템플릿(LLM 미호출), pipeline respond 토큰 합산은 죽은 코드. · ✅ DeepSeek 고정(<code>DEEPSEEK_MODEL</code>, 기본 deepseek-v4-pro), reasoning 플래그는 timeout·temperature(0.5→0.3)를 조정. · ✅ 토큰 실측 → <code>negotiation_rounds.llm_tokens_used</code> 저장. · 🚧 <b>비용 러프 추정·DB 미저장</b>(<code>tokens/1000×0.0007</code>, 정확 비용은 단가 env 설정 시). · 💀 세션당 비용 집계 없음("~$0.005/세션"은 데모값).</div>
+    <div>💀 <b>"라운드당 2회"는 틀림 → 실제 1회(Decide만)</b>. Respond는 템플릿(LLM 미호출), pipeline respond 토큰 합산은 죽은 코드. · ✅ DeepSeek 고정(<code>DEEPSEEK_MODEL</code>, 기본 deepseek-flash, 2026-09-27 전 구간 Flash), reasoning 플래그는 timeout·temperature(0.5→0.3)를 조정. · ✅ 토큰 실측 → <code>negotiation_rounds.llm_tokens_used</code> 저장. · 🚧 <b>비용 러프 추정·DB 미저장</b>(<code>tokens/1000×0.0007</code>, 정확 비용은 단가 env 설정 시). · 💀 세션당 비용 집계 없음("~$0.005/세션"은 데모값).</div>
   </div>
 </section>
 

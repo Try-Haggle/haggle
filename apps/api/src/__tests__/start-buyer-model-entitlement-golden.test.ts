@@ -162,13 +162,16 @@ describe("start buyer model entitlement", () => {
     vi.stubEnv("DEEPSEEK_MODEL", "");
     vi.stubEnv("DEEPSEEK_FLASH_MODEL", "");
 
+    // requested_model is not a schema field (zod strips it). Still sent so a
+    // legacy client hint cannot select a model.
+    const body = {
+      listing_public_id: "mdlFlash1",
+      negotiation_agent_preset_id: "balancer",
+      requested_model: "deepseek-v4-pro",
+      pro_model_credit: true,
+    };
     const result = await startBuyerNegotiation({} as never, {
-      body: {
-        listing_public_id: "mdlFlash1",
-        negotiation_agent_preset_id: "balancer",
-        requested_model: "deepseek-v4-pro",
-        pro_model_credit: true,
-      },
+      body,
       buyerId: "buyer-1",
       isGuest: false,
       driver: "mcp",
