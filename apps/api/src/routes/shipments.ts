@@ -3875,7 +3875,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
   // POST /shipments/:id/event — record a shipment event (seller only)
   app.post(
     "/shipments/:id/event",
-    { preHandler: [requireAuth, requireShipmentOwner({ role: "seller" })] },
+    { preHandler: [requireAuth, denyMcpToken, requireShipmentOwner({ role: "seller" })] },
     async (request, reply) => {
       const shipment = await getShipmentById(db, (request.params as { id: string }).id);
       if (!shipment) {

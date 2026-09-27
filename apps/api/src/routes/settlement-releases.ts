@@ -1472,7 +1472,7 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
   // POST /settlement-releases/by-order/:orderId/buyer-confirm — Buyer confirms receipt
   app.post(
     "/settlement-releases/by-order/:orderId/buyer-confirm",
-    { preHandler: [requireAuth, requireOrderOwner({ role: "buyer" })] },
+    { preHandler: [requireAuth, denyMcpToken, requireOrderOwner({ role: "buyer" })] },
     async (request, reply) => {
       const { orderId } = request.params as { orderId: string };
       const release = await getSettlementReleaseByOrderId(db, orderId);
@@ -1507,7 +1507,7 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
   // Staging-only APV completion after an EasyPost test delivery and buyer receipt confirmation.
   app.post(
     "/settlement-releases/by-order/:orderId/complete-test-buffer",
-    { preHandler: [requireAuth, requireOrderOwner({ role: "seller" })] },
+    { preHandler: [requireAuth, denyMcpToken, requireOrderOwner({ role: "seller" })] },
     async (request, reply) => {
       if (!isVerifiedSettlementTestRuntime()) {
         return reply.code(404).send({ error: "TEST_BUFFER_COMPLETION_NOT_AVAILABLE" });

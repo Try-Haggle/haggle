@@ -9,8 +9,11 @@ import { registerGroupRoutes } from "../routes/groups.js";
 import { registerMcpOauthRoutes } from "../routes/mcp-oauth.js";
 import { registerNegotiationRoutes } from "../routes/negotiations.js";
 import { registerOrderRoutes } from "../routes/orders.js";
+import { registerReviewerRoutes } from "../routes/reviewer.js";
 import { registerSettlementReleaseRoutes } from "../routes/settlement-releases.js";
 import { registerShipmentRoutes } from "../routes/shipments.js";
+import { registerWalletRoutes } from "../routes/wallets.js";
+import { evaluateDisputePanel } from "../services/dispute-panel-evaluate.service.js";
 import {
   exchangeMcpAuthorizationCode,
   issueMcpAuthorizationCode,
@@ -41,6 +44,15 @@ vi.mock("../services/settlement-release.service.js", async (importOriginal) => {
   };
 });
 
+vi.mock("../services/dispute-panel-evaluate.service.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../services/dispute-panel-evaluate.service.js")>();
+  return {
+    ...actual,
+    evaluateDisputePanel: vi.fn(actual.evaluateDisputePanel),
+  };
+});
+
 vi.mock("../services/mcp-oauth.service.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../services/mcp-oauth.service.js")>();
   return {
@@ -64,6 +76,8 @@ const DISPUTE_ID = "dispute-poc";
 const RELEASE_ID = "release-poc";
 const SESSION_ID = "sess-poc";
 const GROUP_ID = "group-poc";
+const SHIPMENT_ID = "shipment-poc";
+const WALLET_ID = "wallet-poc";
 
 const CONSENT_BODY = {
   client_id: "mcp_client_poc",
@@ -74,7 +88,7 @@ const CONSENT_BODY = {
   state: "xyz",
 };
 
-type HttpMethod = "GET" | "POST" | "PATCH";
+type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
 
 type GuardedRoute = {
   id: string;
@@ -291,6 +305,53 @@ const GUARDED_ROUTES: GuardedRoute[] = [
     jwtStatus: 404,
     jwtError: "GROUP_NOT_FOUND",
   },
+  {
+    id: "bl1-buyer-confirm",
+    method: "POST",
+    url: `/settlement-releases/by-order/${ORDER_ID}/buyer-confirm`,
+    payload: {},
+    jwtStatus: 404,
+    jwtError: "ORDER_NOT_FOUND",
+  },
+  {
+    id: "complete-test-buffer",
+    method: "POST",
+    url: `/settlement-releases/by-order/${ORDER_ID}/complete-test-buffer`,
+    payload: {},
+    jwtStatus: 404,
+    jwtError: "ORDER_NOT_FOUND",
+  },
+  {
+    id: "wallets-post",
+    method: "POST",
+    url: "/wallets",
+    payload: {},
+    jwtStatus: 400,
+    jwtError: "INVALID_WALLET_REQUEST",
+  },
+  {
+    id: "wallets-delete",
+    method: "DELETE",
+    url: `/wallets/${WALLET_ID}`,
+    jwtStatus: 404,
+    jwtError: "WALLET_NOT_FOUND",
+  },
+  {
+    id: "shipment-event",
+    method: "POST",
+    url: `/shipments/${SHIPMENT_ID}/event`,
+    payload: {},
+    jwtStatus: 404,
+    jwtError: "SHIPMENT_NOT_FOUND",
+  },
+  {
+    id: "reviewer-vote",
+    method: "POST",
+    url: `/reviewer/assignments/${DISPUTE_ID}/vote`,
+    payload: {},
+    jwtStatus: 400,
+    jwtError: "INVALID_VOTE",
+  },
 ];
 
 const GUEST_ROUTES: GuardedRoute[] = [
@@ -349,7 +410,19 @@ function createDb() {
   });
   const insert = vi.fn();
   const update = vi.fn();
-  const del = vi.fn();
+  const del = vi.fn(() => {
+    const result = Promise.resolve([] as unknown[]);
+    const query: Record<string, unknown> = {};
+    const self = () => query;
+    for (const method of ["where", "returning"]) {
+      query[method] = vi.fn(self);
+    }
+    // biome-ignore lint/suspicious/noThenProperty: Drizzle query mocks must remain awaitable.
+    query.then = result.then.bind(result);
+    query.catch = result.catch.bind(result);
+    query.finally = result.finally.bind(result);
+    return query;
+  });
   const execute = vi.fn(async () => ({ rowCount: 0, rows: [] }));
   const query = new Proxy(
     {},
@@ -437,6 +510,8 @@ describe("MCP token REST deny (additional routes)", () => {
     registerShipmentRoutes(app, db as never);
     registerDisputeRoutes(app, db as never);
     registerSettlementReleaseRoutes(app, db as never);
+    registerWalletRoutes(app, db as never);
+    registerReviewerRoutes(app, db as never);
     registerMcpOauthRoutes(app, db as never);
     registerNegotiationRoutes(app, db as never, dispatcher, { publish: notificationPublish });
     registerGroupRoutes(app, db as never, dispatcher);
@@ -466,9 +541,18 @@ describe("MCP token REST deny (additional routes)", () => {
     expect(resolveMcpToken, route.id).toHaveBeenCalledWith(MCP_TOKEN);
     expectNoSideEffects(db);
 
-    if (route.id === "b1-confirm-delivery") {
+    if (route.id === "b1-confirm-delivery" || route.id === "bl1-buyer-confirm") {
       expect(buyerConfirmReceipt).not.toHaveBeenCalled();
       expect(updateSettlementReleaseRecord).not.toHaveBeenCalled();
+    }
+    if (route.id === "wallets-post" || route.id === "wallets-delete") {
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(db.delete).not.toHaveBeenCalled();
+    }
+    if (route.id === "reviewer-vote") {
+      expect(db.select).not.toHaveBeenCalled();
+      expect(db.update).not.toHaveBeenCalled();
+      expect(evaluateDisputePanel).not.toHaveBeenCalled();
     }
     if (route.id === "b2-oauth-consent") {
       expect(issueMcpAuthorizationCode).not.toHaveBeenCalled();
