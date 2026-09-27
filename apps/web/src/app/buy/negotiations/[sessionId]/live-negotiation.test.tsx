@@ -7,6 +7,9 @@ const mocks = vi.hoisted(() => ({
   refresh: vi.fn(),
   get: vi.fn(),
   post: vi.fn(),
+  control: {
+    pendingTarget: null as "manual" | "auto" | null,
+  },
 }));
 
 vi.mock("next/navigation", () => ({
@@ -18,20 +21,25 @@ vi.mock("@/components/control-mode/control-mode-panel", () => ({
 }));
 
 vi.mock("@/hooks/use-session-control-mode", () => ({
-  useSessionControlMode: () => ({
-    enabled: true,
-    party: "buyer",
-    ownMode: "auto",
-    peerMode: "auto",
-    pendingTarget: null,
-    inflight: false,
-    syncState: "idle",
-    error: null,
-    isManual: false,
-    isAuto: true,
-    requestMode: () => undefined,
-    toggle: () => undefined,
-  }),
+  useSessionControlMode: (opts: {
+    serverSession?: { buyer_control_mode?: string | null } | null;
+  }) => {
+    const isManual = opts.serverSession?.buyer_control_mode === "manual";
+    return {
+      enabled: true,
+      party: "buyer" as const,
+      ownMode: isManual ? ("manual" as const) : ("auto" as const),
+      peerMode: "auto" as const,
+      pendingTarget: mocks.control.pendingTarget,
+      inflight: false,
+      syncState: "idle" as const,
+      error: null,
+      isManual,
+      isAuto: !isManual,
+      requestMode: () => undefined,
+      toggle: () => undefined,
+    };
+  },
 }));
 
 vi.mock("@/hooks/use-negotiation-ws", () => ({
@@ -44,6 +52,10 @@ vi.mock("@/lib/api-client", async (importOriginal) => {
 });
 
 import { LiveNegotiation } from "./live-negotiation";
+
+beforeEach(() => {
+  mocks.control.pendingTarget = null;
+});
 
 function payload(status = "ACTIVE", rounds = 1): SessionResponse {
   return {
@@ -512,5 +524,126 @@ describe("LiveNegotiation — the way to the seller", () => {
     render(<LiveNegotiation initialPayload={payload("REJECTED")} />);
 
     expect(screen.queryByRole("button", { name: /Message seller/ })).toBeNull();
+  });
+});
+
+const ROUND_FAILED = "The next round could not be generated. Your completed rounds are saved.";
+
+function manualPayload(status = "ACTIVE", rounds = 0): SessionResponse {
+  const base = payload(status, rounds);
+  return {
+    ...base,
+    session: { ...base.session, buyer_control_mode: "manual" },
+  };
+}
+
+/**
+ * Turning Auto off while a round request is in flight used to surface
+ * "could not be generated" — the PATCH wins, and the next auto-play POST
+ * comes back 409 SOFT_MANUAL_WAITING. That is a handoff, not a failed round.
+ */
+describe("LiveNegotiation — switching Auto off during a round", () => {
+  beforeEach(() => {
+    mocks.refresh.mockReset();
+    mocks.get.mockReset();
+    mocks.post.mockReset();
+    mocks.control.pendingTarget = null;
+    window.sessionStorage.clear();
+    mocks.get.mockReturnValue(new Promise(() => undefined));
+  });
+
+  it("stops without a round error when auto-play returns SOFT_MANUAL_WAITING", async () => {
+    const running = payload("CREATED", 0);
+    mocks.get
+      .mockReset()
+      .mockResolvedValueOnce(running)
+      .mockResolvedValue(manualPayload("ACTIVE", 0));
+    mocks.post.mockRejectedValueOnce(new ApiError(409, "SOFT_MANUAL_WAITING"));
+    render(<LiveNegotiation initialPayload={running} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("buyer-manual-action-bar")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(ROUND_FAILED)).not.toBeInTheDocument();
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops without a round error when SOFT_MANUAL_WAITING follows a concurrent retry", async () => {
+    const running = payload("CREATED", 0);
+    mocks.get
+      .mockReset()
+      .mockResolvedValueOnce(running)
+      .mockResolvedValueOnce(running)
+      .mockResolvedValue(manualPayload("ACTIVE", 0));
+    mocks.post
+      .mockRejectedValueOnce(new ApiError(409, "CONCURRENT_MODIFICATION"))
+      .mockRejectedValueOnce(new ApiError(409, "SOFT_MANUAL_WAITING"));
+    render(<LiveNegotiation initialPayload={running} />);
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId("buyer-manual-action-bar")).toBeInTheDocument();
+      },
+      { timeout: 4_000 },
+    );
+    expect(screen.queryByText(ROUND_FAILED)).not.toBeInTheDocument();
+    expect(mocks.post).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(mocks.post).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not send another auto-play round when Manual is queued during an in-flight POST", async () => {
+    const initial = payload("CREATED", 0);
+    let resolvePost: ((value: unknown) => void) | undefined;
+    mocks.get.mockReset().mockResolvedValue(payload("ACTIVE", 1));
+    mocks.post.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePost = resolve;
+        }),
+    );
+    const view = render(<LiveNegotiation initialPayload={initial} />);
+
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1));
+    mocks.control.pendingTarget = "manual";
+    view.rerender(<LiveNegotiation initialPayload={initial} />);
+
+    await act(async () => {
+      resolvePost?.({
+        complete: false,
+        session_status: "ACTIVE",
+        current_round: 1,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(ROUND_FAILED)).not.toBeInTheDocument();
+  });
+
+  it("still shows the round error for an internal auto-play failure", async () => {
+    mocks.get.mockReset().mockResolvedValue(payload("CREATED", 0));
+    mocks.post.mockRejectedValueOnce(new ApiError(500, "INTERNAL"));
+    render(<LiveNegotiation initialPayload={payload("CREATED", 0)} />);
+
+    expect(await screen.findByText(ROUND_FAILED)).toBeInTheDocument();
+    expect(screen.queryByTestId("buyer-manual-action-bar")).not.toBeInTheDocument();
+  });
+
+  it("still shows the round error for a generic auto-play failure", async () => {
+    mocks.get.mockReset().mockResolvedValue(payload("CREATED", 0));
+    mocks.post.mockRejectedValueOnce(new Error("socket hang up"));
+    render(<LiveNegotiation initialPayload={payload("CREATED", 0)} />);
+
+    expect(await screen.findByText(ROUND_FAILED)).toBeInTheDocument();
+    expect(screen.queryByTestId("buyer-manual-action-bar")).not.toBeInTheDocument();
   });
 });

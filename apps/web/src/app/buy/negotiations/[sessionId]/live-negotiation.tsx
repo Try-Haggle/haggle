@@ -174,6 +174,10 @@ export function LiveNegotiation({
   // Prefer Manual stop *after* in-flight Soft API completes — never abort mid-call (SoT §3).
   const preferManualRef = useRef(buyerIsManual);
   preferManualRef.current = buyerIsManual;
+  // Queued Manual is visible here before `isManual` flips (the PATCH waits for the
+  // in-flight round). The drive loop reads this ref so it does not have to restart.
+  const pendingManualRef = useRef(control.pendingTarget === "manual");
+  pendingManualRef.current = control.pendingTarget === "manual";
   const wasManualRef = useRef(buyerIsManual);
   useEffect(() => {
     const wasManual = wasManualRef.current;
@@ -188,11 +192,14 @@ export function LiveNegotiation({
     if (isSpectator) return;
     if (isTerminalNegotiationStatus(initialPayload.session.status)) return;
     // Soft Manual with nothing in flight: do not start Soft AI turns (SoT §1).
-    if (preferManualRef.current) return;
+    // A queued Manual switch is the same stop — do not send another auto-play POST.
+    if (preferManualRef.current || pendingManualRef.current) return;
     if (runnerAttempt > 0) setUpdateError(false);
     let cancelled = false;
     let activeRoundController: AbortController | null = null;
     const sessionId = initialPayload.session.id;
+
+    const manualHandoffRequested = () => pendingManualRef.current || preferManualRef.current;
 
     async function loadSession(): Promise<SessionResponse> {
       const next = await api.get<SessionResponse>(`/negotiations/sessions/${sessionId}`);
@@ -209,9 +216,16 @@ export function LiveNegotiation({
         let current = await loadSession();
         while (!cancelled && !isTerminalNegotiationStatus(current.session.status)) {
           // Mid-session toggle to Manual: stop driving after the current call
-          // completes (SoT §3 handoff). Re-check each loop iteration.
+          // completes (SoT §3 handoff). Re-check each loop iteration — including
+          // a Manual switch that is only queued while this POST was in flight.
           if (cancelled) return;
+          if (manualHandoffRequested() || current.session.buyer_control_mode === "manual") {
+            return;
+          }
           const runToken = getNegotiationRunToken(sessionId);
+          // Snapshot before the next await. Flushing the queued PATCH clears
+          // pendingTarget while loadSession is in flight, so the ref can look idle.
+          let manualHandoff = false;
           try {
             activeRoundController = new AbortController();
             setLocalInflight(true);
@@ -231,6 +245,7 @@ export function LiveNegotiation({
               activeRoundController = null;
               setLocalInflight(false);
             }
+            manualHandoff = manualHandoffRequested();
             // A seller-criteria PAUSE answers 200 with no new round, and WAITING is not a
             // terminal status — so ignoring the body span the loop forever: POST → 200 →
             // reload → still WAITING → POST … with nothing to show for it. Hand the
@@ -255,7 +270,11 @@ export function LiveNegotiation({
 
           current = await loadSession();
           // Handoff: after in-flight Soft API finishes, stop if Manual is preferred.
-          if (preferManualRef.current || current.session.buyer_control_mode === "manual") {
+          if (
+            manualHandoff ||
+            manualHandoffRequested() ||
+            current.session.buyer_control_mode === "manual"
+          ) {
             return;
           }
         }
@@ -267,6 +286,16 @@ export function LiveNegotiation({
         if (cancelled) return;
         setLocalInflight(false);
         const apiError = err instanceof ApiError ? err : null;
+        // 409 after Auto was switched off. The server is already Manual; reload so
+        // the offer bar shows. Not a failed round, so no error banner.
+        if (apiError?.code === "SOFT_MANUAL_WAITING") {
+          try {
+            await loadSession();
+          } catch {
+            if (!cancelled) setUpdateError(true);
+          }
+          return;
+        }
         setRoundError(
           apiError?.code === "AUTO_PLAY_TOKEN_INVALID"
             ? "This live negotiation link is no longer authorized in this tab."
