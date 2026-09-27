@@ -471,6 +471,8 @@ aim   = clamp(aim, box.min, box.max)                # ★ 안전: box 안으로
 우선순위는 "실제 협상 품질에 미치는 영향" 기준.
 
 > **백로그 #10은 열린 할 일이다.** box [min,max] clamp + Referee HARD가 결정적 브레이크다. 둘 다 아직 실제로 차단하지 않는다(§5.5). AI가 가격을 더 결정할수록 결정적 브레이크(Referee HARD 규칙)는 더 필수다.
+>
+> Buyer cap server-side block for MCP/agreement paths (`BUDGET_EXCEEDED`) is locked in [mcp-buyer-deal-sot.md](../wip/mcp-buyer-deal-sot.md).
 
 | # | 갭 | 현재 | 목표(SOT) | 규모 |
 |---|-----|------|-----------|------|
