@@ -60,6 +60,16 @@ type MessageTree = {
       leave: string;
     };
   };
+  negotiation: {
+    live: {
+      manualSwitchFailed: {
+        title: string;
+        body: string;
+        retry: string;
+        continueAuto: string;
+      };
+    };
+  };
 };
 
 const en: MessageTree = {
@@ -105,6 +115,16 @@ const en: MessageTree = {
       leave: "Leave checkout",
     },
   },
+  negotiation: {
+    live: {
+      manualSwitchFailed: {
+        title: "Manual switch failed",
+        body: "Auto-play is paused. Retry the switch to Manual, or continue in Auto.",
+        retry: "Retry",
+        continueAuto: "Continue Auto",
+      },
+    },
+  },
 };
 
 /** Korean may omit keys; `t()` fills those from English. */
@@ -148,6 +168,16 @@ const ko: DeepPartial<MessageTree> = {
       cta: "이대로 결제",
       changeHint: "내용을 바꿔야 하나요?",
       leave: "결제 나가기",
+    },
+  },
+  negotiation: {
+    live: {
+      manualSwitchFailed: {
+        title: "수동 전환에 실패했습니다",
+        body: "자동 진행이 멈춰 있습니다. 수동 전환을 다시 시도하거나 자동으로 계속하세요.",
+        retry: "다시 시도",
+        continueAuto: "자동으로 계속",
+      },
     },
   },
 };
