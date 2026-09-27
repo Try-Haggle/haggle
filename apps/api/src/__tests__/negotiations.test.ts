@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { resetRateLimitsForTests } from "../middleware/rate-limit.js";
 import {
   claimSoftAiInflightUnderLock,
+  clearSoftAiInflightAndApplyPending,
   SoftManualWaitingError,
 } from "../services/control-mode.service.js";
 import { createNegotiationAutoPlaySetup } from "../services/negotiation-auto-play.service.js";
@@ -33,6 +34,7 @@ const {
   mockLoadListingStrategyContext,
   mockGetLatestRoundsBySessionIds,
   mockGetListingPlaybackSummariesByInternalIds,
+  mockSendInApp,
 } = vi.hoisted(() => ({
   mockCreateSession: vi.fn(),
   mockGetSessionById: vi.fn(),
@@ -56,6 +58,7 @@ const {
   mockLoadListingStrategyContext: vi.fn(),
   mockGetLatestRoundsBySessionIds: vi.fn(),
   mockGetListingPlaybackSummariesByInternalIds: vi.fn(),
+  mockSendInApp: vi.fn(),
 }));
 
 // ─── Mock data ──────────────────────────────────────────────────────
@@ -205,6 +208,10 @@ vi.mock("../services/attempt-control.service.js", () => ({
     const value = await run(_db, attemptControl);
     return { ok: true as const, value, attemptControl };
   },
+}));
+
+vi.mock("../notification/channels/in-app.js", () => ({
+  sendInApp: (...args: unknown[]) => mockSendInApp(...args),
 }));
 
 vi.mock("../notification/get-user-info.js", () => ({
@@ -1101,6 +1108,35 @@ describe("Negotiation API", () => {
           senderAgentId: "haggle.autoplay.buyer",
         }),
       });
+    });
+
+    it("auto-play route: inflight cleanup failure logs a warning", async () => {
+      const { setup, session } = autoPlayFixture();
+      mockGetSessionById.mockResolvedValue(session);
+      mockExecuteNegotiationRound.mockRejectedValue(new Error("ROUND_BOOM"));
+      vi.mocked(clearSoftAiInflightAndApplyPending).mockRejectedValueOnce(
+        new Error("cleanup-failed"),
+      );
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      try {
+        const res = await app.inject({
+          method: "POST",
+          url: "/negotiations/sessions/sess-001/auto-play/next",
+          payload: { run_token: setup.runToken },
+        });
+        expect(res.statusCode).toBe(502);
+        expect(res.json()).toEqual({ error: "AUTO_PLAY_ROUND_FAILED" });
+        const line = warn.mock.calls
+          .map((call) => String(call[0]))
+          .find((text) => text.includes("inflight cleanup failed"));
+        expect(line).toContain("session=sess-001");
+        expect(line).toContain("party=seller");
+        expect(line).toContain("error=cleanup-failed");
+      } finally {
+        warn.mockRestore();
+        vi.mocked(clearSoftAiInflightAndApplyPending).mockReset();
+        vi.mocked(clearSoftAiInflightAndApplyPending).mockResolvedValue(null);
+      }
     });
 
     it("uses a user-specified price_minor and message instead of the autoplay price", async () => {
@@ -2197,6 +2233,86 @@ describe("Negotiation API", () => {
       expect(mockExecuteNegotiationRound.mock.calls[0]?.[1]).not.toHaveProperty(
         "softAiInflightClaim",
       );
+    });
+
+    it("offers route: offer-only NEAR_DEAL does not publish an agreement notification", async () => {
+      mockGetSessionById.mockResolvedValue({
+        ...mockSession,
+        id: "00000000-0000-4000-a000-000000000010",
+        listingId: "00000000-0000-4000-a000-000000000001",
+        status: "NEAR_DEAL",
+        buyerId: "buyer-001",
+        role: "SELLER" as const,
+        sellerControlMode: "manual" as const,
+      });
+      mockExecuteNegotiationRound.mockResolvedValue({
+        idempotent: false,
+        roundId: "round-wait",
+        roundNo: 2,
+        decision: "AWAITING_COUNTERPART",
+        outgoingPrice: 10000,
+        utility: { u_total: 0, v_p: 0, v_t: 0, v_r: 0, v_s: 0 },
+        sessionStatus: "NEAR_DEAL",
+        awaitingManualCounterpart: "seller",
+      });
+      (
+        globalThis as typeof globalThis & { __HAGGLE_TEST_FIND_FIRST__?: unknown[] }
+      ).__HAGGLE_TEST_FIND_FIRST__ = [{ id: "listing-001", snapshotJson: { title: "Phone" } }];
+      mockSendInApp.mockClear();
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/sess-001/offers",
+        headers: AUTH_HEADERS,
+        payload: {
+          ...VALID_OFFER_PAYLOAD,
+          role: "SELLER",
+          next_role: "SELLER",
+          turn: "SELLER",
+          acting_role: "SELLER",
+          sender_role: "BUYER",
+        },
+      });
+
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(res.statusCode).toBe(201);
+      expect(res.json()).toMatchObject({
+        session_status: "NEAR_DEAL",
+        awaiting_manual_counterpart: "seller",
+        decision: "AWAITING_COUNTERPART",
+      });
+      expect(res.json()).not.toHaveProperty("agreedPriceMinor");
+      expect(JSON.stringify(res.json())).not.toContain("agreedPriceMinor");
+      expect(mockSendInApp).not.toHaveBeenCalled();
+      const executorInput = mockExecuteNegotiationRound.mock.calls[0]?.[1] as Record<
+        string,
+        unknown
+      >;
+      expect(executorInput).not.toHaveProperty("role");
+      expect(executorInput).not.toHaveProperty("next_role");
+      expect(executorInput).not.toHaveProperty("turn");
+      expect(executorInput).not.toHaveProperty("acting_role");
+      expect(executorInput).not.toHaveProperty("sender_role");
+      expect(executorInput).toMatchObject({ senderRole: "BUYER" });
+      delete (globalThis as typeof globalThis & { __HAGGLE_TEST_FIND_FIRST__?: unknown[] })
+        .__HAGGLE_TEST_FIND_FIRST__;
+    });
+
+    it("offers route: OFFER_REJECTED_SPAM is 422 without strategy fields", async () => {
+      mockGetSessionById.mockResolvedValue(mockSession);
+      const { OfferRejectedSpamError } = await import("../negotiation/pipeline/executor.js");
+      mockExecuteNegotiationRound.mockRejectedValue(new OfferRejectedSpamError());
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/sess-001/offers",
+        headers: AUTH_HEADERS,
+        payload: VALID_OFFER_PAYLOAD,
+      });
+
+      expect(res.statusCode).toBe(422);
+      expect(res.json()).toEqual({ error: "OFFER_REJECTED_SPAM" });
+      expect(Object.keys(res.json())).toEqual(["error"]);
     });
 
     it("offers route: NOT_YOUR_TURN from the executor is 409", async () => {

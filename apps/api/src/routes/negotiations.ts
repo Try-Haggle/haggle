@@ -31,6 +31,7 @@ import {
   SELLER_CRITERIA_PAUSE_MARKER,
   unresolvedBuyerPauseAsks,
 } from "../negotiation/phase/seller-criteria-pause.js";
+import { OfferRejectedSpamError } from "../negotiation/pipeline/executor.js";
 import { getNotificationUserInfo } from "../notification/get-user-info.js";
 import type { NotificationBus } from "../notification/index.js";
 import {
@@ -628,8 +629,10 @@ export function registerNegotiationRoutes(
         }
 
         // ── Notification: negotiation.session.concluded (NEAR_DEAL → buyer)
+        // Offer-only keeps NEAR_DEAL but is not an agreement.
         if (
           !result.idempotent &&
+          !result.awaitingManualCounterpart &&
           result.sessionStatus === "NEAR_DEAL" &&
           result.outgoingPrice != null
         ) {
@@ -687,6 +690,9 @@ export function registerNegotiationRoutes(
         }
         if (message.startsWith("NOT_YOUR_TURN")) {
           return reply.code(409).send({ error: "NOT_YOUR_TURN" });
+        }
+        if (err instanceof OfferRejectedSpamError || message.startsWith("OFFER_REJECTED_SPAM")) {
+          return reply.code(422).send({ error: "OFFER_REJECTED_SPAM" });
         }
 
         throw err;

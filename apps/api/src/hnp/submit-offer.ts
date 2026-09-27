@@ -1,6 +1,7 @@
 import type { Database } from "@haggle/db";
 import type { EventDispatcher } from "../lib/event-dispatcher.js";
 import { getExecutor } from "../lib/executor-factory.js";
+import { OfferRejectedSpamError } from "../negotiation/pipeline/executor.js";
 import {
   SoftManualWaitingError,
   softManualWaitingBodyFromError,
@@ -80,6 +81,9 @@ export async function submitHnpOffer(
     const message = err instanceof Error ? err.message : String(err);
     if (message.startsWith("NOT_YOUR_TURN")) {
       return { ok: false, status: 409, body: { error: "NOT_YOUR_TURN" } };
+    }
+    if (err instanceof OfferRejectedSpamError || message.startsWith("OFFER_REJECTED_SPAM")) {
+      return { ok: false, status: 422, body: { error: "OFFER_REJECTED_SPAM" } };
     }
     if (message.startsWith("CONCURRENT_MODIFICATION")) {
       return { ok: false, status: 409, body: { error: "CONCURRENT_MODIFICATION" } };

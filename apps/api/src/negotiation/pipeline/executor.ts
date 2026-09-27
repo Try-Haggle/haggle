@@ -96,6 +96,14 @@ const TERMINAL_STATUSES = new Set(["ACCEPTED", "REJECTED", "EXPIRED", "SUPERSEDE
 
 const ZERO_UTILITY = { u_total: 0, v_p: 0, v_t: 0, v_r: 0, v_s: 0 };
 
+/** Offer-only spam reject. Body is only this code — no prices or strategy. */
+export class OfferRejectedSpamError extends Error {
+  constructor() {
+    super("OFFER_REJECTED_SPAM");
+    this.name = "OfferRejectedSpamError";
+  }
+}
+
 function counterpartOfSender(senderRole: "BUYER" | "SELLER"): "buyer" | "seller" {
   return senderRole === "BUYER" ? "seller" : "buyer";
 }
@@ -744,7 +752,8 @@ export async function executeStagedNegotiationRound(
   });
 
   // --- Post-commit: dispatch pipeline events ---
-  if (eventDispatcher && !result.idempotent) {
+  // Offer-only returns before this. Never emit an agreement for that result.
+  if (eventDispatcher && !result.idempotent && !result.awaitingManualCounterpart) {
     const finalSession = await getSessionById(db, input.sessionId);
     const terminalEvent = buildTerminalEvent(
       input.sessionId,
@@ -1247,8 +1256,37 @@ function idempotentFieldsFromRound(
 }
 
 /**
+ * Same screenMessage inputs as the normal path (synthetic price line, trust
+ * score, deviation from the locked snapshot's target). The caller's message
+ * is screened with the same function and threshold because that price line
+ * does not contain their words.
+ *
+ * Difference from the normal path: a hit there persists a REJECT round via
+ * persistSpamRound. Here it must not insert a row.
+ */
+function offerOnlyScreenIsSpam(dbSession: DbSession, input: RoundExecutionInput): boolean {
+  const strategy = dbSession.negotiationAgentSnapshot ?? {};
+  const myTarget = extractNum(strategy, "p_target") ?? extractNum(strategy, "target_price") ?? 0;
+  const senderTrustScore = input.roundData.r_score;
+  const priceDeviation = computePriceDeviation(input.offerPriceMinor, myTarget);
+  const priceLine = screenMessage({
+    messageText: `Offer: $${input.offerPriceMinor / 100}`,
+    senderTrustScore,
+    priceDeviation,
+  });
+  if (priceLine.is_spam) return true;
+  if (!input.messageText) return false;
+  return screenMessage({
+    messageText: input.messageText,
+    senderTrustScore,
+    priceDeviation,
+  }).is_spam;
+}
+
+/**
  * Same locked transaction as the Phase-1 read. Saves the sender's offer and
- * leaves the session on the counterpart's turn. No LLM and no role change.
+ * sets role to that sender, so the next AI draft is for them when the Manual
+ * side answers. No LLM. Status changes only CREATED → ACTIVE.
  */
 async function persistOfferOnlyForManualCounterpart(
   tx: Database,
@@ -1276,8 +1314,17 @@ async function persistOfferOnlyForManualCounterpart(
   const counterpart = counterpartOfSender(input.senderRole);
   const dbRounds = (await getRoundsBySessionId(tx, input.sessionId)) as DbRound[];
   const latest = dbRounds.at(-1);
+  // Locked role is the side awaiting a reply. With a history, that side is off-turn.
+  // Zero rounds stays an opening offer, same as before this check.
+  if (dbRounds.length > 0 && input.senderRole === dbSession.role) {
+    throw new Error("NOT_YOUR_TURN");
+  }
   if (latest && isOfferOnlyRound(latest) && latest.senderRole === input.senderRole) {
     throw new Error("NOT_YOUR_TURN");
+  }
+
+  if (offerOnlyScreenIsSpam(dbSession, input)) {
+    throw new OfferRejectedSpamError();
   }
 
   const nextRound = dbSession.currentRound + 1;
@@ -1296,6 +1343,7 @@ async function persistOfferOnlyForManualCounterpart(
 
   const updated = await updateSessionState(tx, input.sessionId, dbSession.version, {
     ...(dbSession.status === "CREATED" ? { status: "ACTIVE" as const } : {}),
+    role: input.senderRole,
     currentRound: nextRound,
     lastOfferPriceMinor: String(input.offerPriceMinor),
   });

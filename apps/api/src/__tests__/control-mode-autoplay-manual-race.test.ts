@@ -729,6 +729,34 @@ function createFakeDb(initial: SessionRow) {
       state.holdNext = { gate, markStarted };
       return started;
     },
+    /** A round already stored. A normal AI round has a decision and a counter price. */
+    seedRound(partial: {
+      senderRole: "BUYER" | "SELLER";
+      roundNo: number;
+      decision?: string | null;
+      counterPriceMinor?: string | null;
+      priceminor?: string;
+      metadata?: Record<string, unknown> | null;
+      idempotencyKey?: string;
+      messageType?: string;
+    }) {
+      state.rounds.push({
+        id: crypto.randomUUID(),
+        sessionId: state.row?.id ?? SESSION_ID,
+        roundNo: partial.roundNo,
+        senderRole: partial.senderRole,
+        messageType: partial.messageType ?? "COUNTER",
+        priceminor: partial.priceminor ?? "42000",
+        counterPriceMinor:
+          partial.counterPriceMinor === undefined ? "80000" : partial.counterPriceMinor,
+        decision: partial.decision === undefined ? "COUNTER" : partial.decision,
+        metadata: partial.metadata === undefined ? { engine: "staged-pipeline" } : partial.metadata,
+        idempotencyKey: partial.idempotencyKey ?? `prior-${partial.roundNo}`,
+        message: "Standing offer.",
+        utility: null,
+        createdAt: new Date("2026-09-01T00:00:00.000Z"),
+      });
+    },
   };
 }
 
@@ -1413,12 +1441,12 @@ describe("auto-play claim vs Manual handoff", () => {
   });
 
   /** Same fields POST /negotiations/sessions/:id/offers passes to getExecutor(). */
-  function restOfferInput(idempotencyKey: string) {
+  function restOfferInput(idempotencyKey: string, senderRole: "BUYER" | "SELLER" = "BUYER") {
     const nowMs = Date.now();
     const envelope = wrapPriceOnlyAsHostEnvelope({
       sessionId: SESSION_ID,
       currentRound: 0,
-      senderRole: "BUYER",
+      senderRole,
       priceMinor: 42_000,
       idempotencyKey,
       nowMs,
@@ -1448,6 +1476,7 @@ describe("auto-play claim vs Manual handoff", () => {
         fake.rounds().find((round) => round.idempotencyKey === key) ?? null,
     );
     const ledgerBefore = fake.ledgerCount();
+    const versionBefore = fake.row()?.version ?? 0;
     const gate = deferred();
     const lockStarted = fake.armHold(gate.promise);
     const pending = Promise.allSettled([
@@ -1459,14 +1488,20 @@ describe("auto-play claim vs Manual handoff", () => {
       if (fake.queued() > 0) break;
       await Promise.resolve();
     }
-    gate.resolve();
-    const settled = await Promise.race([
-      pending,
-      new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error("offer race timed out")), 3000);
-      }),
-    ]);
-    return { fake, ledgerBefore, settled };
+    return {
+      fake,
+      ledgerBefore,
+      versionBefore,
+      finish: async () => {
+        gate.resolve();
+        return Promise.race([
+          pending,
+          new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error("offer race timed out")), 3000);
+          }),
+        ]);
+      },
+    };
   }
 
   function expectOneOfferOnlyRound(fake: ReturnType<typeof createFakeDb>, ledgerBefore: number) {
@@ -1485,9 +1520,11 @@ describe("auto-play claim vs Manual handoff", () => {
   }
 
   it("REST offers: two same-turn own offers with counterpart Manual → exactly one saved, other 409", async () => {
-    const { fake, ledgerBefore, settled } = await raceSameTurnManual((db, idempotencyKey) =>
-      getExecutor()(db, restOfferInput(idempotencyKey)),
+    const { fake, ledgerBefore, versionBefore, finish } = await raceSameTurnManual(
+      (db, idempotencyKey) => getExecutor()(db, restOfferInput(idempotencyKey)),
     );
+    expect(fake.queued()).toBeGreaterThan(0);
+    const settled = await finish();
     const saved = settled.filter((item) => item.status === "fulfilled");
     const rejected = settled.filter((item) => item.status === "rejected");
     expect(saved).toHaveLength(1);
@@ -1501,23 +1538,28 @@ describe("auto-play claim vs Manual handoff", () => {
     expect(reason).toBeInstanceOf(Error);
     expect((reason as Error).message).toBe("NOT_YOUR_TURN");
     expectOneOfferOnlyRound(fake, ledgerBefore);
+    expect(fake.row()?.version).toBe(versionBefore + 1);
+    expect(fake.row()?.role).toBe("BUYER");
   });
 
   it("hnp_submit_offer: two same-turn own offers with counterpart Manual → exactly one saved, other 409", async () => {
-    const { fake, ledgerBefore, settled } = await raceSameTurnManual((db, idempotencyKey) =>
-      submitHnpOffer(
-        db,
-        buildHostHnpOfferEnvelope({
-          sessionId: SESSION_ID,
-          roundNo: 1,
-          senderRole: "BUYER",
-          priceMinor: 42_000,
-          nowMs: Date.now(),
-          idempotencyKey,
-        }),
-        { requireSignature: false },
-      ),
+    const { fake, ledgerBefore, versionBefore, finish } = await raceSameTurnManual(
+      (db, idempotencyKey) =>
+        submitHnpOffer(
+          db,
+          buildHostHnpOfferEnvelope({
+            sessionId: SESSION_ID,
+            roundNo: 1,
+            senderRole: "BUYER",
+            priceMinor: 42_000,
+            nowMs: Date.now(),
+            idempotencyKey,
+          }),
+          { requireSignature: false },
+        ),
     );
+    expect(fake.queued()).toBeGreaterThan(0);
+    const settled = await finish();
     const values = settled.map((item) => {
       expect(item.status).toBe("fulfilled");
       return item.status === "fulfilled" ? item.value : undefined;
@@ -1531,5 +1573,261 @@ describe("auto-play claim vs Manual handoff", () => {
       body: { error: "NOT_YOUR_TURN" },
     });
     expectOneOfferOnlyRound(fake, ledgerBefore);
+    expect(fake.row()?.version).toBe(versionBefore + 1);
+    expect(fake.row()?.role).toBe("BUYER");
+  });
+
+  async function manualAnswerUnsticks(via: "rest" | "hnp") {
+    await installRealSubmit();
+    const fake = createFakeDb(
+      makeRow({
+        sellerControlMode: "manual",
+        buyerControlMode: "auto",
+        role: "SELLER",
+        version: 1,
+        currentRound: 0,
+      }),
+    );
+    vi.mocked(getRoundsBySessionId).mockImplementation(async () => fake.rounds() as never);
+    mockGetRoundByIdempotencyKey.mockImplementation(
+      async (_db: unknown, _id: unknown, key: unknown) =>
+        fake.rounds().find((round) => round.idempotencyKey === key) ?? null,
+    );
+    mockExecutePipeline.mockResolvedValue(pipelineCounter());
+    const buyerOffer =
+      via === "rest"
+        ? getExecutor()(fake.db, restOfferInput("buyer-open"))
+        : submitHnpOffer(
+            fake.db,
+            buildHostHnpOfferEnvelope({
+              sessionId: SESSION_ID,
+              roundNo: 1,
+              senderRole: "BUYER",
+              priceMinor: 42_000,
+              nowMs: Date.now(),
+              idempotencyKey: "buyer-open",
+            }),
+            { requireSignature: false },
+          );
+    const opened = await buyerOffer;
+    expect(mockExecutePipeline).not.toHaveBeenCalled();
+    expect(fake.row()?.role).toBe("BUYER");
+    expect(fake.row()?.version).toBe(2);
+    expect(fake.rounds()).toHaveLength(1);
+    if (via === "hnp") {
+      expect(opened).toMatchObject({ ok: true, awaitingManualCounterpart: "seller" });
+    } else {
+      expect(opened).toMatchObject({
+        awaitingManualCounterpart: "seller",
+        decision: "AWAITING_COUNTERPART",
+      });
+    }
+
+    mockExecutePipeline.mockClear();
+    const sellerAnswer =
+      via === "rest"
+        ? getExecutor()(fake.db, { ...restOfferInput("seller-answer"), senderRole: "SELLER" })
+        : submitHnpOffer(
+            fake.db,
+            buildHostHnpOfferEnvelope({
+              sessionId: SESSION_ID,
+              roundNo: 2,
+              senderRole: "SELLER",
+              priceMinor: 45_000,
+              nowMs: Date.now(),
+              idempotencyKey: "seller-answer",
+            }),
+            { requireSignature: false },
+          );
+    const answered = await sellerAnswer;
+    expect(mockExecutePipeline).toHaveBeenCalledOnce();
+    expect(fake.rounds()).toHaveLength(2);
+    expect(fake.row()?.role).toBe("BUYER");
+    if (via === "hnp") {
+      expect(answered).toMatchObject({ ok: true });
+      expect(answered).not.toMatchObject({ body: { error: "SOFT_MANUAL_WAITING" } });
+    } else {
+      expect(answered).toMatchObject({ decision: "COUNTER" });
+    }
+
+    mockExecutePipeline.mockClear();
+    const again = await getExecutor()(fake.db, {
+      ...restOfferInput("buyer-auto-again"),
+      senderRole: "SELLER",
+    });
+    expect(mockExecutePipeline).toHaveBeenCalledOnce();
+    expect(again).toMatchObject({ decision: "COUNTER" });
+    expect(again).not.toMatchObject({ awaitingManualCounterpart: "seller" });
+  }
+
+  it("REST offers: buyer offer flips role and the Manual seller answer runs the AI path", async () => {
+    await manualAnswerUnsticks("rest");
+  });
+
+  it("hnp_submit_offer: buyer offer flips role and the Manual seller answer runs the AI path", async () => {
+    await manualAnswerUnsticks("hnp");
+  });
+
+  /**
+   * persistPipelineRound's updateSessionState does not write role. A normal
+   * buyer-side draft leaves role BUYER, the side awaiting the seller's reply.
+   */
+  async function sessionAfterNormalBuyerDraft(modes: {
+    buyerControlMode: "auto" | "manual";
+    sellerControlMode: "auto" | "manual";
+  }) {
+    await installRealSubmit();
+    const fake = createFakeDb(
+      makeRow({
+        buyerControlMode: modes.buyerControlMode,
+        sellerControlMode: modes.sellerControlMode,
+        role: "BUYER",
+        currentRound: 1,
+        version: 2,
+      }),
+    );
+    fake.seedRound({
+      senderRole: "SELLER",
+      roundNo: 1,
+      decision: "COUNTER",
+      counterPriceMinor: "80000",
+      priceminor: "42000",
+      metadata: { engine: "staged-pipeline" },
+      idempotencyKey: "prior-normal-round",
+    });
+    vi.mocked(getRoundsBySessionId).mockImplementation(async () => fake.rounds() as never);
+    mockGetRoundByIdempotencyKey.mockImplementation(
+      async (_db: unknown, _id: unknown, key: unknown) =>
+        fake.rounds().find((round) => round.idempotencyKey === key) ?? null,
+    );
+    mockExecutePipeline.mockResolvedValue(pipelineCounter());
+    return fake;
+  }
+
+  function turnSnap(fake: ReturnType<typeof createFakeDb>) {
+    const row = fake.row();
+    return {
+      rounds: fake.rounds().length,
+      version: row?.version,
+      role: row?.role,
+      currentRound: row?.currentRound,
+      ledger: fake.ledgerCount(),
+    };
+  }
+
+  function expectTurnRejected(
+    fake: ReturnType<typeof createFakeDb>,
+    before: ReturnType<typeof turnSnap>,
+    dispatch: ReturnType<typeof vi.fn>,
+  ) {
+    expect(fake.rounds()).toHaveLength(before.rounds);
+    expect(fake.rounds().map((round) => round.idempotencyKey)).toEqual(["prior-normal-round"]);
+    expect(fake.row()?.version).toBe(before.version);
+    expect(fake.row()?.role).toBe(before.role);
+    expect(fake.row()?.currentRound).toBe(before.currentRound);
+    expect(fake.ledgerCount()).toBe(before.ledger);
+    const ledgerInserts = fake.inserts().filter((entry) => entry.table === "credit_ledger_entries");
+    expect(ledgerInserts).toHaveLength(0);
+    expect(dispatch).not.toHaveBeenCalled();
+  }
+
+  it("REST offers: previous round normal and seller Manual: buyer offer is 409", async () => {
+    const fake = await sessionAfterNormalBuyerDraft({
+      buyerControlMode: "auto",
+      sellerControlMode: "manual",
+    });
+    const dispatch = vi.fn();
+    const before = turnSnap(fake);
+    const rejected = await getExecutor()(fake.db, restOfferInput("buyer-off-turn"), {
+      dispatch,
+    } as never).then(
+      (value) => value,
+      (error: unknown) => error,
+    );
+    expect(rejected).toBeInstanceOf(Error);
+    expect((rejected as Error).message).toBe("NOT_YOUR_TURN");
+    expectTurnRejected(fake, before, dispatch);
+
+    const seller = await getExecutor()(fake.db, restOfferInput("seller-on-turn", "SELLER"));
+    expect(seller).toMatchObject({ decision: "COUNTER" });
+  });
+
+  it("hnp_submit_offer: previous round normal and seller Manual: buyer offer is 409", async () => {
+    const fake = await sessionAfterNormalBuyerDraft({
+      buyerControlMode: "auto",
+      sellerControlMode: "manual",
+    });
+    const dispatch = vi.fn();
+    const before = turnSnap(fake);
+    const rejected = await submitHnpOffer(
+      fake.db,
+      buildHostHnpOfferEnvelope({
+        sessionId: SESSION_ID,
+        roundNo: 2,
+        senderRole: "BUYER",
+        priceMinor: 42_000,
+        nowMs: Date.now(),
+        idempotencyKey: "buyer-off-turn",
+      }),
+      { requireSignature: false, eventDispatcher: { dispatch } as never },
+    );
+    expect(rejected).toEqual({ ok: false, status: 409, body: { error: "NOT_YOUR_TURN" } });
+    expectTurnRejected(fake, before, dispatch);
+
+    const seller = await submitHnpOffer(
+      fake.db,
+      buildHostHnpOfferEnvelope({
+        sessionId: SESSION_ID,
+        roundNo: 2,
+        senderRole: "SELLER",
+        priceMinor: 45_000,
+        nowMs: Date.now(),
+        idempotencyKey: "seller-on-turn",
+      }),
+      { requireSignature: false },
+    );
+    expect(seller).toMatchObject({ ok: true, decision: "COUNTER" });
+    expect(seller).not.toMatchObject({ ok: false, body: { error: "NOT_YOUR_TURN" } });
+  });
+
+  it("REST offers: both Manual: off-turn offer is 409", async () => {
+    const fake = await sessionAfterNormalBuyerDraft({
+      buyerControlMode: "manual",
+      sellerControlMode: "manual",
+    });
+    const dispatch = vi.fn();
+    const before = turnSnap(fake);
+    const rejected = await getExecutor()(fake.db, restOfferInput("buyer-off-turn"), {
+      dispatch,
+    } as never).then(
+      (value) => value,
+      (error: unknown) => error,
+    );
+    expect(rejected).toBeInstanceOf(Error);
+    expect((rejected as Error).message).toBe("NOT_YOUR_TURN");
+    expectTurnRejected(fake, before, dispatch);
+  });
+
+  it("hnp_submit_offer: both Manual: off-turn offer is 409", async () => {
+    const fake = await sessionAfterNormalBuyerDraft({
+      buyerControlMode: "manual",
+      sellerControlMode: "manual",
+    });
+    const dispatch = vi.fn();
+    const before = turnSnap(fake);
+    const rejected = await submitHnpOffer(
+      fake.db,
+      buildHostHnpOfferEnvelope({
+        sessionId: SESSION_ID,
+        roundNo: 2,
+        senderRole: "BUYER",
+        priceMinor: 42_000,
+        nowMs: Date.now(),
+        idempotencyKey: "buyer-off-turn",
+      }),
+      { requireSignature: false, eventDispatcher: { dispatch } as never },
+    );
+    expect(rejected).toEqual({ ok: false, status: 409, body: { error: "NOT_YOUR_TURN" } });
+    expectTurnRejected(fake, before, dispatch);
   });
 });

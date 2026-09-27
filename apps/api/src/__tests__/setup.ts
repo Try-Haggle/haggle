@@ -21,7 +21,13 @@ function createMockQueryProxy(): unknown {
       get(_target, _prop) {
         // db.query.<table> returns an object with findFirst, findMany, etc.
         return {
-          findFirst: vi.fn().mockResolvedValue(null),
+          findFirst: vi.fn(async () => {
+            const queued = (
+              globalThis as typeof globalThis & { __HAGGLE_TEST_FIND_FIRST__?: unknown[] }
+            ).__HAGGLE_TEST_FIND_FIRST__;
+            if (queued && queued.length > 0) return queued.shift();
+            return null;
+          }),
           findMany: vi.fn().mockResolvedValue([]),
         };
       },

@@ -224,4 +224,45 @@ describe("MCP hnp_submit_offer handler", () => {
       status: 409,
     });
   });
+
+  it("offer-only success payload has no agreed price", async () => {
+    mockSubmitHnpOffer.mockReset();
+    mockGetSessionById.mockResolvedValue(manualBuyerSession("SELLER"));
+    mockSubmitHnpOffer.mockResolvedValue({
+      ok: true,
+      roundId: "round-wait",
+      roundNo: 2,
+      decision: "AWAITING_COUNTERPART",
+      counterPrice: 42_000,
+      sessionStatus: "NEAR_DEAL",
+      idempotent: false,
+      awaitingManualCounterpart: "seller",
+      utility: { u_total: 0, v_p: 0, v_t: 0, v_r: 0, v_s: 0 },
+    });
+    const result = await runWithMcpActor(buyerActor, () =>
+      handler({ envelope: ownBuyerEnvelope() }),
+    );
+    const body = JSON.parse(result.content?.[0]?.text ?? "{}") as Record<string, unknown>;
+    expect(result.isError).not.toBe(true);
+    expect(body.session_status).toBe("NEAR_DEAL");
+    expect(body).not.toHaveProperty("agreedPriceMinor");
+    expect(JSON.stringify(body)).not.toContain("agreed");
+  });
+
+  it("spam rejection body has only the error code", async () => {
+    mockSubmitHnpOffer.mockReset();
+    mockGetSessionById.mockResolvedValue(manualBuyerSession("SELLER"));
+    mockSubmitHnpOffer.mockResolvedValue({
+      ok: false,
+      status: 422,
+      body: { error: "OFFER_REJECTED_SPAM" },
+    });
+    const result = await runWithMcpActor(buyerActor, () =>
+      handler({ envelope: ownBuyerEnvelope() }),
+    );
+    expect(result.isError).toBe(true);
+    const body = JSON.parse(result.content?.[0]?.text ?? "{}") as Record<string, unknown>;
+    expect(body).toMatchObject({ error: "OFFER_REJECTED_SPAM", status: 422 });
+    expect(JSON.stringify(body)).not.toMatch(/floor|target|strategy|utility|reasoning|my_target/i);
+  });
 });
