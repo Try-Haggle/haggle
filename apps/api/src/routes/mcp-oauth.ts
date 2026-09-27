@@ -3,7 +3,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { connectUrl, publicApiBaseUrl, publicAppBaseUrl, signUpUrl } from "../lib/public-urls.js";
 import { oauthRegisterRateLimit } from "../middleware/rate-limit.js";
-import { requireAuth } from "../middleware/require-auth.js";
+import { denyMcpToken, requireAuth } from "../middleware/require-auth.js";
 import {
   exchangeMcpAuthorizationCode,
   getMcpOauthClient,
@@ -95,30 +95,34 @@ export function registerMcpOauthRoutes(app: FastifyInstance, db: Database) {
     return reply.redirect(connectUrl(query.toString()));
   });
 
-  app.post("/oauth/consent", { preHandler: [requireAuth] }, async (request, reply) => {
-    const parsed = consentSchema.safeParse(request.body ?? {});
-    if (!parsed.success) {
-      return reply.code(400).send({ error: "INVALID_AUTHORIZE_REQUEST" });
-    }
-    const scopes = parseScopes(parsed.data.scope);
-    if (scopes.length === 0) {
-      return reply.code(400).send({ error: "INVALID_SCOPE" });
-    }
-    const issued = await issueMcpAuthorizationCode(db, {
-      clientId: parsed.data.client_id,
-      userId: request.user!.id,
-      redirectUri: parsed.data.redirect_uri,
-      codeChallenge: parsed.data.code_challenge,
-      scopes,
-    });
-    if (!issued.ok) {
-      return reply.code(400).send({ error: issued.error });
-    }
-    const redirect = new URL(parsed.data.redirect_uri);
-    redirect.searchParams.set("code", issued.code);
-    if (parsed.data.state) redirect.searchParams.set("state", parsed.data.state);
-    return reply.send({ redirect_to: redirect.toString() });
-  });
+  app.post(
+    "/oauth/consent",
+    { preHandler: [requireAuth, denyMcpToken] },
+    async (request, reply) => {
+      const parsed = consentSchema.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "INVALID_AUTHORIZE_REQUEST" });
+      }
+      const scopes = parseScopes(parsed.data.scope);
+      if (scopes.length === 0) {
+        return reply.code(400).send({ error: "INVALID_SCOPE" });
+      }
+      const issued = await issueMcpAuthorizationCode(db, {
+        clientId: parsed.data.client_id,
+        userId: request.user!.id,
+        redirectUri: parsed.data.redirect_uri,
+        codeChallenge: parsed.data.code_challenge,
+        scopes,
+      });
+      if (!issued.ok) {
+        return reply.code(400).send({ error: issued.error });
+      }
+      const redirect = new URL(parsed.data.redirect_uri);
+      redirect.searchParams.set("code", issued.code);
+      if (parsed.data.state) redirect.searchParams.set("state", parsed.data.state);
+      return reply.send({ redirect_to: redirect.toString() });
+    },
+  );
 
   app.post("/oauth/token", async (request, reply) => {
     const body =

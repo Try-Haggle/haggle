@@ -4,7 +4,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { INPUT_LIMITS } from "../lib/input-limits.js";
 import { createOwnershipMiddleware } from "../middleware/ownership.js";
-import { requireAuth } from "../middleware/require-auth.js";
+import { denyMcpToken, requireAuth } from "../middleware/require-auth.js";
 
 // ---------------------------------------------------------------------------
 // Validation schemas
@@ -76,7 +76,7 @@ export function registerAddressRoutes(app: FastifyInstance, db: Database) {
   // Save (upsert) an address for an order.
   app.post<{ Params: { orderId: string } }>(
     "/orders/:orderId/addresses",
-    { preHandler: [requireAuth, requireOrderOwner()] },
+    { preHandler: [requireAuth, denyMcpToken, requireOrderOwner()] },
     async (request, reply) => {
       const parsed = orderAddressSchema.safeParse(request.body);
       if (!parsed.success) {
@@ -149,7 +149,7 @@ export function registerAddressRoutes(app: FastifyInstance, db: Database) {
   // Get addresses for an order.
   app.get<{ Params: { orderId: string } }>(
     "/orders/:orderId/addresses",
-    { preHandler: [requireAuth, requireOrderOwner()] },
+    { preHandler: [requireAuth, denyMcpToken, requireOrderOwner()] },
     async (request, reply) => {
       const { orderId } = request.params;
 
@@ -169,16 +169,20 @@ export function registerAddressRoutes(app: FastifyInstance, db: Database) {
 
   // ─── GET /users/me/addresses ─────────────────────────────────────
   // Get user's saved address book.
-  app.get("/users/me/addresses", { preHandler: [requireAuth] }, async (request, reply) => {
-    const userId = request.user!.id;
+  app.get(
+    "/users/me/addresses",
+    { preHandler: [requireAuth, denyMcpToken] },
+    async (request, reply) => {
+      const userId = request.user!.id;
 
-    const addresses = await db
-      .select()
-      .from(userSavedAddresses)
-      .where(eq(userSavedAddresses.userId, userId));
+      const addresses = await db
+        .select()
+        .from(userSavedAddresses)
+        .where(eq(userSavedAddresses.userId, userId));
 
-    return reply.send({ addresses });
-  });
+      return reply.send({ addresses });
+    },
+  );
 
   // ─── POST /users/me/addresses ────────────────────────────────────
   // Add to address book.

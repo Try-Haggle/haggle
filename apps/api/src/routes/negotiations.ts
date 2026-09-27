@@ -21,7 +21,7 @@ import { getExecutor } from "../lib/executor-factory.js";
 import { executeGroupOrchestration, executeGroupTerminal } from "../lib/group-executor.js";
 import { negotiationChatUrl } from "../lib/public-urls.js";
 import { validateSessionParticipant, validateSessionWriteAccess } from "../lib/session-access.js";
-import { requireAuth } from "../middleware/require-auth.js";
+import { denyMcpToken, requireAuth } from "../middleware/require-auth.js";
 import { stripClientModelEntitlement } from "../negotiation/decide-model.js";
 import {
   applyBuyerPauseAnswer,
@@ -196,88 +196,92 @@ export function registerNegotiationRoutes(
   notificationBus: NotificationBus,
 ) {
   // POST /negotiations/sessions — 세션 생성
-  app.post("/negotiations/sessions", { preHandler: [requireAuth] }, async (request, reply) => {
-    const parsed = createSessionSchema.safeParse(request.body);
-    if (!parsed.success) {
-      return reply
-        .code(400)
-        .send({ error: "INVALID_SESSION_REQUEST", issues: parsed.error.issues });
-    }
-
-    const data = parsed.data;
-    const actor = request.user!;
-    if (actor.role !== "admin" && !isAuthorizedSessionCreator(actor.id, data)) {
-      return reply.code(403).send({ error: "SESSION_ACTOR_MISMATCH" });
-    }
-
-    let attemptControl: AttemptControlSnapshot | undefined;
-    if (data.buyer_id === actor.id) {
-      const memoryBrief = await loadUserMemoryBrief(db, {
-        userId: data.buyer_id,
-        limit: 8,
-        minStrength: 0.25,
-      });
-      const readiness = evaluateNegotiationStartReadiness({
-        role: data.role,
-        negotiationAgentSnapshot: data.negotiation_agent_snapshot,
-        memoryBrief,
-      });
-      if (!readiness.ready) {
-        return reply.code(409).send({
-          error: "NEGOTIATION_READINESS_INCOMPLETE",
-          readiness,
-        });
+  app.post(
+    "/negotiations/sessions",
+    { preHandler: [requireAuth, denyMcpToken] },
+    async (request, reply) => {
+      const parsed = createSessionSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send({ error: "INVALID_SESSION_REQUEST", issues: parsed.error.issues });
       }
 
-      const attemptResult = await evaluateAttemptControl(db, {
-        buyerPrincipalId: actor.id,
-        listingId: data.listing_id,
-      });
-      attemptControl = attemptResult.attemptControl;
-      if (!attemptResult.allowed) {
-        if (attemptResult.retryAfterSeconds) {
-          reply.header("retry-after", String(attemptResult.retryAfterSeconds));
+      const data = parsed.data;
+      const actor = request.user!;
+      if (actor.role !== "admin" && !isAuthorizedSessionCreator(actor.id, data)) {
+        return reply.code(403).send({ error: "SESSION_ACTOR_MISMATCH" });
+      }
+
+      let attemptControl: AttemptControlSnapshot | undefined;
+      if (data.buyer_id === actor.id) {
+        const memoryBrief = await loadUserMemoryBrief(db, {
+          userId: data.buyer_id,
+          limit: 8,
+          minStrength: 0.25,
+        });
+        const readiness = evaluateNegotiationStartReadiness({
+          role: data.role,
+          negotiationAgentSnapshot: data.negotiation_agent_snapshot,
+          memoryBrief,
+        });
+        if (!readiness.ready) {
+          return reply.code(409).send({
+            error: "NEGOTIATION_READINESS_INCOMPLETE",
+            readiness,
+          });
         }
-        return reply.code(isAttemptControlRateLimited(attemptResult.error) ? 429 : 409).send({
-          error: attemptResult.error,
-          rule: attemptResult.rule,
-          attempt_control: attemptResult.attemptControl,
-        });
-      }
-    }
 
-    const roundLimit =
-      attemptControl?.max_rounds_per_session ?? defaultAttemptControlPolicy().maxRoundsPerSession;
-    const negotiationAgentSnapshot = stripClientModelEntitlement(
-      applyRoundLimitToStrategy(data.negotiation_agent_snapshot, roundLimit),
-    );
-    try {
-      await assertListingAcceptsNewSession(db, data.listing_id);
-    } catch (error) {
-      if (error instanceof ListingClaimError) {
-        const mapped = LISTING_CLAIM_HTTP[error.code];
-        return reply.code(mapped.status).send({
-          error: mapped.error,
-          message: error.code,
+        const attemptResult = await evaluateAttemptControl(db, {
+          buyerPrincipalId: actor.id,
+          listingId: data.listing_id,
         });
+        attemptControl = attemptResult.attemptControl;
+        if (!attemptResult.allowed) {
+          if (attemptResult.retryAfterSeconds) {
+            reply.header("retry-after", String(attemptResult.retryAfterSeconds));
+          }
+          return reply.code(isAttemptControlRateLimited(attemptResult.error) ? 429 : 409).send({
+            error: attemptResult.error,
+            rule: attemptResult.rule,
+            attempt_control: attemptResult.attemptControl,
+          });
+        }
       }
-      throw error;
-    }
-    const session = await createSession(db, {
-      listingId: data.listing_id,
-      strategyId: data.strategy_id,
-      role: data.role,
-      buyerId: data.buyer_id,
-      sellerId: data.seller_id,
-      counterpartyId: data.counterparty_id,
-      negotiationAgentSnapshot,
-      groupId: data.group_id,
-      intentId: data.intent_id,
-      expiresAt: data.expires_at ? new Date(data.expires_at) : undefined,
-    });
 
-    return reply.code(201).send({ session, attempt_control: attemptControl });
-  });
+      const roundLimit =
+        attemptControl?.max_rounds_per_session ?? defaultAttemptControlPolicy().maxRoundsPerSession;
+      const negotiationAgentSnapshot = stripClientModelEntitlement(
+        applyRoundLimitToStrategy(data.negotiation_agent_snapshot, roundLimit),
+      );
+      try {
+        await assertListingAcceptsNewSession(db, data.listing_id);
+      } catch (error) {
+        if (error instanceof ListingClaimError) {
+          const mapped = LISTING_CLAIM_HTTP[error.code];
+          return reply.code(mapped.status).send({
+            error: mapped.error,
+            message: error.code,
+          });
+        }
+        throw error;
+      }
+      const session = await createSession(db, {
+        listingId: data.listing_id,
+        strategyId: data.strategy_id,
+        role: data.role,
+        buyerId: data.buyer_id,
+        sellerId: data.seller_id,
+        counterpartyId: data.counterparty_id,
+        negotiationAgentSnapshot,
+        groupId: data.group_id,
+        intentId: data.intent_id,
+        expiresAt: data.expires_at ? new Date(data.expires_at) : undefined,
+      });
+
+      return reply.code(201).send({ session, attempt_control: attemptControl });
+    },
+  );
 
   // GET /negotiations/sessions — 유저별 세션 목록
   app.get<{ Querystring: { user_id: string; role?: string; status?: string } }>(
@@ -489,7 +493,7 @@ export function registerNegotiationRoutes(
   // POST /negotiations/sessions/:id/offers — 오퍼 제출 (라운드 실행)
   app.post<{ Params: { id: string }; Querystring: { include_explainability?: string } }>(
     "/negotiations/sessions/:id/offers",
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, denyMcpToken] },
     async (request, reply) => {
       const parsed = submitOfferSchema.safeParse(request.body);
       if (!parsed.success) {
@@ -685,7 +689,7 @@ export function registerNegotiationRoutes(
   // PATCH /negotiations/sessions/:id/accept — 수락
   app.patch<{ Params: { id: string } }>(
     "/negotiations/sessions/:id/accept",
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, denyMcpToken] },
     async (request, reply) => {
       const parsed = acceptSessionSchema.safeParse(request.body ?? undefined);
       if (!parsed.success) {
@@ -815,7 +819,7 @@ export function registerNegotiationRoutes(
   // PATCH /negotiations/sessions/:id/reject — 거절
   app.patch<{ Params: { id: string } }>(
     "/negotiations/sessions/:id/reject",
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, denyMcpToken] },
     async (request, reply) => {
       const session = await getSessionById(db, request.params.id);
       if (!session) {
@@ -937,7 +941,7 @@ export function registerNegotiationRoutes(
   // 웹 입구. 인증된 구매자가 (publicId, 선택한 에이전트, 채팅 메모리)만 보내면
   // 서버가 판매자 전략 + 구매자 전략을 합성해 실제 세션을 생성하고 sessionId를
   // 반환한다. 클라이언트는 이 sessionId로 협상 페이지에 진입한다.
-  app.post("/negotiations/start", async (request, reply) => {
+  app.post("/negotiations/start", { preHandler: [denyMcpToken] }, async (request, reply) => {
     const parsed = parseStartBuyerNegotiationBody(request.body);
     if (!parsed.ok) {
       return reply.code(parsed.status).send(parsed.body);
@@ -974,7 +978,7 @@ export function registerNegotiationRoutes(
   // credit differential under row lock (TOCTOU); handoff if Soft AI in-flight.
   app.patch<{ Params: { id: string } }>(
     "/negotiations/sessions/:id/control-mode",
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, denyMcpToken] },
     async (request, reply) => {
       const parsed = controlModePatchSchema.safeParse(request.body ?? {});
       if (!parsed.success) {
@@ -1025,6 +1029,7 @@ export function registerNegotiationRoutes(
   // arrive instead of waiting for an in-process background loop.
   app.post<{ Params: { id: string } }>(
     "/negotiations/sessions/:id/auto-play/next",
+    { preHandler: [denyMcpToken] },
     async (request, reply) => {
       const parsed = runNextAutoPlayRoundSchema.safeParse(request.body ?? {});
       if (!parsed.success) {
@@ -1361,6 +1366,7 @@ export function registerNegotiationRoutes(
   // (the unresolved set is empty) and the negotiation resumes with the answer as a factor.
   app.post<{ Params: { id: string } }>(
     "/negotiations/sessions/:id/pause/answer",
+    { preHandler: [denyMcpToken] },
     async (request, reply) => {
       const parsed = pauseAnswerSchema.safeParse(request.body ?? {});
       if (!parsed.success) {

@@ -60,7 +60,7 @@ import {
   terminalWebhookOutOfOrderReason,
 } from "../lib/payment-webhook-out-of-order-guard.js";
 import { createOwnershipMiddleware } from "../middleware/ownership.js";
-import { requireAdmin, requireAuth } from "../middleware/require-auth.js";
+import { denyMcpToken, requireAdmin, requireAuth } from "../middleware/require-auth.js";
 import { X402FacilitatorClient } from "../payments/facilitator-client.js";
 import {
   calculateSellerFeeSplit,
@@ -2503,7 +2503,8 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     },
   );
 
-  app.post("/payments/prepare", { preHandler: [requireAuth] }, async (request, reply) => {
+  const preparePreHandler = [requireAuth, denyMcpToken];
+  app.post("/payments/prepare", { preHandler: preparePreHandler }, async (request, reply) => {
     const parsed = preparePaymentSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply
@@ -2815,7 +2816,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
   app.post(
     "/payments/:id/quote",
-    { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] },
+    { preHandler: [requireAuth, denyMcpToken, requirePaymentOwner({ role: "buyer" })] },
     async (request, reply) => {
       const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
       if (!intent) {
@@ -2980,7 +2981,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
   app.post(
     "/payments/:id/x402/conditional-settlement-request",
-    { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] },
+    { preHandler: [requireAuth, denyMcpToken, requirePaymentOwner({ role: "buyer" })] },
     async (request, reply) => {
       const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
       if (!intent) {
@@ -3158,7 +3159,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
   app.post(
     "/payments/:id/x402/conditional-settlement-funding",
-    { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] },
+    { preHandler: [requireAuth, denyMcpToken, requirePaymentOwner({ role: "buyer" })] },
     async (request, reply) => {
       const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
       if (!intent) {
@@ -3315,7 +3316,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
   app.post(
     "/payments/:id/x402/conditional-settlement-confirmation",
-    { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] },
+    { preHandler: [requireAuth, denyMcpToken, requirePaymentOwner({ role: "buyer" })] },
     async (request, reply) => {
       const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
       if (!intent) {
@@ -3611,7 +3612,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
   app.post(
     "/payments/:id/x402/conditional-refund-request",
-    { preHandler: [requireAdmin] },
+    { preHandler: [denyMcpToken, requireAdmin] },
     async (request, reply) => {
       const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
       if (!intent) {
@@ -3707,7 +3708,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
   app.post(
     "/payments/:id/x402/conditional-refund-execution",
-    { preHandler: [requireAdmin] },
+    { preHandler: [denyMcpToken, requireAdmin] },
     async (request, reply) => {
       const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
       if (!intent) {
@@ -3788,7 +3789,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
   app.post(
     "/payments/:id/x402/conditional-refund-confirmation",
-    { preHandler: [requireAdmin] },
+    { preHandler: [denyMcpToken, requireAdmin] },
     async (request, reply) => {
       const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
       if (!intent) {
@@ -4051,7 +4052,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
   app.post(
     "/payments/:id/x402/conditional-expire-confirmation",
-    { preHandler: [requireAdmin] },
+    { preHandler: [denyMcpToken, requireAdmin] },
     async (request, reply) => {
       const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
       if (!intent) {
@@ -4245,7 +4246,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
   app.post(
     "/payments/:id/x402/conditional-dispute-confirmation",
-    { preHandler: [requireAdmin] },
+    { preHandler: [denyMcpToken, requireAdmin] },
     async (request, reply) => {
       const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
       if (!intent) {
@@ -4372,7 +4373,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
   app.post(
     "/payments/:id/x402/submit-signature",
-    { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] },
+    { preHandler: [requireAuth, denyMcpToken, requirePaymentOwner({ role: "buyer" })] },
     async (request, reply) => {
       const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
       if (!intent) {
@@ -4543,7 +4544,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
   app.post(
     "/payments/:id/authorize",
-    { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] },
+    { preHandler: [requireAuth, denyMcpToken, requirePaymentOwner({ role: "buyer" })] },
     async (request, reply) => {
       if (requiresRealPaymentProviders() && request.user?.role !== "admin") {
         return reply.code(403).send({
@@ -4624,7 +4625,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
   app.post(
     "/payments/:id/settlement-pending",
-    { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] },
+    { preHandler: [requireAuth, denyMcpToken, requirePaymentOwner({ role: "buyer" })] },
     async (request, reply) => {
       if (requiresRealPaymentProviders() && request.user?.role !== "admin") {
         return reply.code(403).send({
@@ -4697,7 +4698,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
   app.post(
     "/payments/:id/settle",
-    { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] },
+    { preHandler: [requireAuth, denyMcpToken, requirePaymentOwner({ role: "buyer" })] },
     async (request, reply) => {
       if (requiresRealPaymentProviders() && request.user?.role !== "admin") {
         return reply.code(403).send({
@@ -4803,7 +4804,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
   app.post(
     "/payments/:id/fail",
-    { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] },
+    { preHandler: [requireAuth, denyMcpToken, requirePaymentOwner({ role: "buyer" })] },
     async (request, reply) => {
       if (requiresRealPaymentProviders() && request.user?.role !== "admin") {
         return reply.code(403).send({
@@ -4870,7 +4871,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
   app.post(
     "/payments/:id/cancel",
-    { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] },
+    { preHandler: [requireAuth, denyMcpToken, requirePaymentOwner({ role: "buyer" })] },
     async (request, reply) => {
       if (requiresRealPaymentProviders() && request.user?.role !== "admin") {
         return reply.code(403).send({
@@ -4938,7 +4939,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
   app.post(
     "/payments/:id/refund",
-    { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] },
+    { preHandler: [requireAuth, denyMcpToken, requirePaymentOwner({ role: "buyer" })] },
     async (request, reply) => {
       if (requiresRealPaymentProviders() && request.user?.role !== "admin") {
         return reply.code(403).send({
@@ -5671,7 +5672,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
   app.post<{ Params: { id: string } }>(
     "/payments/:id/onramp/session",
-    { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] },
+    { preHandler: [requireAuth, denyMcpToken, requirePaymentOwner({ role: "buyer" })] },
     async (request, reply) => {
       const stripeConfig = getStripeConfig();
       if (!stripeConfig.enabled) {

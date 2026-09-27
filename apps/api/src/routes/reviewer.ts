@@ -12,7 +12,7 @@ import type { DisputeTier } from "@haggle/dispute-core";
 import { computeDisputeCost, getReviewerCount } from "@haggle/dispute-core";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { requireAdmin, requireAuth } from "../middleware/require-auth.js";
+import { denyMcpToken, requireAdmin, requireAuth } from "../middleware/require-auth.js";
 import { evaluateDisputePanel } from "../services/dispute-panel-evaluate.service.js";
 import { getDisputeById } from "../services/dispute-record.service.js";
 import { getCommerceOrderByOrderId } from "../services/payment-record.service.js";
@@ -473,7 +473,7 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
   // ─── POST /reviewer/assignments/:disputeId/vote ──────────────────
   app.post<{ Params: { disputeId: string } }>(
     "/reviewer/assignments/:disputeId/vote",
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, denyMcpToken] },
     async (request, reply) => {
       const userId = request.user!.id;
       const { disputeId } = request.params;

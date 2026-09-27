@@ -22,7 +22,7 @@ import { type Address, createPublicClient, decodeEventLog, type Hex, http, isAdd
 import { base, baseSepolia } from "viem/chains";
 import { z } from "zod";
 import { createOwnershipMiddleware } from "../middleware/ownership.js";
-import { requireAdmin, requireAuth } from "../middleware/require-auth.js";
+import { denyMcpToken, requireAdmin, requireAuth } from "../middleware/require-auth.js";
 import {
   calculateSellerFeeSplit,
   MAX_HAGGLE_FEE_BPS,
@@ -584,7 +584,7 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
 
   app.post(
     "/settlement-releases/:id/conditional-release-request",
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, denyMcpToken] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const release = await getSettlementReleaseById(db, id);
@@ -767,7 +767,7 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
 
   app.post(
     "/settlement-releases/:id/conditional-release-execution",
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, denyMcpToken] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const release = await getSettlementReleaseById(db, id);
@@ -870,7 +870,7 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
 
   app.post(
     "/settlement-releases/:id/conditional-release-confirmation",
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, denyMcpToken] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const release = await getSettlementReleaseById(db, id);
@@ -1472,7 +1472,7 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
   // POST /settlement-releases/by-order/:orderId/buyer-confirm — Buyer confirms receipt
   app.post(
     "/settlement-releases/by-order/:orderId/buyer-confirm",
-    { preHandler: [requireAuth, requireOrderOwner({ role: "buyer" })] },
+    { preHandler: [requireAuth, denyMcpToken, requireOrderOwner({ role: "buyer" })] },
     async (request, reply) => {
       const { orderId } = request.params as { orderId: string };
       const release = await getSettlementReleaseByOrderId(db, orderId);
@@ -1507,7 +1507,7 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
   // Staging-only APV completion after an EasyPost test delivery and buyer receipt confirmation.
   app.post(
     "/settlement-releases/by-order/:orderId/complete-test-buffer",
-    { preHandler: [requireAuth, requireOrderOwner({ role: "seller" })] },
+    { preHandler: [requireAuth, denyMcpToken, requireOrderOwner({ role: "seller" })] },
     async (request, reply) => {
       if (!isVerifiedSettlementTestRuntime()) {
         return reply.code(404).send({ error: "TEST_BUFFER_COMPLETION_NOT_AVAILABLE" });

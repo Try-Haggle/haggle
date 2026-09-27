@@ -2,7 +2,7 @@ import type { Database } from "@haggle/db";
 import { and, eq, userWallets } from "@haggle/db";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { requireAuth } from "../middleware/require-auth.js";
+import { denyMcpToken, requireAuth } from "../middleware/require-auth.js";
 
 const createWalletSchema = z.object({
   wallet_address: z.string().regex(/^0x[0-9a-fA-F]{40}$/, "Invalid Ethereum address"),
@@ -13,7 +13,7 @@ const createWalletSchema = z.object({
 
 export function registerWalletRoutes(app: FastifyInstance, db: Database) {
   // POST /wallets — create wallet entry
-  app.post("/wallets", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post("/wallets", { preHandler: [requireAuth, denyMcpToken] }, async (request, reply) => {
     const parsed = createWalletSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "INVALID_WALLET_REQUEST", issues: parsed.error.issues });
@@ -77,7 +77,7 @@ export function registerWalletRoutes(app: FastifyInstance, db: Database) {
   // DELETE /wallets/:id — delete wallet (only own)
   app.delete<{ Params: { id: string } }>(
     "/wallets/:id",
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, denyMcpToken] },
     async (request, reply) => {
       const userId = request.user!.id;
       const walletId = request.params.id;
