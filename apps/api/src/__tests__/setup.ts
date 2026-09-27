@@ -269,6 +269,20 @@ vi.mock("@haggle/db", () => ({
     expiresAt: "expiresAt",
     createdAt: "createdAt",
   },
+  negotiationGroups: {
+    id: "id",
+    anchorUserId: "anchorUserId",
+    status: "status",
+    version: "version",
+  },
+  orderAddresses: {
+    orderId: "orderId",
+    role: "role",
+  },
+  userSavedAddresses: {
+    userId: "userId",
+    isDefault: "isDefault",
+  },
   settlementReleases: {
     id: "id",
     orderId: "orderId",

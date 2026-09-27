@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { EventDispatcher } from "../lib/event-dispatcher.js";
 import { executeGroupOrchestration } from "../lib/group-executor.js";
-import { requireAuth } from "../middleware/require-auth.js";
+import { denyMcpToken, requireAuth } from "../middleware/require-auth.js";
 import { stripClientModelEntitlement } from "../negotiation/decide-model.js";
 import {
   createGroup,
@@ -162,7 +162,7 @@ export function registerGroupRoutes(
   // POST /negotiations/groups/:id/orchestrate — 수동 오케스트레이션
   app.post<{ Params: { id: string } }>(
     "/negotiations/groups/:id/orchestrate",
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, denyMcpToken] },
     async (request, reply) => {
       const group = await getGroupById(db, request.params.id);
       if (!group) {
@@ -180,7 +180,7 @@ export function registerGroupRoutes(
   // PATCH /negotiations/groups/:id/cancel — 그룹 취소
   app.patch<{ Params: { id: string } }>(
     "/negotiations/groups/:id/cancel",
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, denyMcpToken] },
     async (request, reply) => {
       const group = await getGroupById(db, request.params.id);
       if (!group) {

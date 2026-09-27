@@ -32,7 +32,7 @@ import {
 } from "../jobs/shipment-apv-remediation-cursor-retention.js";
 import { boundedJson, INPUT_LIMITS } from "../lib/input-limits.js";
 import { createOwnershipMiddleware } from "../middleware/ownership.js";
-import { requireAuth } from "../middleware/require-auth.js";
+import { denyMcpToken, requireAuth } from "../middleware/require-auth.js";
 import { type AdminActionType, writeAuditLog } from "../services/admin-action-log.service.js";
 import { createDisputeRecord, getDisputeByOrderId } from "../services/dispute-record.service.js";
 import {
@@ -1070,7 +1070,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
   }
 
   // POST /shipments — create shipment for an order
-  app.post("/shipments", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post("/shipments", { preHandler: [requireAuth, denyMcpToken] }, async (request, reply) => {
     const parsed = createShipmentSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply
@@ -1298,7 +1298,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
 
   app.post(
     "/shipments/apv-adjustments/:adjustmentId/decision",
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, denyMcpToken] },
     async (request, reply) => {
       if (request.user?.role !== "admin") return reply.code(403).send({ error: "ADMIN_REQUIRED" });
       const { adjustmentId } = request.params as { adjustmentId: string };
@@ -1368,7 +1368,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
 
   app.post(
     "/shipments/apv-revisions/:revisionId/decision",
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, denyMcpToken] },
     async (request, reply) => {
       if (request.user?.role !== "admin") return reply.code(403).send({ error: "ADMIN_REQUIRED" });
       const { revisionId } = request.params as { revisionId: string };

@@ -4,7 +4,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { INPUT_LIMITS } from "../lib/input-limits.js";
 import { createOwnershipMiddleware } from "../middleware/ownership.js";
-import { requireAuth } from "../middleware/require-auth.js";
+import { denyMcpToken, requireAuth } from "../middleware/require-auth.js";
 import {
   confirmBuyerAccess,
   FulfillmentConfirmError,
@@ -177,7 +177,7 @@ export function registerOrderRoutes(app: FastifyInstance, db: Database) {
    */
   app.post<{ Params: { orderId: string } }>(
     "/orders/:orderId/confirm-delivery",
-    { preHandler: [requireAuth, requireOrderOwner({ role: "buyer" })] },
+    { preHandler: [requireAuth, denyMcpToken, requireOrderOwner({ role: "buyer" })] },
     async (request, reply) => {
       const { orderId } = request.params;
 
@@ -267,7 +267,7 @@ export function registerOrderRoutes(app: FastifyInstance, db: Database) {
    */
   app.post<{ Params: { orderId: string } }>(
     "/orders/:orderId/fulfillment/proofs",
-    { preHandler: [requireAuth, requireOrderOwner({ role: "seller" })] },
+    { preHandler: [requireAuth, denyMcpToken, requireOrderOwner({ role: "seller" })] },
     async (request, reply) => {
       const { orderId } = request.params;
 
@@ -348,7 +348,7 @@ export function registerOrderRoutes(app: FastifyInstance, db: Database) {
    */
   app.post<{ Params: { orderId: string } }>(
     "/orders/:orderId/fulfillment/confirm",
-    { preHandler: [requireAuth, requireOrderOwner({ role: "buyer" })] },
+    { preHandler: [requireAuth, denyMcpToken, requireOrderOwner({ role: "buyer" })] },
     async (request, reply) => {
       const { orderId } = request.params;
 

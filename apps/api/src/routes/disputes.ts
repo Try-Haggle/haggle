@@ -46,7 +46,7 @@ import {
 } from "../lib/dispute-t1-human-review-gate.js";
 import { INPUT_LIMITS } from "../lib/input-limits.js";
 import { createOwnershipMiddleware } from "../middleware/ownership.js";
-import { requireAdmin, requireAuth } from "../middleware/require-auth.js";
+import { denyMcpToken, requireAdmin, requireAuth } from "../middleware/require-auth.js";
 import { confirmUsdcDeposit, initiateDepositCollection } from "../payments/deposit-collector.js";
 import { writeAuditLog } from "../services/admin-action-log.service.js";
 import {
@@ -1318,7 +1318,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   // POST /orders/:orderId/disputes — production-safe public dispute opening path.
   app.post<{ Params: { orderId: string } }>(
     "/orders/:orderId/disputes",
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, denyMcpToken] },
     async (request, reply) => {
       const { orderId } = request.params;
       const parsed = publicOpenDisputeSchema.safeParse(request.body);
@@ -1613,7 +1613,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   });
 
   // POST /disputes — open a new dispute
-  app.post("/disputes", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post("/disputes", { preHandler: [requireAuth, denyMcpToken] }, async (request, reply) => {
     const parsed = openDisputeSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply
@@ -2715,7 +2715,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   // POST /disputes/:id/close — close the dispute
   app.post(
     "/disputes/:id/close",
-    { preHandler: [requireAuth, requireDisputeParty()] },
+    { preHandler: [requireAuth, denyMcpToken, requireDisputeParty()] },
     async (request, reply) => {
       const dispute = await getDisputeById(db, (request.params as { id: string }).id);
       if (!dispute) {
@@ -2751,7 +2751,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   // POST /disputes/:id/deposit — initiate deposit payment collection
   app.post<{ Params: { id: string } }>(
     "/disputes/:id/deposit",
-    { preHandler: [requireAuth, requireDisputeParty()] },
+    { preHandler: [requireAuth, denyMcpToken, requireDisputeParty()] },
     async (request, reply) => {
       const { id } = request.params;
       const parsed = depositSchema.safeParse(request.body);
@@ -2863,7 +2863,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   // POST /disputes/:id/deposit/confirm-usdc — confirm USDC deposit after seller approved spend
   app.post<{ Params: { id: string } }>(
     "/disputes/:id/deposit/confirm-usdc",
-    { preHandler: [requireAuth, requireDisputeParty()] },
+    { preHandler: [requireAuth, denyMcpToken, requireDisputeParty()] },
     async (request, reply) => {
       const { id } = request.params;
       const parsed = confirmUsdcSchema.safeParse(request.body);
