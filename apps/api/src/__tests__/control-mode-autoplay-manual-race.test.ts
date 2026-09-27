@@ -11,11 +11,13 @@
 
 import { CREDIT_PRO_GAME, CREDIT_PRO_HALF } from "@haggle/commerce-core";
 import { creditAccounts, creditLedgerEntries, type Database } from "@haggle/db";
+import fastify from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildHostHnpOfferEnvelope, wrapPriceOnlyAsHostEnvelope } from "../hnp/host-envelope.js";
 import { normalizeSubmitOffer } from "../hnp/normalize-offer.js";
 import { submitHnpOffer } from "../hnp/submit-offer.js";
 import { getExecutor } from "../lib/executor-factory.js";
+import { registerNegotiationRoutes } from "../routes/negotiations.js";
 import {
   claimSoftAiInflightUnderLock,
   setPartyControlMode,
@@ -1829,5 +1831,280 @@ describe("auto-play claim vs Manual handoff", () => {
     );
     expect(rejected).toEqual({ ok: false, status: 409, body: { error: "NOT_YOUR_TURN" } });
     expectTurnRejected(fake, before, dispatch);
+  });
+
+  // Minor units. 10000 is $100. 1000 is 10% of that, past the 80% deviation boundary.
+  const MANUAL_COUNTERPART_TARGET = 10_000;
+  const AT_TARGET_PRICE = 10_000;
+  const FAR_FROM_TARGET_PRICE = 1_000;
+  const REPEATED_CHAR_MESSAGE = "hello!!!!!!";
+  const ONE_SPAM_PATTERN_MESSAGE = "whatsapp me about the price";
+  const LOW_QUALITY_ONLY_MESSAGE = "HELLO THERE FRIEND!!!!!!";
+  const PATTERN_SPAM_MESSAGE = "send money via telegram me";
+
+  function manualCounterpartRow(): SessionRow {
+    const row = makeRow({ sellerControlMode: "manual", role: "SELLER" });
+    return {
+      ...row,
+      negotiationAgentSnapshot: {
+        ...row.negotiationAgentSnapshot,
+        p_target: MANUAL_COUNTERPART_TARGET,
+      },
+    };
+  }
+
+  function bindFakeRoundReads(fake: ReturnType<typeof createFakeDb>) {
+    vi.mocked(getRoundsBySessionId).mockImplementation(async () => fake.rounds() as never);
+    mockGetRoundByIdempotencyKey.mockImplementation(
+      async (_db: unknown, _id: unknown, key: unknown) =>
+        fake.rounds().find((round) => round.idempotencyKey === key) ?? null,
+    );
+  }
+
+  function assertNoTargetWord(body: unknown) {
+    expect(JSON.stringify(body).toLowerCase()).not.toContain("target");
+  }
+
+  function assertOmitsPrivateTargetNumber(body: unknown) {
+    expect(JSON.stringify(body)).not.toContain(String(MANUAL_COUNTERPART_TARGET));
+  }
+
+  function restOfferComparable(body: Record<string, unknown>) {
+    const clone = structuredClone(body);
+    delete clone.round_id;
+    delete clone.outgoing_price;
+    if (clone.hnp && typeof clone.hnp === "object") {
+      const hnp = { ...(clone.hnp as Record<string, unknown>) };
+      delete hnp.message_id;
+      delete hnp.proposal_id;
+      delete hnp.proposal_hash;
+      clone.hnp = hnp;
+    }
+    return clone;
+  }
+
+  function hnpOfferComparable(result: Record<string, unknown>) {
+    const clone = structuredClone(result);
+    delete clone.roundId;
+    delete clone.counterPrice;
+    delete clone.proposalHash;
+    return clone;
+  }
+
+  async function postRestOffer(
+    fake: ReturnType<typeof createFakeDb>,
+    input: {
+      priceMinor: number;
+      idempotencyKey: string;
+      messageText: string;
+      rScore: number;
+    },
+  ) {
+    bindFakeRoundReads(fake);
+    const publish = vi.fn();
+    const dispatch = vi.fn(async () => ({ action: "no_action" as const }));
+    const app = fastify({ logger: false });
+    try {
+      app.addHook("onRequest", async (request) => {
+        request.user = { id: BUYER_ID, role: "authenticated" };
+      });
+      registerNegotiationRoutes(app, fake.db, { dispatch } as never, { publish } as never);
+      await app.ready();
+      const res = await app.inject({
+        method: "POST",
+        url: `/negotiations/sessions/${SESSION_ID}/offers`,
+        payload: {
+          price_minor: input.priceMinor,
+          sender_role: "BUYER",
+          idempotency_key: input.idempotencyKey,
+          message_text: input.messageText,
+          round_data: { r_score: input.rScore },
+        },
+      });
+      return {
+        statusCode: res.statusCode,
+        body: res.json() as Record<string, unknown>,
+        publish,
+        dispatch,
+      };
+    } finally {
+      await app.close();
+    }
+  }
+
+  async function submitPricedHnpOffer(
+    priceMinor: number,
+    idempotencyKey: string,
+    messageText: string,
+  ) {
+    await installRealSubmit();
+    const fake = createFakeDb(manualCounterpartRow());
+    bindFakeRoundReads(fake);
+    const dispatch = vi.fn();
+    const result = await submitHnpOffer(
+      fake.db,
+      buildHostHnpOfferEnvelope({
+        sessionId: SESSION_ID,
+        roundNo: 1,
+        senderRole: "BUYER",
+        priceMinor,
+        nowMs: Date.now(),
+        idempotencyKey,
+      }),
+      {
+        requireSignature: false,
+        messageText,
+        eventDispatcher: { dispatch } as never,
+      },
+    );
+    return { fake, dispatch, result: result as Record<string, unknown> };
+  }
+
+  it("REST offers: offer-only spam result does not depend on price vs the Manual counterpart target", async () => {
+    const atTarget = await postRestOffer(createFakeDb(manualCounterpartRow()), {
+      priceMinor: AT_TARGET_PRICE,
+      idempotencyKey: "rest-at-price",
+      messageText: REPEATED_CHAR_MESSAGE,
+      rScore: 0,
+    });
+    const far = await postRestOffer(createFakeDb(manualCounterpartRow()), {
+      priceMinor: FAR_FROM_TARGET_PRICE,
+      idempotencyKey: "rest-tenth-price",
+      messageText: REPEATED_CHAR_MESSAGE,
+      rScore: 0,
+    });
+
+    expect(atTarget.statusCode).toBe(201);
+    expect(far.statusCode).toBe(201);
+    expect(atTarget.body.outgoing_price).toBe(AT_TARGET_PRICE);
+    expect(far.body.outgoing_price).toBe(FAR_FROM_TARGET_PRICE);
+    expect(restOfferComparable(atTarget.body)).toEqual(restOfferComparable(far.body));
+    assertNoTargetWord(atTarget.body);
+    assertNoTargetWord(far.body);
+    assertOmitsPrivateTargetNumber(far.body);
+
+    const deviationAt = await postRestOffer(createFakeDb(manualCounterpartRow()), {
+      priceMinor: AT_TARGET_PRICE,
+      idempotencyKey: "rest-one-pattern-at",
+      messageText: ONE_SPAM_PATTERN_MESSAGE,
+      rScore: 0.9,
+    });
+    const deviationFar = await postRestOffer(createFakeDb(manualCounterpartRow()), {
+      priceMinor: FAR_FROM_TARGET_PRICE,
+      idempotencyKey: "rest-one-pattern-far",
+      messageText: ONE_SPAM_PATTERN_MESSAGE,
+      rScore: 0.9,
+    });
+    expect(deviationAt.statusCode).toBe(201);
+    expect(deviationFar.statusCode).toBe(201);
+    expect(deviationAt.body.outgoing_price).toBe(AT_TARGET_PRICE);
+    expect(deviationFar.body.outgoing_price).toBe(FAR_FROM_TARGET_PRICE);
+    expect(restOfferComparable(deviationAt.body)).toEqual(restOfferComparable(deviationFar.body));
+    assertNoTargetWord(deviationAt.body);
+    assertNoTargetWord(deviationFar.body);
+    assertOmitsPrivateTargetNumber(deviationFar.body);
+
+    const trustOnly = await postRestOffer(createFakeDb(manualCounterpartRow()), {
+      priceMinor: AT_TARGET_PRICE,
+      idempotencyKey: "rest-low-quality",
+      messageText: LOW_QUALITY_ONLY_MESSAGE,
+      rScore: 0,
+    });
+    expect(trustOnly.statusCode).toBe(201);
+    expect(trustOnly.body.decision).toBe("AWAITING_COUNTERPART");
+    expect(trustOnly.body.outgoing_price).toBe(AT_TARGET_PRICE);
+    assertNoTargetWord(trustOnly.body);
+
+    expect(mockExecutePipeline).not.toHaveBeenCalled();
+    expect(atTarget.publish).not.toHaveBeenCalled();
+    expect(far.publish).not.toHaveBeenCalled();
+    expect(deviationAt.publish).not.toHaveBeenCalled();
+    expect(deviationFar.publish).not.toHaveBeenCalled();
+    expect(trustOnly.publish).not.toHaveBeenCalled();
+  });
+
+  it("hnp_submit_offer: offer-only spam result does not depend on price vs the Manual counterpart target", async () => {
+    const atTarget = await submitPricedHnpOffer(
+      AT_TARGET_PRICE,
+      "hnp-at-price",
+      REPEATED_CHAR_MESSAGE,
+    );
+    const far = await submitPricedHnpOffer(
+      FAR_FROM_TARGET_PRICE,
+      "hnp-tenth-price",
+      REPEATED_CHAR_MESSAGE,
+    );
+
+    expect(atTarget.result).not.toMatchObject({ status: 422 });
+    expect(far.result).not.toMatchObject({ status: 422 });
+    expect(atTarget.result.ok).toBe(true);
+    expect(far.result.ok).toBe(true);
+    expect(atTarget.result.decision).toBe("AWAITING_COUNTERPART");
+    expect(far.result.decision).toBe(atTarget.result.decision);
+    expect(Object.keys(atTarget.result).sort()).toEqual(Object.keys(far.result).sort());
+    expect(atTarget.result.counterPrice).toBe(AT_TARGET_PRICE);
+    expect(far.result.counterPrice).toBe(FAR_FROM_TARGET_PRICE);
+    expect(hnpOfferComparable(atTarget.result)).toEqual(hnpOfferComparable(far.result));
+    assertNoTargetWord(atTarget.result);
+    assertNoTargetWord(far.result);
+    assertOmitsPrivateTargetNumber(far.result);
+
+    const deviationAt = await submitPricedHnpOffer(
+      AT_TARGET_PRICE,
+      "hnp-one-pattern-at",
+      ONE_SPAM_PATTERN_MESSAGE,
+    );
+    const deviationFar = await submitPricedHnpOffer(
+      FAR_FROM_TARGET_PRICE,
+      "hnp-one-pattern-far",
+      ONE_SPAM_PATTERN_MESSAGE,
+    );
+    expect(deviationAt.result).not.toMatchObject({ status: 422 });
+    expect(deviationFar.result).not.toMatchObject({ status: 422 });
+    expect(deviationAt.result.ok).toBe(true);
+    expect(deviationFar.result.ok).toBe(true);
+    expect(deviationAt.result.counterPrice).toBe(AT_TARGET_PRICE);
+    expect(deviationFar.result.counterPrice).toBe(FAR_FROM_TARGET_PRICE);
+    expect(hnpOfferComparable(deviationAt.result)).toEqual(hnpOfferComparable(deviationFar.result));
+    assertNoTargetWord(deviationAt.result);
+    assertNoTargetWord(deviationFar.result);
+    assertOmitsPrivateTargetNumber(deviationFar.result);
+
+    expect(mockExecutePipeline).not.toHaveBeenCalled();
+    expect(atTarget.dispatch).not.toHaveBeenCalled();
+    expect(far.dispatch).not.toHaveBeenCalled();
+    expect(deviationAt.dispatch).not.toHaveBeenCalled();
+    expect(deviationFar.dispatch).not.toHaveBeenCalled();
+    expect(atTarget.fake.rounds()).toHaveLength(1);
+    expect(far.fake.rounds()).toHaveLength(1);
+    expect(deviationAt.fake.rounds()).toHaveLength(1);
+    expect(deviationFar.fake.rounds()).toHaveLength(1);
+    expect(atTarget.fake.row()?.role).toBe("BUYER");
+    expect(far.fake.row()?.role).toBe("BUYER");
+    expect(atTarget.fake.row()?.version).toBe(2);
+    expect(far.fake.row()?.version).toBe(2);
+  });
+
+  it("REST offers: offer-only message-pattern spam is 422 and inserts nothing", async () => {
+    const fake = createFakeDb(manualCounterpartRow());
+    const versionBefore = fake.row()?.version;
+    const roleBefore = fake.row()?.role;
+    const posted = await postRestOffer(fake, {
+      priceMinor: AT_TARGET_PRICE,
+      idempotencyKey: "rest-pattern-spam",
+      messageText: PATTERN_SPAM_MESSAGE,
+      rScore: 0,
+    });
+
+    expect(posted.statusCode).toBe(422);
+    expect(posted.body).toEqual({ error: "OFFER_REJECTED_SPAM" });
+    expect(Object.keys(posted.body)).toEqual(["error"]);
+    expect(fake.rounds()).toHaveLength(0);
+    expect(fake.inserts().filter((row) => row.table === "negotiation_rounds")).toHaveLength(0);
+    expect(fake.row()?.version).toBe(versionBefore);
+    expect(fake.row()?.role).toBe(roleBefore);
+    expect(posted.publish).not.toHaveBeenCalled();
+    expect(posted.dispatch).not.toHaveBeenCalled();
+    expect(mockExecutePipeline).not.toHaveBeenCalled();
   });
 });

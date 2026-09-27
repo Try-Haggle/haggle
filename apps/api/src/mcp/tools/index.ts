@@ -611,17 +611,6 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
         };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        if (message.startsWith("OFFER_REJECTED_SPAM")) {
-          return {
-            isError: true,
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({ error: "OFFER_REJECTED_SPAM", status: 422 }),
-              },
-            ],
-          };
-        }
         return {
           isError: true,
           content: [

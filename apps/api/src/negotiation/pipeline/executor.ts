@@ -1256,31 +1256,18 @@ function idempotentFieldsFromRound(
 }
 
 /**
- * Same screenMessage inputs as the normal path (synthetic price line, trust
- * score, deviation from the locked snapshot's target). The caller's message
- * is screened with the same function and threshold because that price line
- * does not contain their words.
+ * Message-pattern screen only. Trust score and price deviation are omitted,
+ * and there is no synthetic price line. Those inputs read the caller's
+ * r_score and the locked snapshot target, so spam versus accept would be an
+ * oracle for the Manual counterpart's private price.
  *
- * Difference from the normal path: a hit there persists a REJECT round via
- * persistSpamRound. Here it must not insert a row.
+ * No message text is not spam. A hit must not insert a row. The normal AI
+ * path still screens with trust and deviation and persists a REJECT round;
+ * that path is unchanged.
  */
-function offerOnlyScreenIsSpam(dbSession: DbSession, input: RoundExecutionInput): boolean {
-  const strategy = dbSession.negotiationAgentSnapshot ?? {};
-  const myTarget = extractNum(strategy, "p_target") ?? extractNum(strategy, "target_price") ?? 0;
-  const senderTrustScore = input.roundData.r_score;
-  const priceDeviation = computePriceDeviation(input.offerPriceMinor, myTarget);
-  const priceLine = screenMessage({
-    messageText: `Offer: $${input.offerPriceMinor / 100}`,
-    senderTrustScore,
-    priceDeviation,
-  });
-  if (priceLine.is_spam) return true;
+function offerOnlyScreenIsSpam(input: RoundExecutionInput): boolean {
   if (!input.messageText) return false;
-  return screenMessage({
-    messageText: input.messageText,
-    senderTrustScore,
-    priceDeviation,
-  }).is_spam;
+  return screenMessage({ messageText: input.messageText }).is_spam;
 }
 
 /**
@@ -1323,7 +1310,7 @@ async function persistOfferOnlyForManualCounterpart(
     throw new Error("NOT_YOUR_TURN");
   }
 
-  if (offerOnlyScreenIsSpam(dbSession, input)) {
+  if (offerOnlyScreenIsSpam(input)) {
     throw new OfferRejectedSpamError();
   }
 

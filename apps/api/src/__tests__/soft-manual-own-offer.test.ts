@@ -557,7 +557,7 @@ describe("submitHnpOffer real executor — Manual own offer", () => {
       envelope("BUYER"),
       {
         requireSignature: false,
-        messageText: "Please wire money to me via bit.ly/x now",
+        messageText: "send money via telegram me",
         eventDispatcher: { dispatch } as never,
       },
     );
