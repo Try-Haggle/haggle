@@ -6,7 +6,7 @@
 
 This document locks **what** to build. It does not authorize a production deploy.
 
-Prefer this file over older MCP tool-name notes when they conflict on the staging buyer-deal contract. Address and shipping-quote locks stay **D1 / D2** in [product-decisions-2026-09-07.md](./product-decisions-2026-09-07.md). Decisions in this file are labeled **M-1 … M-6** so they do not clash with those.
+Prefer this file over older MCP tool-name notes when they conflict on the staging buyer-deal contract. Address and shipping-quote locks stay **D1 / D2** in [product-decisions-2026-09-07.md](./product-decisions-2026-09-07.md). Decisions in this file are labeled **M-1 … M-7** so they do not clash with those.
 
 **Principle.** MCP follows the web's required pre-negotiation flow exactly (staging `9f2203d`, web as-is). Haggle adds no MCP-only required items and provides no new defaults beyond the web's.
 
@@ -52,7 +52,7 @@ Required before a web start — exactly these three. MCP requires the same three
 
 **Required before a web start**
 
-1. **Agent preset.** `negotiation_agent_preset_id` is required (`apps/api/src/services/start-buyer-negotiation.service.ts:87`). Missing → **400** `INVALID_START_REQUEST` (`:166-170`). The web client says "Pick an agent" (`apps/web/src/components/listing-detail/listing-detail-v2.tsx:579-593`). A preset is enough; no agent creation. MCP today: `agent_id` is optional, and `resolveBuyerPresetId` falls back to the balancer (`apps/api/src/mcp/tools/platform.ts:125-151`).
+1. **Agent preset.** `negotiation_agent_preset_id` is required (`apps/api/src/services/start-buyer-negotiation.service.ts:87`). Missing → **400** `INVALID_START_REQUEST` (`:166-170`). The web client says "Pick an agent" (`apps/web/src/components/listing-detail/listing-detail-v2.tsx:579-593`). A preset is enough; no agent creation. MCP today: `agent_id` is optional, and `resolveBuyerPresetId` falls back to the balancer (`apps/api/src/mcp/tools/platform.ts:125-151`). On MCP it is the M-7 required question (no silent balancer).
 2. **Seller-required criteria.** **409** `BUYER_CRITERIA_REQUIRED` (`start-buyer-negotiation.service.ts:276-303`, `:607-627`). The web client also blocks (`apps/web/src/app/l/[publicId]/buyer-landing-v2.tsx:157-168`).
 3. **Carrier shipping.** Delivery address: **409** `DELIVERY_ADDRESS_REQUIRED` (`apps/api/src/lib/delivery-address-start-gate.ts:28-50`), plus the pre-start shipping quote (`start-buyer-negotiation.service.ts:478-510`). The web client uses `canStartWithFulfillment` (`apps/web/src/components/shipping/pre-negotiation-fulfillment-state.ts:53-61`).
 
@@ -96,7 +96,7 @@ v1 stores the arrival deadline **optionally** as a **condition** and shows it in
 
 One shared `pendingBuyerQuestions()` seam, used by the web API and MCP. The function does not exist yet; Stage 1 adds it. Do not fork a second question list.
 
-`pendingBuyerQuestions()` returns exactly the web-required items that apply to this listing — agent preset, seller-required criteria, and (carrier shipping only) delivery address — plus in-session pause questions. No MCP-only required item.
+`pendingBuyerQuestions()` returns exactly the web-required items that apply to this listing — agent preset (M-7), seller-required criteria, and (carrier shipping only) delivery address — plus in-session pause questions. No MCP-only required item.
 
 MCP start returns **409** while any of those that apply is unfilled, with the same question the web shows.
 
@@ -125,6 +125,16 @@ Reuse the existing service: price range, condition, sort, and cursor pagination,
 
 Results never include draft, private, or deleted listings, and never include seller floor or strategy values. Seller-authored text (title, description) is returned in separate fields marked untrusted.
 
+### M-7 — Agent preset on MCP
+
+If MCP start has no preset chosen, the server does **not** silently fill `balancer`. Today `resolveBuyerPresetId` (`apps/api/src/mcp/tools/platform.ts:125-151`) falls back to `DEFAULT_NEGOTIATION_AGENT_PRESET_ID` (`balancer`, `packages/shared/src/agent-presets/types.ts:98`) when `agent_id` is omitted (`platform.ts:130`), unknown (`platform.ts:135`), or a saved agent the caller cannot use (`platform.ts:143`). A usable saved agent whose config does not resolve to a known preset also falls back (`platform.ts:150`).
+
+The preset is a required question in `pendingBuyerQuestions()`. Choices are only the allowed preset ids in `NEGOTIATION_AGENT_PRESETS` (`packages/shared/src/agent-presets/negotiation-agent-presets.ts:26`; today `hunter` `:28`, `closer` `:61`, `verifier` `:94`, `balancer` `:128`). An answer outside that allowlist → **400** (same answer rules as M-4). Only those ids are accepted. An unknown id → **400**. An answer referencing another session or another question → **404**. Changing the preset over MCP cannot bypass the cap or confirm-before-payment.
+
+While that question is unanswered, MCP start returns **409** with the preset question from `pendingBuyerQuestions()` and creates no session. The progress paths return **409**, like the other required items (M-4): offer (`hnp_submit_offer`, REST offers), accept (`hnp_accept`, REST accept), `haggle_create_checkout`, and `POST /payments/prepare`.
+
+This does not conflict with "an external agent needs no web-created Haggle agent." A preset is not a separately created agent (no `haggle_create_agent`, no saved agent row). It is a negotiation-style value that the buyer picks while talking with their own agent. The web also requires the pick (`apps/web/src/components/listing-detail/listing-detail-v2.tsx:579-593`) and the server requires `negotiation_agent_preset_id` (`apps/api/src/services/start-buyer-negotiation.service.ts:87`), so this is parity, not an MCP-only item.
+
 ### General rules
 
 - MCP start scope is `negotiate` (buyer write).
@@ -147,7 +157,9 @@ b. **No path to pass builder memory** (`targetPrice` / `budgetMax` / `style` / `
 
 c. **No `buyer_control_mode`.** Add the same field as the web (`start-buyer-negotiation.service.ts:122`).
 
-d. **`pendingBuyerQuestions()`** reflects exactly the three web-required items in §1 (carrier address only when the web requires it), plus in-session pause questions. No MCP-only required item.
+d. **`pendingBuyerQuestions()`** reflects exactly the three web-required items in §1 (carrier address only when the web requires it), including the preset question (M-7), plus in-session pause questions. No MCP-only required item.
+
+e. **Remove the silent default in `resolveBuyerPresetId`** (`apps/api/src/mcp/tools/platform.ts:125-151`): no preset → M-7 required question (**409**), not balancer.
 
 | Ticket field | Web field today | MCP field | Rule |
 | --- | --- | --- | --- |
@@ -157,7 +169,7 @@ d. **`pendingBuyerQuestions()`** reflects exactly the three web-required items i
 | Shipping address | `fulfillment` (`fulfillmentPreferenceSchema` / `buyerShippingAddressSchema`, `apps/api/src/lib/negotiation-fulfillment.ts`) | `fulfillment` (same schema) | **Required for carrier** (web item 3). D1 / D2. Missing address → **409** `DELIVERY_ADDRESS_REQUIRED`. Quote runs when the address is present. Digital / no-shipment stays exempt. |
 | Arrival deadline | Does not exist. `deadline_hours` is only the negotiation window. | A stored condition, not `deadline_hours` | **Optional.** Not required. Shown on the pre-payment summary when set. No engine enforcement in v1 (M-3). |
 | Confirm-before-payment | Not a start field. Accept allows `payment_decision: AUTO_APPROVE`. | Not an input | Always on (M-2). Cannot be turned off. `AUTO_APPROVE` or a confirm-off input → **400**. |
-| Agent preset | `negotiation_agent_preset_id` required (`start-buyer-negotiation.service.ts:87`) | Same as web. MCP today: `agent_id` optional; `resolveBuyerPresetId` falls back to the balancer (`platform.ts:125-151`) | **Required**, as on the web (web item 1). Web: missing → **400** `INVALID_START_REQUEST` (`:166-170`). A preset is enough; no agent creation. Parity target: `pendingBuyerQuestions()` includes this item, and MCP start returns **409** until it is filled, with the same "Pick an agent" question the web shows (`apps/web/src/components/listing-detail/listing-detail-v2.tsx:579-593`). |
+| Agent preset | `negotiation_agent_preset_id` required (`start-buyer-negotiation.service.ts:87`) | Same as web. MCP today: `agent_id` optional; `resolveBuyerPresetId` falls back to the balancer (`platform.ts:125-151`) | **Required** (M-7), as on the web (web item 1). Choices are only the allowed preset ids in `NEGOTIATION_AGENT_PRESETS` (`packages/shared/src/agent-presets/negotiation-agent-presets.ts:26`; today `hunter` `:28`, `closer` `:61`, `verifier` `:94`, `balancer` `:128`). A value outside that allowlist → **400**. Web: missing → **400** `INVALID_START_REQUEST` (`:166-170`). A preset is enough; no agent creation. No silent balancer. `pendingBuyerQuestions()` includes this question, and MCP start returns **409** until it is filled, with the same "Pick an agent" question the web shows (`apps/web/src/components/listing-detail/listing-detail-v2.tsx:579-593`). |
 
 Also in Stage 1, not only on the start body:
 
@@ -204,7 +216,7 @@ Output rules are M-6: no draft, private, or deleted listings; no seller floor or
 
 ### Questions
 
-- [ ] MCP start → **409** while any web-required item that applies to this listing is unfilled (the three in §1; carrier address only for carrier shipping), with the same question the web shows.
+- [ ] MCP start → **409** while any web-required item that applies to this listing is unfilled (the three in §1, including the agent preset as the M-7 question; carrier address only for carrier shipping), with the same question the web shows.
 - [ ] While a required item or an in-session pause question is unanswered → 409 on `hnp_submit_offer`, REST offers, `hnp_accept`, REST accept, `haggle_create_checkout`, and `POST /payments/prepare`.
 - [ ] Play still returns 200 `paused_for_buyer`.
 - [ ] Choice answers outside the allowlist are rejected. Free text over the length limit is rejected.
@@ -213,6 +225,15 @@ Output rules are M-6: no draft, private, or deleted listings; no seller floor or
 - [ ] Another user's session → 404 (not 403).
 - [ ] MCP builder loads `learned_checks` the same way as the REST builder route. Tag Garden and Quick Setup match the web and are offered, not gates.
 - [ ] Parity on `pendingBuyerQuestions()`: web-required items and pause questions shown on the web appear on MCP. No MCP-only required item.
+
+### Agent preset (M-7)
+
+- [ ] MCP start with no preset → **409** with the preset question from `pendingBuyerQuestions()`; no session; balancer is not filled silently.
+- [ ] Choices are exactly the `NEGOTIATION_AGENT_PRESETS` ids (`packages/shared/src/agent-presets/negotiation-agent-presets.ts:26`; today `hunter` `:28`, `closer` `:61`, `verifier` `:94`, `balancer` `:128`). A value outside that allowlist → **400**. An unknown id → **400**.
+- [ ] An answer referencing another session or another question → **404**.
+- [ ] While the preset is unanswered, offer (`hnp_submit_offer`, REST offers), accept (`hnp_accept`, REST accept), `haggle_create_checkout`, and `POST /payments/prepare` → **409**.
+- [ ] Preset parity: the web's required preset pick and MCP's `pendingBuyerQuestions()` preset question list the same allowed ids.
+- [ ] Changing the preset over MCP does not change or bypass the cap (buyer-set or default) or confirm-before-payment.
 
 ### Untrusted
 
