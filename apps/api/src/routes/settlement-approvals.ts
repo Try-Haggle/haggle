@@ -1,6 +1,6 @@
 import { type Database, eq, settlementApprovals } from "@haggle/db";
 import type { FastifyInstance } from "fastify";
-import { requireAuth } from "../middleware/require-auth.js";
+import { denyMcpToken, requireAuth } from "../middleware/require-auth.js";
 import {
   isCheckoutAgreementRenderable,
   loadCheckoutAgreementDisplay,
@@ -81,7 +81,7 @@ export function registerSettlementApprovalRoutes(app: FastifyInstance, db: Datab
   // GET /settlement-approvals/:id — 단일 조회
   app.get<{ Params: { id: string } }>(
     "/settlement-approvals/:id",
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, denyMcpToken] },
     async (request, reply) => {
       const row = await db.query.settlementApprovals.findFirst({
         where: (fields, ops) => ops.eq(fields.id, request.params.id),
@@ -112,7 +112,7 @@ export function registerSettlementApprovalRoutes(app: FastifyInstance, db: Datab
   // PATCH /settlement-approvals/:id/seller-approve — 판매자 승인
   app.patch<{ Params: { id: string } }>(
     "/settlement-approvals/:id/seller-approve",
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, denyMcpToken] },
     async (request, reply) => {
       const row = await db.query.settlementApprovals.findFirst({
         where: (fields, ops) => ops.eq(fields.id, request.params.id),
@@ -161,7 +161,7 @@ export function registerSettlementApprovalRoutes(app: FastifyInstance, db: Datab
   // PATCH /settlement-approvals/:id/buyer-approve — 구매자 승인
   app.patch<{ Params: { id: string } }>(
     "/settlement-approvals/:id/buyer-approve",
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, denyMcpToken] },
     async (request, reply) => {
       const row = await db.query.settlementApprovals.findFirst({
         where: (fields, ops) => ops.eq(fields.id, request.params.id),

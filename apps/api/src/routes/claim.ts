@@ -1,7 +1,7 @@
 import { type Database, sql } from "@haggle/db";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { requireAuth } from "../middleware/require-auth.js";
+import { denyMcpToken, requireAuth } from "../middleware/require-auth.js";
 import { claimListing } from "../services/draft.service.js";
 import { verifyGuestBuyerClaimPop } from "../services/guest-buyer-claim-pop.service.js";
 
@@ -18,7 +18,7 @@ import { verifyGuestBuyerClaimPop } from "../services/guest-buyer-claim-pop.serv
 export function registerClaimRoutes(app: FastifyInstance, db: Database) {
   app.post<{
     Body: { claimToken: string };
-  }>("/api/claim", { preHandler: [requireAuth] }, async (request, reply) => {
+  }>("/api/claim", { preHandler: [requireAuth, denyMcpToken] }, async (request, reply) => {
     const userId = request.user!.id;
     const { claimToken } = request.body ?? {};
 
@@ -50,7 +50,8 @@ export function registerClaimRoutes(app: FastifyInstance, db: Database) {
   // random UUID for buyer_id + a PoP capability). After sign-up, the web app
   // collects those {guest_buyer_id, pop} pairs from localStorage and POSTs
   // them here so the new user owns the resulting sessions.
-  app.post("/claim/negotiation-sessions", { preHandler: [requireAuth] }, async (request, reply) => {
+  const claimGuards = [requireAuth, denyMcpToken];
+  app.post("/claim/negotiation-sessions", { preHandler: claimGuards }, async (request, reply) => {
     const userId = request.user!.id;
     const parsed = claimSessionsSchema.safeParse(request.body);
     if (!parsed.success) {

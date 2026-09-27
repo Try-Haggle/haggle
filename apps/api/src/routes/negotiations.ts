@@ -21,7 +21,7 @@ import { getExecutor } from "../lib/executor-factory.js";
 import { executeGroupOrchestration, executeGroupTerminal } from "../lib/group-executor.js";
 import { negotiationChatUrl } from "../lib/public-urls.js";
 import { validateSessionParticipant, validateSessionWriteAccess } from "../lib/session-access.js";
-import { requireAuth } from "../middleware/require-auth.js";
+import { denyMcpToken, requireAuth } from "../middleware/require-auth.js";
 import { stripClientModelEntitlement } from "../negotiation/decide-model.js";
 import {
   applyBuyerPauseAnswer,
@@ -489,7 +489,7 @@ export function registerNegotiationRoutes(
   // POST /negotiations/sessions/:id/offers — 오퍼 제출 (라운드 실행)
   app.post<{ Params: { id: string }; Querystring: { include_explainability?: string } }>(
     "/negotiations/sessions/:id/offers",
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, denyMcpToken] },
     async (request, reply) => {
       const parsed = submitOfferSchema.safeParse(request.body);
       if (!parsed.success) {
@@ -685,7 +685,7 @@ export function registerNegotiationRoutes(
   // PATCH /negotiations/sessions/:id/accept — 수락
   app.patch<{ Params: { id: string } }>(
     "/negotiations/sessions/:id/accept",
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, denyMcpToken] },
     async (request, reply) => {
       const parsed = acceptSessionSchema.safeParse(request.body ?? undefined);
       if (!parsed.success) {
@@ -1025,6 +1025,7 @@ export function registerNegotiationRoutes(
   // arrive instead of waiting for an in-process background loop.
   app.post<{ Params: { id: string } }>(
     "/negotiations/sessions/:id/auto-play/next",
+    { preHandler: [denyMcpToken] },
     async (request, reply) => {
       const parsed = runNextAutoPlayRoundSchema.safeParse(request.body ?? {});
       if (!parsed.success) {
