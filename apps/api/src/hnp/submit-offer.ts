@@ -20,6 +20,7 @@ export type SubmitHnpOfferResult =
       idempotent: boolean;
       proposalHash?: string;
       utility: unknown;
+      awaitingManualCounterpart?: "buyer" | "seller";
       escalation?: { type: string; context?: unknown };
     }
   | { ok: false; status: number; body: Record<string, unknown> };
@@ -76,6 +77,13 @@ export async function submitHnpOffer(
     if (err instanceof SoftManualWaitingError) {
       return { ok: false, status: 409, body: softManualWaitingBodyFromError(err) };
     }
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.startsWith("NOT_YOUR_TURN")) {
+      return { ok: false, status: 409, body: { error: "NOT_YOUR_TURN" } };
+    }
+    if (message.startsWith("CONCURRENT_MODIFICATION")) {
+      return { ok: false, status: 409, body: { error: "CONCURRENT_MODIFICATION" } };
+    }
     throw err;
   }
 
@@ -89,6 +97,9 @@ export async function submitHnpOffer(
     idempotent: result.idempotent,
     proposalHash: normalized.protocol?.proposalHash,
     utility: result.utility,
+    ...(result.awaitingManualCounterpart
+      ? { awaitingManualCounterpart: result.awaitingManualCounterpart }
+      : {}),
     escalation: result.escalation
       ? { type: result.escalation.type, context: result.escalation.context }
       : undefined,

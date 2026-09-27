@@ -93,6 +93,33 @@ describe("negotiation auto-play", () => {
     });
   });
 
+  it("plans from an offer-only round that has a null counter price", () => {
+    const plan = planNegotiationAutoPlayRound(
+      {
+        status: "ACTIVE",
+        currentRound: 1,
+        role: "SELLER",
+        negotiationAgentSnapshot: setup.sellerSnapshot,
+      },
+      [
+        {
+          roundNo: 1,
+          senderRole: "BUYER",
+          priceminor: "42000",
+          counterPriceMinor: null,
+          message: null,
+        },
+      ],
+      context,
+    );
+    expect(plan).toMatchObject({
+      roundNo: 2,
+      senderRole: "SELLER",
+      responderRole: "BUYER",
+      offerPriceMinor: 42_000,
+    });
+  });
+
   it("preserves the buyer's standing offer across a seller-criteria HOLD round (no seller-price echo)", () => {
     // A Phase G pause persists a HOLD round. With the fix it carries the buyer's OWN
     // standing offer as counterPriceMinor, so the next buyer offer uses that — NOT the

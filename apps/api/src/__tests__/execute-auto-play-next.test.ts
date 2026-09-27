@@ -1,8 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildHostHnpOfferEnvelope } from "../hnp/host-envelope.js";
 import { submitHnpOffer } from "../hnp/submit-offer.js";
-import { claimSoftAiInflightUnderLock } from "../services/control-mode.service.js";
-import { executeAutoPlayNext } from "../services/execute-auto-play-next.service.js";
+import {
+  claimSoftAiInflightUnderLock,
+  clearSoftAiInflightAndApplyPending,
+} from "../services/control-mode.service.js";
+import {
+  executeAutoPlayNext,
+  softAiDraftPartyFromRounds,
+} from "../services/execute-auto-play-next.service.js";
 import {
   getNegotiationAutoPlayContext,
   planNegotiationAutoPlayRound,
@@ -742,5 +748,193 @@ describe("executeAutoPlayNext Soft Manual vs AUTO_PLAY_CONTEXT_MISSING (Eng1 M4)
     expect(submitHnpOffer).not.toHaveBeenCalled();
     vi.mocked(claimSoftAiInflightUnderLock).mockReset();
     vi.mocked(claimSoftAiInflightUnderLock).mockResolvedValue({ ok: true, version: 2 });
+  });
+});
+
+describe("executeAutoPlayNext request claim injection", () => {
+  it("auto-play ignores softAiInflightClaim in request input", async () => {
+    vi.mocked(submitHnpOffer).mockClear();
+    vi.mocked(claimSoftAiInflightUnderLock).mockReset();
+    vi.mocked(claimSoftAiInflightUnderLock).mockResolvedValue({ ok: true, version: 2 });
+    vi.mocked(setSessionPerspective).mockReset();
+    vi.mocked(setSessionPerspective).mockResolvedValue(true);
+    vi.mocked(getSessionById).mockResolvedValue({
+      id: "sess-1",
+      driver: "mcp",
+      buyerId: "buyer-1",
+      sellerId: "seller-1",
+      status: "ACTIVE",
+      currentRound: 1,
+      version: 1,
+      negotiationAgentSnapshot: {},
+      buyerControlMode: "auto",
+      sellerControlMode: "auto",
+    } as never);
+    vi.mocked(getNegotiationAutoPlayContext).mockReturnValue({
+      maxRounds: 8,
+      buyerSnapshot: { side: "buyer" },
+      sellerSnapshot: { side: "seller" },
+    } as never);
+    vi.mocked(getRoundsBySessionId).mockResolvedValue([] as never);
+    // Responder is the buyer, so a successful claim must be "buyer" — not the injected seller.
+    vi.mocked(planNegotiationAutoPlayRound).mockReturnValue({
+      roundNo: 2,
+      senderRole: "SELLER",
+      responderRole: "BUYER",
+      responderSnapshot: { side: "buyer" },
+      offerPriceMinor: 49500,
+      messageText: "autoplay seller",
+    } as never);
+
+    const injected = {
+      softAiInflightClaim: "seller" as const,
+      soft_ai_inflight_claim: "seller",
+    };
+    const auto = await executeAutoPlayNext({} as never, {
+      sessionId: "sess-1",
+      actor: { id: "buyer-1", role: "user" },
+      expectedDriver: "mcp",
+      ...injected,
+    });
+
+    expect(auto.ok).toBe(true);
+    expect(claimSoftAiInflightUnderLock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ party: "buyer" }),
+    );
+    expect(vi.mocked(submitHnpOffer).mock.calls[0]?.[2]).toMatchObject({
+      requireSignature: false,
+      softAiInflightClaim: "buyer",
+    });
+    expect(vi.mocked(submitHnpOffer).mock.calls[0]?.[2]?.softAiInflightClaim).not.toBe("seller");
+
+    vi.mocked(submitHnpOffer).mockClear();
+    vi.mocked(claimSoftAiInflightUnderLock).mockClear();
+    const counter = await executeAutoPlayNext({} as never, {
+      sessionId: "sess-1",
+      actor: { id: "buyer-1", role: "user" },
+      expectedDriver: "mcp",
+      priceMinor: 42_000,
+      message: "I'll do 420.",
+      ...injected,
+    });
+
+    expect(counter.ok).toBe(true);
+    expect(vi.mocked(submitHnpOffer).mock.calls[0]?.[2]).not.toHaveProperty("softAiInflightClaim");
+    expect(claimSoftAiInflightUnderLock).not.toHaveBeenCalled();
+  });
+
+  it("maps a mismatched in-flight claim from submitHnpOffer to 409", async () => {
+    vi.mocked(submitHnpOffer).mockReset();
+    vi.mocked(submitHnpOffer).mockResolvedValue({
+      ok: false,
+      status: 409,
+      body: { error: "CONCURRENT_MODIFICATION" },
+    });
+    vi.mocked(claimSoftAiInflightUnderLock).mockReset();
+    vi.mocked(claimSoftAiInflightUnderLock).mockResolvedValue({ ok: true, version: 2 });
+    vi.mocked(setSessionPerspective).mockResolvedValue(true);
+    vi.mocked(getSessionById).mockResolvedValue({
+      id: "sess-1",
+      driver: "mcp",
+      buyerId: "buyer-1",
+      sellerId: "seller-1",
+      status: "ACTIVE",
+      currentRound: 1,
+      version: 1,
+      negotiationAgentSnapshot: {},
+      buyerControlMode: "auto",
+      sellerControlMode: "auto",
+    } as never);
+    vi.mocked(getNegotiationAutoPlayContext).mockReturnValue({
+      maxRounds: 8,
+      buyerSnapshot: { side: "buyer" },
+      sellerSnapshot: { side: "seller" },
+    } as never);
+    vi.mocked(getRoundsBySessionId).mockResolvedValue([] as never);
+    vi.mocked(planNegotiationAutoPlayRound).mockReturnValue({
+      roundNo: 1,
+      senderRole: "BUYER",
+      responderRole: "SELLER",
+      responderSnapshot: { side: "seller" },
+      offerPriceMinor: 9000,
+      messageText: "hi",
+    } as never);
+
+    const result = await executeAutoPlayNext({} as never, {
+      sessionId: "sess-1",
+      actor: { id: "buyer-1", role: "user" },
+      expectedDriver: "mcp",
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      status: 409,
+      body: { error: "CONCURRENT_MODIFICATION" },
+    });
+    expect(clearSoftAiInflightAndApplyPending).toHaveBeenCalled();
+  });
+
+  it("warns when inflight cleanup fails and does not include a price", async () => {
+    vi.mocked(submitHnpOffer).mockReset();
+    vi.mocked(submitHnpOffer).mockRejectedValue(new Error("ROUND_BOOM"));
+    vi.mocked(clearSoftAiInflightAndApplyPending).mockReset();
+    vi.mocked(clearSoftAiInflightAndApplyPending).mockRejectedValue(new Error("cleanup-failed"));
+    vi.mocked(claimSoftAiInflightUnderLock).mockReset();
+    vi.mocked(claimSoftAiInflightUnderLock).mockResolvedValue({ ok: true, version: 2 });
+    vi.mocked(setSessionPerspective).mockResolvedValue(true);
+    vi.mocked(getSessionById).mockResolvedValue({
+      id: "sess-1",
+      driver: "web",
+      buyerId: "buyer-1",
+      sellerId: "seller-1",
+      status: "ACTIVE",
+      currentRound: 0,
+      version: 1,
+      negotiationAgentSnapshot: {},
+      buyerControlMode: "auto",
+      sellerControlMode: "auto",
+    } as never);
+    vi.mocked(getNegotiationAutoPlayContext).mockReturnValue({
+      maxRounds: 8,
+      buyerSnapshot: { side: "buyer" },
+      sellerSnapshot: { side: "seller" },
+    } as never);
+    vi.mocked(getRoundsBySessionId).mockResolvedValue([] as never);
+    vi.mocked(planNegotiationAutoPlayRound).mockReturnValue({
+      roundNo: 1,
+      senderRole: "BUYER",
+      responderRole: "SELLER",
+      responderSnapshot: { side: "seller" },
+      offerPriceMinor: 9000,
+      messageText: "hi",
+    } as never);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const result = await executeAutoPlayNext({} as never, {
+        sessionId: "sess-1",
+        actor: { id: "buyer-1", role: "user" },
+        expectedDriver: "web",
+      });
+      expect(result).toMatchObject({ ok: false, status: 502 });
+      const line = warn.mock.calls
+        .map((call) => String(call[0]))
+        .find((text) => text.includes("inflight cleanup failed"));
+      expect(line).toContain("session=sess-1");
+      expect(line).toContain("party=seller");
+      expect(line).toContain("error=cleanup-failed");
+      expect(line).not.toContain("buyer-1");
+      expect(line).not.toContain("9000");
+    } finally {
+      warn.mockRestore();
+      vi.mocked(clearSoftAiInflightAndApplyPending).mockReset();
+      vi.mocked(clearSoftAiInflightAndApplyPending).mockResolvedValue(null);
+    }
+  });
+});
+
+describe("offer-only rounds stay readable", () => {
+  it("softAiDraftPartyFromRounds tolerates a null decision and null counter", () => {
+    const rounds = [{ senderRole: "BUYER", decision: null, counterPriceMinor: null }];
+    expect(softAiDraftPartyFromRounds(rounds, false)).toBe("buyer");
   });
 });

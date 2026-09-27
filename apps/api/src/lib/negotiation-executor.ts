@@ -80,6 +80,11 @@ export interface RoundExecutionResult {
   utility: { u_total: number; v_p: number; v_t: number; v_r: number; v_s: number };
   sessionStatus: string;
   /**
+   * Set when the counterpart is Manual and this call saved the sender's offer
+   * without an AI reply. Not taken from request input.
+   */
+  awaitingManualCounterpart?: "buyer" | "seller";
+  /**
    * The respond-stage message that was persisted for this round. The auto-play
    * loop uses this as the *incoming* messageText for the next round so the
    * understand stage sees a real conversational signal instead of a synthetic

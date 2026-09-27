@@ -2057,6 +2057,163 @@ describe("Negotiation API", () => {
       });
     });
 
+    function acceptOwnOfferRound() {
+      mockExecuteNegotiationRound.mockResolvedValue({
+        idempotent: false,
+        roundId: "round-own",
+        roundNo: 2,
+        decision: "COUNTER",
+        outgoingPrice: 9500,
+        utility: { u_total: 0.6, v_p: 0.5, v_t: 0.03, v_r: 0.04, v_s: 0.03 },
+        sessionStatus: "ACTIVE",
+      });
+    }
+
+    it("offers route: Manual buyer own offer (Bearer, sender BUYER) passes", async () => {
+      acceptOwnOfferRound();
+      mockGetSessionById.mockResolvedValue({
+        ...mockSession,
+        role: "SELLER" as const,
+        buyerControlMode: "manual" as const,
+        sellerControlMode: "auto" as const,
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/sess-001/offers",
+        headers: AUTH_HEADERS,
+        payload: VALID_OFFER_PAYLOAD,
+      });
+
+      expect(res.statusCode).toBe(201);
+      expect(mockExecuteNegotiationRound).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ senderRole: "BUYER" }),
+        expect.anything(),
+      );
+      expect(mockExecuteNegotiationRound.mock.calls[0]?.[1]).not.toHaveProperty(
+        "softAiInflightClaim",
+      );
+    });
+
+    it("offers route: Manual seller own offer (Bearer, sender SELLER) passes", async () => {
+      acceptOwnOfferRound();
+      mockGetSessionById.mockResolvedValue({
+        ...mockSession,
+        role: "BUYER" as const,
+        buyerControlMode: "auto" as const,
+        sellerControlMode: "manual" as const,
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/sess-001/offers",
+        headers: SELLER_AUTH_HEADERS,
+        payload: {
+          price_minor: 10000,
+          sender_role: "SELLER",
+          idempotency_key: "offer-key-seller-own",
+        },
+      });
+
+      expect(res.statusCode).toBe(201);
+      expect(mockExecuteNegotiationRound).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ senderRole: "SELLER" }),
+        expect.anything(),
+      );
+      expect(mockExecuteNegotiationRound.mock.calls[0]?.[1]).not.toHaveProperty(
+        "softAiInflightClaim",
+      );
+    });
+
+    it("offers route: request body cannot inject softAiInflightClaim", async () => {
+      acceptOwnOfferRound();
+      mockGetSessionById.mockResolvedValue(mockSession);
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/sess-001/offers",
+        headers: {
+          ...AUTH_HEADERS,
+          "x-soft-ai-inflight-claim": "buyer",
+        },
+        payload: {
+          ...VALID_OFFER_PAYLOAD,
+          softAiInflightClaim: "buyer",
+          soft_ai_inflight_claim: "buyer",
+        },
+      });
+
+      expect(res.statusCode).toBe(201);
+      expect(mockExecuteNegotiationRound).toHaveBeenCalledOnce();
+      const executorInput = mockExecuteNegotiationRound.mock.calls[0]?.[1] as Record<
+        string,
+        unknown
+      >;
+      expect(executorInput).not.toHaveProperty("softAiInflightClaim");
+      expect(executorInput).not.toHaveProperty("skip_ai_reply");
+      expect(executorInput).not.toHaveProperty("force_ai_reply");
+      expect(executorInput).not.toHaveProperty("awaiting_manual_counterpart");
+    });
+
+    it("offers route: Manual counterpart result includes awaiting_manual_counterpart", async () => {
+      mockGetSessionById.mockResolvedValue({
+        ...mockSession,
+        role: "SELLER" as const,
+        buyerControlMode: "auto" as const,
+        sellerControlMode: "manual" as const,
+      });
+      mockExecuteNegotiationRound.mockResolvedValue({
+        idempotent: false,
+        roundId: "round-wait",
+        roundNo: 2,
+        decision: "AWAITING_COUNTERPART",
+        outgoingPrice: 10000,
+        utility: { u_total: 0, v_p: 0, v_t: 0, v_r: 0, v_s: 0 },
+        sessionStatus: "ACTIVE",
+        awaitingManualCounterpart: "seller",
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/sess-001/offers",
+        headers: AUTH_HEADERS,
+        payload: {
+          ...VALID_OFFER_PAYLOAD,
+          skip_ai_reply: true,
+          force_ai_reply: true,
+          awaiting_manual_counterpart: "buyer",
+          softAiInflightClaim: "buyer",
+        },
+      });
+
+      expect(res.statusCode).toBe(201);
+      expect(res.json()).toMatchObject({
+        round_id: "round-wait",
+        decision: "AWAITING_COUNTERPART",
+        awaiting_manual_counterpart: "seller",
+      });
+      expect(mockExecuteNegotiationRound.mock.calls[0]?.[1]).not.toHaveProperty(
+        "softAiInflightClaim",
+      );
+    });
+
+    it("offers route: NOT_YOUR_TURN from the executor is 409", async () => {
+      mockGetSessionById.mockResolvedValue(mockSession);
+      mockExecuteNegotiationRound.mockRejectedValue(new Error("NOT_YOUR_TURN"));
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/sess-001/offers",
+        headers: AUTH_HEADERS,
+        payload: VALID_OFFER_PAYLOAD,
+      });
+
+      expect(res.statusCode).toBe(409);
+      expect(res.json()).toEqual({ error: "NOT_YOUR_TURN" });
+    });
+
     it("returns 409 for CONCURRENT_MODIFICATION", async () => {
       mockGetSessionById.mockResolvedValue(mockSession);
       mockExecuteNegotiationRound.mockRejectedValue(

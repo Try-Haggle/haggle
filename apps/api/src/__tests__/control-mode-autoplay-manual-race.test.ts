@@ -12,7 +12,9 @@
 import { CREDIT_PRO_GAME, CREDIT_PRO_HALF } from "@haggle/commerce-core";
 import { creditAccounts, creditLedgerEntries, type Database } from "@haggle/db";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildHostHnpOfferEnvelope } from "../hnp/host-envelope.js";
 import { submitHnpOffer } from "../hnp/submit-offer.js";
+import { getExecutor } from "../lib/executor-factory.js";
 import {
   claimSoftAiInflightUnderLock,
   setPartyControlMode,
@@ -43,11 +45,26 @@ vi.mock("../hnp/submit-offer.js", () => ({
   })),
 }));
 
+const { mockExecutePipeline, mockGetRoundByIdempotencyKey } = vi.hoisted(() => ({
+  mockExecutePipeline: vi.fn(),
+  mockGetRoundByIdempotencyKey: vi.fn(async (..._args: unknown[]) => null as unknown),
+}));
+
+vi.mock("../negotiation/pipeline/pipeline.js", () => ({
+  executePipeline: mockExecutePipeline,
+}));
+
+vi.mock("../services/hnp-ingress.service.js", () => ({
+  validateHnpIngress: vi.fn(async () => ({ ok: true })),
+}));
+
 vi.mock("../services/negotiation-round.service.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../services/negotiation-round.service.js")>();
   return {
     ...actual,
     getRoundsBySessionId: vi.fn(async () => []),
+    getRoundByIdempotencyKey: (db: unknown, sessionId: unknown, key: unknown) =>
+      mockGetRoundByIdempotencyKey(db, sessionId, key),
   };
 });
 
@@ -118,7 +135,18 @@ function toSnake(row: SessionRow): Record<string, unknown> {
     seller_manual_timeout_phase: row.sellerManualTimeoutPhase,
     negotiation_agent_snapshot: row.negotiationAgentSnapshot,
     driver: row.driver,
+    role: row.role,
     current_round: row.currentRound,
+    rounds_no_concession: 0,
+    last_offer_price_minor: null,
+    listing_id: "listing-1",
+    counterparty_id: row.sellerId,
+    created_at: row.updatedAt.toISOString(),
+    updated_at: row.updatedAt.toISOString(),
+    expires_at: row.expiresAt ? row.expiresAt.toISOString() : null,
+    group_id: null,
+    intent_id: null,
+    strategy_id: "default",
   };
 }
 
@@ -186,9 +214,48 @@ type CreditLedgerRow = {
 
 type TableInsert = { table: string; row: Record<string, unknown> };
 
+type RoundRow = {
+  id: string;
+  sessionId: string;
+  roundNo: number;
+  senderRole: "BUYER" | "SELLER";
+  messageType: string;
+  priceminor: string;
+  counterPriceMinor: string | null;
+  decision: string | null;
+  metadata: Record<string, unknown> | null;
+  idempotencyKey: string;
+  message: string | null;
+  utility: unknown;
+  createdAt: Date;
+};
+
+function roundMatches(round: RoundRow, whereClause: unknown): boolean {
+  const pairs: EqPair[] = [];
+  collectEqPairs(whereClause, pairs);
+  for (const pair of pairs) {
+    if (
+      (pair.column === "session_id" || pair.column === "sessionId") &&
+      pair.value !== round.sessionId
+    ) {
+      return false;
+    }
+    if (
+      (pair.column === "idempotency_key" || pair.column === "idempotencyKey") &&
+      pair.value !== round.idempotencyKey
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function tableNameOf(table: unknown): string {
   if (table === creditAccounts) return "credit_accounts";
   if (table === creditLedgerEntries) return "credit_ledger_entries";
+  if (table && typeof table === "object" && "roundNo" in table && "senderRole" in table) {
+    return "negotiation_rounds";
+  }
   if (!table || typeof table !== "object") return "negotiation_sessions";
   const direct = (table as Record<symbol, unknown>)[DRIZZLE_NAME];
   if (typeof direct === "string" && direct.length > 0) return direct;
@@ -201,7 +268,8 @@ function tableNameOf(table: unknown): string {
       if (
         value === "credit_accounts" ||
         value === "credit_ledger_entries" ||
-        value === "negotiation_sessions"
+        value === "negotiation_sessions" ||
+        value === "negotiation_rounds"
       ) {
         return value;
       }
@@ -216,6 +284,7 @@ function inferInsertTable(table: unknown, rows: Record<string, unknown>[]): stri
   if (named !== "negotiation_sessions") return named;
   const sample = rows[0];
   if (!sample) return named;
+  if ("roundNo" in sample && "senderRole" in sample) return "negotiation_rounds";
   if ("idempotencyKey" in sample || "delta" in sample) return "credit_ledger_entries";
   if ("accountId" in sample && "balance" in sample && !("version" in sample)) {
     return "credit_accounts";
@@ -292,6 +361,7 @@ function createFakeDb(initial: SessionRow) {
     accounts: CreditAccountRow[];
     ledger: CreditLedgerRow[];
     inserts: TableInsert[];
+    rounds: RoundRow[];
   } = {
     row: initial,
     updates: [],
@@ -308,6 +378,7 @@ function createFakeDb(initial: SessionRow) {
     ],
     ledger: [],
     inserts: [],
+    rounds: [],
   };
 
   let tail: Promise<void> = Promise.resolve();
@@ -350,6 +421,18 @@ function createFakeDb(initial: SessionRow) {
           (account) => accountId === undefined || account.accountId === accountId,
         );
         return Promise.resolve(rows.map((account) => ({ ...account })));
+      }
+      if (tableName === "negotiation_rounds") {
+        const rows = state.rounds
+          .filter((round) => roundMatches(round, whereClause))
+          .sort((a, b) => a.roundNo - b.roundNo);
+        return Promise.resolve(
+          rows.map((round) => ({
+            ...round,
+            metadata: round.metadata ? { ...round.metadata } : null,
+            createdAt: new Date(round.createdAt.getTime()),
+          })),
+        );
       }
       if (resolved === "credit_ledger_entries") {
         const accountId = eqValue(whereClause, "account_id", "accountId");
@@ -517,6 +600,29 @@ function createFakeDb(initial: SessionRow) {
               state.ledger.push(entry);
               state.inserts.push({ table: tableName, row: { ...entry } });
               inserted.push(entry);
+            } else if (tableName === "negotiation_rounds") {
+              const round: RoundRow = {
+                id: typeof values.id === "string" ? values.id : crypto.randomUUID(),
+                sessionId: String(values.sessionId),
+                roundNo: Number(values.roundNo),
+                senderRole: values.senderRole === "SELLER" ? "SELLER" : "BUYER",
+                messageType: String(values.messageType ?? "OFFER"),
+                priceminor: String(values.priceminor),
+                counterPriceMinor:
+                  values.counterPriceMinor == null ? null : String(values.counterPriceMinor),
+                decision: values.decision == null ? null : String(values.decision),
+                metadata:
+                  values.metadata && typeof values.metadata === "object"
+                    ? { ...(values.metadata as Record<string, unknown>) }
+                    : null,
+                idempotencyKey: String(values.idempotencyKey),
+                message: typeof values.message === "string" ? values.message : null,
+                utility: values.utility ?? null,
+                createdAt: values.createdAt instanceof Date ? values.createdAt : new Date(),
+              };
+              state.rounds.push(round);
+              state.inserts.push({ table: tableName, row: { ...round } });
+              inserted.push(round);
             } else {
               state.inserts.push({ table: tableName, row: { ...values } });
               inserted.push(values);
@@ -562,8 +668,28 @@ function createFakeDb(initial: SessionRow) {
     state.queued += 1;
     return prev.then(async () => {
       state.queued -= 1;
+      const snap = {
+        row: state.row ? cloneRow(state.row) : null,
+        rounds: state.rounds.map((round) => ({
+          ...round,
+          metadata: round.metadata ? { ...round.metadata } : null,
+          createdAt: new Date(round.createdAt.getTime()),
+        })),
+        accounts: state.accounts.map((account) => ({ ...account })),
+        ledger: state.ledger.map((entry) => ({ ...entry })),
+        inserts: state.inserts.map((entry) => ({ table: entry.table, row: { ...entry.row } })),
+        updates: state.updates.map((update) => ({ ...update })),
+      };
       try {
         return await fn({ execute, update, select, insert });
+      } catch (err) {
+        state.row = snap.row;
+        state.rounds = snap.rounds;
+        state.accounts = snap.accounts;
+        state.ledger = snap.ledger;
+        state.inserts = snap.inserts;
+        state.updates.splice(0, state.updates.length, ...snap.updates);
+        throw err;
       } finally {
         release();
       }
@@ -580,6 +706,7 @@ function createFakeDb(initial: SessionRow) {
     ledger: () => state.ledger,
     ledgerCount: () => state.ledger.length,
     inserts: () => state.inserts,
+    rounds: () => state.rounds.map((round) => ({ ...round })),
     replace(next: SessionRow) {
       state.row = next;
     },
@@ -631,6 +758,9 @@ describe("auto-play claim vs Manual handoff", () => {
     vi.mocked(submitHnpOffer).mockClear();
     vi.mocked(getRoundsBySessionId).mockReset();
     vi.mocked(getRoundsBySessionId).mockResolvedValue([]);
+    mockExecutePipeline.mockReset();
+    mockGetRoundByIdempotencyKey.mockReset();
+    mockGetRoundByIdempotencyKey.mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -851,7 +981,12 @@ describe("auto-play claim vs Manual handoff", () => {
       expect(patched.view.seller_control_mode).toBe("auto");
       refresh.resolve();
       const post = await postP;
+      expect(post.ok).toBe(true);
+      expect(post.status).toBe(201);
       expect(post.status).not.toBe(404);
+      expect(fake.row()?.sellerControlMode).toBe("manual");
+      expect(fake.row()?.sellerPendingControlMode).toBeNull();
+      expect(fake.row()?.softAiInflightParty).toBeNull();
       expect(fake.updates.some((update) => update.softAiInflightParty === "seller")).toBe(true);
     } finally {
       hold.resolve();
@@ -1107,5 +1242,172 @@ describe("auto-play claim vs Manual handoff", () => {
 
     expect(sawManualBeforeClaim).toBe(true);
     expect(sawPostWonLock).toBe(true);
+  });
+
+  function pipelineCounter() {
+    return {
+      cost: { tokens: 3 },
+      stages: {
+        validate: {
+          final_decision: {
+            action: "COUNTER",
+            price: 80_000,
+            reasoning: "hold",
+            tactic_used: "anchor",
+          },
+          validation: { ok: true },
+        },
+        respond: { message: "I can do that range." },
+        decide: { reasoning_mode: false },
+        context: { briefing: {} },
+      },
+    };
+  }
+
+  async function installRealSubmit() {
+    const actual =
+      await vi.importActual<typeof import("../hnp/submit-offer.js")>("../hnp/submit-offer.js");
+    vi.mocked(submitHnpOffer).mockImplementation(actual.submitHnpOffer);
+  }
+
+  it("real executor: Manual PATCH while the LLM runs observes the Phase 3 outcome", async () => {
+    await installRealSubmit();
+    const fake = createFakeDb(makeRow());
+    const ledgerBefore = fake.ledgerCount();
+    mockExecutePipeline.mockImplementation(async () => {
+      const patched = await setPartyControlMode(fake.db, {
+        sessionId: SESSION_ID,
+        actorUserId: SELLER_ID,
+        party: "seller",
+        controlMode: "manual",
+      });
+      expect(patched.ok).toBe(true);
+      if (patched.ok) {
+        expect(patched.pending_handoff).toBe(true);
+        expect(patched.view.seller_control_mode).toBe("auto");
+        expect(patched.view.seller_pending_control_mode).toBe("manual");
+      }
+      return pipelineCounter();
+    });
+
+    const post = await executeAutoPlayNext(fake.db, playInput());
+    const rounds = fake.rounds();
+    const row = fake.row();
+
+    expect(mockExecutePipeline).toHaveBeenCalledOnce();
+    expect(rounds).toHaveLength(0);
+    expect(post).toMatchObject({
+      ok: false,
+      status: 409,
+      body: { error: "CONCURRENT_MODIFICATION" },
+    });
+    expect(row?.sellerControlMode).toBe("manual");
+    expect(row?.sellerPendingControlMode).toBeNull();
+    expect(row?.softAiInflightParty).toBeNull();
+    expect(row?.buyerControlMode).toBe("auto");
+    expect(fake.ledgerCount()).toBe(ledgerBefore);
+    expect(fake.inserts().filter((entry) => entry.table === "credit_ledger_entries")).toHaveLength(
+      0,
+    );
+  });
+
+  async function raceRestAndHnp(row: SessionRow, sync: "pipeline" | "lock") {
+    await installRealSubmit();
+    const fake = createFakeDb(row);
+    vi.mocked(getRoundsBySessionId).mockImplementation(async () => fake.rounds() as never);
+    mockGetRoundByIdempotencyKey.mockImplementation(
+      async (_db: unknown, _id: unknown, key: unknown) =>
+        fake.rounds().find((round) => round.idempotencyKey === key) ?? null,
+    );
+    const ledgerBefore = fake.ledgerCount();
+    const envelope = buildHostHnpOfferEnvelope({
+      sessionId: SESSION_ID,
+      roundNo: 1,
+      senderRole: "BUYER",
+      priceMinor: 42_000,
+      nowMs: Date.now(),
+      idempotencyKey: "hnp-race-1",
+    });
+    const restInput = {
+      sessionId: SESSION_ID,
+      offerPriceMinor: 42_000,
+      senderRole: "BUYER" as const,
+      idempotencyKey: "rest-race-1",
+      roundData: {},
+      nowMs: Date.now(),
+    };
+    const gate = deferred();
+    let lockStarted: Promise<void> | null = null;
+    if (sync === "pipeline") {
+      let prepared = 0;
+      mockExecutePipeline.mockImplementation(async () => {
+        prepared += 1;
+        if (prepared >= 2) gate.resolve();
+        await gate.promise;
+        return pipelineCounter();
+      });
+    } else {
+      lockStarted = fake.armHold(gate.promise);
+    }
+    const pending = Promise.allSettled([
+      submitHnpOffer(fake.db, envelope, { requireSignature: false }),
+      getExecutor()(fake.db, restInput),
+    ]);
+    if (lockStarted) {
+      await lockStarted;
+      for (let i = 0; i < 30; i++) {
+        if (fake.queued() > 0) break;
+        await Promise.resolve();
+      }
+      gate.resolve();
+    }
+    const [hnp, rest] = await Promise.race([
+      pending,
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("offer race timed out")), 3000);
+      }),
+    ]);
+    return { fake, ledgerBefore, hnp, rest };
+  }
+
+  function outcomeOf(settled: PromiseSettledResult<unknown>): "saved" | "conflict" | "other" {
+    if (settled.status === "rejected") {
+      const reason = settled.reason;
+      const message = reason instanceof Error ? reason.message : String(reason);
+      if (message.startsWith("NOT_YOUR_TURN") || message.startsWith("CONCURRENT_MODIFICATION")) {
+        return "conflict";
+      }
+      return "other";
+    }
+    const value = settled.value as { ok?: boolean; status?: number; body?: { error?: string } };
+    if (value && value.ok === false && value.status === 409) return "conflict";
+    if (value && (value.ok === true || "roundId" in (value as object))) return "saved";
+    return "other";
+  }
+
+  it("REST offers and hnp_submit_offer: counterpart Auto writes one round", async () => {
+    const { fake, ledgerBefore, hnp, rest } = await raceRestAndHnp(makeRow(), "pipeline");
+    const outcomes = [outcomeOf(hnp), outcomeOf(rest)].sort();
+    expect(outcomes).toEqual(["conflict", "saved"]);
+    expect(fake.rounds()).toHaveLength(1);
+    expect(fake.ledgerCount()).toBe(ledgerBefore);
+    expect(fake.inserts().filter((entry) => entry.table === "credit_ledger_entries")).toHaveLength(
+      0,
+    );
+  });
+
+  it("REST offers and hnp_submit_offer: counterpart Manual writes one offer-only round", async () => {
+    const { fake, ledgerBefore, hnp, rest } = await raceRestAndHnp(
+      makeRow({ sellerControlMode: "manual", role: "SELLER" }),
+      "lock",
+    );
+    const outcomes = [outcomeOf(hnp), outcomeOf(rest)].sort();
+    expect(outcomes).toEqual(["conflict", "saved"]);
+    expect(fake.rounds()).toHaveLength(1);
+    expect(fake.rounds()[0]?.decision).toBeNull();
+    expect(fake.rounds()[0]?.counterPriceMinor).toBeNull();
+    expect(fake.rounds()[0]?.metadata).toMatchObject({ awaiting_manual_counterpart: "seller" });
+    expect(mockExecutePipeline).not.toHaveBeenCalled();
+    expect(fake.ledgerCount()).toBe(ledgerBefore);
   });
 });

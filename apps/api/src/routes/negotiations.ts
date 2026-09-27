@@ -599,6 +599,9 @@ export function registerNegotiationRoutes(
           escalation: result.escalation
             ? { type: result.escalation.type, context: result.escalation.context }
             : undefined,
+          ...(result.awaitingManualCounterpart
+            ? { awaiting_manual_counterpart: result.awaitingManualCounterpart }
+            : {}),
         };
 
         // LLM engine extensions (present when NEGOTIATION_ENGINE=llm)
@@ -681,6 +684,9 @@ export function registerNegotiationRoutes(
           return reply
             .code(409)
             .send({ error: "CONCURRENT_MODIFICATION", message: "Please retry" });
+        }
+        if (message.startsWith("NOT_YOUR_TURN")) {
+          return reply.code(409).send({ error: "NOT_YOUR_TURN" });
         }
 
         throw err;
@@ -1328,7 +1334,13 @@ export function registerNegotiationRoutes(
             sessionId: liveSession.id,
             party: responderParty,
             haggleEnv: process.env.HAGGLE_ENV,
-          }).catch(() => undefined);
+          }).catch((cleanupErr) => {
+            const cleanupMessage =
+              cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr);
+            console.warn(
+              `[soft-ai] inflight cleanup failed session=${liveSession.id} party=${responderParty} error=${cleanupMessage}`,
+            );
+          });
         }
         const message = err instanceof Error ? err.message : String(err);
         if (message.startsWith("SESSION_NOT_FOUND")) {
@@ -1368,6 +1380,9 @@ export function registerNegotiationRoutes(
         }
         if (message.startsWith("CONCURRENT_MODIFICATION")) {
           return reply.code(409).send({ error: "CONCURRENT_MODIFICATION" });
+        }
+        if (message.startsWith("NOT_YOUR_TURN")) {
+          return reply.code(409).send({ error: "NOT_YOUR_TURN" });
         }
         request.log.error({ err, sessionId: session.id }, "auto-play round failed");
         return reply.code(502).send({ error: "AUTO_PLAY_ROUND_FAILED" });

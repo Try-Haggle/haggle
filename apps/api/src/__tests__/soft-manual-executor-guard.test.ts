@@ -216,8 +216,10 @@ describe("executeStagedNegotiationRound Soft Manual guard", () => {
   }
 
   it("throws before any write when the acting role is committed Manual", async () => {
+    // Counterpart (seller) is Auto, so this stays on the AI path. Sender matches
+    // the locked role, which is Manual — Soft AI must not draft.
     const { db } = dbFor(lockedRow({ role: "BUYER", buyer_control_mode: "manual" }));
-    const err = await executeStagedNegotiationRound(db, input({ senderRole: "SELLER" })).catch(
+    const err = await executeStagedNegotiationRound(db, input({ senderRole: "BUYER" })).catch(
       (error: unknown) => error,
     );
     expect(err).toBeInstanceOf(SoftManualWaitingError);
@@ -252,6 +254,7 @@ describe("executeStagedNegotiationRound Soft Manual guard", () => {
       lockedRow({
         role: "SELLER",
         seller_pending_control_mode: "manual",
+        soft_ai_inflight_party: "seller",
       }),
     );
     await expect(

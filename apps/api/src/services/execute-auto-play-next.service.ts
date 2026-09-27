@@ -451,7 +451,13 @@ export async function executeAutoPlayNext(
         sessionId: liveSession.id,
         party: responderParty,
         haggleEnv: process.env.HAGGLE_ENV,
-      }).catch(() => undefined);
+      }).catch((cleanupErr) => {
+        const cleanupMessage =
+          cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr);
+        console.warn(
+          `[soft-ai] inflight cleanup failed session=${liveSession.id} party=${responderParty} error=${cleanupMessage}`,
+        );
+      });
     }
     const message = err instanceof Error ? err.message : String(err);
     if (message.startsWith("SESSION_NOT_FOUND")) {
@@ -496,6 +502,9 @@ export async function executeAutoPlayNext(
     }
     if (message.startsWith("CONCURRENT_MODIFICATION")) {
       return { ok: false, status: 409, body: { error: "CONCURRENT_MODIFICATION" } };
+    }
+    if (message.startsWith("NOT_YOUR_TURN")) {
+      return { ok: false, status: 409, body: { error: "NOT_YOUR_TURN" } };
     }
     return { ok: false, status: 502, body: { error: "AUTO_PLAY_ROUND_FAILED" } };
   }
