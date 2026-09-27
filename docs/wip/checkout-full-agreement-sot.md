@@ -83,7 +83,7 @@ Secondary actions may exist (**leave checkout**, back to negotiation, cancel). T
 
 - Soft Auto / Manual, **Haggle credits**, Hard Authority, platform **1.5%** fee.
 - Payment rails or PCI: card PANs stay in Stripe Onramp; MCP still returns `checkout_url` only.
-- MCP-started deals do not get an auto-APPROVED settlement and wait for human approval ([mcp-buyer-deal-sot.md](./mcp-buyer-deal-sot.md) M-2). The pre-payment summary shows the cap and the arrival deadline (M-1, M-3).
+- MCP-started deals do not get an auto-APPROVED settlement and wait for human approval ([mcp-buyer-deal-sot.md](./mcp-buyer-deal-sot.md) M-2). The pre-payment summary shows the buyer-set cap and the arrival deadline when set (M-1, M-3).
 - D1/D2 start gates, saved-address default-use, settlement / dispute money paths.
 
 ---

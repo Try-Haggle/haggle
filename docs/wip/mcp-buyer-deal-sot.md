@@ -8,13 +8,15 @@ This document locks **what** to build. It does not authorize a production deploy
 
 Prefer this file over older MCP tool-name notes when they conflict on the staging buyer-deal contract. Address and shipping-quote locks stay **D1 / D2** in [product-decisions-2026-09-07.md](./product-decisions-2026-09-07.md). Decisions in this file are labeled **M-1 … M-6** so they do not clash with those.
 
+**Principle.** MCP follows the web's required pre-negotiation flow exactly (staging `9f2203d`, web as-is). Haggle adds no MCP-only required items and provides no new defaults beyond the web's.
+
 ---
 
 ## 0. Scope and non-goals
 
 **In scope**
 
-- **Stage 1.** MCP start input parity with web, plus the buyer protections in §2 (cap, confirm-before-payment, questions, privacy).
+- **Stage 1.** MCP start input parity with the web's required pre-negotiation flow, plus the buyer protections in §2 (buyer-set cap, confirm-before-payment, questions, privacy).
 - **Stage 2.** MCP search parity with the existing published-listing service. No new search engine.
 
 **Non-goals**
@@ -23,6 +25,8 @@ Prefer this file over older MCP tool-name notes when they conflict on the stagin
 - A new search engine.
 - Production.
 - Changes to the web checkout flow this round.
+- Any required start item the web does not already require.
+- Any default the web does not already apply.
 
 ---
 
@@ -42,22 +46,41 @@ Prefer this file over older MCP tool-name notes when they conflict on the stagin
 - **Search.** MCP `haggle_search_listings` takes only `q`, `category` (free string), and `limit` 1–40 (`platform.ts:223-241`). `listPublishedListings` already supports `minPrice` / `maxPrice`, `conditions`, sort `newest` | `price_asc` | `price_desc`, and cursor (`apps/api/src/services/draft.service.ts:785`, `:808-890`). It keeps `status = published` and a non-expired selling deadline (`:825-828`). Draft status values are `draft` | `published` | `expired` (`packages/db/src/schema/listing-drafts.ts:5`). The public select omits floor and strategy (`draft.service.ts:799-801`, `:900-910`). REST validation is in `apps/api/src/routes/public-listing.ts`: `SORT_VALUES` `:18`, category allowlist `:58-74`, prices `:85-111` (non-negative, `min <= max`), conditions `:114-131`, cursor `:145-178`, page size cap `:181` (max 100), `nextCursor` `:202-207`.
 - **Seller-role snapshot** stores `buyer_requested_strategy` (reservation, target, builder memory — built at `start-buyer-negotiation.service.ts:333-351`) and fulfillment fields, including buyer address when present (`:558-559`; address copy at `negotiation-fulfillment.ts:235-237`). Per Security review 2026-09-28, **B passed**: the seller LLM does not read those fields (§7). **B-h** still removes them from this snapshot.
 
+### Web start: required vs optional (9f2203d)
+
+Required before a web start — exactly these three. MCP requires the same three and nothing else. Item 3 is carrier shipping only; digital / no-shipment stays exempt, as on the web. Optional fields keep the web's defaults and no others.
+
+**Required before a web start**
+
+1. **Agent preset.** `negotiation_agent_preset_id` is required (`apps/api/src/services/start-buyer-negotiation.service.ts:87`). Missing → **400** `INVALID_START_REQUEST` (`:166-170`). The web client says "Pick an agent" (`apps/web/src/components/listing-detail/listing-detail-v2.tsx:579-593`). A preset is enough; no agent creation. MCP today: `agent_id` is optional, and `resolveBuyerPresetId` falls back to the balancer (`apps/api/src/mcp/tools/platform.ts:125-151`).
+2. **Seller-required criteria.** **409** `BUYER_CRITERIA_REQUIRED` (`start-buyer-negotiation.service.ts:276-303`, `:607-627`). The web client also blocks (`apps/web/src/app/l/[publicId]/buyer-landing-v2.tsx:157-168`).
+3. **Carrier shipping.** Delivery address: **409** `DELIVERY_ADDRESS_REQUIRED` (`apps/api/src/lib/delivery-address-start-gate.ts:28-50`), plus the pre-start shipping quote (`start-buyer-negotiation.service.ts:478-510`). The web client uses `canStartWithFulfillment` (`apps/web/src/components/shipping/pre-negotiation-fulfillment-state.ts:53-61`).
+
+**Optional, with the web's defaults**
+
+- Budget cap = the listing ask. Target = `max(floor, ask × 0.9)` (`start-buyer-negotiation.service.ts:270-274`). If target is greater than or equal to the cap → **400** `INVALID_PRICE_RANGE`.
+- Style `balanced`. `control_mode` `auto`. `deadline_hours` 24h (`start-buyer-negotiation.service.ts:261`).
+- Tag Garden and Quick Setup are builder-chat questions, not gates.
+- Scoped condition confirmation is not a gate (no start check found in the code).
+
 ---
 
 ## 2. Decisions (CTO, 2026-09-28)
 
 ### M-1 — Cap
 
-The buyer sets the cap by talking with their agent. Haggle inserts no default and no suggested value.
+The buyer sets the cap in conversation with their agent. Haggle inserts no suggested value.
 
-The cap is the total the buyer actually pays: **item + shipping + fees + tax**, a positive integer in minor units (cents).
+The cap is not required before start. There is no cap question.
 
-1. **No cap, no MCP start.** `pendingBuyerQuestions()` returns a `budget_cap` question (**409**). The agent must ask the buyer. The question cannot be skipped. Do not fall back to the listing ask on MCP (today `start-buyer-negotiation.service.ts:268-270` uses the listing ask when `budgetMax` is missing).
-2. The answer is that positive integer total. Zero or negative → **400**. Currency mismatch → **400** (Security criterion).
-3. Once set, the server enforces it as before. Over the cap → `BUDGET_EXCEEDED` on REST accept, `hnp_accept`, pipeline `ACCEPT` / `CONFIRM` (includes auto-play), settlement creation, and `POST /payments/prepare`.
-4. The pre-payment agreement summary shows the cap.
+Record `cap_source` (`buyer_set` | `default`) in the snapshot.
 
-This replaces today's dollar-float `budgetMax` and the silent drop of bad values.
+1. **Buyer-set cap.** Only a buyer-set cap is enforced against the all-in total the buyer pays: **item + shipping + fees + tax**, an integer in minor units. Over that total → `BUDGET_EXCEEDED` on REST accept, `hnp_accept`, pipeline `ACCEPT` / `CONFIRM` (includes auto-play), settlement creation, and `POST /payments/prepare`. The pre-payment agreement summary shows the cap and `cap_source` when the cap is buyer-set.
+2. **Default cap.** When the buyer does not set one, the server fills the cap from the listing ask, as on the web (`start-buyer-negotiation.service.ts:270-274`). A default cap is used only as the item-price negotiation ceiling. It is not enforced against the all-in total. A deal at the ask is not blocked because shipping (or fees, or tax) is added on top.
+3. **Rejected.** Option (b), default = ask + the shipping quote, is rejected. That is a new rule the web does not have.
+4. A buyer-set cap of zero or negative → **400**. Currency mismatch → **400**.
+
+This replaces today's dollar-float `budgetMax` and the silent drop of bad values (`toMinorOrUndefined`, `start-buyer-negotiation.service.ts:817-821`).
 
 ### M-2 — Confirm-before-payment
 
@@ -67,13 +90,17 @@ A deal started over MCP does **not** create an auto-`APPROVED` settlement. It wa
 
 ### M-3 — Arrival deadline
 
-v1 stores the arrival deadline as a **condition** and shows it in the pre-payment agreement summary. Nothing more. Engine enforcement is later. It is not `deadline_hours` (that remains the negotiation window).
+v1 stores the arrival deadline **optionally** as a **condition** and shows it in the pre-payment agreement summary when it is set. It is not required before start. Nothing more. Engine enforcement is later. It is not `deadline_hours` (that remains the negotiation window).
 
 ### M-4 — Questions
 
 One shared `pendingBuyerQuestions()` seam, used by the web API and MCP. The function does not exist yet; Stage 1 adds it. Do not fork a second question list.
 
-While any question is unanswered, every progress path **except play** returns **409**:
+`pendingBuyerQuestions()` returns exactly the web-required items that apply to this listing — agent preset, seller-required criteria, and (carrier shipping only) delivery address — plus in-session pause questions. No MCP-only required item.
+
+MCP start returns **409** while any of those that apply is unfilled, with the same question the web shows.
+
+While a required item or an in-session pause question is unanswered, every progress path **except play** returns **409**:
 
 - offer (`hnp_submit_offer`, REST offers)
 - accept (`hnp_accept`, REST accept)
@@ -82,13 +109,11 @@ While any question is unanswered, every progress path **except play** returns **
 
 Play keeps the current paused response: **200** `paused_for_buyer`.
 
-Tag Garden, Quick Setup, condition confirmation, the delivery step, and the system question `budget_cap` cannot be skipped on MCP. `budget_cap` is not a seller question. If an MCP start has no cap, `pendingBuyerQuestions()` returns it and start is **409** (M-1). The agent must ask the buyer.
-
-MCP builder loads `learned_checks` the same way as `POST /negotiations/agents/builder/chat-turn`, so the questions match the web.
+Tag Garden and Quick Setup are builder-chat questions. They are offered, not gates. Scoped condition confirmation is not a gate. MCP builder loads `learned_checks` the same way as `POST /negotiations/agents/builder/chat-turn`, so those builder questions match the web.
 
 Choice answers are checked against the allowlist. Free text has a length limit (do not invent the number here; today's stance max is 2000 at `negotiations.ts:119` and `platform.ts:838-840`). Unknown `checkId` → **400**. Remove the fallback answer that fills every unresolved check at once. Another user's session → **404** (not 403).
 
-Parity test: questions the web shows also appear on MCP, via `pendingBuyerQuestions()`.
+Parity test: web-required items and pause questions shown on the web appear on MCP, via `pendingBuyerQuestions()`. No MCP-only required item.
 
 ### M-5 — Untrusted seller question text
 
@@ -110,23 +135,34 @@ Results never include draft, private, or deleted listings, and never include sel
 
 ## 3. Stage 1 contract — MCP start
 
-Passed through to the same start service (`start-buyer-negotiation.service.ts`). No new negotiation logic. Any dollar → minor conversion lives at **one** boundary. Scope: `negotiate`.
+Passed through to the same start service (`start-buyer-negotiation.service.ts`). No new negotiation logic. Scope: `negotiate`.
 
-Exact MCP field names are chosen in the Stage 1 PR. They must **mirror** the web names. This table does not invent them.
+MCP field names are the web field names. No MCP-only required item. No default beyond the web's. Cap storage is an integer in minor units, not a dollar float, and bad values are **400** rather than dropped (M-1).
 
-| Ticket field | Web field today | MCP field (new) | Rule |
+### MCP gaps (implementation targets)
+
+a. **No `fulfillment` on MCP start** (`apps/api/src/mcp/tools/mcp-start-schema.ts:22-41`), so the address gate and the quote are bypassed. Add `fulfillment` with the same schema as the web (`fulfillmentPreferenceSchema` / `buyerShippingAddressSchema`, `apps/api/src/lib/negotiation-fulfillment.ts`). Omitting it, or omitting the address, on a carrier listing does not skip the gate: the server returns **409** `DELIVERY_ADDRESS_REQUIRED`. When the address is present, the pre-start quote runs (`start-buyer-negotiation.service.ts:478-510`).
+
+b. **No path to pass builder memory** (`targetPrice` / `budgetMax` / `style` / `mustHave` / `avoid`) to start. `resolveBuyerPresetId` (`platform.ts:125-151`) resolves only a preset. MCP start accepts the same `negotiation_agent_builder_memory` as the web. When that object is absent, the web defaults apply (cap = listing ask, target = `max(floor, ask × 0.9)`, style `balanced`, `control_mode` `auto`, `deadline_hours` 24h).
+
+c. **No `buyer_control_mode`.** Add the same field as the web (`start-buyer-negotiation.service.ts:122`).
+
+d. **`pendingBuyerQuestions()`** reflects exactly the three web-required items in §1 (carrier address only when the web requires it), plus in-session pause questions. No MCP-only required item.
+
+| Ticket field | Web field today | MCP field | Rule |
 | --- | --- | --- | --- |
-| Cap | `negotiation_agent_builder_memory.budgetMax` (dollar float) | Mirror | **Required on MCP.** No default and no suggested value. Missing → **409** `budget_cap` via `pendingBuyerQuestions()`; no session. No listing-ask fallback (today `start-buyer-negotiation.service.ts:268-270`). Positive integer minor units: item + shipping + fees + tax. Zero or negative → **400**. Currency must match. Once set, enforced as M-1. Shown on the pre-payment agreement summary. |
-| Target price | `negotiation_agent_builder_memory.targetPrice` (dollar float) | Mirror | Integer minor units, strictly `<` cap. |
-| Must-haves | `negotiation_agent_builder_memory.mustHave` and `buyerCriteria` | Mirror | Same meaning as web builder memory `mustHave` plus `buyerCriteria`. |
-| Shipping address | `fulfillment.buyer_address`, validated by `buyerShippingAddressSchema` | Mirror | Same schema. **D1 / D2** are required on MCP for physical carrier listings. |
-| Arrival deadline | Does not exist. `deadline_hours` is only the negotiation window. | Mirror (a condition, not `deadline_hours`) | Stored as a condition. Shown on the pre-payment summary. No engine enforcement in v1 (M-3). |
-| Confirm-before-payment | Not a start field. Accept allows `payment_decision: AUTO_APPROVE`. | Mirror. No confirm-off value. | Default **on**. Cannot be turned off. `AUTO_APPROVE` or a confirm-off input → **400** (M-2). |
+| Cap | `negotiation_agent_builder_memory.budgetMax` (dollar float today) | Same field as web | **Optional.** Default = listing ask, as on the web (`start-buyer-negotiation.service.ts:270-274`). `cap_source` = `default`. Used only as the item-price ceiling (M-1). If the buyer sets it: positive integer total in minor units (item + shipping + fees + tax), `cap_source` = `buyer_set`, enforced on the all-in total. Zero or negative → **400**. Currency mismatch → **400**. Pre-payment summary shows the cap and `cap_source` only when buyer-set. |
+| Target price | `negotiation_agent_builder_memory.targetPrice` (dollar float) | Same field as web | **Optional.** Web default `max(floor, ask × 0.9)` (`start-buyer-negotiation.service.ts:270-274`). **400** `INVALID_PRICE_RANGE` if target is greater than or equal to the cap. |
+| Must-haves | `negotiation_agent_builder_memory.mustHave` / `avoid`, plus `buyerCriteria` | Same as web | **Optional.** Not a start gate. Seller-required criteria remain required (web item 2). |
+| Shipping address | `fulfillment` (`fulfillmentPreferenceSchema` / `buyerShippingAddressSchema`, `apps/api/src/lib/negotiation-fulfillment.ts`) | `fulfillment` (same schema) | **Required for carrier** (web item 3). D1 / D2. Missing address → **409** `DELIVERY_ADDRESS_REQUIRED`. Quote runs when the address is present. Digital / no-shipment stays exempt. |
+| Arrival deadline | Does not exist. `deadline_hours` is only the negotiation window. | A stored condition, not `deadline_hours` | **Optional.** Not required. Shown on the pre-payment summary when set. No engine enforcement in v1 (M-3). |
+| Confirm-before-payment | Not a start field. Accept allows `payment_decision: AUTO_APPROVE`. | Not an input | Always on (M-2). Cannot be turned off. `AUTO_APPROVE` or a confirm-off input → **400**. |
+| Agent preset | `negotiation_agent_preset_id` required (`start-buyer-negotiation.service.ts:87`) | Same as web. MCP today: `agent_id` optional; `resolveBuyerPresetId` falls back to the balancer (`platform.ts:125-151`) | **Required**, as on the web (web item 1). Web: missing → **400** `INVALID_START_REQUEST` (`:166-170`). A preset is enough; no agent creation. Parity target: `pendingBuyerQuestions()` includes this item, and MCP start returns **409** until it is filled, with the same "Pick an agent" question the web shows (`apps/web/src/components/listing-detail/listing-detail-v2.tsx:579-593`). |
 
 Also in Stage 1, not only on the start body:
 
-- Server-side agreement block on every path in M-1.
-- Unanswered-question gate in M-4.
+- Buyer-set cap block on every path in M-1. Default cap stays an item-price ceiling only. Snapshot stores `cap_source`.
+- Unanswered-question gate in M-4 (the three web-required items and in-session pause questions only).
 - Human approval in M-2 (MCP-started settlement is not created `APPROVED`).
 
 ---
@@ -153,13 +189,11 @@ Output rules are M-6: no draft, private, or deleted listings; no seller floor or
 
 ### Cap
 
-- [ ] REST accept, `hnp_accept`, and pipeline `ACCEPT` / `CONFIRM` (including auto-play) reject a total over the cap with `BUDGET_EXCEEDED`.
-- [ ] Settlement creation and `POST /payments/prepare` enforce the same cap.
+- [ ] Buyer-set cap: REST accept, `hnp_accept`, pipeline `ACCEPT` / `CONFIRM` (including auto-play), settlement creation, and `POST /payments/prepare` reject an all-in total over the cap with `BUDGET_EXCEEDED`. Shipping, fees, and tax count toward that total.
+- [ ] Default cap (listing ask): item-price negotiation ceiling only. A deal at the ask plus shipping is **not** blocked. No all-in enforcement.
+- [ ] The snapshot records `cap_source` (`buyer_set` | `default`).
 - [ ] Zero or negative cap → 400. Currency mismatch → 400.
-- [ ] Shipping, fees, and tax count toward the total. Item price alone is not the cap.
-- [ ] MCP start with no cap → **409** `budget_cap` via `pendingBuyerQuestions()`, and no session.
-- [ ] No listing-ask fallback on MCP (today `start-buyer-negotiation.service.ts:268-270`).
-- [ ] The pre-payment agreement summary shows the cap.
+- [ ] The pre-payment agreement summary shows the cap and `cap_source` when the cap is buyer-set.
 
 ### Confirm
 
@@ -170,15 +204,15 @@ Output rules are M-6: no draft, private, or deleted listings; no seller floor or
 
 ### Questions
 
-- [ ] Unanswered question → 409 on `hnp_submit_offer`, REST offers, `hnp_accept`, REST accept, `haggle_create_checkout`, and `POST /payments/prepare`.
+- [ ] MCP start → **409** while any web-required item that applies to this listing is unfilled (the three in §1; carrier address only for carrier shipping), with the same question the web shows.
+- [ ] While a required item or an in-session pause question is unanswered → 409 on `hnp_submit_offer`, REST offers, `hnp_accept`, REST accept, `haggle_create_checkout`, and `POST /payments/prepare`.
 - [ ] Play still returns 200 `paused_for_buyer`.
 - [ ] Choice answers outside the allowlist are rejected. Free text over the length limit is rejected.
 - [ ] Unknown `checkId` → 400.
 - [ ] A single fallback answer does not fill every unresolved check.
 - [ ] Another user's session → 404 (not 403).
-- [ ] MCP builder loads `learned_checks` the same way as the REST builder route.
-- [ ] Web ↔ MCP parity on `pendingBuyerQuestions()`: questions the web shows also appear on MCP.
-- [ ] `budget_cap` is a system question. It cannot be skipped.
+- [ ] MCP builder loads `learned_checks` the same way as the REST builder route. Tag Garden and Quick Setup match the web and are offered, not gates.
+- [ ] Parity on `pendingBuyerQuestions()`: web-required items and pause questions shown on the web appear on MCP. No MCP-only required item.
 
 ### Untrusted
 
@@ -199,9 +233,12 @@ Output rules are M-6: no draft, private, or deleted listings; no seller floor or
 - [ ] Results do not include seller floor or strategy.
 - [ ] Title and description are separate untrusted fields.
 
-### Address
+### Stage 1 gaps
 
-- [ ] MCP start of a physical carrier listing enforces D1 and D2 (address + successful quote). Digital / no-shipment stays exempt.
+- [ ] MCP start accepts `fulfillment` (web schema). A carrier listing with no address → **409** `DELIVERY_ADDRESS_REQUIRED`. With an address, the pre-start quote runs. Digital / no-shipment stays exempt.
+- [ ] `negotiation_agent_builder_memory` (`targetPrice`, `budgetMax`, `style`, `mustHave`, `avoid`) is passed through to the start service.
+- [ ] `buyer_control_mode` is passed through (same field as the web, `start-buyer-negotiation.service.ts:122`).
+- [ ] When builder memory is absent, the web defaults apply: cap = listing ask, target = `max(floor, ask × 0.9)`, style `balanced`, `control_mode` `auto`, `deadline_hours` 24h.
 
 ### MCP token (A1)
 

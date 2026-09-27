@@ -381,7 +381,7 @@ negotiation_rounds                ← 같은 session_id 아래 N개
 <tr><td>HTTP</td><td><code>POST /negotiations/sessions/:id/offers</code></td><td><code>getExecutor()</code> → executor</td><td>한 라운드 실행</td></tr>
 <tr><td>HTTP</td><td><code>PATCH /negotiations/sessions/:id/accept</code></td><td><code>finalizeAcceptedSession()</code></td><td>수락 종료</td></tr>
 <tr><td>HTTP</td><td><code>PATCH /negotiations/sessions/:id/reject</code></td><td><code>updateSessionState()</code></td><td>거절 종료</td></tr>
-<tr><td>MCP Tool</td><td><code>haggle_create_negotiation_session</code> (outdated name — current: haggle_start_negotiation / hnp_submit_offer; see mcp-buyer-deal-sot.md)</td><td><code>createSession()</code></td><td>AI 에이전트가 직접 협상 시작</td></tr>
+<tr><td>MCP Tool</td><td><code>haggle_create_negotiation_session</code> (outdated name — current: haggle_start_negotiation; see mcp-buyer-deal-sot.md)</td><td><code>createSession()</code></td><td>AI 에이전트가 직접 협상 시작</td></tr>
 <tr><td>WebSocket</td><td>(실시간 push)</td><td><code>broadcastToSession()</code></td><td>출력만 — 새 세션 시작 못 함</td></tr>
 </tbody>
 </table>
