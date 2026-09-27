@@ -12,7 +12,8 @@
 import { CREDIT_PRO_GAME, CREDIT_PRO_HALF } from "@haggle/commerce-core";
 import { creditAccounts, creditLedgerEntries, type Database } from "@haggle/db";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { buildHostHnpOfferEnvelope } from "../hnp/host-envelope.js";
+import { buildHostHnpOfferEnvelope, wrapPriceOnlyAsHostEnvelope } from "../hnp/host-envelope.js";
+import { normalizeSubmitOffer } from "../hnp/normalize-offer.js";
 import { submitHnpOffer } from "../hnp/submit-offer.js";
 import { getExecutor } from "../lib/executor-factory.js";
 import {
@@ -1409,5 +1410,126 @@ describe("auto-play claim vs Manual handoff", () => {
     expect(fake.rounds()[0]?.metadata).toMatchObject({ awaiting_manual_counterpart: "seller" });
     expect(mockExecutePipeline).not.toHaveBeenCalled();
     expect(fake.ledgerCount()).toBe(ledgerBefore);
+  });
+
+  /** Same fields POST /negotiations/sessions/:id/offers passes to getExecutor(). */
+  function restOfferInput(idempotencyKey: string) {
+    const nowMs = Date.now();
+    const envelope = wrapPriceOnlyAsHostEnvelope({
+      sessionId: SESSION_ID,
+      currentRound: 0,
+      senderRole: "BUYER",
+      priceMinor: 42_000,
+      idempotencyKey,
+      nowMs,
+    });
+    const wrapped = normalizeSubmitOffer({ hnp: envelope }, SESSION_ID, nowMs);
+    if (!wrapped.ok) throw new Error("rest offer fixture did not normalize");
+    return {
+      sessionId: SESSION_ID,
+      offerPriceMinor: wrapped.offerPriceMinor,
+      messageText: undefined,
+      senderRole: wrapped.senderRole,
+      idempotencyKey: wrapped.idempotencyKey,
+      protocol: wrapped.protocol,
+      roundData: {},
+      nowMs,
+    };
+  }
+
+  async function raceSameTurnManual(
+    start: (db: ReturnType<typeof createFakeDb>["db"], idempotencyKey: string) => Promise<unknown>,
+  ) {
+    await installRealSubmit();
+    const fake = createFakeDb(makeRow({ sellerControlMode: "manual", role: "SELLER" }));
+    vi.mocked(getRoundsBySessionId).mockImplementation(async () => fake.rounds() as never);
+    mockGetRoundByIdempotencyKey.mockImplementation(
+      async (_db: unknown, _id: unknown, key: unknown) =>
+        fake.rounds().find((round) => round.idempotencyKey === key) ?? null,
+    );
+    const ledgerBefore = fake.ledgerCount();
+    const gate = deferred();
+    const lockStarted = fake.armHold(gate.promise);
+    const pending = Promise.allSettled([
+      start(fake.db, "same-turn-a"),
+      start(fake.db, "same-turn-b"),
+    ]);
+    await lockStarted;
+    for (let i = 0; i < 30; i++) {
+      if (fake.queued() > 0) break;
+      await Promise.resolve();
+    }
+    gate.resolve();
+    const settled = await Promise.race([
+      pending,
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("offer race timed out")), 3000);
+      }),
+    ]);
+    return { fake, ledgerBefore, settled };
+  }
+
+  function expectOneOfferOnlyRound(fake: ReturnType<typeof createFakeDb>, ledgerBefore: number) {
+    expect(fake.rounds()).toHaveLength(1);
+    expect(fake.rounds()[0]).toMatchObject({
+      senderRole: "BUYER",
+      decision: null,
+      counterPriceMinor: null,
+      metadata: { awaiting_manual_counterpart: "seller" },
+    });
+    expect(mockExecutePipeline).not.toHaveBeenCalled();
+    expect(fake.ledgerCount()).toBe(ledgerBefore);
+    expect(fake.inserts().filter((entry) => entry.table === "credit_ledger_entries")).toHaveLength(
+      0,
+    );
+  }
+
+  it("REST offers: two same-turn own offers with counterpart Manual → exactly one saved, other 409", async () => {
+    const { fake, ledgerBefore, settled } = await raceSameTurnManual((db, idempotencyKey) =>
+      getExecutor()(db, restOfferInput(idempotencyKey)),
+    );
+    const saved = settled.filter((item) => item.status === "fulfilled");
+    const rejected = settled.filter((item) => item.status === "rejected");
+    expect(saved).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(saved[0]?.status === "fulfilled" && saved[0].value).toMatchObject({
+      idempotent: false,
+      decision: "AWAITING_COUNTERPART",
+      awaitingManualCounterpart: "seller",
+    });
+    const reason = rejected[0]?.status === "rejected" ? rejected[0].reason : undefined;
+    expect(reason).toBeInstanceOf(Error);
+    expect((reason as Error).message).toBe("NOT_YOUR_TURN");
+    expectOneOfferOnlyRound(fake, ledgerBefore);
+  });
+
+  it("hnp_submit_offer: two same-turn own offers with counterpart Manual → exactly one saved, other 409", async () => {
+    const { fake, ledgerBefore, settled } = await raceSameTurnManual((db, idempotencyKey) =>
+      submitHnpOffer(
+        db,
+        buildHostHnpOfferEnvelope({
+          sessionId: SESSION_ID,
+          roundNo: 1,
+          senderRole: "BUYER",
+          priceMinor: 42_000,
+          nowMs: Date.now(),
+          idempotencyKey,
+        }),
+        { requireSignature: false },
+      ),
+    );
+    const values = settled.map((item) => {
+      expect(item.status).toBe("fulfilled");
+      return item.status === "fulfilled" ? item.value : undefined;
+    });
+    const winner = values.find((value) => (value as { ok?: boolean }).ok === true);
+    const loser = values.find((value) => (value as { ok?: boolean }).ok === false);
+    expect(winner).toMatchObject({ ok: true, awaitingManualCounterpart: "seller" });
+    expect(loser).toEqual({
+      ok: false,
+      status: 409,
+      body: { error: "NOT_YOUR_TURN" },
+    });
+    expectOneOfferOnlyRound(fake, ledgerBefore);
   });
 });
