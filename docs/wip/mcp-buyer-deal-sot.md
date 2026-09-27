@@ -10,7 +10,7 @@ Prefer this file over older MCP tool-name notes when they conflict on the stagin
 
 **Principle.** MCP follows the web's required pre-negotiation flow exactly (staging `9f2203d`, web as-is). Haggle adds no MCP-only required items and provides no new defaults beyond the web's.
 
-**외부 에이전트는 MCP 도구만 쓴다 (external agents use MCP tools only).** The official path is the MCP tools (`haggle_start_negotiation`, `haggle_answer_pause`, `haggle_play_next`, `hnp_*`, etc.). The required questions (`pendingBuyerQuestions()`) and the 409 rules apply there. REST called with an MCP token returns **403** `MCP_TOKEN_NOT_ALLOWED` per PR #191 (tip `dbaf9c5`), including `POST /negotiations/start` and `POST /negotiations/sessions/:id/pause/answer`, so REST cannot bypass those rules. See §7.
+**외부 에이전트는 MCP 도구만 쓴다 (external agents use MCP tools only).** The official path is the MCP tools (`haggle_start_negotiation`, `haggle_answer_pause`, `haggle_play_next`, `hnp_*`, etc.). The required questions (`pendingBuyerQuestions()`) and the 409 rules apply there. REST called with an MCP token returns **403** `MCP_TOKEN_NOT_ALLOWED` per PR #191 (tip `2e97b13`), including `POST /negotiations/start` and `POST /negotiations/sessions/:id/pause/answer`, so REST cannot bypass those rules. See §7.
 
 ---
 
@@ -77,7 +77,7 @@ The cap is not required before start. There is no cap question.
 
 Record `cap_source` (`buyer_set` | `default`) in the snapshot.
 
-1. **Buyer-set cap.** Only a buyer-set cap is enforced against the all-in total the buyer pays: **item + shipping + fees + tax**, an integer in minor units. Over that total → `BUDGET_EXCEEDED` on REST accept, `hnp_accept`, pipeline `ACCEPT` / `CONFIRM` (includes auto-play), settlement creation, and `POST /payments/prepare`. The pre-payment agreement summary shows the cap and `cap_source` when the cap is buyer-set.
+1. **Buyer-set cap.** Only a buyer-set cap is enforced against the all-in total the buyer pays: **item + shipping + fees + tax**, an integer in minor units. Over that total → `BUDGET_EXCEEDED` on REST accept, `hnp_accept`, pipeline `ACCEPT` / `CONFIRM` (includes auto-play), settlement creation, and `POST /payments/prepare`. The pre-payment agreement summary shows the cap and `cap_source` when the cap is buyer-set. At accept time (REST accept, `hnp_accept`, pipeline `ACCEPT` / `CONFIRM`) the all-in total is compared as an **estimate** (agreed item price + the pre-start shipping quote + disclosed fees + estimated tax); `POST /payments/prepare` blocks again using the **confirmed** total.
 2. **Default cap.** When the buyer does not set one, the server fills the cap from the listing ask, as on the web (`start-buyer-negotiation.service.ts:270-274`). A default cap is used only as the item-price negotiation ceiling. It is not enforced against the all-in total. A deal at the ask is not blocked because shipping (or fees, or tax) is added on top.
 3. **Rejected.** Option (b), default = ask + the shipping quote, is rejected. That is a new rule the web does not have.
 4. A buyer-set cap of zero or negative → **400**. Currency mismatch → **400**.
@@ -88,7 +88,7 @@ This replaces today's dollar-float `budgetMax` and the silent drop of bad values
 
 Confirm-before-payment **cannot be turned off**. `AUTO_APPROVE` from MCP or HNP → **400** (do not ignore it silently).
 
-A deal started over MCP does **not** create an auto-`APPROVED` settlement. It waits for human approval. Payment is approved only by the human's web confirmation, never by an agent token. The web checkout flow is unchanged this round. Stage 1's first item (§3; also §6) is this rule on the tool paths: stop `hnp_accept` and `haggle_play_next` / `haggle_play_until` from creating an auto-`APPROVED` settlement via `create_settlement`. Approval only by the human on the web.
+Every agreement reached through an MCP tool or an agent token, whatever path started the negotiation, does **not** create an auto-`APPROVED` settlement. It waits for human approval. Payment is approved only by the human's web confirmation, never by an agent token. The web checkout flow is unchanged this round. Stage 1's first item (§3; also §6) is this rule on the tool paths: stop `hnp_accept` and `haggle_play_next` / `haggle_play_until` from creating an auto-`APPROVED` settlement via `create_settlement`. Approval only by the human on the web.
 
 ### M-3 — Arrival deadline
 
@@ -142,6 +142,7 @@ This does not conflict with "an external agent needs no web-created Haggle agent
 - MCP start scope is `negotiate` (buyer write).
 - No raw address in logs.
 - Target, cap, and must-haves are buyer-only. They never appear in seller responses, messages, errors, or logs.
+- If start ever accepts a saved address id, the server checks that the caller owns it and returns **404** if not. (The start schema has no such id field today: `fulfillment.buyer_address` is a full address, `apps/api/src/lib/negotiation-fulfillment.ts:34-43`.)
 
 ---
 
@@ -164,6 +165,8 @@ c. **No `buyer_control_mode`.** Add the same field as the web (`start-buyer-nego
 d. **`pendingBuyerQuestions()`** reflects exactly the three web-required items in §1 (carrier address only when the web requires it), including the preset question (M-7), plus in-session pause questions. No MCP-only required item.
 
 e. **Remove the silent default in `resolveBuyerPresetId`** (`apps/api/src/mcp/tools/platform.ts:125-151`): no preset → M-7 required question (**409**), not balancer.
+
+f. **Remove `haggle_claim` from the MCP tool list** (`apps/api/src/mcp/tools/index.ts:743-805`; §8 decision, option (b)). Listing claim stays web-only.
 
 | Ticket field | Web field today | MCP field | Rule |
 | --- | --- | --- | --- |
@@ -206,6 +209,7 @@ Output rules are M-6: no draft, private, or deleted listings; no seller floor or
 ### Cap
 
 - [ ] Buyer-set cap: REST accept, `hnp_accept`, pipeline `ACCEPT` / `CONFIRM` (including auto-play), settlement creation, and `POST /payments/prepare` reject an all-in total over the cap with `BUDGET_EXCEEDED`. Shipping, fees, and tax count toward that total.
+- [ ] Accept compares the estimated all-in total; `POST /payments/prepare` re-checks the confirmed total and returns `BUDGET_EXCEEDED` if it is over the buyer-set cap.
 - [ ] Default cap (listing ask): item-price negotiation ceiling only. A deal at the ask plus shipping is **not** blocked. No all-in enforcement.
 - [ ] The snapshot records `cap_source` (`buyer_set` | `default`).
 - [ ] Zero or negative cap → 400. Currency mismatch → 400.
@@ -214,7 +218,7 @@ Output rules are M-6: no draft, private, or deleted listings; no seller floor or
 ### Confirm
 
 - [ ] `AUTO_APPROVE` from MCP → 400. `AUTO_APPROVE` from HNP → 400. No silent ignore.
-- [ ] An MCP-started deal does not get an `APPROVED` settlement before the human confirms.
+- [ ] An agreement reached through an MCP tool or an agent token (whatever path started it) does not get an `APPROVED` settlement before the human confirms.
 - [ ] An agent token cannot approve payment. Only the human web confirmation can.
 - [ ] Accept `transaction_signals` `AUTO_APPROVE` and `settled` are discarded (per Security review 2026-09-28, `apps/api/src/hnp/accept-session.ts:440-447`). This is part of M-2.
 
@@ -250,6 +254,7 @@ Output rules are M-6: no draft, private, or deleted listings; no seller floor or
 - [ ] No raw address in logs.
 - [ ] Seller snapshot has no buyer strategy and no full buyer address (B-h; per Security review 2026-09-28, `apps/api/src/services/start-buyer-negotiation.service.ts:557-559`). `auto_play_context.buyerTargetMinor` is not exposed to the seller (`apps/api/src/services/negotiation-auto-play.service.ts:98`).
 - [ ] Seller `GET /settlement-approvals/:id` hides the buyer's full address and criteria before payment. After payment, that GET may show them only as shipping information.
+- [ ] If a saved address id is ever accepted at start, another user's id → **404**.
 
 ### Search
 
@@ -264,13 +269,14 @@ Output rules are M-6: no draft, private, or deleted listings; no seller floor or
 - [ ] `negotiation_agent_builder_memory` (`targetPrice`, `budgetMax`, `style`, `mustHave`, `avoid`) is passed through to the start service.
 - [ ] `buyer_control_mode` is passed through (same field as the web, `start-buyer-negotiation.service.ts:122`).
 - [ ] When builder memory is absent, the web defaults apply: cap = listing ask, target = `max(floor, ask × 0.9)`, style `balanced`, `control_mode` `auto`, `deadline_hours` 24h.
+- [ ] `haggle_claim` is not listed in MCP `tools/list`, and calling it over MCP fails (§8).
 
 ### MCP token (A1)
 
 - [ ] An MCP token → **403** `MCP_TOKEN_NOT_ALLOWED` on the A1 routes. One shared preHandler, `denyMcpToken`: every REST route that dispatches `negotiation.agreed`, `POST /payments/prepare`, mutating `/payments/:id/*` including authorize, settlement-approvals routes, and listing claim. MCP tool paths stay unchanged.
 - [ ] `GET /settlement-approvals/:id` with an MCP token → **403** `MCP_TOKEN_NOT_ALLOWED` (no `terms_hash`, no buyer address).
 - [ ] Every REST route that dispatches `negotiation.agreed`, with an MCP token → **403** `MCP_TOKEN_NOT_ALLOWED` (not only PATCH accept).
-- [ ] Widened #191 routes: an MCP token → **403** `MCP_TOKEN_NOT_ALLOWED` on confirm-delivery (`POST`, `apps/api/src/routes/orders.ts:178`), OAuth consent (`POST /oauth/consent`, `apps/api/src/routes/mcp-oauth.ts:98`), and the orders, addresses, shipments, disputes, settlement-releases, negotiations, and groups routes.
+- [ ] Widened #191 routes: an MCP token → **403** `MCP_TOKEN_NOT_ALLOWED` on confirm-delivery (`POST`, `apps/api/src/routes/orders.ts:180`), OAuth consent (`POST /oauth/consent`, `apps/api/src/routes/mcp-oauth.ts:100`), and the orders, addresses, shipments, disputes, settlement-releases, negotiations, and groups routes.
 - [ ] REST `POST /negotiations/start` and pause/answer with an MCP token → **403** `MCP_TOKEN_NOT_ALLOWED`.
 
 ### Nonce (A3)
@@ -285,7 +291,8 @@ Output rules are M-6: no draft, private, or deleted listings; no seller floor or
 2. **A1** (#191, Eng2) is top priority and runs in parallel. This docs PR is not blocked by it.
 3. **A2** (Eng2), right after #191 merge, ahead of #189 follow-ups.
 4. **#189** follow-ups.
-5. **Stage 1** (first item: stop the auto-`APPROVED` settlement from `hnp_accept` / `haggle_play_next` / `haggle_play_until` — M-2, §3; then the rest, including A3 and B-h), then **Stage 2**.
+5. **Eng1 claim-atomicity ticket** (after the #189 follow-up bundle): web `POST /api/claim` / `claimListing` — one conditional update that checks ownership and writes in the same step, then invalidate the used claim token (§8).
+6. **Stage 1** (first item: stop the auto-`APPROVED` settlement from `hnp_accept` / `haggle_play_next` / `haggle_play_until` — M-2, §3; then the rest, including A3 and B-h), then **Stage 2**.
 
 ---
 
@@ -308,19 +315,22 @@ Causes: `apps/api/src/middleware/auth.ts:60-66` falls through to the MCP resolve
 - the mutating `/payments/:id/*` routes, including authorize
 - the settlement-approvals routes: `GET /settlement-approvals/:id` (blocks `terms_hash` and buyer address) and the mutating routes
 - listing claim
-- confirm-delivery (`POST` at `apps/api/src/routes/orders.ts:178`)
-- OAuth consent (`POST /oauth/consent`, `apps/api/src/routes/mcp-oauth.ts:98`)
+- confirm-delivery (`POST` at `apps/api/src/routes/orders.ts:180`)
+- OAuth consent (`POST /oauth/consent`, `apps/api/src/routes/mcp-oauth.ts:100`) (line numbers at PR #191 tip `2e97b13`, the `denyMcpToken` preHandler line; on staging `9f2203d` the routes start at `orders.ts:178` / `mcp-oauth.ts:98`)
 - the orders, addresses, shipments, disputes, settlement-releases, negotiations, and groups routes
 
-MCP tool paths are unchanged in A1. This docs PR does not wait on A1 (§6). External agents use MCP tools only (Principle): REST with an MCP token, including `POST /negotiations/start` and `POST /negotiations/sessions/:id/pause/answer`, returns **403** `MCP_TOKEN_NOT_ALLOWED` (PR #191, tip `dbaf9c5`) and cannot bypass `pendingBuyerQuestions()` or the 409 rules.
+MCP tool paths are unchanged in A1. This docs PR does not wait on A1 (§6). External agents use MCP tools only (Principle): REST with an MCP token, including `POST /negotiations/start` and `POST /negotiations/sessions/:id/pause/answer`, returns **403** `MCP_TOKEN_NOT_ALLOWED` (PR #191 (tip `2e97b13`)) and cannot bypass `pendingBuyerQuestions()` or the 409 rules.
 
 **A2 = default deny** (Eng2, right after #191 merges, ahead of the #189 follow-ups — §6). MCP tokens get **403** `MCP_TOKEN_NOT_ALLOWED` on all REST outside `/mcp`. The REST allowlist starts **empty**; entries are decided one by one.
+
+- `dispute-ready-order` gets **403** `MCP_TOKEN_NOT_ALLOWED` for MCP tokens even on staging; the tester calls it with a web JWT. This replaces the earlier decision that staging MCP stays allowed there.
+- **Principle:** environment-specific exceptions (for example staging-only switches such as `HAGGLE_ENABLE_STAGING_MOCK_PAYMENTS` in Residuals) never go into the A2 allowlist.
 
 Per PR #191, `denyMcpToken` is also added to: settlement-releases buyer-confirm, `POST` / `DELETE /wallets`, complete-test-buffer, shipments event, reviewer vote.
 
 Payout wallet selection (primary-only; block payout if none) is a separate follow-up ticket (Eng2).
 
-**A3** (later, Stage 1). Replace the `buyer_ui_cta` string with a one-time nonce bound to the session and the user, issued by a JWT-only route. This supersedes the old `buyer_ui_cta` forgery-hardening residual. Removing the auto-`APPROVED` settlement for MCP-started deals, and discarding accept's `transaction_signals` (`AUTO_APPROVE` / `settled`; `apps/api/src/hnp/accept-session.ts:440-447`), are part of implementing **M-2**, not A3.
+**A3** (later, Stage 1). Replace the `buyer_ui_cta` string with a one-time nonce bound to the session and the user, issued by a JWT-only route. This supersedes the old `buyer_ui_cta` forgery-hardening residual. Removing the auto-`APPROVED` settlement for agreements reached through an MCP tool or an agent token, and discarding accept's `transaction_signals` (`AUTO_APPROVE` / `settled`; `apps/api/src/hnp/accept-session.ts:440-447`), are part of implementing **M-2**, not A3.
 
 ### B — Passed
 
@@ -338,9 +348,9 @@ The seller LLM (`decide.ts`) does not read `buyer_requested_strategy` or `buyer_
 
 ---
 
-## 8. `haggle_claim` (MCP) — pending CTO decision
+## 8. `haggle_claim` (MCP) — DECIDED — option (b): blocked for MCP, web-only
 
-`haggle_claim` claims ownership of a published listing (a listing draft). It does not claim a negotiation session, and it is not a guest→account merge. **CTO decides. Current behavior stays until then.** This section does not pick an option.
+`haggle_claim` claims ownership of a published listing (a listing draft). It does not claim a negotiation session, and it is not a guest→account merge. **Decision (CTO, 2026-09-28): option (b).** `haggle_claim` is blocked for MCP; listing claim stays web-only (`POST /api/claim` with a web session). Reasons: a buyer agent does not need it (see "Does an external buyer agent need haggle_claim?"), and the seller side stays on Haggle Auto. Reopening is decided only when external seller agents are discussed again.
 
 ### Registration
 
@@ -362,7 +372,7 @@ Registered in `apps/api/src/mcp/tools/index.ts:743-805` (tool name `"haggle_clai
 
 **Side effects:** one DB write that makes the caller the listing's seller/owner. No money, no settlement, and no negotiation-session or deal-state change.
 
-**Note (observation, not a decision):** the `UPDATE` is keyed by draft id only, not `WHERE user_id IS NULL`, so the `already_claimed` check is read-then-write (not atomic). The claim token is not cleared after a successful claim.
+**Note (observation, not a decision):** the `UPDATE` is keyed by draft id only, not `WHERE user_id IS NULL`, so the `already_claimed` check is read-then-write (not atomic). The claim token is not cleared after a successful claim. Both findings also apply to web `POST /api/claim` (same `claimListing`, `apps/api/src/routes/claim.ts:33`). Fix (Eng1 ticket after the #189 follow-up bundle, §6): one conditional update that checks ownership and writes in the same step (e.g. `WHERE id = … AND user_id IS NULL`), then invalidate the used claim token.
 
 ### Token source
 
@@ -385,7 +395,7 @@ A listing must be claimed (it must have a seller) before a buyer can start. Star
 - `POST /api/claim` (`claim.ts:21`) calls the same `claimListing` (`claim.ts:33`). `requireAuth` only. Maps `invalid_token` → **404**, `expired` → **410**, `already_claimed` → **409** (`claim.ts:36-41`).
 - `POST /claim/negotiation-sessions` (`claim.ts:53`) is a different feature: guest-buyer session merge after sign-up. It requires a proof-of-possession per `guest_buyer_id` (`claim.ts:66-73`, **403** `POP_REQUIRED`) and moves `negotiation_sessions.buyer_id` and matching `settlement_approvals.buyer_id` / `terms_snapshot.buyer_id` to the new user, skipping sessions that already have a commerce order (`claim.ts:83-126`). There is no MCP tool for the session merge.
 
-PR #191 (Eng2, A1, open at time of writing) blocks both REST claim routes for MCP tokens. The MCP tool `haggle_claim` stays allowed (per PR #191).
+PR #191 (Eng2, A1) blocks both REST claim routes for MCP tokens. Per the §8 decision (option (b)), the MCP tool `haggle_claim` is also blocked for MCP; its removal is a Stage 1 item (§3).
 
 ### Does an external buyer agent need `haggle_claim`?
 
@@ -393,15 +403,15 @@ No. The tool claims listing (seller) ownership. The buyer flow never calls it. B
 
 ### Options
 
-Do not decide here. The CTO decides. Current state is unchanged until then.
+Kept as history. **Option (b) was chosen** (CTO, 2026-09-28).
 
 | Option | What it would change | Pros | Cons |
 | --- | --- | --- | --- |
 | **(a) Keep for MCP with constraints** | Keep the `listings` scope. Make the claim atomic (`WHERE user_id IS NULL`). Clear the token after use. Rate-limit. | No behavior change for seller agents. Parity with the ChatGPT-widget seller flow. | Keeps a token-bearer ownership transfer on the MCP surface. Inconsistent with #191 blocking the REST equivalent. |
-| **(b) Block for MCP tokens** | The tool returns an error, as the REST routes do under #191. | Consistent with A1. Smallest attack surface. Buyer flow unaffected. | Any seller-agent flow that relies on it breaks (none found on live publish paths). Needs a web claim path for legacy tokens. |
+| **(b) Block for MCP tokens — CHOSEN** | The tool returns an error, as the REST routes do under #191. | Consistent with A1. Smallest attack surface. Buyer flow unaffected. | Any seller-agent flow that relies on it breaks (none found on live publish paths). Needs a web claim path for legacy tokens. |
 | **(c) Move to web-only** | Remove the MCP tool. Claim via the web with a JWT session. | Ownership changes only through a human web session. Matches the M-2 "human on the web" spirit. | Removes an MCP capability. Docs and tests for the ChatGPT widget flow must be updated. |
 
-**Status: pending CTO. No change until decided.**
+**Status: DECIDED — option (b).** Removal of the MCP tool happens in Stage 1 (§3, tests in §5). The atomic-claim fix is a separate Eng1 ticket (§6).
 
 ---
 
