@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   type DemoChainIds,
   deriveDemoChainIds,
@@ -6402,6 +6402,12 @@ export default function CheckoutFlow({
   const [idx, setIdx] = useState(0);
   const [done, setDone] = useState<number[]>([]);
   const [settling, setSettling] = useState(false);
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelSettle = useCallback(() => {
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    settleTimer.current = null;
+  }, []);
+  useEffect(() => cancelSettle, [cancelSettle]);
   const [shipSub, setShipSub] = useState("labelPending");
   const [disputeMode, setDisputeMode] = useState<
     false | "open" | "t1" | "t2" | "resolved_buyer" | "resolved_partial" | "resolved_seller"
@@ -6462,7 +6468,9 @@ export default function CheckoutFlow({
       setIdx(4);
       setSettling(true);
 
-      setTimeout(() => {
+      cancelSettle();
+      settleTimer.current = setTimeout(() => {
+        settleTimer.current = null;
         setSettling(false);
         addLog("Settle executed", "/payments/:id/settle");
         md(4);
@@ -6470,7 +6478,7 @@ export default function CheckoutFlow({
       return;
     }
     if (idx < 6) setIdx(idx + 1);
-  }, [idx, addLog, md, s.amount, s.rail, autoSpeed]);
+  }, [idx, addLog, md, cancelSettle, s.amount, s.rail, autoSpeed]);
 
   const shipAct = useCallback(() => {
     const cur = SHIP_SEQ.indexOf(shipSub);
@@ -6493,6 +6501,7 @@ export default function CheckoutFlow({
   }, [shipSub, addLog, md]);
 
   const reset = useCallback(() => {
+    cancelSettle();
     setIdx(0);
     setDone([]);
     setSettling(false);
@@ -6501,12 +6510,14 @@ export default function CheckoutFlow({
     setAuto(false);
     setDelayed(false);
     setDisputeMode(false);
-  }, []);
+  }, [cancelSettle]);
 
   const jump = useCallback((i: number) => {
+    cancelSettle();
+    setSettling(false);
     setIdx(i);
     if (i < 6) setShipSub("labelPending");
-  }, []);
+  }, [cancelSettle]);
 
   // Auto-play
   useEffect(() => {
@@ -6560,6 +6571,7 @@ export default function CheckoutFlow({
 
   const applyView = useCallback(
     (v: { idx: number; shipSub: ShipPhase; done: number[]; delayed: boolean }) => {
+      cancelSettle();
       setAuto(false);
       setSettling(false);
       setIdx(v.idx);
@@ -6569,7 +6581,7 @@ export default function CheckoutFlow({
       setDisputeMode(false);
       addLog("Presenter jump", STEPS[v.idx].ep);
     },
-    [addLog],
+    [addLog, cancelSettle],
   );
 
   return (
