@@ -1280,17 +1280,34 @@ ${usePlanner ? formatCandidatePlanForPrompt(initialCandidatePlan) : "None — no
   // 502s as context grew). Keep a generous token budget and timeout so the turn
   // can finish. The builder model defaults to Flash. BUILDER_LLM_MODEL may name
   // another Flash id for this path only; Pro or unknown values fall back to Flash.
-  const response = await callLLM(advisorSystemPrompt, advisorUserPrompt, {
+  const llmOptions = {
     correlationId: "intelligence-demo-advisor-turn",
     maxTokens: 6000,
     timeoutMs: 90_000,
     model: getBuilderLlmModel(),
-  });
+  };
 
-  if (response.finish_reason === "length") {
-    throw new Error("Negotiation advisor response was truncated");
+  // Retry one malformed or truncated model output before failing the chat turn.
+  // Transport failures are handled by callLLM and must not start another call here.
+  let response: Awaited<ReturnType<typeof callLLM>> | undefined;
+  let parsed: z.infer<typeof negotiationAgentBuilderTurnResultSchema> | undefined;
+  const turnUsage = { prompt_tokens: 0, completion_tokens: 0 };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    response = await callLLM(advisorSystemPrompt, advisorUserPrompt, llmOptions);
+    turnUsage.prompt_tokens += response.usage.prompt_tokens;
+    turnUsage.completion_tokens += response.usage.completion_tokens;
+    if (response.finish_reason === "length") {
+      if (attempt === 1) throw new Error("Negotiation advisor response was truncated");
+      continue;
+    }
+    try {
+      parsed = negotiationAgentBuilderTurnResultSchema.parse(parseJSON(response.content));
+      break;
+    } catch (err) {
+      if (attempt === 1) throw err;
+    }
   }
-  const parsed = negotiationAgentBuilderTurnResultSchema.parse(parseJSON(response.content));
+  if (!response || !parsed) throw new Error("Negotiation advisor returned no usable response");
   const sourceCandidates =
     parsed.memory.source.length > 0
       ? parsed.memory.source.slice(-7)
@@ -1446,7 +1463,7 @@ ${usePlanner ? formatCandidatePlanForPrompt(initialCandidatePlan) : "None — no
     strategy: parsed.strategy ? clampChatStrategy(parsed.strategy) : undefined,
     tag_requirements: finalRequirementPlan,
     advisor_plan: finalCandidatePlan,
-    turn_cost: buildNegotiationAgentBuilderTurnCost(response.usage),
+    turn_cost: buildNegotiationAgentBuilderTurnCost(turnUsage),
     learning_observations: collectLearningObservations({
       // ONLY the LLM's own generative questions. Planner-authored questions (universal
       // buyer slots, hardcoded tag requirements, mirror/conflict prompts) are ours, not
