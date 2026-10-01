@@ -216,6 +216,13 @@ import {
 import { applyTrustTriggers } from "../services/trust-ledger.service.js";
 import { assignReviewersToDispute } from "./reviewer.js";
 
+/** postgres-js returns a row array from db.execute; node-postgres style returns { rows }. */
+function executeRows<T>(result: unknown): T[] {
+  if (Array.isArray(result)) return result as T[];
+  const rows = (result as { rows?: unknown } | null)?.rows;
+  return Array.isArray(rows) ? (rows as T[]) : [];
+}
+
 function disputeAiArchiveTrustSummary(payload: Record<string, unknown>) {
   try {
     const result = verifyTrustedSignedDisputeAiAuditExport(
@@ -1575,7 +1582,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       ${statusFilter}
       ${roleFilter}
     `);
-    const countRows = (countRaw as unknown as { rows?: Record<string, unknown>[] }).rows ?? [];
+    const countRows = executeRows<Record<string, unknown>>(countRaw);
     const total = parseInt((countRows[0]?.total as string) ?? "0", 10);
 
     // Needs-action ordering: WAITING states first, then OPEN, UNDER_REVIEW, then resolved/closed
@@ -1639,7 +1646,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       LIMIT ${limit}
       OFFSET ${offset}
     `);
-    const dataRows = (rawResult as unknown as { rows?: DisputeListRow[] }).rows ?? [];
+    const dataRows = executeRows<DisputeListRow>(rawResult);
 
     const disputes = dataRows.map((row) => {
       const isBuyer = row.buyer_id === userId;
@@ -2418,7 +2425,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       ORDER BY dc.updated_at ASC
       LIMIT 200
     `);
-    const rows = (rawResult as unknown as { rows?: AppealQueueRow[] }).rows ?? [];
+    const rows = executeRows<AppealQueueRow>(rawResult);
     const nowMs = Date.now();
     const allItems = rows.flatMap((row) => {
       const appealValue = row.metadata?.appeal_review;
