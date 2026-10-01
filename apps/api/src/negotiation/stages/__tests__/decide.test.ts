@@ -311,7 +311,7 @@ describe("Stage 3: decide", () => {
       facts: [],
       opponent: defaultOpponent,
     });
-    expect(vi.mocked(callLLM).mock.calls[0]?.[2]).toMatchObject({ model: "deepseek-v4-flash" });
+    expect(vi.mocked(callLLM).mock.calls[0]?.[2]).toMatchObject({ model: "deepseek-flash" });
   });
 
   it("uses the server-set allowed_model on a cheap ask", async () => {
@@ -370,7 +370,7 @@ describe("Stage 3: decide", () => {
     expect(vi.mocked(callLLM).mock.calls[0]?.[2]).toMatchObject({ model: "deepseek-v4-pro" });
   });
 
-  it("keeps Pro when the published ask is missing", async () => {
+  it("routes a missing published ask to Flash", async () => {
     vi.mocked(callLLM).mockClear();
     vi.mocked(callLLM).mockResolvedValueOnce({
       content: '{"action":"COUNTER","price":850}',
@@ -393,7 +393,7 @@ describe("Stage 3: decide", () => {
       facts: [],
       opponent: defaultOpponent,
     });
-    expect(vi.mocked(callLLM).mock.calls[0]?.[2]).toMatchObject({ model: "deepseek-v4-pro" });
+    expect(vi.mocked(callLLM).mock.calls[0]?.[2]).toMatchObject({ model: "deepseek-flash" });
   });
 
   it("returns latency_ms", async () => {

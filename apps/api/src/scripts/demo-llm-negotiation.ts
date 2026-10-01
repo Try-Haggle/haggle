@@ -1,7 +1,7 @@
 /**
- * Haggle LLM Demo — DeepSeek V4 Pro 기반 AI 자동 협상
+ * Haggle LLM Demo — DeepSeek Flash 기반 AI 자동 협상
  *
- * 구매자 AI와 판매자 AI가 각각 DeepSeek V4 Pro를 호출하여 협상합니다.
+ * 구매자 AI와 판매자 AI가 각각 DeepSeek Flash를 호출하여 협상합니다.
  * 모든 프롬프트, 응답, 토큰 사용량, 비용을 추적하고
  * HTML 대시보드로 출력합니다.
  *
@@ -12,10 +12,12 @@
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { getDefaultDeepSeekModel } from "../negotiation/decide-model.js";
+
 // ─── Config ──────────────────────────────────────────────────
 
 const DEEPSEEK_API_BASE = "https://api.deepseek.com/v1";
-const MODEL = process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro";
+const MODEL = getDefaultDeepSeekModel();
 const PRICE_INPUT_PER_M = 0.435; // $/M input tokens (cache-miss)
 const PRICE_OUTPUT_PER_M = 0.87; // $/M output tokens
 

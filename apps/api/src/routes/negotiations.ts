@@ -22,6 +22,7 @@ import { executeGroupOrchestration, executeGroupTerminal } from "../lib/group-ex
 import { negotiationChatUrl } from "../lib/public-urls.js";
 import { validateSessionParticipant, validateSessionWriteAccess } from "../lib/session-access.js";
 import { requireAuth } from "../middleware/require-auth.js";
+import { stripClientModelEntitlement } from "../negotiation/decide-model.js";
 import {
   applyBuyerPauseAnswer,
   buyerCriteriaRequiredReject,
@@ -1541,15 +1542,6 @@ function extractBuyerNegotiationAgentField(
     | undefined;
   if (typeof rootAgent?.[field] === "string") return rootAgent[field] as string;
   return null;
-}
-
-function stripClientModelEntitlement(
-  negotiationAgentSnapshot: Record<string, unknown>,
-): Record<string, unknown> {
-  const next = { ...negotiationAgentSnapshot };
-  delete next.pro_model_credit;
-  delete next.allowed_model;
-  return next;
 }
 
 function applyRoundLimitToStrategy(

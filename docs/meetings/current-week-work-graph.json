@@ -86,7 +86,7 @@
         "E2E"
       ],
       "outcome": "구매부터 결제, 실제 배송, 정산 또는 분쟁까지 한 거래를 테스트 자산으로 끝까지 재현한다.",
-      "nextAction": "2026-10-01 정행 결정: 실제 실시한 T2 $12와 T3 $30은 합산해 최종 패소자 $42, 리뷰어 실제 지급은 보류하고 심사·양측 별도 USDC 예치·최종 정산만 구현한다. W2026-08-08-01 브랜치에서 구현·검증 후 push하고 인오 reviewer proposed 확인을 기다린다. 공유 DB migration 0157·0158은 같은 SHA의 최종 CI 성공 전 적용하지 않는다. 계약은 별도 배포가 필요하며 이번 작업에서 배포하지 않는다. 크레딧 담보 재원, 사건별 보수 동의·거절 시 대체 절차, 구매자/양측 미납·부분 환불, 실제 지급·DS, 금융업/중재 적용은 후속 결정이다. 법적·실자금 출시 승인이나 작업 done으로 취급하지 않는다.",
+      "nextAction": "2026-10-01 정행 결정: 실제 실시한 T2 $12와 T3 $30은 합산해 최종 패소자 $42, 리뷰어 실제 지급은 보류하고 심사·양측 별도 USDC 예치·최종 정산만 구현한다. W2026-08-08-01 구현 브랜치를 staging에 통합하고 같은 SHA의 CI·자동 migration 결과를 확인한다. 인오 reviewer proposed 확인을 기다린다. 공유 DB migration 0157·0158은 같은 SHA의 최종 CI 성공 전 적용하지 않는다. 계약은 별도 배포가 필요하며 이번 작업에서 배포하지 않는다. 크레딧 담보 재원, 사건별 보수 동의·거절 시 대체 절차, 구매자/양측 미납·부분 환불, 실제 지급·DS, 금융업/중재 적용은 후속 결정이다. 법적·실자금 출시 승인이나 작업 done으로 취급하지 않는다.",
       "reviewBrief": "협상이 round 0에서 멈추지 않고 종료까지 진행되며, 중복 청구·배송·정산이 없고, 분쟁 중 release가 멈추며, 외부 이벤트와 서버 장부가 일치하는지 확인한다.",
       "evidence": [
         "staging 실행 기록",
@@ -113,7 +113,8 @@
         "2026-08-22 staging physical_live 1건 IN_TRANSIT: order 2486bbd2-77e0-4f96-b159-38f54a3bc829, shipment 109cb7d4-0d9c-468d-95a6-294b053b9a7c, USPS 9400136208303613359257, EasyPost shp_4df18ebab8c54140b27a569473beaa92, signed webhook evt_fdfa73869e4911f194e57dbc5eacc6ab COMPLETED/200",
         "2026-08-29 정행: EasyPost·USPS Ground로 테스트 물건이 집까지 도착. 스탬프·도착 시간 확인. 캐리어는 일단 USPS만으로 시작해도 된다고 말했다.",
         "2026-09-26 T2/T3 로컬 slice: API 관련 148개, dispute-core 159개, 웹 컴포넌트 7개, mocked API Playwright 데스크톱·390px 모바일 4개 통과. migration journal 158개·schema·DB invariants 통과. 실제 PostgreSQL 경합·staging·담보 및 정산 검증과 reviewer confirmed는 남음.",
-        "2026-10-01 양측 예치·누적 비용 로컬 검증: 계약 10개, dispute-core 152개, API 전체 3431개(2 skip), 웹 전체 377개, mocked API Playwright 데스크톱·모바일 4개, API/웹 빌드·타입 검사, migration journal 159개·DB 불변식·변경 파일 Biome 통과. 실제 체인·공유 DB·staging 검증은 미실시."
+        "2026-10-01 양측 예치·누적 비용 로컬 검증: 계약 10개, dispute-core 152개, API 전체 3431개(2 skip), 웹 전체 377개, mocked API Playwright 데스크톱·모바일 4개, API/웹 빌드·타입 검사, migration journal 159개·DB 불변식·변경 파일 Biome 통과. 실제 체인·공유 DB·staging 검증은 미실시.",
+        "2026-10-01 staging 통합 전 병합 검증: staging 9f2203d3 반영 후 전체 29개 test task 통과(API 3449개·2 skip), 전체 32개 typecheck task·18개 build task, Playwright public smoke 3개, migration journal 159개·DB 불변식, production dependency audit 신규 critical/high 0건 통과. T1 미예치 비용 0 정책에 맞춰 거래 리허설 기대값을 수정. 실제 staging CI·공유 DB·온체인 검증은 아직 미실시."
       ],
       "remainingGaps": [
         "분쟁 리허설과 양쪽 승소 receipt",

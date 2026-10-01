@@ -8,6 +8,7 @@
  */
 
 import { withLLMTelemetry } from "../lib/llm-telemetry.js";
+import { getDefaultDeepSeekModel } from "../negotiation/decide-model.js";
 
 export interface AdvisorLLMResponse {
   content: string;
@@ -43,8 +44,8 @@ function getApiKey(): string {
   return key;
 }
 
-function getModel(): string {
-  return process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro";
+export function getModel(): string {
+  return getDefaultDeepSeekModel();
 }
 
 async function fetchWithTimeout(

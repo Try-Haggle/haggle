@@ -9,6 +9,7 @@
 import { recordLlmSpend } from "../../lib/llm-cost.js";
 import { withLLMTelemetry } from "../../lib/llm-telemetry.js";
 import { getDecideTemperature, getDecideTimeoutMs } from "../config.js";
+import { getDefaultDeepSeekModel } from "../decide-model.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -24,9 +25,8 @@ export interface DeepSeekCallOptions {
   /** Total deadline for fetch, response body parsing, and retries. */
   timeoutMs?: number;
   /**
-   * Override the model for THIS call only (defaults to DEEPSEEK_MODEL). Lets a
-   * latency-sensitive path (e.g. the agent builder) A/B a faster model without
-   * changing the global negotiation model.
+   * Override the model for THIS call only. Defaults to getDefaultDeepSeekModel()
+   * (Flash). An explicit id does not change that default.
    */
   model?: string;
 }
@@ -72,7 +72,7 @@ function getApiKey(): string {
 }
 
 function getModel(): string {
-  return process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro";
+  return getDefaultDeepSeekModel();
 }
 
 // ---------------------------------------------------------------------------

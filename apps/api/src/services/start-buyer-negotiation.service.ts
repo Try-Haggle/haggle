@@ -26,7 +26,11 @@ import {
   parseSellerFulfillmentOffer,
   snapshotFulfillmentFields,
 } from "../lib/negotiation-fulfillment.js";
-import { isDecideCatalogModel, resolveDecideModel } from "../negotiation/decide-model.js";
+import {
+  resolveDecideModel,
+  resolveNewSessionAllowedModel,
+  stripClientModelEntitlement,
+} from "../negotiation/decide-model.js";
 import { projectSellerFacts } from "../negotiation/memory/seller-facts.js";
 import {
   BUYER_CRITERIA_REQUIRED,
@@ -111,8 +115,9 @@ export const startBuyerNegotiationSchema = z.object({
     .max(24 * 14)
     .optional(),
   fulfillment: fulfillmentPreferenceSchema.optional(),
+  // Client hint only; never entitlement. z.object strips unknown keys, so a
+  // client that still sends requested_model does not get a 400.
   pro_model_credit: z.boolean().optional(),
-  requested_model: z.string().min(1).max(80).optional(),
   /** Soft control_mode for the starting buyer (default Auto). Party-only — cannot set seller. */
   buyer_control_mode: z.enum(["auto", "manual"]).optional(),
 });
@@ -386,14 +391,8 @@ export async function startBuyerNegotiation(
   };
   const sellerNegotiationAgentPresetId = listingContext.sellerNegotiationAgentPresetId;
   const defaultRoute = resolveDecideModel({ publishedAskMinor: askMinor });
-  const listingRequestedModel =
-    typeof listingSnapshot?.seller_requested_model === "string"
-      ? listingSnapshot.seller_requested_model.trim()
-      : undefined;
-  const sellerAllowedModel =
-    listingRequestedModel && isDecideCatalogModel(listingRequestedModel)
-      ? listingRequestedModel
-      : defaultRoute.model;
+  // body.pro_model_credit: client hint only; never entitlement.
+  const sellerAllowedModel = resolveNewSessionAllowedModel(listingSnapshot.seller_requested_model);
   const sellerOwnBetter = sellerAllowedModel !== defaultRoute.model;
   // Soft control_mode default Auto/Auto at start (SoT §2). Settings preference
   // for future sessions can override these before create; mid-session toggle is separate.
@@ -526,8 +525,14 @@ export async function startBuyerNegotiation(
         }
       : undefined,
   );
+  const sellerStrategyForSnapshot = stripClientModelEntitlement(
+    sellerStrategy as unknown as Record<string, unknown>,
+  );
+  const buyerCompiledForSnapshot = stripClientModelEntitlement(
+    buyerCompiled as unknown as Record<string, unknown>,
+  );
   const sellerSnapshot: Record<string, unknown> = {
-    ...sellerStrategy,
+    ...sellerStrategyForSnapshot,
     max_rounds: AUTO_PLAY_MAX_ROUNDS,
     agent_weights: sellerStrategy.weights,
     agent_overrides: {
@@ -583,7 +588,7 @@ export async function startBuyerNegotiation(
     buyerAdvisor = { ...(advisor ?? {}), categoryCriteria: cleanedBuyerCriteria };
   }
   const buyerSnapshot: Record<string, unknown> = {
-    ...buyerCompiled,
+    ...buyerCompiledForSnapshot,
     max_rounds: AUTO_PLAY_MAX_ROUNDS,
     ...(buyerAdvisor ? { buyer_negotiation_agent_builder_memory: buyerAdvisor } : {}),
     ...(sellerRequiredCriteria.length > 0

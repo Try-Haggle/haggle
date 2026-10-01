@@ -11,11 +11,13 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
+import { getDefaultDeepSeekModel } from "../negotiation/decide-model.js";
+
 // ─── Config ──────────────────────────────────────────────────
 
 const PORT = 3099;
 const DEEPSEEK_API_BASE = "https://api.deepseek.com/v1";
-const MODEL = process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro";
+const MODEL = getDefaultDeepSeekModel();
 const PRICE_INPUT_PER_M = 0.2;
 const PRICE_OUTPUT_PER_M = 0.5;
 

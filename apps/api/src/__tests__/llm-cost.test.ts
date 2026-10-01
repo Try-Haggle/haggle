@@ -3,6 +3,8 @@ import {
   estimateLlmCostUsd,
   formatLlmSpend,
   isDeepSeekPeakUtc,
+  isDeepSeekV4Flash,
+  isDeepSeekV4Pro,
   recordLlmSpend,
   resetLlmSpendMeter,
   resolveLlmModelPricing,
@@ -97,21 +99,67 @@ describe("llm-cost", () => {
     expect(isDeepSeekPeakUtc(offPeak)).toBe(false);
   });
 
-  it("prices DeepSeek V4 Flash at one third of Pro", () => {
-    const offPeak = new Date("2026-08-26T20:00:00.000Z");
-    const flash = estimateLlmCostUsd(
+  it("recognizes Flash ids, including the legacy alias, and not Pro", () => {
+    for (const id of [
+      "deepseek-flash",
       "deepseek-v4-flash",
-      { promptTokens: 1_000_000, completionTokens: 0, totalTokens: 1_000_000 },
-      offPeak,
-    );
-    const pro = estimateLlmCostUsd(
-      "deepseek-v4-pro",
-      { promptTokens: 1_000_000, completionTokens: 0, totalTokens: 1_000_000 },
-      offPeak,
-    );
-    expect(flash?.totalUsd).toBeCloseTo(0.22);
-    expect(pro?.totalUsd).toBeCloseTo(0.66);
-    expect(flash?.totalUsd).toBeCloseTo((pro?.totalUsd ?? 0) / 3);
+      "DeepSeek-Flash",
+      "deepseek-v4-flash-custom",
+      "deepseek-v4-flash-vision-exp",
+    ]) {
+      expect(isDeepSeekV4Flash(id)).toBe(true);
+      expect(isDeepSeekV4Pro(id)).toBe(false);
+    }
+    expect(isDeepSeekV4Flash("deepseek-v4-pro")).toBe(false);
+    expect(isDeepSeekV4Flash("deepseek-v4-pro-custom")).toBe(false);
+    expect(isDeepSeekV4Flash("deepseek-flash-pro")).toBe(false);
+    expect(isDeepSeekV4Pro("deepseek-flash-pro")).toBe(false);
+    expect(isDeepSeekV4Pro("deepseek-v4-pro")).toBe(true);
+    expect(isDeepSeekV4Pro("deepseek-v4-pro-custom")).toBe(true);
+    expect(
+      estimateLlmCostUsd("deepseek-flash-pro", {
+        promptTokens: 1_000_000,
+        completionTokens: 1_000_000,
+        totalTokens: 2_000_000,
+      }),
+    ).toBeNull();
+    expect(
+      estimateLlmCostUsd("not-a-known-model", {
+        promptTokens: 1,
+        completionTokens: 1,
+        totalTokens: 2,
+      }),
+    ).toBeNull();
+  });
+
+  it("prices Flash and the legacy alias at the published peak and off-peak rates", () => {
+    const usage = {
+      promptTokens: 2_000_000,
+      completionTokens: 1_000_000,
+      totalTokens: 3_000_000,
+      cacheHitTokens: 1_000_000,
+      cacheMissTokens: 1_000_000,
+    };
+    const peakAt = new Date("2026-09-28T02:00:00Z");
+    const offPeakAt = new Date("2026-09-28T12:00:00Z");
+    for (const model of ["deepseek-flash", "deepseek-v4-flash"]) {
+      const peak = estimateLlmCostUsd(model, usage, peakAt);
+      expect(peak?.inputUsd).toBeCloseTo(0.306);
+      expect(peak?.outputUsd).toBeCloseTo(1.2);
+      expect(peak?.peak).toBe(true);
+      const offPeak = estimateLlmCostUsd(model, usage, offPeakAt);
+      expect(offPeak?.inputUsd).toBeCloseTo(0.306 / 2);
+      expect(offPeak?.outputUsd).toBeCloseTo(1.2 / 2);
+      expect(offPeak?.peak).toBe(false);
+    }
+    expect(resolveLlmModelPricing("deepseek-flash")).toEqual({
+      inputUsdPer1MTokens: 0.3,
+      outputUsdPer1MTokens: 1.2,
+    });
+    expect(resolveLlmModelPricing("deepseek-v4-flash")).toEqual({
+      inputUsdPer1MTokens: 0.3,
+      outputUsdPer1MTokens: 1.2,
+    });
   });
 
   it("accumulates a process-local spend meter", () => {

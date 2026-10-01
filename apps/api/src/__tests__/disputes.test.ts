@@ -526,6 +526,7 @@ vi.mock("../services/draft.service.js", () => ({
 import { runDisputeEvidenceRetention } from "../jobs/dispute-evidence-retention.js";
 import {
   buildDisputeAiCaseContextFromDispute,
+  resolveDisputeAiModel,
   runResolutionAssessor,
 } from "../services/dispute-ai.service.js";
 import {
@@ -685,6 +686,7 @@ const mockGetDisputeEvidenceRetentionSummary = getDisputeEvidenceRetentionSummar
 const mockSetDisputeEvidenceLegalHold = setDisputeEvidenceLegalHold as ReturnType<typeof vi.fn>;
 const mockRunDisputeEvidenceRetention = runDisputeEvidenceRetention as ReturnType<typeof vi.fn>;
 const mockRunResolutionAssessor = runResolutionAssessor as ReturnType<typeof vi.fn>;
+const mockResolveDisputeAiModel = resolveDisputeAiModel as ReturnType<typeof vi.fn>;
 const mockBuildDisputeAiCaseContextFromDispute = buildDisputeAiCaseContextFromDispute as ReturnType<
   typeof vi.fn
 >;
@@ -3811,6 +3813,88 @@ describe("Dispute routes", () => {
       ai_assessment: completedAssessment,
     });
     expect(mockRunResolutionAssessor).not.toHaveBeenCalled();
+  });
+
+  it("POST /disputes/:id/ai/assess reuses a completed assessment when the stored model differs", async () => {
+    const emptyEvidenceHash = createHash("sha256").update(JSON.stringify([])).digest("hex");
+    const completedAssessment = {
+      status: "COMPLETED",
+      assessed_at: "2026-07-10T00:00:00.000Z",
+      context_hash: "ctx_cached",
+      model: "deepseek-v4-pro",
+      conclusion: "seller_favor",
+      confidence: "high",
+      evidence_snapshot_hash: emptyEvidenceHash,
+      policy_version: "l1-resolution-policy-v2",
+      precedent_snapshot_hash: "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    };
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        metadata: {
+          tier: 1,
+          ai_resolution_assessor: completedAssessment,
+        },
+      }),
+    );
+    mockResolveDisputeAiModel.mockReturnValueOnce("deepseek-flash");
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/disputes/some-id/ai/assess",
+        headers: ADMIN_HEADERS,
+        payload: {},
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        dispute_id: "some-id",
+        idempotent: true,
+        ai_assessment: completedAssessment,
+      });
+      expect(res.json().ai_assessment.conclusion).toBe(completedAssessment.conclusion);
+      expect(mockRunResolutionAssessor).not.toHaveBeenCalled();
+    } finally {
+      mockResolveDisputeAiModel.mockImplementation(() => "deepseek-v4-pro");
+    }
+  });
+
+  it("POST /disputes/:id/ai/assess reruns a non-completed assessment when the stored model differs", async () => {
+    const emptyEvidenceHash = createHash("sha256").update(JSON.stringify([])).digest("hex");
+    const failedAssessment = {
+      status: "FAILED",
+      assessed_at: "2026-07-10T00:00:00.000Z",
+      context_hash: "ctx_failed",
+      model: "deepseek-v4-pro",
+      evidence_snapshot_hash: emptyEvidenceHash,
+      policy_version: "l1-resolution-policy-v2",
+      precedent_snapshot_hash: "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    };
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        status: "UNDER_REVIEW",
+        metadata: {
+          tier: 1,
+          ai_resolution_assessor: failedAssessment,
+        },
+      }),
+    );
+    mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
+    mockResolveDisputeAiModel.mockReturnValueOnce("deepseek-flash");
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/disputes/some-id/ai/assess",
+        headers: ADMIN_HEADERS,
+        payload: {},
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json().idempotent).not.toBe(true);
+      expect(res.json().ai_assessment.conclusion).toBe("buyer_favor");
+      expect(mockRunResolutionAssessor).toHaveBeenCalledOnce();
+    } finally {
+      mockResolveDisputeAiModel.mockImplementation(() => "deepseek-v4-pro");
+    }
   });
 
   it("POST /disputes/:id/ai/assess reruns automatically when the evidence snapshot changed", async () => {

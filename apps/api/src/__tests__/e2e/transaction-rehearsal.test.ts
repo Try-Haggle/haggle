@@ -233,7 +233,7 @@ describe("test-asset transaction rehearsal", () => {
       "seller_favor",
       undefined,
       null,
-      1_000,
+      0,
       "2026-08-13T18:01:00.000Z",
     );
 
@@ -248,6 +248,7 @@ describe("test-asset transaction rehearsal", () => {
     ).toEqual({ type: "complete_order" });
     expect(settlement.hold.status).toBe("RELEASED");
     expect(settlement.buyer_receives_cents).toBe(0);
-    expect(settlement.seller_receives_cents).toBe(44_000);
+    expect(settlement.seller_receives_cents).toBe(45_000);
+    expect(settlement.dispute_cost_cents).toBe(0);
   });
 });

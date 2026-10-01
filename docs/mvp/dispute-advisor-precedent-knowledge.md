@@ -2,7 +2,7 @@
 
 ## 목적
 
-Advisor는 DeepSeek V4 Pro로 자연어 답변을 작성하지만 판례 원문을 요청 시점에 해석하지 않는다. 종료 사건은 별도 파이프라인에서 수집·분석·검토하고, Advisor에는 승인된 분석 요약만 제공한다. 이렇게 해야 판정 기준의 일관성, 개인정보 보호, 재현성을 함께 유지할 수 있다.
+Advisor는 DeepSeek Flash(`deepseek-flash`, 2026-09-27 전 구간 Flash)로 자연어 답변을 작성하지만 판례 원문을 요청 시점에 해석하지 않는다. 종료 사건은 별도 파이프라인에서 수집·분석·검토하고, Advisor에는 승인된 분석 요약만 제공한다. 이렇게 해야 판정 기준의 일관성, 개인정보 보호, 재현성을 함께 유지할 수 있다.
 
 Advisor는 법원이나 법률 자문 서비스가 아니다. 전문적인 플랫폼 분쟁조정 언어로 사실, 쟁점, 증거, 플랫폼 기준, 유사 판례와 위험을 설명한다.
 
@@ -56,7 +56,8 @@ Advisor는 법원이나 법률 자문 서비스가 아니다. 전문적인 플�
 
 ## 모델과 보안 설정
 
-- Advisor 모델: `DEEPSEEK_MODEL`, 기본값 `deepseek-v4-pro`
+- Advisor 모델: `DEEPSEEK_MODEL`, 기본값 `deepseek-flash` (2026-09-27 전 구간 Flash). `DEEPSEEK_MODEL`은 Flash id만 허용한다. 빈 값·Pro·알 수 없는 값은 `deepseek-flash`.
+- Resolution Assessor 기본 모델도 `deepseek-flash`다. `COMPLETED` 판정은 저장된 model이 현재 모델과 달라도 evidence snapshot hash, policy version, precedent snapshot hash가 같으면 재사용한다.
 - API 자격증명: `DEEPSEEK_API_KEY`
 - 프롬프트 무결성 탐지 비밀값: `CANARY_SECRET`
 - 후보 수집: `ENABLE_CRON=true`와 `ENABLE_DISPUTE_PRECEDENT_COLLECTION_JOB=true`

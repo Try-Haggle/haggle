@@ -25,6 +25,7 @@ import { DeepSeekAdapter } from "../negotiation/adapters/deepseek-adapter.js";
 // LLM client
 import { callLLM } from "../negotiation/adapters/deepseek-client.js";
 import { DEFAULT_BUDDY_DNA, getDecideTemperature } from "../negotiation/config.js";
+import { getFlashModel } from "../negotiation/decide-model.js";
 // Memory + Config
 import {
   type DbRoundForMemory,
@@ -267,6 +268,7 @@ export async function executeLLMNegotiationRound(
         const llmResponse = await callLLM(systemPrompt, userPrompt, {
           temperature: getDecideTemperature(),
           correlationId: input.sessionId,
+          model: getFlashModel(),
         });
 
         llmTokensUsed = llmResponse.usage.prompt_tokens + llmResponse.usage.completion_tokens;
