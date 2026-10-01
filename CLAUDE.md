@@ -198,7 +198,7 @@ pnpm --filter @haggle/engine-session test
 
 **규칙:**
 1. 모든 작업은 `staging`에서 feature 브랜치를 따서 시작
-2. feature → `staging` PR 머지 → staging 환경에서 통합 테스트
+2. feature → `staging` PR 머지 → staging 환경에서 통합 테스트 (CI 통과 + 단일 리뷰어 승인 시 사용자 건별 승인 불필요)
 3. 개발 기간에는 `main`을 변경하지 않고 staging에서 릴리스 후보 SHA를 고정
 4. 8월 22일 직전 최종 승인 후에만 `staging` → `main` **"Deploy PR"** 머지 → 프로덕션 배포
 5. `main`에는 staging을 거치지 않은 코드가 직접 들어가지 않음
@@ -252,10 +252,15 @@ pnpm --filter @haggle/engine-session test
 - 각 slice는 완료 전에 지정 테스트, `git diff --check`, README/CLAUDE/docs routing 필요 여부를 확인한다.
 - README는 개발자가 실행해야 하는 셋업·명령·데모 절차가 바뀔 때만 갱신한다.
 - CLAUDE.md는 durable architecture, branch, team workflow, non-negotiable safety rule이 바뀔 때만 갱신한다.
-- 커밋, merge, rebase, stash, push, PR 생성은 사람이 명시적으로 요청한 경우에만 한다.
-- 배포 승인 게이트: `git push`, PR merge, staging/production 배포처럼 원격 배포를
-  유발할 수 있는 작업은 실행 직전에 사용자에게 대상 환경과 변경 범위를 알리고
-  명시적 승인을 받은 뒤 실행한다. 로컬 구현과 검증이 끝나도 승인 전에는 멈춘다.
+- Staging 자율 경로 (2026-10-01 사용자 상시 승인, HAGA-93): 아래 작업은 건별 사용자
+  승인 없이 진행한다.
+  - `staging` 기준 `feature/*` 브랜치 생성, 커밋, 해당 브랜치 `git push`, `staging` 대상 PR 생성
+  - `feature/*` → `staging` PR merge (staging 배포 포함). 단, 같은 SHA의 CI가 통과하고
+    구현자가 아닌 단일 리뷰어가 승인한 경우에만 한다.
+- 계속 사용자 명시 승인이 필요한 작업: `main` 대상 push·PR merge·프로덕션 배포, `staging`/`main`
+  force push·브랜치 삭제·history rewrite, 공유 DB migration 실행, live provider·실제 가치 자산
+  활성화, 스마트 컨트랙트 배포. 승인 요청 시 대상 환경과 변경 범위를 알린다.
+- rebase, stash는 자기 feature 브랜치·자기 변경 범위에서만 하고 다른 사람의 작업을 건드리지 않는다.
 - 2026-08-22 릴리스는 결제·배송·정산·분쟁까지 포함한다. 초기 검증과 릴리스는
   test 자산을 사용하며 실제 가치 자산/live provider 활성화는 별도 자금 Go/No-Go 뒤에 한다.
 
