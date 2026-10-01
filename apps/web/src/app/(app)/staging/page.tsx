@@ -17,7 +17,7 @@ interface FlowStep {
   title: string;
   description: string;
   href: string;
-  status: "ready" | "needs_data" | "needs_deploy";
+  status: "ready" | "needs_data" | "needs_deploy" | "admin_only" | "local_only";
   features: string[];
 }
 
@@ -153,18 +153,18 @@ const BUYER_FLOW: FlowStep[] = [
   {
     num: "B2",
     title: "Buyer Negotiation",
-    description: "AI negotiates the best price for you",
-    href: "/buy/negotiations/demo",
+    description: "Open a real listing from the buyer dashboard to start a negotiation",
+    href: "/buy/dashboard",
     status: "needs_data",
     features: ["6-stage pipeline", "Faratin concession curves", "Floor protection"],
   },
   {
     num: "B3",
     title: "Payment",
-    description: "Pay with card or USDC — seller gets the same",
-    href: "/buy/negotiations/demo",
-    status: "needs_deploy",
-    features: ["💳 Stripe Onramp (3%)", "🔗 USDC Direct (1.5%)", "Gas paid by Haggle"],
+    description: "Open an existing order to fund payment with hUSDC on Base Sepolia",
+    href: "/orders",
+    status: "needs_data",
+    features: ["hUSDC on Base Sepolia", "Existing order required"],
   },
 ];
 
@@ -223,25 +223,25 @@ const DEMO_PAGES: FlowStep[] = [
   {
     num: "D0",
     title: "E2E Demo (Quick Start)",
-    description: "Skip negotiation — start from payment and walk through shipping + dispute",
+    description: "Staging create-order returns 403 for non-admin users; admin access required.",
     href: "/demo/e2e",
-    status: "ready",
+    status: "admin_only",
     features: ["Mock X402 payment", "Shipment events", "Dispute flow", "Activity log"],
   },
   {
     num: "D1",
     title: "Try Demo (User)",
-    description: "Interactive negotiation demo — no sign-up needed",
+    description: "Demo negotiation API routes are local-only and return 404 on staging.",
     href: "/demo/try",
-    status: "ready",
+    status: "local_only",
     features: ["5 languages", "Price chart", "Savings calculation", "Celebration animation"],
   },
   {
     num: "D2",
     title: "Developer Demo",
-    description: "Pipeline inspector — see every stage in detail",
+    description: "Demo negotiation and intelligence API routes return 404 on staging.",
     href: "/demo/developer",
-    status: "ready",
+    status: "local_only",
     features: ["Stage-by-stage view", "Utility bars", "Cost tracking", "DB state"],
   },
   {
@@ -258,6 +258,8 @@ const STATUS_BADGE = {
   ready: { label: "Ready", color: "bg-success-soft text-success" },
   needs_data: { label: "Needs Data", color: "bg-warning-soft text-warning" },
   needs_deploy: { label: "Needs Deploy", color: "bg-error-soft text-error" },
+  admin_only: { label: "Admin only", color: "bg-warning-soft text-warning" },
+  local_only: { label: "Local only", color: "bg-error-soft text-error" },
 };
 
 function FlowCard({ step }: { step: FlowStep }) {
