@@ -24,6 +24,7 @@ interface PlaybackArenaProps {
   data: PlaybackResponse;
   checkoutHref?: string;
   checkoutLabel?: string;
+  demoCheckout?: boolean;
   mode?: "replay" | "live";
   liveTerminal?: boolean;
   connectionLabel?: string;
@@ -61,6 +62,7 @@ export function PlaybackArena({
   data,
   checkoutHref,
   checkoutLabel,
+  demoCheckout,
   mode = "replay",
   liveTerminal = false,
   connectionLabel = "Live updates",
@@ -399,6 +401,7 @@ export function PlaybackArena({
                       onReplay={handleReplay}
                       checkoutHref={checkoutHref}
                       checkoutLabel={checkoutLabel}
+                      demoCheckout={demoCheckout}
                       {...(noDealCta ? { noDealCta } : {})}
                     />
                   </div>

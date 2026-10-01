@@ -201,7 +201,7 @@ function pause(ms: number) {
 
 /* ── Main Component ─────────────────────────── */
 
-export function DeveloperDemo() {
+export function DeveloperDemo({ checkoutEnabled = false }: { checkoutEnabled?: boolean }) {
   const [demoState, setDemoState] = useState<DemoState>("IDLE");
   const [demoId, setDemoId] = useState<string | null>(null);
   const [initResponse, setInitResponse] = useState<DemoInitResponse | null>(null);
@@ -792,7 +792,7 @@ export function DeveloperDemo() {
                   {(totalCost.prompt + totalCost.completion).toLocaleString()} 토큰
                 </p>
                 <div className="flex items-center justify-center gap-3">
-                  {latestRound.final.decision.action === "ACCEPT" && (
+                  {latestRound.final.decision.action === "ACCEPT" && checkoutEnabled && (
                     <button
                       type="button"
                       onClick={() => {
@@ -801,6 +801,10 @@ export function DeveloperDemo() {
                           JSON.stringify({
                             price: latestRound.final.decision.price,
                             item: initResponse?.strategy.approach ?? "iPhone 14 Pro 128GB",
+                            market: Math.max(
+                              selectedListing?.marketMedianMinor ?? 0,
+                              latestRound.final.decision.price,
+                            ),
                             rounds: rounds.length,
                           }),
                         );

@@ -103,11 +103,13 @@ export function LiveNegotiation({
   initialPayload,
   checkoutHref,
   checkoutLabel,
+  demoCheckout,
   canMessageSeller = false,
 }: {
   initialPayload: SessionResponse;
   checkoutHref?: string;
   checkoutLabel?: string;
+  demoCheckout?: boolean;
   /** Guests have no account to hold a conversation, so they get no button. */
   canMessageSeller?: boolean;
 }) {
@@ -409,6 +411,7 @@ export function LiveNegotiation({
         data={data}
         checkoutHref={checkoutHref}
         checkoutLabel={checkoutLabel}
+        demoCheckout={demoCheckout}
         mode="live"
         liveTerminal={isTerminal}
         connectionLabel={isSpectator ? "Watching MCP" : connectionLabel}

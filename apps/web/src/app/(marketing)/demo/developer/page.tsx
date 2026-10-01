@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { isDemoCheckoutEnabled } from "@/lib/demo-checkout";
 import { DeveloperDemo } from "./developer-demo";
 
 export const metadata: Metadata = {
@@ -7,5 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
-  return <DeveloperDemo />;
+  return <DeveloperDemo checkoutEnabled={isDemoCheckoutEnabled()} />;
 }

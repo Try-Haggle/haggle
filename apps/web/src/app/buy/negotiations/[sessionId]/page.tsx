@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { serverApi } from "@/lib/api-server";
+import { isDemoCheckoutEnabled } from "@/lib/demo-checkout";
 import { createClient } from "@/lib/supabase/server";
 import { GuestClaimBanner } from "./_guest-claim-banner";
 import { type CheckoutApprovalSummary, getCheckoutCta } from "./checkout-contract";
@@ -65,6 +66,7 @@ export default async function BuyerNegotiationPage({
     approval,
   });
   const isTerminal = isTerminalNegotiationStatus(payload.session.status);
+  const demoCheckout = isDemoCheckoutEnabled();
 
   if (replay === "1" && isTerminal) {
     return (
@@ -72,6 +74,7 @@ export default async function BuyerNegotiationPage({
         data={data}
         checkoutHref={checkoutCta?.href}
         checkoutLabel={checkoutCta?.label}
+        demoCheckout={demoCheckout}
       />
     );
   }
@@ -91,6 +94,7 @@ export default async function BuyerNegotiationPage({
         initialPayload={payload}
         checkoutHref={checkoutCta?.href}
         checkoutLabel={checkoutCta?.label}
+        demoCheckout={demoCheckout}
         canMessageSeller={!isGuest}
       />
     </>

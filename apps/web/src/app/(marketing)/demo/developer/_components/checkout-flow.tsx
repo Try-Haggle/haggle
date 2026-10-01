@@ -1,15 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import React, { useCallback, useEffect, useState } from "react";
-import { api } from "@/lib/api-client";
-import { createPaymentDisclosureAck } from "@/lib/payment-disclosure";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type DemoChainIds,
+  deriveDemoChainIds,
+  presenterJumpShip,
+  presenterJumpStep,
+  SHIP_PHASES,
+  type ShipPhase,
+  shortHex,
+} from "@/lib/demo-checkout";
 
 /* ===== props ===== */
 interface CheckoutFlowProps {
   agreedPrice: number;
   itemTitle: string;
   rounds: number;
+  /** Dollars. Defaults to the agreed price (no savings shown). */
+  marketPrice?: number;
+  /** Show the hidden presenter control panel. */
+  presenter?: boolean;
   onComplete: () => void;
 }
 
@@ -983,7 +994,7 @@ const Step1 = ({
     <SH
       eb="STEP 01"
       title="Choose payment rail"
-      sub="Both rails settle in USDC on Base L2 — the difference is who pays the Stripe fee."
+      sub="Both rails settle in USDC on Base — the difference is who pays the Stripe fee."
     />
     <div
       style={{
@@ -1010,7 +1021,7 @@ const Step1 = ({
         tone="violet"
         icon={<Ic.card size={22} />}
         title="Card · Stripe Onramp"
-        sub="Pay with credit/debit card. Stripe handles KYC and converts USD → USDC → Base L2."
+        sub="Pay with credit/debit card. Stripe handles KYC and converts USD → USDC → Base."
         fee="3.0%"
         feeDetail="Haggle 1.5% + Stripe 1.5%"
       />
@@ -1042,7 +1053,7 @@ const Step2 = ({ s, next }: { s: SessionState; next: () => void }) => (
         v={s.rail === "x402" ? "x402 · USDC Direct" : "stripe · Card Onramp"}
         mono
       />
-      <KV k="Settlement asset" v="USDC on Base L2" mono />
+      <KV k="Settlement asset" v="USDC on Base" mono />
       <KV k="Status" v="(none) → CREATED" mono dim />
     </Card>
     {s.rail === "stripe" && (
@@ -1055,7 +1066,7 @@ const Step2 = ({ s, next }: { s: SessionState; next: () => void }) => (
             </div>
             <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.55 }}>
               Haggle will create a hosted Stripe Crypto Onramp session at the authorize step. Stripe
-              handles KYC, card authorization, and converts fiat into USDC delivered to Base L2.
+              handles KYC, card authorization, and converts fiat into USDC delivered to Base.
             </div>
           </div>
         </Row>
@@ -1289,7 +1300,7 @@ const Step3 = ({ s, next }: { s: SessionState; next: () => void }) => {
         <QC
           lbl="Seller receives"
           amt={sel}
-          addr="0x7a3F…e9C2"
+          addr={shortHex(s.ids.seller)}
           addrLbl="seller wallet"
           icon={<Ic.wallet size={14} />}
         />
@@ -1297,7 +1308,7 @@ const Step3 = ({ s, next }: { s: SessionState; next: () => void }) => {
           lbl="Haggle fee"
           amt={hf}
           tone="cyan"
-          addr="0xHagg…F33E"
+          addr={shortHex(s.ids.feeWallet)}
           addrLbl="fee wallet"
           icon={<Ic.flame size={14} />}
         />
@@ -1332,7 +1343,7 @@ const Step4x = ({ s, next }: { s: SessionState; next: () => void }) => {
       <SH
         eb="STEP 04"
         title="Authorize · EIP-712 signature"
-        sub="Backend signs settlement params via EIP-712. Buyer calls HaggleSettlementRouter on Base L2 — the contract atomically splits USDC."
+        sub="Backend signs settlement params via EIP-712. Buyer calls HaggleSettlementRouter on Base — the contract atomically splits USDC."
       />
       <Card accent="violet" style={{ marginBottom: 14 }}>
         <Row justify="space-between" style={{ marginBottom: 14 }} wrap gap={8}>
@@ -1362,7 +1373,7 @@ const Step4x = ({ s, next }: { s: SessionState; next: () => void }) => {
                   fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
                 }}
               >
-                0x4E3A…B7c1 · Base L2
+                {shortHex(s.ids.escrow)} · Base
               </div>
             </div>
           </Row>
@@ -1471,9 +1482,9 @@ const Step4x = ({ s, next }: { s: SessionState; next: () => void }) => {
             }}
           >{`Settlement(
   orderId:      "ord_8f2ab7c1e4",
-  buyer:        0xBu7e…a12C,
-  seller:       0x7a3F…e9C2,
-  feeWallet:    0xHagg…F33E,
+  buyer:        ${shortHex(s.ids.buyer)},
+  seller:       ${shortHex(s.ids.seller)},
+  feeWallet:    ${shortHex(s.ids.feeWallet)},
   asset:        USDC,
   grossAmount:  ${(s.amount * 1e6).toFixed(0)}  // $${s.amount.toFixed(2)}
   sellerAmount: ${(sel * 1e6).toFixed(0)}  // $${sel.toFixed(2)}
@@ -1539,7 +1550,7 @@ const Step4s = ({ s, next }: { s: SessionState; next: () => void }) => {
       <SH
         eb="STEP 04"
         title="Authorize · Stripe Crypto Onramp"
-        sub="Stripe handles card authorization and KYC, converts USD to USDC, and delivers to Base L2."
+        sub="Stripe handles card authorization and KYC, converts USD to USDC, and delivers to Base."
       />
       <div
         style={{
@@ -1680,7 +1691,7 @@ const Step4s = ({ s, next }: { s: SessionState; next: () => void }) => {
                 >
                   ${s.amount.toFixed(2)}
                 </span>
-                , delivered to Base L2. Stripe keeps{" "}
+                , delivered to Base. Stripe keeps{" "}
                 <span
                   style={{
                     fontFamily:
@@ -1699,7 +1710,7 @@ const Step4s = ({ s, next }: { s: SessionState; next: () => void }) => {
           <SL>Onramp session</SL>
           <KV k="Mode" v="Stripe Crypto Onramp" />
           <KV k="Source" v="USD (card)" mono />
-          <KV k="Destination" v="USDC on Base L2" mono />
+          <KV k="Destination" v="USDC on Base" mono />
           <KV k="Buyer charge" v={`$${(s.amount + s.amount * 0.015).toFixed(2)}`} mono />
           <KV k="Settles via" v="Webhook fulfillment" dim />
           <div
@@ -1836,7 +1847,7 @@ const Step5 = ({ s, settling, cont }: { s: SessionState; settling: boolean; cont
           title="Settling on-chain…"
           sub={
             s.rail === "x402"
-              ? "HaggleSettlementRouter is atomically distributing USDC on Base L2."
+              ? "HaggleSettlementRouter is atomically distributing USDC on Base."
               : "Awaiting Stripe fulfillment, then executing on-chain split."
           }
         />
@@ -1957,7 +1968,7 @@ const Step5 = ({ s, settling, cont }: { s: SessionState; settling: boolean; cont
                 fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
               }}
             >
-              tx 0x8f2a…b7c1 · block 12,483,917 · Base L2
+              tx {shortHex(s.ids.tx)} · block {s.ids.block.toLocaleString("en-US")} · Base
             </div>
           </div>
         </Row>
@@ -2019,7 +2030,7 @@ const Step5 = ({ s, settling, cont }: { s: SessionState; settling: boolean; cont
                   fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
                 }}
               >
-                0xHagg…F33E
+                {shortHex(s.ids.feeWallet)}
               </div>
             </div>
           </Row>
@@ -2176,7 +2187,7 @@ const SLABadge = ({ status }: { status: "ok" | "warn" | "bad" | "fulfilled" }) =
   return <Badge tone={m.tone}>{m.lbl}</Badge>;
 };
 
-const Step6 = ({ sub, act }: { s: SessionState; sub: string; act: () => void }) => {
+const Step6 = ({ s, sub, act }: { s: SessionState; sub: string; act: () => void }) => {
   const declaredWeight = 0.82;
   const tier = WEIGHT_TIERS[0];
   const baseRate = tier.rate;
@@ -2216,6 +2227,18 @@ const Step6 = ({ sub, act }: { s: SessionState; sub: string; act: () => void }) 
         title="Ship"
         sub="Seller creates a label, hands to carrier, we track events until delivery — with weight-buffer reconciliation and SLA enforcement on top."
       />
+
+      {s.delayed && sub === "inTransit" && (
+        <Card accent="amber" style={{ marginBottom: 14 }}>
+          <Row gap={10}>
+            <Badge tone="amber">Carrier exception</Badge>
+            <div style={{ fontSize: 12.5, color: C.dim }}>
+              Delay scan at Memphis, TN hub — new ETA +2 days. SLA clock paused; escrow stays
+              locked.
+            </div>
+          </Row>
+        </Card>
+      )}
 
       {/* shipment header */}
       <Card style={{ marginBottom: 14 }}>
@@ -3477,6 +3500,22 @@ const Step7 = ({
   const phase1Amt = sel - phase2Amt;
 
   const [phase, setPhase] = useState<DeliveredPhase>("delivered");
+  // Presenter panel can set the dispute stage directly.
+  const stepTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const later = (fn: () => void, ms: number) => {
+    stepTimers.current.push(setTimeout(fn, ms));
+  };
+  const clearStepTimers = useCallback(() => {
+    stepTimers.current.forEach(clearTimeout);
+    stepTimers.current = [];
+  }, []);
+  useEffect(() => {
+    if (disputeMode) {
+      clearStepTimers();
+      setPhase("dispute");
+    }
+  }, [disputeMode, clearStepTimers]);
+  useEffect(() => clearStepTimers, [clearStepTimers]);
   const [buddy, setBuddy] = useState<{
     species: (typeof BUDDY_SPECIES)[0];
     rarity: (typeof BUDDY_RARITIES)[0];
@@ -3484,9 +3523,9 @@ const Step7 = ({
 
   function handleConfirm() {
     setPhase("confirming");
-    setTimeout(() => {
+    later(() => {
       setPhase("confirmed");
-      setTimeout(() => {
+      later(() => {
         const b = rollBuddy();
         setBuddy(b);
         setPhase("egg_offer");
@@ -3496,9 +3535,9 @@ const Step7 = ({
 
   function handleOpenEgg() {
     setPhase("egg_crack");
-    setTimeout(() => setPhase("egg_hatch"), 1300);
-    setTimeout(() => setPhase("buddy_reveal"), 2100);
-    setTimeout(() => setPhase("complete"), 3600);
+    later(() => setPhase("egg_hatch"), 1300);
+    later(() => setPhase("buddy_reveal"), 2100);
+    later(() => setPhase("complete"), 3600);
   }
 
   const apvScenarios = [
@@ -5180,7 +5219,7 @@ const OnChain = ({
         </div>
         <Row gap={8}>
           <Badge tone="violet" subtle>
-            Base L2
+            Base
           </Badge>
           <Badge tone="slate" subtle>
             <span
@@ -5190,7 +5229,7 @@ const OnChain = ({
                 fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
               }}
             >
-              0x4E3A…B7c1
+              {shortHex(s.ids.escrow)}
             </span>
           </Badge>
           <Badge tone="em" subtle icon={<Ic.lock size={10} />}>
@@ -5228,7 +5267,7 @@ const OnChain = ({
               w={150}
               h={80}
               lbl="Buyer Wallet"
-              sub="0xBu7e…a12C"
+              sub={shortHex(s.ids.buyer)}
               tone="slate"
               ic="wallet"
             />
@@ -6117,16 +6156,17 @@ const OnChain = ({
                     }}
                   >
                     <span>
-                      tx <span style={{ color: C.dim }}>0x8f2a…b7c1</span>
+                      tx <span style={{ color: C.dim }}>{shortHex(s.ids.tx)}</span>
                     </span>
                     <span>
-                      block <span style={{ color: C.dim }}>12,483,917</span>
+                      block{" "}
+                      <span style={{ color: C.dim }}>{s.ids.block.toLocaleString("en-US")}</span>
                     </span>
                     <span>
                       gas <span style={{ color: C.emFg }}>$0.00</span>
                     </span>
                     <span>
-                      chain <span style={{ color: C.violetFg }}>Base L2</span>
+                      chain <span style={{ color: C.violetFg }}>Base</span>
                     </span>
                   </div>
                 )}
@@ -6191,6 +6231,8 @@ interface SessionState {
   amount: number;
   rail: string;
   item: string;
+  ids: DemoChainIds;
+  delayed: boolean;
 }
 
 interface LogEntry {
@@ -6213,17 +6255,171 @@ const STEPS = [
 
 const SHIP_SEQ = ["labelPending", "labelCreated", "inTransit", "outForDelivery", "delivered"];
 
+/* ===== presenter panel (hidden unless ?presenter=1; toggle with "p") ===== */
+const PRESENTER_STEPS = ["Rail", "Prepare", "Quote", "Authorize", "Settle"];
+const PRESENTER_SHIP: [ShipPhase, string][] = [
+  ["labelPending", "Label pending"],
+  ["labelCreated", "Label created"],
+  ["inTransit", "In transit"],
+  ["outForDelivery", "Out for delivery"],
+  ["delivered", "Delivered"],
+];
+const PRESENTER_DISPUTE: [DisputeMode, string][] = [
+  ["open", "Dispute opened"],
+  ["t1", "Tier 1"],
+  ["t2", "Tier 2"],
+  ["resolved_buyer", "Buyer wins"],
+  ["resolved_partial", "Partial refund"],
+  ["resolved_seller", "Seller wins"],
+];
+
+const PresenterPanel = ({
+  idx,
+  shipSub,
+  delayed,
+  disputeMode,
+  onView,
+  onDispute,
+  onReset,
+}: {
+  idx: number;
+  shipSub: string;
+  delayed: boolean;
+  disputeMode: DisputeMode;
+  onView: (v: ReturnType<typeof presenterJumpStep>) => void;
+  onDispute: (m: DisputeMode) => void;
+  onReset: () => void;
+}) => {
+  const [open, setOpen] = useState(true);
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) return;
+      if (e.key === "p" || e.key === "P") setOpen((o) => !o);
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, []);
+  if (!open) return null;
+  const chip = (active: boolean): React.CSSProperties => ({
+    padding: "4px 8px",
+    fontSize: 11,
+    borderRadius: 6,
+    cursor: "pointer",
+    border: `1px solid ${active ? C.cyan : C.line}`,
+    background: active ? C.cyan : "transparent",
+    color: active ? "var(--text-on-accent)" : C.ink,
+  });
+  const group = (label: string, children: React.ReactNode) => (
+    <div style={{ marginBottom: 8 }}>
+      <div
+        style={{
+          fontSize: 9,
+          color: C.mute,
+          textTransform: "uppercase",
+          letterSpacing: "0.1em",
+          marginBottom: 4,
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>{children}</div>
+    </div>
+  );
+  return (
+    <div
+      data-testid="presenter-panel"
+      style={{
+        position: "fixed",
+        right: 12,
+        bottom: 12,
+        zIndex: 60,
+        width: 300,
+        padding: 12,
+        borderRadius: 12,
+        background: "var(--bg-surface, #fff)",
+        border: `1px solid ${C.line}`,
+        boxShadow: "0 8px 30px rgba(0,0,0,0.18)",
+        color: C.ink,
+      }}
+    >
+      <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 8 }}>
+        Presenter <span style={{ color: C.mute, fontWeight: 400 }}>· press P to hide</span>
+      </div>
+      {group(
+        "Payment step",
+        PRESENTER_STEPS.map((l, i) => (
+          <button
+            key={l}
+            type="button"
+            style={chip(idx === i)}
+            onClick={() => onView(presenterJumpStep(i))}
+          >
+            {l}
+          </button>
+        )),
+      )}
+      {group(
+        "Shipping",
+        <>
+          {PRESENTER_SHIP.map(([p, l]) => (
+            <button
+              key={p}
+              type="button"
+              style={chip((idx === 5 || idx === 6) && shipSub === p && !delayed)}
+              onClick={() => onView(presenterJumpShip(p))}
+            >
+              {l}
+            </button>
+          ))}
+          <button
+            type="button"
+            style={chip(delayed)}
+            onClick={() => onView(presenterJumpShip(SHIP_PHASES[2], true))}
+          >
+            Delay exception
+          </button>
+        </>,
+      )}
+      {group(
+        "Dispute",
+        PRESENTER_DISPUTE.map(([m, l]) => (
+          <button
+            key={String(m)}
+            type="button"
+            style={chip(disputeMode === m)}
+            onClick={() => onDispute(m)}
+          >
+            {l}
+          </button>
+        )),
+      )}
+      <button type="button" style={chip(false)} onClick={onReset}>
+        Reset
+      </button>
+    </div>
+  );
+};
+
 /* ===== main component ===== */
 export default function CheckoutFlow({
   agreedPrice,
   itemTitle,
   rounds,
+  marketPrice,
+  presenter = false,
   onComplete,
 }: CheckoutFlowProps) {
   const [rail, setRail] = useState("x402");
   const [idx, setIdx] = useState(0);
   const [done, setDone] = useState<number[]>([]);
   const [settling, setSettling] = useState(false);
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelSettle = useCallback(() => {
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    settleTimer.current = null;
+  }, []);
+  useEffect(() => cancelSettle, [cancelSettle]);
   const [shipSub, setShipSub] = useState("labelPending");
   const [disputeMode, setDisputeMode] = useState<
     false | "open" | "t1" | "t2" | "resolved_buyer" | "resolved_partial" | "resolved_seller"
@@ -6232,6 +6428,7 @@ export default function CheckoutFlow({
   const [logOpen, setLogOpen] = useState(true);
   const [auto, setAuto] = useState(false);
   const [autoSpeed] = useState(1.0);
+  const [delayed, setDelayed] = useState(false);
 
   // Inject keyframes once
   useEffect(() => {
@@ -6251,6 +6448,8 @@ export default function CheckoutFlow({
     amount: agreedPrice,
     rail,
     item: itemTitle,
+    ids: deriveDemoChainIds(itemTitle, Math.round(agreedPrice * 100)),
+    delayed,
   };
 
   const addLog = useCallback(
@@ -6276,37 +6475,14 @@ export default function CheckoutFlow({
     addLog(c.lbl, c.ep);
     md(idx);
 
-    // Try real API call, fall back to mock transition
-    if (c.k === "prepare") {
-      api
-        .post("/payments/prepare", {
-          orderId: "ord_8f2ab7c1e4",
-          amount: s.amount,
-          rail: s.rail,
-          payment_disclosure_ack: createPaymentDisclosureAck({
-            stripeFallback: s.rail === "stripe",
-          }),
-        })
-        .catch(() => {
-          /* demo mode: silent fallback */
-        });
-    }
-
+    // Simulated checkout: no network calls, no DB writes, no funds movement.
     if (c.k === "authorize") {
       setIdx(4);
       setSettling(true);
 
-      // Try real API
-      api
-        .post(`/payments/pi_8f2ab7c1/authorize`, {
-          rail: s.rail,
-          amount: s.amount,
-        })
-        .catch(() => {
-          /* demo mode */
-        });
-
-      setTimeout(() => {
+      cancelSettle();
+      settleTimer.current = setTimeout(() => {
+        settleTimer.current = null;
         setSettling(false);
         addLog("Settle executed", "/payments/:id/settle");
         md(4);
@@ -6314,7 +6490,7 @@ export default function CheckoutFlow({
       return;
     }
     if (idx < 6) setIdx(idx + 1);
-  }, [idx, addLog, md, s.amount, s.rail, autoSpeed]);
+  }, [idx, addLog, md, cancelSettle, autoSpeed]);
 
   const shipAct = useCallback(() => {
     const cur = SHIP_SEQ.indexOf(shipSub);
@@ -6337,18 +6513,26 @@ export default function CheckoutFlow({
   }, [shipSub, addLog, md]);
 
   const reset = useCallback(() => {
+    cancelSettle();
     setIdx(0);
     setDone([]);
     setSettling(false);
     setShipSub("labelPending");
     setLog([]);
     setAuto(false);
-  }, []);
+    setDelayed(false);
+    setDisputeMode(false);
+  }, [cancelSettle]);
 
-  const jump = useCallback((i: number) => {
-    setIdx(i);
-    if (i < 6) setShipSub("labelPending");
-  }, []);
+  const jump = useCallback(
+    (i: number) => {
+      cancelSettle();
+      setSettling(false);
+      setIdx(i);
+      if (i < 6) setShipSub("labelPending");
+    },
+    [cancelSettle],
+  );
 
   // Auto-play
   useEffect(() => {
@@ -6393,8 +6577,27 @@ export default function CheckoutFlow({
   };
 
   const cur = STEPS[idx];
-  const market = 520;
+  const market = Math.max(marketPrice ?? s.amount, s.amount);
   const saved = market - s.amount;
+  const walletAfter =
+    disputeMode === "resolved_buyer" || !done.includes(4)
+      ? s.ids.walletBefore
+      : s.ids.walletBefore - s.amount;
+
+  const applyView = useCallback(
+    (v: { idx: number; shipSub: ShipPhase; done: number[]; delayed: boolean }) => {
+      cancelSettle();
+      setAuto(false);
+      setSettling(false);
+      setIdx(v.idx);
+      setShipSub(v.shipSub);
+      setDone(v.done);
+      setDelayed(v.delayed);
+      setDisputeMode(false);
+      addLog("Presenter jump", STEPS[v.idx].ep);
+    },
+    [addLog, cancelSettle],
+  );
 
   return (
     <div
@@ -6455,11 +6658,31 @@ export default function CheckoutFlow({
                 fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
               }}
             >
-              ord_8f2ab7c1e4 · pi_8f2ab7c1 · Base L2
+              ord_8f2ab7c1e4 · pi_8f2ab7c1 · Base
             </div>
           </div>
         </Row>
         <Row gap={8}>
+          <div
+            title="Buyer wallet · USDC on Base"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-end",
+              marginRight: 6,
+              fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            <span style={{ fontSize: 13, fontWeight: 600, color: C.ink }}>
+              {walletAfter.toLocaleString("en-US", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}{" "}
+              USDC
+            </span>
+            <span style={{ fontSize: 10, color: C.faint }}>{shortHex(s.ids.buyer)} · Base</span>
+          </div>
           <Btn
             v="ghost"
             size="sm"
@@ -6478,7 +6701,7 @@ export default function CheckoutFlow({
       <Card style={{ padding: "18px 22px" }}>
         <Row justify="space-between" wrap gap={18}>
           <Row gap={16} style={{ flex: "1 1 320px", minWidth: 0 }}>
-            <PS label="iPhone 14 Pro" size={64} />
+            <PS label={s.item.split(" · ")[0].slice(0, 24)} size={64} />
             <div style={{ minWidth: 0 }}>
               <Row gap={8} style={{ marginBottom: 6 }}>
                 <Badge tone="em" icon={<Ic.check size={10} sw={3} />}>
@@ -6490,7 +6713,7 @@ export default function CheckoutFlow({
               </Row>
               <div style={{ fontSize: 16, fontWeight: 600 }}>{s.item}</div>
               <div style={{ fontSize: 12, color: C.mute, marginTop: 4 }}>
-                Swappa median{" "}
+                Market price{" "}
                 <span
                   style={{
                     color: C.dim,
@@ -6774,6 +6997,37 @@ export default function CheckoutFlow({
         <OnChain s={s} settling={settling} curStep={idx} disputeMode={disputeMode} />
       </div>
 
+      <div
+        style={{
+          position: "fixed",
+          top: 6,
+          right: 8,
+          zIndex: 50,
+          fontSize: 9,
+          letterSpacing: "0.08em",
+          color: C.faint,
+          opacity: 0.7,
+          pointerEvents: "none",
+          fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+        }}
+      >
+        DEMO
+      </div>
+      {presenter && (
+        <PresenterPanel
+          idx={idx}
+          shipSub={shipSub}
+          delayed={delayed}
+          disputeMode={disputeMode}
+          onView={applyView}
+          onDispute={(m) => {
+            if (!done.includes(5)) applyView(presenterJumpShip("delivered"));
+            setDisputeMode(m);
+          }}
+          onReset={reset}
+        />
+      )}
+
       {/* footer */}
       <Row
         justify="space-between"
@@ -6797,7 +7051,7 @@ export default function CheckoutFlow({
               fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
             }}
           >
-            Base L2 · ⛽ gas $0.00
+            Base · ⛽ gas $0.00
           </span>
           <span
             style={{
