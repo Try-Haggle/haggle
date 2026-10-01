@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAccount, useChainId, usePublicClient, useSwitchChain, useWriteContract } from "wagmi";
 import {
   ActivityFeed,
   Alert,
@@ -86,7 +87,7 @@ function getTimelineStep(status: string): number {
   return stepMap[status] ?? 0;
 }
 
-function DisputeTimeline({ status }: { status: string }) {
+function DisputeTimeline({ status, tier }: { status: string; tier: number }) {
   const currentStep = getTimelineStep(status);
   return (
     <div className="rounded-xl border border-line bg-surface-raised/50 p-4 mb-6">
@@ -129,7 +130,7 @@ function DisputeTimeline({ status }: { status: string }) {
                     isDone ? "text-success" : isCurrent ? "text-action-primary" : "text-ink-muted"
                   }`}
                 >
-                  {step.label}
+                  {step.key === "review" && tier > 1 ? `Tier ${tier} Review` : step.label}
                 </span>
               </div>
               {i < TIMELINE_STEPS.length - 1 && (
@@ -238,14 +239,15 @@ interface DisputeDeposit {
   id: string;
   disputeId: string;
   tier: number;
+  party: "buyer" | "seller";
   amountCents: number;
-  status: "PENDING" | "DEPOSITED" | "FORFEITED" | "REFUNDED";
+  status: "PENDING" | "DEPOSITED" | "FORFEITED" | "REFUNDED" | "CANCELLED";
   deadlineAt?: string | null;
   metadata?: Record<string, unknown> | null;
 }
 
 interface DepositCollection {
-  rail: "usdc" | "stripe" | "mock";
+  rail: "usdc" | "mock";
   status: "pending" | "completed";
   usdc_approval?: {
     spender_address: string;
@@ -253,8 +255,6 @@ interface DepositCollection {
     amount_wei: string;
     chain_id: number;
   };
-  stripe_client_secret?: string;
-  stripe_payment_intent_id?: string;
 }
 
 function buildActivityLog(dispute: Dispute): ActivityEvent[] {
@@ -388,6 +388,10 @@ export function DisputeDetail({
   userRole?: "buyer" | "seller";
   amountMinor?: number | null;
 }) {
+  const { address: walletAddress, isConnected: walletConnected } = useAccount();
+  const walletChainId = useChainId();
+  const { switchChainAsync } = useSwitchChain();
+  const { writeContractAsync } = useWriteContract();
   const [dispute, setDispute] = useState<Dispute>(initialDispute);
   const [evidenceType, setEvidenceType] = useState<EvidenceType>("text");
   const [evidenceText, setEvidenceText] = useState("");
@@ -396,9 +400,10 @@ export function DisputeDetail({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [deposit, setDeposit] = useState<DisputeDeposit | null>(null);
-  const [depositRail, setDepositRail] = useState<"usdc" | "stripe">("usdc");
-  const [depositWallet, setDepositWallet] = useState("");
+  const [deposits, setDeposits] = useState<DisputeDeposit[]>([]);
   const [depositCollection, setDepositCollection] = useState<DepositCollection | null>(null);
+  const publicClient = usePublicClient({ chainId: depositCollection?.usdc_approval?.chain_id });
+  const [escalationReason, setEscalationReason] = useState("");
   const [draftReady, setDraftReady] = useState(false);
   const draftKey = `haggle:dispute-evidence-draft:${dispute.id}:${userRole}`;
 
@@ -432,7 +437,7 @@ export function DisputeDetail({
     dispute.status === "CLOSED";
 
   const meta = dispute.metadata as Record<string, unknown> | undefined;
-  const currentTier = (meta?.tier as number | undefined) ?? null;
+  const currentTier = (meta?.tier as number | undefined) ?? 1;
   const effectiveAmount = amountMinor ?? 0;
 
   // Role-based accent (buyer → info/blue, seller → gold) for inline text + icons.
@@ -442,13 +447,40 @@ export function DisputeDetail({
   const isSellerWaiting =
     userRole === "seller" && (dispute.status === "WAITING_FOR_SELLER" || dispute.status === "OPEN");
 
-  const canEscalate = !isResolved && dispute.status !== "UNDER_REVIEW";
+  const panel = meta?.panel_review_evaluation as
+    | {
+        ready?: boolean;
+        tier?: number;
+        assigned_count?: number;
+        voted_count?: number;
+        expected_reviewer_count?: number;
+        outcome?: string;
+      }
+    | undefined;
+  const ai = meta?.ai_resolution_assessor as { status?: string } | undefined;
+  const appeal = meta?.appeal_review as { status?: string } | undefined;
+  const currentReviewComplete =
+    currentTier === 1
+      ? ai?.status === "COMPLETED"
+      : panel?.ready === true && panel.tier === currentTier;
+  const canEscalate =
+    !isResolved &&
+    dispute.status === "UNDER_REVIEW" &&
+    currentTier < 3 &&
+    currentReviewComplete &&
+    (currentTier === 1 || meta?.review_phase === "ACTIVE") &&
+    meta?.ai_assessment_stale !== true &&
+    appeal?.status !== "OPEN" &&
+    appeal?.status !== "REOPENED";
 
   async function loadDeposit() {
     const result = await api
-      .get<{ deposit: DisputeDeposit }>(`/disputes/${dispute.id}/deposit`)
+      .get<{ deposit: DisputeDeposit | null; deposits: DisputeDeposit[] }>(
+        `/disputes/${dispute.id}/deposit`,
+      )
       .catch(() => null);
     setDeposit(result?.deposit ?? null);
+    setDeposits(result?.deposits ?? []);
   }
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reload deposit only when the dispute changes
@@ -497,15 +529,19 @@ export function DisputeDetail({
     setError(null);
     setSuccess(null);
     try {
-      const result = await api.post<{ dispute: Dispute; deposit?: DisputeDeposit }>(
+      const result = await api.post<{ dispute: Dispute; deposits: DisputeDeposit[] }>(
         `/disputes/${dispute.id}/escalate`,
         {
           escalated_by: userRole,
+          expected_tier: currentTier,
+          reason: escalationReason.trim() || undefined,
         },
       );
       setDispute(result.dispute);
-      setDeposit(result.deposit ?? null);
-      setSuccess("Dispute escalated");
+      setDeposits(result.deposits ?? []);
+      setDeposit(result.deposits?.find((item) => item.party === userRole) ?? null);
+      setEscalationReason("");
+      setSuccess(`Tier ${currentTier + 1} review requested`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to escalate dispute");
     } finally {
@@ -518,20 +554,17 @@ export function DisputeDetail({
     setError(null);
     setSuccess(null);
     try {
+      if (!walletConnected || !walletAddress) throw new Error("Connect your primary wallet first");
       const result = await api.post<{ deposit: DisputeDeposit; collection: DepositCollection }>(
         `/disputes/${dispute.id}/deposit`,
         {
-          rail: depositRail,
-          wallet_address: depositWallet || undefined,
+          rail: "usdc",
+          wallet_address: walletAddress,
         },
       );
       setDeposit(result.deposit);
       setDepositCollection(result.collection);
-      setSuccess(
-        result.collection.rail === "usdc"
-          ? "USDC approval instructions created"
-          : "Deposit session created",
-      );
+      setSuccess("Review bond quote is ready. Approve USDC to fund your bond.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start deposit");
     } finally {
@@ -544,10 +577,37 @@ export function DisputeDetail({
     setError(null);
     setSuccess(null);
     try {
+      const approval = depositCollection?.usdc_approval;
+      if (!approval || !walletAddress || !publicClient) {
+        throw new Error("Start the deposit with your connected wallet first");
+      }
+      if (walletChainId !== approval.chain_id) {
+        await switchChainAsync({ chainId: approval.chain_id });
+      }
+      const approvalHash = await writeContractAsync({
+        address: approval.token_address as `0x${string}`,
+        abi: [
+          {
+            type: "function",
+            name: "approve",
+            stateMutability: "nonpayable",
+            inputs: [
+              { name: "spender", type: "address" },
+              { name: "amount", type: "uint256" },
+            ],
+            outputs: [{ type: "bool" }],
+          },
+        ] as const,
+        functionName: "approve",
+        args: [approval.spender_address as `0x${string}`, BigInt(approval.amount_wei)],
+        chainId: approval.chain_id,
+      });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: approvalHash });
+      if (receipt.status !== "success") throw new Error("USDC approval failed on chain");
       const result = await api.post<{ deposit: DisputeDeposit; tx_hash?: string }>(
         `/disputes/${dispute.id}/deposit/confirm-usdc`,
         {
-          wallet_address: depositWallet,
+          wallet_address: walletAddress,
         },
       );
       setDeposit(result.deposit);
@@ -591,7 +651,17 @@ export function DisputeDetail({
       )}
 
       {/* Timeline */}
-      <DisputeTimeline status={dispute.status} />
+      <DisputeTimeline status={dispute.status} tier={currentTier} />
+      {error && (
+        <Alert tone="error" className="mb-4">
+          {error}
+        </Alert>
+      )}
+      {success && (
+        <Alert tone="success" className="mb-4">
+          {success}
+        </Alert>
+      )}
 
       {/* Info cards */}
       <div className="grid grid-cols-2 gap-3 mb-6">
@@ -629,57 +699,151 @@ export function DisputeDetail({
             )}
           </div>
           <div className="p-4 space-y-3">
-            {canEscalate && (
-              <button
-                type="button"
-                onClick={handleEscalate}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Badge tone="info">
+                Tier {currentTier} ·{" "}
+                {currentTier === 1
+                  ? "AI review"
+                  : currentTier === 2
+                    ? "Panel review"
+                    : "Grand panel review"}
+              </Badge>
+              <Button
+                variant="secondary"
+                size="sm"
                 disabled={submitting}
-                className="w-full rounded-xl border border-warning/30 bg-warning-soft px-4 py-2.5 text-sm font-semibold text-warning transition-colors hover:bg-warning-soft disabled:opacity-40"
+                onClick={() =>
+                  reloadDispute().catch((err) =>
+                    setError(err instanceof Error ? err.message : "Unable to refresh review"),
+                  )
+                }
               >
-                Escalate Review
-              </button>
+                Refresh progress
+              </Button>
+            </div>
+            {currentTier > 1 && (
+              <p className="text-sm text-ink-secondary">
+                {panel?.voted_count ?? 0} / {panel?.expected_reviewer_count ?? "—"} votes submitted
+                · {panel?.assigned_count ?? 0} reviewers assigned
+              </p>
+            )}
+            {meta?.review_phase === "AWAITING_BONDS" && (
+              <Alert tone="info">
+                Review starts only after buyer and seller have each funded a separate bond. The
+                order payment does not count as the buyer bond.
+              </Alert>
+            )}
+            {panel?.ready && (
+              <Alert tone="info">
+                Panel recommendation: {panel.outcome?.replaceAll("_", " ")}. Final settlement
+                requires a separate decision.
+              </Alert>
+            )}
+            {currentTier === 3 && (
+              <p className="text-sm text-ink-secondary">This is the final review tier.</p>
+            )}
+            {canEscalate && (
+              <>
+                <p className="text-sm text-ink-secondary">
+                  Request a new, independent {currentTier === 1 ? "panel" : "grand panel"} review.{" "}
+                  {effectiveAmount > 0
+                    ? `Tier ${currentTier + 1} review costs $${(computeTierCost(effectiveAmount, (currentTier + 1) as 2 | 3) / 100).toFixed(2)}; the losing party pays.`
+                    : "The review cost is calculated from the order amount."}{" "}
+                  Both parties fund a separate bond for this tier. Completed T2 and T3 fees add
+                  together; the final winner gets their own bonds back.
+                </p>
+                <Field label="Reason for further review (optional)" htmlFor="escalation-reason">
+                  <Textarea
+                    id="escalation-reason"
+                    value={escalationReason}
+                    onChange={(e) => setEscalationReason(e.target.value)}
+                    maxLength={1000}
+                    rows={3}
+                  />
+                </Field>
+                <Button fullWidth loading={submitting} onClick={handleEscalate}>
+                  Request Tier {currentTier + 1} review
+                </Button>
+              </>
+            )}
+            {!canEscalate && currentTier < 3 && (
+              <p className="text-sm text-ink-secondary">
+                The current review and any open appeal must be completed before requesting the next
+                tier.
+              </p>
             )}
 
-            {deposit && (
+            {Array.isArray(meta?.review_history) && meta.review_history.length > 0 && (
+              <section className="space-y-2 border-t border-line pt-3">
+                <h2 className="text-sm font-semibold text-ink">Previous reviews</h2>
+                {(
+                  meta.review_history as {
+                    tier: number;
+                    decision?: { outcome?: string; conclusion?: string };
+                    reason?: string;
+                    escalated_at: string;
+                  }[]
+                ).map((review) => (
+                  <div
+                    key={review.tier}
+                    className="rounded-lg bg-surface-sunken p-3 text-sm text-ink-secondary"
+                  >
+                    <p>
+                      Tier {review.tier}:{" "}
+                      {(
+                        review.decision?.outcome ??
+                        review.decision?.conclusion ??
+                        "Review completed"
+                      ).replaceAll("_", " ")}
+                    </p>
+                    {review.reason && (
+                      <p className="mt-1">Further review requested: {review.reason}</p>
+                    )}
+                  </div>
+                ))}
+              </section>
+            )}
+
+            {deposits.length > 0 && (
               <div className="rounded-lg border border-line bg-surface-sunken/40 p-3 space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-ink-secondary">Seller deposit</span>
-                  <span className="font-semibold text-ink">
-                    ${(deposit.amountCents / 100).toFixed(2)}
-                  </span>
-                </div>
-                {deposit.deadlineAt && (
+                {deposits.map((bond) => (
+                  <div key={bond.id} className="flex items-center justify-between text-sm gap-2">
+                    <span className="text-ink-secondary capitalize">
+                      {bond.party} bond · Tier {bond.tier}
+                    </span>
+                    <span className="font-semibold text-ink">
+                      ${(bond.amountCents / 100).toFixed(2)} · {bond.status}
+                    </span>
+                  </div>
+                ))}
+                {deposit?.deadlineAt && (
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-ink-secondary">Deadline</span>
                     <span className="text-ink-secondary">{formatDate(deposit.deadlineAt)}</span>
                   </div>
                 )}
 
-                {userRole === "seller" && deposit.status === "PENDING" && (
+                {deposit?.status === "PENDING" && (
                   <div className="space-y-2 border-t border-line pt-3">
-                    <Select
-                      value={depositRail}
-                      onChange={(event) => setDepositRail(event.target.value as "usdc" | "stripe")}
-                    >
-                      <option value="usdc">USDC</option>
-                      <option value="stripe">Stripe Onramp</option>
-                    </Select>
-                    <Input
-                      value={depositWallet}
-                      onChange={(event) => setDepositWallet(event.target.value)}
-                      placeholder="0x wallet address"
-                    />
+                    <p className="text-xs text-ink-secondary">
+                      Connected primary wallet: {walletAddress ?? "Connect a wallet to continue"}
+                    </p>
                     <div className="grid grid-cols-2 gap-2">
-                      <Button size="sm" loading={submitting} onClick={handleStartDeposit}>
-                        Start Deposit
+                      <Button
+                        size="sm"
+                        loading={submitting}
+                        disabled={!walletConnected}
+                        onClick={handleStartDeposit}
+                      >
+                        Prepare USDC Bond
                       </Button>
                       <Button
                         size="sm"
                         variant="secondary"
-                        disabled={submitting || !depositWallet}
+                        disabled={submitting || !depositCollection?.usdc_approval}
                         onClick={handleConfirmUsdcDeposit}
                       >
-                        Confirm USDC
+                        Approve &amp; Fund
                       </Button>
                     </div>
                   </div>
@@ -707,11 +871,6 @@ export function DisputeDetail({
                         </span>
                       </p>
                     </div>
-                  </Alert>
-                )}
-                {depositCollection?.stripe_client_secret && (
-                  <Alert tone="info" hideIcon className="text-xs">
-                    Stripe deposit session created.
                   </Alert>
                 )}
               </div>
@@ -796,17 +955,6 @@ export function DisputeDetail({
                 onChange={(e) => setEvidenceUri(e.target.value)}
               />
             </Field>
-
-            {error && (
-              <Alert tone="error" className="mb-3">
-                {error}
-              </Alert>
-            )}
-            {success && (
-              <Alert tone="success" className="mb-3">
-                {success}
-              </Alert>
-            )}
 
             <Button type="submit" fullWidth loading={submitting}>
               {submitting ? "Submitting..." : "Submit Evidence"}

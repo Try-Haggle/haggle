@@ -86,13 +86,14 @@
         "E2E"
       ],
       "outcome": "구매부터 결제, 실제 배송, 정산 또는 분쟁까지 한 거래를 테스트 자산으로 끝까지 재현한다.",
-      "nextAction": "실배송 happy path는 됐다. 분쟁 리허설과 실제 USDC·Coinbase 등 다른 지갑 경로를 이어서 본다. 박스·무게 오입력 추가 청구는 그다음이다.",
+      "nextAction": "2026-10-01 정행 결정: 실제 실시한 T2 $12와 T3 $30은 합산해 최종 패소자 $42, 리뷰어 실제 지급은 보류하고 심사·양측 별도 USDC 예치·최종 정산만 구현한다. W2026-08-08-01 브랜치에서 구현·검증 후 push하고 인오 reviewer proposed 확인을 기다린다. 공유 DB migration 0157·0158은 같은 SHA의 최종 CI 성공 전 적용하지 않는다. 계약은 별도 배포가 필요하며 이번 작업에서 배포하지 않는다. 크레딧 담보 재원, 사건별 보수 동의·거절 시 대체 절차, 구매자/양측 미납·부분 환불, 실제 지급·DS, 금융업/중재 적용은 후속 결정이다. 법적·실자금 출시 승인이나 작업 done으로 취급하지 않는다.",
       "reviewBrief": "협상이 round 0에서 멈추지 않고 종료까지 진행되며, 중복 청구·배송·정산이 없고, 분쟁 중 release가 멈추며, 외부 이벤트와 서버 장부가 일치하는지 확인한다.",
       "evidence": [
         "staging 실행 기록",
         "결제·배송 receipt",
         "양쪽 분쟁 결과",
-        "재시도·중복 요청 결과"
+        "재시도·중복 요청 결과",
+        "docs/wip/dispute-tier-review-implementation.md"
       ],
       "verifiedEvidence": [
         "2026-08-12 commerce-core 147개 테스트 통과",
@@ -110,7 +111,9 @@
         "2026-08-15 CI remediation 로컬 검증 통과: Playwright public smoke 3개, production dependency audit gate(신규 critical/high 0건), 전체 29개 test task, 32개 typecheck task, 18개 build task, migration·DB invariant·Biome 검사. nanoid 3.3.18, fast-uri 3.1.3, postcss 8.5.18로 취약 의존성을 교체하고 해소된 기존 예외 7건을 baseline에서 제거",
         "2026-08-22 ROUND 0 수정은 staging에 이미 있음: PR #67이 2026-08-15 22:09 UTC에 staging 머지. 이후 생성된 세션 3건(a0050eaa, 3ba98cc0, c1eb04f0)이 모두 current_round 5/5/7로 ACCEPTED. CREATED/ACTIVE/WAITING에 남은 round 0 세션 0건",
         "2026-08-22 staging physical_live 1건 IN_TRANSIT: order 2486bbd2-77e0-4f96-b159-38f54a3bc829, shipment 109cb7d4-0d9c-468d-95a6-294b053b9a7c, USPS 9400136208303613359257, EasyPost shp_4df18ebab8c54140b27a569473beaa92, signed webhook evt_fdfa73869e4911f194e57dbc5eacc6ab COMPLETED/200",
-        "2026-08-29 정행: EasyPost·USPS Ground로 테스트 물건이 집까지 도착. 스탬프·도착 시간 확인. 캐리어는 일단 USPS만으로 시작해도 된다고 말했다."
+        "2026-08-29 정행: EasyPost·USPS Ground로 테스트 물건이 집까지 도착. 스탬프·도착 시간 확인. 캐리어는 일단 USPS만으로 시작해도 된다고 말했다.",
+        "2026-09-26 T2/T3 로컬 slice: API 관련 148개, dispute-core 159개, 웹 컴포넌트 7개, mocked API Playwright 데스크톱·390px 모바일 4개 통과. migration journal 158개·schema·DB invariants 통과. 실제 PostgreSQL 경합·staging·담보 및 정산 검증과 reviewer confirmed는 남음.",
+        "2026-10-01 양측 예치·누적 비용 로컬 검증: 계약 10개, dispute-core 152개, API 전체 3431개(2 skip), 웹 전체 377개, mocked API Playwright 데스크톱·모바일 4개, API/웹 빌드·타입 검사, migration journal 159개·DB 불변식·변경 파일 Biome 통과. 실제 체인·공유 DB·staging 검증은 미실시."
       ],
       "remainingGaps": [
         "분쟁 리허설과 양쪽 승소 receipt",
@@ -119,7 +122,12 @@
         "staging two-account Playwright 리허설",
         "판매자 계정별 수취 지갑이 Account Settings에 연결되지 않음",
         "Base Sepolia FUNDED 잔여 건 reconciliation",
-        "ConditionalSettlement pause·signer 교체 결정"
+        "ConditionalSettlement pause·signer 교체 결정",
+        "T2/T3 slice: migration 0157은 같은 SHA 최종 CI 성공 후 적용. reviewer.ts/disputes.ts/API 계약 변경은 이 slice 뒤에 병합.",
+        "2026-10-01 누적 요금은 정행이 확정했고 양측 별도 USDC 예치·입금 확인 후 배정·미실시 단계 비용 0·최종 승소자 보증금 반환은 로컬 구현했다. 실제 계약 배포·온체인 end-to-end·공유 DB migration·staging 검증은 미완료. T1 비용 재원, T3 번복 시 이전 보수·DS, 구매자/양측 미납 정책은 남음.",
+        "2026-09-27 법적 검토: 다수파만 보수·패소자 비용·미예치 종료의 적용 법률과 집행 가능성, signer/pause를 포함한 금융업 분류를 실자금 출시 전에 확인. 크레딧 합산 표시·출처 복원 방향은 합의했으나 유료 판매·환산/담보 재원·해외 리뷰어 고용/세금/제재 처리는 미완료. 후속 구현 담당자는 임의 배정하지 않음.",
+        "2026-09-27 상세 초안 후속: 실제 자기 이용료와 공동 심사비의 귀속 확인, 취소/합의·재심 기한·부분 환불 비용 결정이 남음. 크레딧 hold/capture/release 및 회사 담보는 C0 후속 범위이며 다수/소수별 USDC/크레딧 보수는 법적 해결책으로 확정하지 않음. 리뷰어 실제 지급은 2026-10-01 정행 결정으로 보류.",
+        "2026-09-29 유타 운영안: 선택형/필수 절차 결정, 정확한 보수식·소수파 DS의 사건별 고지·동의, 미동의/미응답과 미납의 분리, 실제 대체 절차·기한·비용·자금 보존/반환, 익명 증거·독립 투표 검증, T2/T3 적용 범위 및 보수·DS 확정이 남음. 유타 준거법·중재지의 유효성 및 CA Standard 16 적용 여부와 Delaware 약관 소스 불일치도 정비 대상. 동일 보수식 승인 판례·인허가 취득·실자금 출시를 확인한 것은 아님."
       ],
       "dependsOn": [],
       "dueDate": "2026-09-05",

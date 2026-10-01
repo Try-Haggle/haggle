@@ -1,8 +1,4 @@
-import type {
-  DisputeDeposit,
-  DepositRequirement,
-  DefaultJudgmentResult,
-} from "./types.js";
+import type { DefaultJudgmentResult, DepositRequirement } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Public Functions
@@ -10,8 +6,7 @@ import type {
 
 /**
  * Create a deposit requirement when a dispute is escalated to Tier 2 or 3.
- * Only the SELLER deposits. The buyer's stake is the transaction amount
- * already held in escrow (SettlementHold).
+ * Both parties deposit separately from the transaction principal.
  */
 export function createDepositRequirement(
   dispute_id: string,
@@ -29,6 +24,11 @@ export function createDepositRequirement(
     tier,
     amount_cents,
     deadline_hours,
+    buyer_deposit: {
+      dispute_id,
+      amount_cents,
+      status: "PENDING",
+    },
     seller_deposit: {
       dispute_id,
       amount_cents,
@@ -43,15 +43,17 @@ export function createDepositRequirement(
 export function recordDeposit(
   req: DepositRequirement,
   now: string,
+  party: "buyer" | "seller" = "seller",
 ): DepositRequirement {
-  if (req.seller_deposit.status !== "PENDING") {
-    throw new Error(`seller deposit is already ${req.seller_deposit.status}`);
+  const key = party === "buyer" ? "buyer_deposit" : "seller_deposit";
+  if (req[key].status !== "PENDING") {
+    throw new Error(`${party} deposit is already ${req[key].status}`);
   }
 
   return {
     ...req,
-    seller_deposit: {
-      ...req.seller_deposit,
+    [key]: {
+      ...req[key],
       status: "DEPOSITED",
       deposited_at: now,
     },
@@ -60,7 +62,7 @@ export function recordDeposit(
 
 /**
  * Check whether a default judgment should be issued because the seller
- * failed to deposit before the deadline. Buyer auto-wins.
+ * failed to deposit before the deadline after the buyer has deposited.
  *
  * Returns null if:
  * - Seller has deposited
@@ -76,6 +78,7 @@ export function checkDefaultJudgment(
 
   if (current < deadline) return null;
   if (req.seller_deposit.status === "DEPOSITED") return null;
+  if (req.buyer_deposit.status !== "DEPOSITED") return null;
 
   return {
     winning_party: "buyer",
@@ -84,9 +87,8 @@ export function checkDefaultJudgment(
 }
 
 /**
- * Resolve the seller's deposit after dispute outcome.
- * - Seller loses → FORFEITED (goes to platform revenue)
- * - Seller wins → REFUNDED
+ * A winning party receives its own deposit back. The losing party's deposit
+ * funds only the actual review fee; any unused amount is also returned.
  */
 export function resolveDeposit(
   req: DepositRequirement,
@@ -95,6 +97,11 @@ export function resolveDeposit(
 ): DepositRequirement {
   return {
     ...req,
+    buyer_deposit: {
+      ...req.buyer_deposit,
+      status: seller_won ? "FORFEITED" : "REFUNDED",
+      resolved_at: now,
+    },
     seller_deposit: {
       ...req.seller_deposit,
       status: seller_won ? "REFUNDED" : "FORFEITED",

@@ -4,6 +4,7 @@ import {
   disputeCases,
   disputeEvidence as disputeEvidenceTable,
   eq,
+  isNull,
   reviewerAssignments,
   reviewerProfiles,
   sql,
@@ -12,9 +13,22 @@ import type { DisputeTier } from "@haggle/dispute-core";
 import { computeDisputeCost, getReviewerCount } from "@haggle/dispute-core";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import {
+  DISPUTE_VIEW_URL_TTL_SECONDS,
+  validateDisputeStoragePath,
+} from "../lib/dispute-storage-paths.js";
 import { requireAdmin, requireAuth } from "../middleware/require-auth.js";
 import { evaluateDisputePanel } from "../services/dispute-panel-evaluate.service.js";
-import { getDisputeById } from "../services/dispute-record.service.js";
+import {
+  getDisputeById,
+  getDisputeEvidenceUploadByEvidenceId,
+} from "../services/dispute-record.service.js";
+import {
+  REVIEW_CLOSED_STATUSES,
+  reviewTier,
+  withReviewRoundLock,
+} from "../services/dispute-review-round.service.js";
+import { createDisputeViewUrl } from "../services/dispute-storage.service.js";
 import { getCommerceOrderByOrderId } from "../services/payment-record.service.js";
 
 // ---------------------------------------------------------------------------
@@ -87,6 +101,7 @@ const QUALIFY_CONDITIONAL_RATE = 0.6;
 // ---------------------------------------------------------------------------
 
 const voteSchema = z.object({
+  expected_tier: z.union([z.literal(2), z.literal(3)]),
   vote: z.number().int().min(0).max(100),
   reasoning: z.string().max(2000).optional(),
 });
@@ -96,6 +111,7 @@ const qualifySchema = z.object({
     .array(
       z.object({
         case_index: z.number().int().min(0).max(9),
+        expected_tier: z.union([z.literal(2), z.literal(3)]),
         vote: z.number().int().min(0).max(100),
       }),
     )
@@ -126,64 +142,75 @@ export async function assignReviewersToDispute(
     return { assigned: 0, reviewers: [] };
   }
 
-  const reviewerCount = getReviewerCount(amountCents, disputeTier as 2 | 3);
+  if (![2, 3].includes(disputeTier) || !Number.isSafeInteger(amountCents) || amountCents <= 0)
+    throw new Error("INVALID_PANEL_REQUEST");
 
-  // Query qualified reviewers who have available slots, excluding dispute parties
-  const excludeIds = [buyerId, sellerId];
-  const candidates = await db
-    .select({
-      userId: reviewerProfiles.userId,
-      voteWeight: reviewerProfiles.voteWeight,
-    })
-    .from(reviewerProfiles)
-    .where(
-      and(
-        eq(reviewerProfiles.qualified, true),
-        sql`${reviewerProfiles.activeSlots} < ${reviewerProfiles.maxSlots}`,
-        sql`${reviewerProfiles.userId} NOT IN (${sql.join(
-          excludeIds.map((id) => sql`${id}`),
-          sql`, `,
-        )})`,
-      ),
-    );
-
-  if (candidates.length === 0) {
-    return { assigned: 0, reviewers: [] };
-  }
-
-  // Simple random selection (weight-based ES later)
-  const shuffled = [...candidates].sort(() => Math.random() - 0.5);
-  const selected = shuffled.slice(0, Math.min(reviewerCount, shuffled.length));
-
-  // Create assignment records and increment active_slots
-  const assignedIds: string[] = [];
-
-  for (const candidate of selected) {
-    await db.insert(reviewerAssignments).values({
-      disputeId,
-      reviewerId: candidate.userId,
-      voteWeight: candidate.voteWeight,
-      slotCost: 1,
-    });
-
-    await db
-      .update(reviewerProfiles)
-      .set({
-        activeSlots: sql`${reviewerProfiles.activeSlots} + 1`,
-        updatedAt: new Date(),
-      })
-      .where(eq(reviewerProfiles.userId, candidate.userId));
-
-    assignedIds.push(candidate.userId);
-  }
-
-  // Update dispute status to UNDER_REVIEW
-  await db
-    .update(disputeCases)
-    .set({ status: "UNDER_REVIEW", updatedAt: new Date() })
-    .where(eq(disputeCases.id, disputeId));
-
-  return { assigned: assignedIds.length, reviewers: assignedIds };
+  return withReviewRoundLock(db, disputeId, async (tx) => {
+    const dispute = await getDisputeById(tx, disputeId);
+    if (
+      !dispute ||
+      reviewTier(dispute) !== disputeTier ||
+      REVIEW_CLOSED_STATUSES.includes(dispute.status)
+    ) {
+      throw new Error("REVIEW_TIER_CHANGED");
+    }
+    if (dispute.metadata?.review_phase !== "ACTIVE") {
+      throw new Error("REVIEW_BONDS_NOT_CONFIRMED");
+    }
+    const existing = await tx
+      .select()
+      .from(reviewerAssignments)
+      .where(eq(reviewerAssignments.disputeId, disputeId));
+    const current = existing.filter((a) => a.tier === disputeTier);
+    const reviewerCount = getReviewerCount(amountCents, disputeTier as 2 | 3);
+    const needed = Math.max(0, reviewerCount - current.length);
+    const excludeIds = [buyerId, sellerId, ...existing.map((a) => a.reviewerId)];
+    // Lock candidates in a stable order across cases; no slot can be oversubscribed.
+    const candidates =
+      needed === 0
+        ? []
+        : await tx
+            .select({
+              userId: reviewerProfiles.userId,
+              voteWeight: reviewerProfiles.voteWeight,
+            })
+            .from(reviewerProfiles)
+            .where(
+              and(
+                eq(reviewerProfiles.qualified, true),
+                sql`${reviewerProfiles.activeSlots} < ${reviewerProfiles.maxSlots}`,
+                sql`${reviewerProfiles.userId} NOT IN (${sql.join(
+                  excludeIds.map((id) => sql`${id}`),
+                  sql`, `,
+                )})`,
+              ),
+            )
+            .orderBy(reviewerProfiles.userId)
+            .for("update", { skipLocked: true });
+    const selected = [...candidates].sort(() => Math.random() - 0.5).slice(0, needed);
+    for (const candidate of selected) {
+      await tx.insert(reviewerAssignments).values({
+        disputeId,
+        reviewerId: candidate.userId,
+        tier: disputeTier,
+        voteWeight: candidate.voteWeight,
+        slotCost: 1,
+      });
+      await tx
+        .update(reviewerProfiles)
+        .set({
+          activeSlots: sql`${reviewerProfiles.activeSlots} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(eq(reviewerProfiles.userId, candidate.userId));
+    }
+    await tx
+      .update(disputeCases)
+      .set({ status: "UNDER_REVIEW", updatedAt: new Date() })
+      .where(eq(disputeCases.id, disputeId));
+    const reviewers = [...current.map((a) => a.reviewerId), ...selected.map((c) => c.userId)];
+    return { assigned: reviewers.length, reviewers };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -204,7 +231,7 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
       }
 
       const tier = ((dispute.metadata as Record<string, unknown>)?.tier as number) ?? 1;
-      if (tier < 2) {
+      if (tier !== 2 && tier !== 3) {
         return reply
           .code(400)
           .send({ error: "TIER_TOO_LOW", message: "Reviewer assignment requires T2 or T3" });
@@ -216,7 +243,7 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
       }
 
       const amountCents = parseInt(String(order.amountMinor), 10);
-      if (amountCents <= 0) {
+      if (!Number.isSafeInteger(amountCents) || amountCents <= 0) {
         return reply.code(400).send({ error: "INVALID_AMOUNT" });
       }
 
@@ -298,24 +325,26 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
 
     let statusFilter = sql``;
     if (status === "active") {
-      statusFilter = sql`AND ra.vote_value IS NULL AND dc.status NOT IN (${sql.join(
+      statusFilter = sql`AND ra.tier = COALESCE((dc.metadata->>'tier')::int, 1) AND ra.vote_value IS NULL AND dc.status NOT IN (${sql.join(
         resolvedStatuses.map((s) => sql`${s}`),
         sql`, `,
       )})`;
     } else if (status === "voted") {
-      statusFilter = sql`AND ra.vote_value IS NOT NULL AND dc.status NOT IN (${sql.join(
+      statusFilter = sql`AND ra.tier = COALESCE((dc.metadata->>'tier')::int, 1) AND ra.vote_value IS NOT NULL AND dc.status NOT IN (${sql.join(
         resolvedStatuses.map((s) => sql`${s}`),
         sql`, `,
       )})`;
     } else if (status === "decided") {
-      statusFilter = sql`AND dc.status IN (${sql.join(
+      statusFilter = sql`AND (ra.tier <> COALESCE((dc.metadata->>'tier')::int, 1) OR dc.status IN (${sql.join(
         resolvedStatuses.map((s) => sql`${s}`),
         sql`, `,
-      )})`;
+      )}))`;
     }
 
     interface AssignmentRow {
       assignment_id: string;
+      tier: number;
+      current_tier: number;
       dispute_id: string;
       vote_value: number | null;
       vote_weight: string | null;
@@ -333,6 +362,8 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
     const rawResult = await db.execute(sql`
       SELECT
         ra.id AS assignment_id,
+        ra.tier,
+        COALESCE((dc.metadata->>'tier')::int, 1) AS current_tier,
         ra.dispute_id,
         ra.vote_value,
         ra.vote_weight,
@@ -353,10 +384,19 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
       ORDER BY ra.assigned_at DESC
     `);
 
-    const rows = (rawResult as unknown as { rows?: AssignmentRow[] }).rows ?? [];
+    const rows = Array.isArray(rawResult)
+      ? (rawResult as unknown as AssignmentRow[])
+      : ((rawResult as unknown as { rows?: AssignmentRow[] }).rows ?? []);
 
     const assignments = rows.map((row) => ({
       assignment_id: row.assignment_id,
+      tier: row.tier,
+      status:
+        resolvedStatuses.includes(row.dispute_status) || row.tier !== row.current_tier
+          ? "decided"
+          : row.vote_value === null
+            ? "active"
+            : "voted",
       dispute_id: row.dispute_id,
       vote_value: row.vote_value,
       vote_weight: row.vote_weight ? parseFloat(row.vote_weight) : null,
@@ -429,12 +469,12 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
       }));
 
       // Compute voting deadline from dispute metadata
-      const tier = ((dispute.metadata as Record<string, unknown>)?.tier as number) ?? 2;
+      const tier = assignment.tier;
       const amountCents = order?.amountMinor ? parseInt(String(order.amountMinor), 10) : 0;
       let votingDeadline: string | null = null;
       if (amountCents > 0) {
         const cost = computeDisputeCost(amountCents, tier as DisputeTier);
-        const openedAt = new Date(dispute.opened_at);
+        const openedAt = assignment.assignedAt;
         votingDeadline = new Date(
           openedAt.getTime() + cost.escalation_period_hours * 60 * 60 * 1000,
         ).toISOString();
@@ -447,7 +487,16 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
       const orderSnapshot = order?.orderSnapshot as Record<string, unknown> | null;
       const terms = orderSnapshot?.terms as Record<string, unknown> | undefined;
 
+      const evaluation = await evaluateDisputePanel(db, disputeId, { persist: false });
       return reply.send({
+        assignment_id: assignment.id,
+        assignment_tier: assignment.tier,
+        current_tier: reviewTier(dispute),
+        voting_open:
+          assignment.tier === reviewTier(dispute) &&
+          dispute.status === "UNDER_REVIEW" &&
+          dispute.metadata?.review_phase === "ACTIVE",
+        panel: evaluation.evaluation,
         dispute: {
           id: dispute.id,
           reason_code: dispute.reason_code,
@@ -470,6 +519,48 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
     },
   );
 
+  app.get<{ Params: { disputeId: string; evidenceId: string } }>(
+    "/reviewer/assignments/:disputeId/evidence/:evidenceId/view",
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const { disputeId, evidenceId } = request.params;
+      const assignments = await db
+        .select()
+        .from(reviewerAssignments)
+        .where(
+          and(
+            eq(reviewerAssignments.disputeId, disputeId),
+            eq(reviewerAssignments.reviewerId, request.user!.id),
+          ),
+        );
+      if (!assignments.length) return reply.code(403).send({ error: "NOT_ASSIGNED" });
+      const rows = await db
+        .select()
+        .from(disputeEvidenceTable)
+        .where(
+          and(
+            eq(disputeEvidenceTable.disputeId, disputeId),
+            eq(disputeEvidenceTable.id, evidenceId),
+          ),
+        );
+      if (!rows[0]?.uri) return reply.code(404).send({ error: "EVIDENCE_NOT_FOUND" });
+      const upload = await getDisputeEvidenceUploadByEvidenceId(db, disputeId, evidenceId);
+      if (upload && upload.retentionStatus !== "ACTIVE")
+        return reply.code(410).send({ error: "EVIDENCE_FILE_UNAVAILABLE" });
+      let objectPath: string;
+      try {
+        objectPath = validateDisputeStoragePath(disputeId, rows[0].uri);
+      } catch {
+        return reply.code(400).send({ error: "INVALID_STORAGE_PATH" });
+      }
+      reply.header("Cache-Control", "no-store");
+      return reply.send({
+        view_url: await createDisputeViewUrl(objectPath),
+        expires_in: DISPUTE_VIEW_URL_TTL_SECONDS,
+      });
+    },
+  );
+
   // ─── POST /reviewer/assignments/:disputeId/vote ──────────────────
   app.post<{ Params: { disputeId: string } }>(
     "/reviewer/assignments/:disputeId/vote",
@@ -485,89 +576,103 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
 
       const { vote, reasoning } = parsed.data;
 
-      // Verify assignment
-      const assignmentRows = await db
-        .select()
-        .from(reviewerAssignments)
-        .where(
-          and(
-            eq(reviewerAssignments.disputeId, disputeId),
-            eq(reviewerAssignments.reviewerId, userId),
-          ),
+      const result = await withReviewRoundLock(db, disputeId, async (db) => {
+        const respond = (status: number, body: object) => ({ status, body });
+        const dispute = await getDisputeById(db, disputeId);
+        if (!dispute) return respond(404, { error: "DISPUTE_NOT_FOUND" });
+        const tier = reviewTier(dispute);
+        if (parsed.data.expected_tier !== tier)
+          return respond(409, { error: "REVIEW_TIER_CHANGED" });
+        if (dispute.metadata?.review_phase !== "ACTIVE")
+          return respond(409, { error: "REVIEW_BONDS_NOT_CONFIRMED" });
+        // Verify assignment
+        const assignmentRows = await db
+          .select()
+          .from(reviewerAssignments)
+          .where(
+            and(
+              eq(reviewerAssignments.disputeId, disputeId),
+              eq(reviewerAssignments.reviewerId, userId),
+              eq(reviewerAssignments.tier, tier),
+            ),
+          );
+
+        if (assignmentRows.length === 0) {
+          return respond(403, {
+            error: "NOT_ASSIGNED",
+            message: "You are not assigned to this dispute",
+          });
+        }
+
+        const assignment = assignmentRows[0];
+
+        // No double voting
+        if (assignment.voteValue !== null) {
+          return respond(400, {
+            error: "ALREADY_VOTED",
+            message: "You have already voted on this dispute",
+          });
+        }
+
+        // Verify dispute is still in voting phase
+        if (dispute.status !== "UNDER_REVIEW") {
+          return respond(400, {
+            error: "VOTING_CLOSED",
+            message: `Dispute status is ${dispute.status}, voting requires UNDER_REVIEW`,
+          });
+        }
+
+        // Save vote
+        await db
+          .update(reviewerAssignments)
+          .set({
+            voteValue: vote,
+            votedAt: new Date(),
+            reasoning: reasoning ?? null,
+          })
+          .where(
+            and(eq(reviewerAssignments.id, assignment.id), isNull(reviewerAssignments.voteValue)),
+          );
+        await db
+          .update(reviewerProfiles)
+          .set({
+            activeSlots: sql`GREATEST(0, ${reviewerProfiles.activeSlots} - ${assignment.slotCost})`,
+            updatedAt: new Date(),
+          })
+          .where(eq(reviewerProfiles.userId, userId));
+
+        // Check if ALL reviewers have voted
+        const allAssignments = await db
+          .select({
+            id: reviewerAssignments.id,
+            voteValue: reviewerAssignments.voteValue,
+          })
+          .from(reviewerAssignments)
+          .where(
+            and(eq(reviewerAssignments.disputeId, disputeId), eq(reviewerAssignments.tier, tier)),
+          );
+
+        const allVoted = allAssignments.every((a) =>
+          a.id === assignment.id ? true : a.voteValue !== null,
         );
 
-      if (assignmentRows.length === 0) {
-        return reply
-          .code(403)
-          .send({ error: "NOT_ASSIGNED", message: "You are not assigned to this dispute" });
-      }
-
-      const assignment = assignmentRows[0];
-
-      // No double voting
-      if (assignment.voteValue !== null) {
-        return reply
-          .code(400)
-          .send({ error: "ALREADY_VOTED", message: "You have already voted on this dispute" });
-      }
-
-      // Verify dispute is still in voting phase
-      const dispute = await getDisputeById(db, disputeId);
-      if (!dispute) {
-        return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
-      }
-      if (dispute.status !== "UNDER_REVIEW") {
-        return reply.code(400).send({
-          error: "VOTING_CLOSED",
-          message: `Dispute status is ${dispute.status}, voting requires UNDER_REVIEW`,
-        });
-      }
-
-      // Save vote
-      await db
-        .update(reviewerAssignments)
-        .set({
-          voteValue: vote,
-          votedAt: new Date(),
-          reasoning: reasoning ?? null,
-        })
-        .where(eq(reviewerAssignments.id, assignment.id));
-
-      // Check if ALL reviewers have voted
-      const allAssignments = await db
-        .select({
-          id: reviewerAssignments.id,
-          voteValue: reviewerAssignments.voteValue,
-        })
-        .from(reviewerAssignments)
-        .where(eq(reviewerAssignments.disputeId, disputeId));
-
-      const allVoted = allAssignments.every((a) =>
-        a.id === assignment.id ? true : a.voteValue !== null,
-      );
-
-      // Auto-evaluate panel judgment if all voted (money stays on resolve/finalizer — E2)
-      if (allVoted) {
-        try {
+        // Auto-evaluate panel judgment if all voted (money stays on resolve/finalizer — E2)
+        if (allVoted) {
           await evaluateDisputePanel(db, disputeId, { persist: true });
-        } catch (err) {
-          console.error(
-            "[reviewer] Auto panel evaluate failed:",
-            err instanceof Error ? err.message : String(err),
-          );
         }
-      }
 
-      return reply.send({
-        assignment: {
-          id: assignment.id,
-          dispute_id: disputeId,
-          vote_value: vote,
-          voted_at: new Date().toISOString(),
-          reasoning: reasoning ?? null,
-        },
-        all_voted: allVoted,
+        return respond(200, {
+          assignment: {
+            id: assignment.id,
+            dispute_id: disputeId,
+            vote_value: vote,
+            voted_at: new Date().toISOString(),
+            reasoning: reasoning ?? null,
+          },
+          all_voted: allVoted,
+        });
       });
+      return reply.code(result.status).send(result.body);
     },
   );
 
@@ -617,6 +722,15 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
         });
       }
     },
+  );
+
+  app.get("/reviewer/qualification-cases", { preHandler: [requireAuth] }, async (_request, reply) =>
+    reply.send({
+      cases: QUALIFICATION_CASES.map(({ case_index, description }) => ({
+        case_index,
+        description,
+      })),
+    }),
   );
 
   // ─── POST /reviewer/qualify (authenticated user) ─────────────────

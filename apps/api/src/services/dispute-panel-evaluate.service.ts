@@ -7,7 +7,7 @@
  */
 
 import type { Database } from "@haggle/db";
-import { eq, reviewerAssignments } from "@haggle/db";
+import { and, eq, reviewerAssignments } from "@haggle/db";
 import type { DisputeCase } from "@haggle/dispute-core";
 import {
   evaluatePanelReview,
@@ -20,6 +20,7 @@ import {
   DISPUTE_PANEL_EVALUATE_AUTO_APPLIED,
 } from "../lib/dispute-panel-evaluate-money-guard.js";
 import { getDisputeById, updateDisputeRecord } from "./dispute-record.service.js";
+import { reviewTier, withReviewRoundLock } from "./dispute-review-round.service.js";
 import { getCommerceOrderByOrderId } from "./payment-record.service.js";
 
 export type DisputePanelAssignmentRow = {
@@ -51,6 +52,7 @@ export function mapReviewerAssignmentsToPanelVotes(
 export async function listReviewerAssignmentsForDispute(
   db: Database,
   disputeId: string,
+  tier: number,
 ): Promise<DisputePanelAssignmentRow[]> {
   const rows = await db
     .select({
@@ -59,7 +61,7 @@ export async function listReviewerAssignmentsForDispute(
       voteWeight: reviewerAssignments.voteWeight,
     })
     .from(reviewerAssignments)
-    .where(eq(reviewerAssignments.disputeId, disputeId));
+    .where(and(eq(reviewerAssignments.disputeId, disputeId), eq(reviewerAssignments.tier, tier)));
   return rows;
 }
 
@@ -125,6 +127,14 @@ export async function evaluateDisputePanel(
   disputeId: string,
   options: { persist?: boolean; assignments?: DisputePanelAssignmentRow[] } = {},
 ): Promise<DisputePanelEvaluateResult> {
+  return withReviewRoundLock(db, disputeId, (tx) => evaluateLocked(tx, disputeId, options));
+}
+
+async function evaluateLocked(
+  db: Database,
+  disputeId: string,
+  options: { persist?: boolean; assignments?: DisputePanelAssignmentRow[] },
+): Promise<DisputePanelEvaluateResult> {
   const persist = options.persist !== false;
 
   const dispute = await getDisputeById(db, disputeId);
@@ -134,9 +144,10 @@ export async function evaluateDisputePanel(
 
   const order = await getCommerceOrderByOrderId(db, dispute.order_id);
   const amountCents = order?.amountMinor ? parseInt(String(order.amountMinor), 10) : 0;
-  const tier = ((dispute.metadata as Record<string, unknown> | null)?.tier as number) ?? 2;
+  const tier = reviewTier(dispute);
+  if (persist && dispute.status !== "UNDER_REVIEW") throw new Error("VOTING_CLOSED");
   const assignments =
-    options.assignments ?? (await listReviewerAssignmentsForDispute(db, disputeId));
+    options.assignments ?? (await listReviewerAssignmentsForDispute(db, disputeId, tier));
 
   const evaluation = buildPanelReviewEvaluation({
     dispute_id: disputeId,

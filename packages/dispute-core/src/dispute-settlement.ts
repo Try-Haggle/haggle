@@ -1,9 +1,5 @@
-import type {
-  SettlementHold,
-  SettlementResolution,
-  DepositRequirement,
-} from "./types.js";
-import { REVIEWER_SHARE, PLATFORM_SHARE } from "./types.js";
+import type { DepositRequirement, SettlementHold, SettlementResolution } from "./types.js";
+import { REVIEWER_SHARE } from "./types.js";
 
 /**
  * Create a settlement hold when a dispute is opened.
@@ -31,17 +27,10 @@ export function createSettlementHold(
 /**
  * Resolve the settlement after a dispute outcome.
  *
- * Dispute cost is ALWAYS paid by the loser:
- * - buyer_favor  → seller lost → dispute cost from seller deposit
- * - seller_favor → buyer lost  → dispute cost deducted from escrowed amount
- * - partial_refund → seller lost → dispute cost from seller deposit
- *
- * Dispute cost goes to: reviewers (70%) + platform (30%)
- *
- * Seller deposit (separate):
- * - Seller loses → deposit forfeited to platform
- * - Seller wins  → deposit refunded
- * - Tier 1 (no deposit) → both are 0
+ * The transaction principal is never a source for review fees. Both parties
+ * deposit separately before a panel begins. The winner receives its deposit
+ * in full; the loser pays only the actual review fee from its own deposit.
+ * Without verified deposits (T1), the platform absorbs the review cost.
  *
  * @param dispute_cost_cents - The dispute cost for this tier (from computeDisputeCost)
  */
@@ -57,18 +46,35 @@ export function resolveSettlement(
     throw new Error(`Settlement is already ${hold.status}, cannot resolve`);
   }
 
-  // Dispute cost split: reviewers 70%, platform 30%
-  const reviewer_receives_cents = Math.round(dispute_cost_cents * REVIEWER_SHARE);
-  const platform_from_dispute = dispute_cost_cents - reviewer_receives_cents; // avoid rounding loss
+  if (!Number.isSafeInteger(dispute_cost_cents) || dispute_cost_cents < 0) {
+    throw new Error("dispute_cost_cents must be a non-negative integer");
+  }
+  if (deposit) {
+    if (
+      deposit.buyer_deposit.status !== "DEPOSITED" ||
+      deposit.seller_deposit.status !== "DEPOSITED"
+    ) {
+      throw new Error("Both review deposits must be funded before settlement");
+    }
+    if (deposit.amount_cents < dispute_cost_cents) {
+      throw new Error("Losing party deposit cannot cover dispute cost");
+    }
+  }
+  const fundedCost = deposit ? dispute_cost_cents : 0;
+  const reviewer_receives_cents = Math.round(fundedCost * REVIEWER_SHARE);
+  const platform_from_dispute = fundedCost - reviewer_receives_cents;
 
   let buyer_receives_cents: number;
   let seller_receives_cents: number;
   let holdStatus: SettlementHold["status"];
 
-  // Seller deposit handling
   const seller_lost = outcome === "buyer_favor" || outcome === "partial_refund";
-  const deposit_forfeited_cents = deposit && seller_lost ? deposit.amount_cents : 0;
-  const deposit_refund_cents = deposit && !seller_lost ? deposit.amount_cents : 0;
+  const buyer_deposit_refund_cents = deposit
+    ? deposit.amount_cents - (seller_lost ? 0 : fundedCost)
+    : 0;
+  const seller_deposit_refund_cents = deposit
+    ? deposit.amount_cents - (seller_lost ? fundedCost : 0)
+    : 0;
 
   switch (outcome) {
     case "buyer_favor":
@@ -79,15 +85,17 @@ export function resolveSettlement(
       break;
 
     case "seller_favor":
-      // Buyer lost → dispute cost deducted from escrowed amount
+      // The seller receives the full transaction principal.
       buyer_receives_cents = 0;
-      seller_receives_cents = hold.held_amount_cents - dispute_cost_cents;
+      seller_receives_cents = hold.held_amount_cents;
       holdStatus = "RELEASED";
       break;
 
     case "partial_refund": {
       if (refund_amount_cents === undefined || refund_amount_cents < 0) {
-        throw new Error("refund_amount_cents is required for partial_refund and must be non-negative");
+        throw new Error(
+          "refund_amount_cents is required for partial_refund and must be non-negative",
+        );
       }
       if (refund_amount_cents > hold.held_amount_cents) {
         throw new Error("refund_amount_cents cannot exceed held_amount_cents");
@@ -101,16 +109,17 @@ export function resolveSettlement(
     }
   }
 
-  // Platform total = dispute cost platform share + forfeited seller deposit
-  const platform_receives_cents = platform_from_dispute + deposit_forfeited_cents;
+  const platform_receives_cents = platform_from_dispute;
 
   return {
     hold: { ...hold, status: holdStatus, released_at: now },
     buyer_receives_cents,
     seller_receives_cents,
-    dispute_cost_cents,
+    dispute_cost_cents: fundedCost,
     reviewer_receives_cents,
     platform_receives_cents,
-    deposit_refund_cents,
+    buyer_deposit_refund_cents,
+    seller_deposit_refund_cents,
+    deposit_refund_cents: seller_deposit_refund_cents,
   };
 }

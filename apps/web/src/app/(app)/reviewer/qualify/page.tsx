@@ -38,143 +38,12 @@ interface CaseResult {
   in_zone: boolean;
 }
 
-// ─── Static test cases (fallback if API doesn't serve them) ──
-const DEFAULT_CASES: QualifyCase[] = [
-  {
-    id: 1,
-    case_id: "#DSP-1892",
-    item: "iPhone 13 Pro",
-    amount: "$420",
-    reason: "Battery health discrepancy",
-    buyer_claim: "Listing said 91% battery, received at 78%. 13% gap in 3 days of ownership.",
-    seller_defense:
-      "Battery was 91% at listing. Buyer used phone heavily for 5 days before measuring.",
-    evidence: ["Battery screenshot 78%", "Listing screenshot 91%", "EXIF dates match"],
-  },
-  {
-    id: 2,
-    case_id: "#DSP-2103",
-    item: "iPhone 14 Pro Max",
-    amount: "$680",
-    reason: "Battery health discrepancy",
-    buyer_claim: "Listed at 96%, measured at 89%. 7% gap.",
-    seller_defense:
-      "7% is within normal usage variance over 10 days. Apple states 1% per week under heavy use.",
-    evidence: ["Battery screenshot 89%", "Listing 96%", "Apple support article on degradation"],
-  },
-  {
-    id: 3,
-    case_id: "#DSP-2201",
-    item: "Louis Vuitton Neverfull MM",
-    amount: "$1,200",
-    reason: "Authenticity dispute",
-    buyer_claim: "Stitching pattern inconsistent with authentic LV. Suspected counterfeit.",
-    seller_defense: "Purchased from LV store directly. Have receipt and dust bag.",
-    evidence: ["Close-up photos of stitching", "Original receipt photo", "LegitApp: 94% authentic"],
-  },
-  {
-    id: 4,
-    case_id: "#DSP-2245",
-    item: "Nike Air Jordan 1 Retro High",
-    amount: "$220",
-    reason: "Item not as described",
-    buyer_claim: "Listed as 'DS' (deadstock/new), but sole has visible yellowing and wear marks.",
-    seller_defense: "Yellowing is natural oxidation from storage, not wear. Shoes were never worn.",
-    evidence: [
-      "Sole photos showing yellowing",
-      "Listing stated 'DS condition'",
-      "Zoom on wear marks",
-    ],
-  },
-  {
-    id: 5,
-    case_id: "#DSP-2310",
-    item: 'MacBook Pro M2 14"',
-    amount: "$1,800",
-    reason: "Functionality issue",
-    buyer_claim: "Screen has 3 dead pixels. Not mentioned in listing.",
-    seller_defense: "Tested before shipping, no dead pixels. May have occurred during transit.",
-    evidence: [
-      "Photo of dead pixels on white screen",
-      "Original listing 'excellent condition'",
-      "Shipping insurance claim",
-    ],
-  },
-  {
-    id: 6,
-    case_id: "#DSP-2388",
-    item: "Sony WH-1000XM5",
-    amount: "$230",
-    reason: "Item damaged in transit",
-    buyer_claim: "Left ear cup cracked when received. Box was damaged too.",
-    seller_defense:
-      "Packed with bubble wrap + original box. Carrier mishandled. Filed shipping claim.",
-    evidence: ["Unboxing video showing damage", "Damaged box photo", "Carrier damage report"],
-  },
-  {
-    id: 7,
-    case_id: "#DSP-2412",
-    item: "Rolex Datejust 36",
-    amount: "$5,800",
-    reason: "Authenticity + condition",
-    buyer_claim:
-      "Serial number doesn't match Rolex registry. Possible franken-watch (mixed parts).",
-    seller_defense:
-      "Purchased from reputable dealer. Serial is from 2019 batch, may not be in public registry.",
-    evidence: [
-      "Serial number close-up",
-      "LegitApp: 62% authentic (inconclusive)",
-      "Dealer receipt",
-    ],
-  },
-  {
-    id: 8,
-    case_id: "#DSP-2445",
-    item: "Galaxy S23 Ultra",
-    amount: "$600",
-    reason: "Battery health discrepancy",
-    buyer_claim: "Listed 94%, received 85%. 9% gap.",
-    seller_defense:
-      "Samsung doesn't show battery health natively. Buyer used third-party app which is unreliable.",
-    evidence: [
-      "AccuBattery screenshot 85%",
-      "Listing stated 94%",
-      "Samsung support: no native health metric",
-    ],
-  },
-  {
-    id: 9,
-    case_id: "#DSP-2501",
-    item: "iPad Air M1",
-    amount: "$420",
-    reason: "Item not received",
-    buyer_claim: "Tracking says delivered but I never received it. Package theft suspected.",
-    seller_defense: "Tracking confirms delivery to correct address. Signed by 'Front Door'.",
-    evidence: [
-      "Tracking screenshot: delivered",
-      "Buyer's address confirmation",
-      "No signature required",
-    ],
-  },
-  {
-    id: 10,
-    case_id: "#DSP-2555",
-    item: "Canon EOS R6 II",
-    amount: "$1,900",
-    reason: "Shutter count misrepresented",
-    buyer_claim: "Listed as 'low shutter count ~5,000', actual shutter count is 42,000.",
-    seller_defense:
-      "I estimated based on usage. Never claimed exact count. Listing said 'approximately'.",
-    evidence: ["Shutter count tool: 42,187", "Listing: '~5,000 shutter count'", "Camera EXIF data"],
-  },
-];
-
 type Phase = "intro" | "test" | "submitting" | "result";
 
 // ─── Main Page ───────────────────────────────────────────────
 export default function ReviewerQualifyPage() {
   const [phase, setPhase] = useState<Phase>("intro");
-  const [cases] = useState<QualifyCase[]>(DEFAULT_CASES);
+  const [cases, setCases] = useState<QualifyCase[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [votes, setVotes] = useState<number[]>([]);
   const [currentVote, setCurrentVote] = useState(50);
@@ -184,7 +53,27 @@ export default function ReviewerQualifyPage() {
   const currentCase = cases[currentIdx];
   const totalCases = cases.length;
 
-  function startTest() {
+  async function startTest() {
+    try {
+      const response = await api.get<{ cases: { case_index: number; description: string }[] }>(
+        "/reviewer/qualification-cases",
+      );
+      setCases(
+        response.cases.map((item) => ({
+          id: item.case_index + 1,
+          case_id: String(item.case_index),
+          item: `Practice case ${item.case_index + 1}`,
+          amount: "—",
+          reason: item.description,
+          buyer_claim: "Review the case summary above.",
+          seller_defense: "Use only the stated case facts.",
+          evidence: [],
+        })),
+      );
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : "Unable to load qualification cases");
+      return;
+    }
     setPhase("test");
     setCurrentIdx(0);
     setVotes([]);
@@ -198,13 +87,39 @@ export default function ReviewerQualifyPage() {
       setPhase("submitting");
       setSubmitError(null);
       try {
-        const response = await api.post<QualifyResponse>("/reviewer/qualify", {
+        const response = await api.post<{
+          result: string;
+          match_rate: number;
+          matches: number;
+          total: number;
+          case_results: {
+            case_index: number;
+            your_vote: number;
+            correct_vote: number;
+            difference: number;
+            match: boolean;
+          }[];
+        }>("/reviewer/qualify", {
           votes: allVotes.map((v, i) => ({
-            case_id: cases[i].case_id,
-            vote_pct: v,
+            case_index: Number(cases[i].case_id),
+            vote: v,
           })),
         });
-        setResult(response);
+        setResult({
+          ...response,
+          passed: response.result === "pass",
+          conditional: response.result === "conditional",
+          required_rate: 0.7,
+          case_results: response.case_results.map((r) => ({
+            case_id: String(r.case_index),
+            item: `Practice case ${r.case_index + 1}`,
+            reason: cases[r.case_index].reason,
+            your_vote: r.your_vote,
+            actual_outcome: r.correct_vote,
+            diff: r.difference,
+            in_zone: r.match,
+          })),
+        });
         setPhase("result");
       } catch (err) {
         setSubmitError(err instanceof Error ? err.message : "Failed to submit qualification");
@@ -240,6 +155,11 @@ export default function ReviewerQualifyPage() {
         <span className="text-ink-secondary">Qualification Test</span>
       </div>
 
+      {submitError && phase === "intro" && (
+        <p role="alert" className="text-error">
+          {submitError}
+        </p>
+      )}
       {/* ── INTRO ── */}
       {phase === "intro" && (
         <div className="space-y-5">
@@ -249,8 +169,8 @@ export default function ReviewerQualifyPage() {
               Reviewer Qualification Test
             </h1>
             <p className="mt-3 text-sm text-ink-secondary max-w-lg mx-auto leading-relaxed">
-              Prove your judgment by reviewing 10 past dispute cases. Your votes are compared
-              against actual community decisions.
+              Prove your judgment by reviewing 10 practice dispute cases. Your votes are compared
+              against practice reference decisions.
             </p>
 
             <div className="mt-8 grid grid-cols-3 gap-4 max-w-sm mx-auto">
@@ -287,7 +207,7 @@ export default function ReviewerQualifyPage() {
                 </div>
                 <div className="flex gap-3">
                   <span className="font-mono text-action-primary font-bold">4.</span>
-                  Your vote is compared to the actual community result (&plusmn;15% tolerance)
+                  Your vote is compared to the practice reference result (&plusmn;15% tolerance)
                 </div>
               </div>
             </div>
@@ -452,7 +372,7 @@ export default function ReviewerQualifyPage() {
                     "You're close! Complete the training module to earn your qualification."}
                   {!result.passed &&
                     !result.conditional &&
-                    "Your votes differed from community consensus. Review the cases below and try again."}
+                    "Your votes differed from practice reference. Review the cases below and try again."}
                 </p>
 
                 <div className="mt-6 inline-flex items-center gap-6 rounded-xl border border-line bg-surface-sunken/50 px-8 py-4">

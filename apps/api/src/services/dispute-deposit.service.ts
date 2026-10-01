@@ -1,15 +1,28 @@
 import { and, type Database, disputeDeposits, eq, lt, sql } from "@haggle/db";
 
-type DepositStatus = "PENDING" | "DEPOSITED" | "FORFEITED" | "REFUNDED";
+type DepositStatus = "PENDING" | "DEPOSITED" | "FORFEITED" | "REFUNDED" | "CANCELLED";
 
 export async function getDepositByDisputeId(db: Database, disputeId: string) {
   const rows = await db
     .select()
     .from(disputeDeposits)
-    .where(eq(disputeDeposits.disputeId, disputeId))
+    .where(and(eq(disputeDeposits.disputeId, disputeId), eq(disputeDeposits.policyVersion, 1)))
     .limit(1);
 
   return rows[0] ?? null;
+}
+
+export async function getReviewDeposits(db: Database, disputeId: string, tier?: 2 | 3) {
+  return db
+    .select()
+    .from(disputeDeposits)
+    .where(
+      and(
+        eq(disputeDeposits.disputeId, disputeId),
+        eq(disputeDeposits.policyVersion, 2),
+        ...(tier === undefined ? [] : [eq(disputeDeposits.tier, tier)]),
+      ),
+    );
 }
 
 export async function getDepositById(db: Database, depositId: string) {
@@ -30,6 +43,8 @@ export async function createDeposit(
     amountCents: number;
     deadlineHours: number;
     deadlineAt: Date;
+    party?: "buyer" | "seller";
+    policyVersion?: 1 | 2;
   },
 ) {
   const [row] = await db
@@ -37,6 +52,8 @@ export async function createDeposit(
     .values({
       disputeId: data.disputeId,
       tier: data.tier,
+      party: data.party ?? "seller",
+      policyVersion: data.policyVersion ?? 1,
       amountCents: data.amountCents,
       deadlineHours: data.deadlineHours,
       deadlineAt: data.deadlineAt,

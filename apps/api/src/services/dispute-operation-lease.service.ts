@@ -6,6 +6,7 @@ export type DisputeOperation =
   | "appeal_submission"
   | "appeal_assignment"
   | "appeal_review"
+  | "dispute_bond_funding"
   | "dispute_resolution";
 
 export interface DisputeOperationLease {

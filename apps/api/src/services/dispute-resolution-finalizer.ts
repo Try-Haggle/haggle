@@ -12,7 +12,16 @@ import type { DepositPaymentRail } from "../payments/deposit-collector.js";
 import { refundDeposit } from "../payments/deposit-refunder.js";
 import { createPaymentServiceFromEnv } from "../payments/providers.js";
 import { executeRefund } from "../payments/refund-executor.js";
-import { getDepositByDisputeId, updateDepositStatus } from "./dispute-deposit.service.js";
+import {
+  finalizeReviewBonds,
+  finalizeSellerDefaultBonds,
+  readBondTier,
+} from "./dispute-bond-escrow.service.js";
+import {
+  getDepositByDisputeId,
+  getReviewDeposits,
+  updateDepositStatus,
+} from "./dispute-deposit.service.js";
 import {
   buildDisputeModuleWebhookEnvelope,
   createDisputeModuleWebhookOutboxRecord,
@@ -39,7 +48,172 @@ export interface FinalizeDisputeResolutionResult {
   dispute: DisputeCase;
   auto_refund: AutoRefundResult;
   deposit_refund: { tx_hash?: string; refund_id?: string } | null;
+  review_bond_settlement?: { tx_hash: string | null; fee_cents: number } | null;
   module_settlement_webhook: DisputeModuleWebhookOutboxRecord | null;
+}
+
+async function finalizeTwoPartyReviewBonds(
+  db: Database,
+  dispute: DisputeCase,
+  resolution: DisputeResolution,
+): Promise<{ tx_hash: string | null; fee_cents: number }> {
+  const metadata = (dispute.metadata ?? {}) as Record<string, unknown>;
+  const tier = Number(metadata.tier);
+  if ((tier !== 2 && tier !== 3) || metadata.review_phase !== "ACTIVE") {
+    throw new Error("REVIEW_BONDS_NOT_READY_FOR_SETTLEMENT");
+  }
+  if (!["buyer_favor", "seller_favor", "partial_refund"].includes(resolution.outcome)) {
+    throw new Error("REVIEW_BOND_OUTCOME_UNSUPPORTED");
+  }
+  const sellerWon = resolution.outcome === "seller_favor";
+  const bonds = await getReviewDeposits(db, dispute.id);
+  const expectedCount = tier === 2 ? 2 : 4;
+  if (bonds.length !== expectedCount) throw new Error("REVIEW_BONDS_INCOMPLETE");
+  let feeCents = 0;
+  for (const reviewedTier of (tier === 2 ? [2] : [2, 3]) as (2 | 3)[]) {
+    const pair = bonds.filter((bond) => bond.tier === reviewedTier);
+    if (
+      pair.length !== 2 ||
+      !pair.some((bond) => bond.party === "buyer") ||
+      !pair.some((bond) => bond.party === "seller") ||
+      pair.some((bond) => {
+        const target = bond.party === (sellerWon ? "seller" : "buyer") ? "REFUNDED" : "FORFEITED";
+        return bond.status !== "DEPOSITED" && bond.status !== target;
+      }) ||
+      pair[0].amountCents !== pair[1].amountCents
+    ) {
+      throw new Error("REVIEW_BONDS_INCOMPLETE");
+    }
+    feeCents += pair[0].amountCents;
+  }
+  const mockOnly = bonds.every((bond) => bond.metadata?.rail === "mock");
+  const mockAllowed =
+    process.env.NODE_ENV !== "production" && process.env.VERCEL_ENV !== "production";
+  let txHash: string | null = null;
+  if (mockOnly) {
+    if (!mockAllowed) throw new Error("MOCK_REVIEW_BONDS_FORBIDDEN");
+  } else {
+    if (bonds.some((bond) => bond.metadata?.rail !== "usdc")) {
+      throw new Error("REVIEW_BOND_RAIL_MISMATCH");
+    }
+    for (const reviewedTier of (tier === 2 ? [2] : [2, 3]) as (2 | 3)[]) {
+      const onChain = await readBondTier(dispute.id, reviewedTier);
+      if (onChain.state !== 2 && onChain.state !== 4) {
+        throw new Error("REVIEW_BOND_ONCHAIN_REVIEW_NOT_STARTED");
+      }
+    }
+    const settlement = await finalizeReviewBonds(dispute.id, sellerWon);
+    if (settlement.feeCents !== feeCents) throw new Error("REVIEW_BOND_FEE_MISMATCH");
+    txHash = settlement.txHash;
+  }
+  for (const bond of bonds) {
+    const winner = bond.party === (sellerWon ? "seller" : "buyer");
+    const target = winner ? "REFUNDED" : "FORFEITED";
+    if (bond.status === target) continue;
+    if (bond.status !== "DEPOSITED") throw new Error("REVIEW_BOND_SETTLEMENT_STATE_MISMATCH");
+    await updateDepositStatus(db, bond.id, target, {
+      resolvedAt: new Date(),
+      metadata: {
+        ...(bond.metadata ?? {}),
+        settlement_tx_hash: txHash,
+        review_fee_cents: winner ? 0 : bond.amountCents,
+        reviewer_payment_status: "HELD",
+      },
+    });
+  }
+  return { tx_hash: txHash, fee_cents: feeCents };
+}
+
+async function finalizeUnfundedSellerReview(
+  db: Database,
+  dispute: DisputeCase,
+  resolution: DisputeResolution,
+): Promise<{ tx_hash: string | null; fee_cents: number }> {
+  const metadata = (dispute.metadata ?? {}) as Record<string, unknown>;
+  const tier = Number(metadata.tier);
+  if (
+    (tier !== 2 && tier !== 3) ||
+    metadata.review_phase !== "SELLER_DEFAULT" ||
+    resolution.outcome !== "buyer_favor"
+  ) {
+    throw new Error("SELLER_DEFAULT_RESOLUTION_INVALID");
+  }
+  const bonds = await getReviewDeposits(db, dispute.id);
+  if (bonds.length !== (tier === 2 ? 2 : 4)) throw new Error("REVIEW_BONDS_INCOMPLETE");
+  const currentBuyer = bonds.find((bond) => bond.tier === tier && bond.party === "buyer");
+  const currentSeller = bonds.find((bond) => bond.tier === tier && bond.party === "seller");
+  if (
+    !currentBuyer ||
+    !currentSeller ||
+    !["DEPOSITED", "REFUNDED"].includes(currentBuyer.status) ||
+    !["PENDING", "CANCELLED"].includes(currentSeller.status) ||
+    !currentSeller.deadlineAt ||
+    currentSeller.deadlineAt.getTime() >= Date.now()
+  ) {
+    throw new Error("SELLER_NONPAYMENT_NOT_PROVEN");
+  }
+  const prior = bonds.filter((bond) => bond.tier === 2 && tier === 3);
+  if (
+    tier === 3 &&
+    (prior.length !== 2 ||
+      prior.some(
+        (bond) =>
+          bond.status !== "DEPOSITED" &&
+          bond.status !== (bond.party === "buyer" ? "REFUNDED" : "FORFEITED"),
+      ) ||
+      prior[0].amountCents !== prior[1].amountCents)
+  ) {
+    throw new Error("PRIOR_REVIEW_BONDS_INCOMPLETE");
+  }
+  const feeCents = tier === 3 ? prior[0].amountCents : 0;
+  const funded = [currentBuyer, ...prior];
+  const mockOnly = funded.every((bond) => bond.metadata?.rail === "mock");
+  const mockAllowed =
+    process.env.NODE_ENV !== "production" && process.env.VERCEL_ENV !== "production";
+  let txHash: string | null = null;
+  if (mockOnly) {
+    if (!mockAllowed) throw new Error("MOCK_REVIEW_BONDS_FORBIDDEN");
+  } else {
+    if (funded.some((bond) => bond.metadata?.rail !== "usdc")) {
+      throw new Error("REVIEW_BOND_RAIL_MISMATCH");
+    }
+    const current = await readBondTier(dispute.id, tier);
+    if (![1, 3].includes(current.state) || !current.buyerFunded || current.sellerFunded) {
+      throw new Error("SELLER_NONPAYMENT_NOT_PROVEN_ON_CHAIN");
+    }
+    if (tier === 3) {
+      const previous = await readBondTier(dispute.id, 2);
+      if (![2, 4].includes(previous.state)) throw new Error("PRIOR_REVIEW_NOT_STARTED_ON_CHAIN");
+    }
+    const settled = await finalizeSellerDefaultBonds(dispute.id, tier);
+    if (settled.feeCents !== feeCents) throw new Error("REVIEW_BOND_FEE_MISMATCH");
+    txHash = settled.txHash;
+  }
+  for (const bond of bonds) {
+    const target =
+      bond.tier === tier
+        ? bond.party === "buyer"
+          ? "REFUNDED"
+          : "CANCELLED"
+        : bond.party === "buyer"
+          ? "REFUNDED"
+          : "FORFEITED";
+    if (bond.status === target) continue;
+    if (bond.status !== (bond.tier === tier && bond.party === "seller" ? "PENDING" : "DEPOSITED")) {
+      throw new Error("REVIEW_BOND_SETTLEMENT_STATE_MISMATCH");
+    }
+    await updateDepositStatus(db, bond.id, target, {
+      resolvedAt: new Date(),
+      metadata: {
+        ...(bond.metadata ?? {}),
+        settlement_tx_hash: txHash,
+        review_fee_cents: target === "FORFEITED" ? bond.amountCents : 0,
+        reviewer_payment_status: target === "FORFEITED" ? "HELD" : "NONE",
+        settlement_reason: "seller_deposit_timeout",
+      },
+    });
+  }
+  return { tx_hash: txHash, fee_cents: feeCents };
 }
 
 function createRefundId(): string {
@@ -398,14 +572,22 @@ export async function finalizeDisputeResolution(
   let autoRefund: AutoRefundResult = null;
   let depositRefund: { tx_hash?: string; refund_id?: string } | null = null;
   const moduleDispute = isModuleDispute(dispute);
+  const twoPartyReview = !moduleDispute && metadata.review_policy_version === 2;
+  const reviewBondSettlement = twoPartyReview
+    ? metadata.review_phase === "SELLER_DEFAULT"
+      ? await finalizeUnfundedSellerReview(db, dispute, resolution)
+      : await finalizeTwoPartyReviewBonds(db, dispute, resolution)
+    : null;
 
   if (
     !moduleDispute &&
     (resolution.outcome === "buyer_favor" || resolution.outcome === "partial_refund")
   ) {
     autoRefund = await finalizeBuyerRefund(db, dispute, resolution);
-  } else if (!moduleDispute && resolution.outcome === "seller_favor") {
+  } else if (!moduleDispute && resolution.outcome === "seller_favor" && !twoPartyReview) {
     depositRefund = await finalizeSellerFavor(db, dispute);
+  } else if (!moduleDispute && resolution.outcome === "seller_favor") {
+    await updateCommerceOrderStatus(db, dispute.order_id, "CLOSED");
   }
 
   const anchoredDispute = withPendingAnchorMetadata(
@@ -451,6 +633,7 @@ export async function finalizeDisputeResolution(
     dispute: disputeToPersist,
     auto_refund: autoRefund,
     deposit_refund: depositRefund,
+    review_bond_settlement: reviewBondSettlement,
     module_settlement_webhook: moduleWebhookOutboxRecord,
   };
 }

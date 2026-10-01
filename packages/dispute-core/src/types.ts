@@ -233,6 +233,7 @@ export interface DepositRequirement {
   tier: 2 | 3;
   amount_cents: number;
   deadline_hours: number;
+  buyer_deposit: DisputeDeposit;
   seller_deposit: DisputeDeposit;
 }
 
@@ -262,8 +263,10 @@ export interface SettlementResolution {
   seller_receives_cents: number;
   dispute_cost_cents: number; // total dispute cost (from loser)
   reviewer_receives_cents: number; // 70% of dispute cost
-  platform_receives_cents: number; // 30% of dispute cost + forfeited deposit
-  deposit_refund_cents: number; // seller deposit returned (if seller won)
+  platform_receives_cents: number; // 30% of a funded T2/T3 cost
+  buyer_deposit_refund_cents: number;
+  seller_deposit_refund_cents: number;
+  deposit_refund_cents: number; // compatibility alias for seller_deposit_refund_cents
 }
 
 /** Reviewer compensation share of dispute cost */

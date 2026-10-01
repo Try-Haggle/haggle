@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { serverApi } from "@/lib/api-server";
 import { createClient } from "@/lib/supabase/server";
+import { WalletProvider } from "@/lib/wallet-provider";
 import { DisputeDetail } from "./dispute-detail";
 
 export interface DisputeEvidence {
@@ -73,11 +74,13 @@ export default async function DisputeDetailPage({ params }: { params: Promise<{ 
   const amountMinor = order?.amount_minor ?? null;
 
   return (
-    <DisputeDetail
-      dispute={dispute}
-      userId={user.id}
-      userRole={userRole}
-      amountMinor={amountMinor}
-    />
+    <WalletProvider>
+      <DisputeDetail
+        dispute={dispute}
+        userId={user.id}
+        userRole={userRole}
+        amountMinor={amountMinor}
+      />
+    </WalletProvider>
   );
 }

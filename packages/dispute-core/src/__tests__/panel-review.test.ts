@@ -112,3 +112,11 @@ describe("evaluatePanelReview", () => {
     expect(result.cost.cost_cents).toBe(3_000);
   });
 });
+
+it("does not count the same juror twice toward quorum", () => {
+  const votes = assignments([70, 70, 70, 70, 70]);
+  votes[4].reviewer_id = votes[0].reviewer_id;
+  expect(
+    evaluatePanelReview({ dispute_id: "d", tier: 2, amount_cents: 50000, assignments: votes }),
+  ).toMatchObject({ ready: false, issues: ["INVALID_ASSIGNMENT"] });
+});

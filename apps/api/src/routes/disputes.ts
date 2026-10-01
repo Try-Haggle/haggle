@@ -17,7 +17,6 @@ import {
   validateEvidenceForReasonCode,
 } from "@haggle/dispute-core";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { isAddress } from "viem";
 import { z } from "zod";
 import { runDisputeEvidenceRetention } from "../jobs/dispute-evidence-retention.js";
 import {
@@ -47,7 +46,6 @@ import {
 import { INPUT_LIMITS } from "../lib/input-limits.js";
 import { createOwnershipMiddleware } from "../middleware/ownership.js";
 import { requireAdmin, requireAuth } from "../middleware/require-auth.js";
-import { confirmUsdcDeposit, initiateDepositCollection } from "../payments/deposit-collector.js";
 import { writeAuditLog } from "../services/admin-action-log.service.js";
 import {
   buildDisputeAiCaseContextFromDispute,
@@ -90,13 +88,20 @@ import {
   verifyTrustedSignedDisputeAiAuditExport,
 } from "../services/dispute-audit-public-key-registry.service.js";
 import {
+  ensureBondTierOpen,
+  fundReviewBond,
+  readBondTier,
+  reviewBondApproval,
+  startFundedReview,
+} from "../services/dispute-bond-escrow.service.js";
+import {
   type CameraChallengeVerificationResult,
   verifyCameraChallenge,
 } from "../services/dispute-camera-challenge.service.js";
 import {
   createDeposit,
-  getDepositByDisputeId,
   getPendingExpiredDeposits,
+  getReviewDeposits,
   updateDepositMetadata,
   updateDepositStatus,
 } from "../services/dispute-deposit.service.js";
@@ -139,6 +144,7 @@ import {
   describeDisputeOrderGate,
   isDisputableOrderStatus,
 } from "../services/dispute-order-gate.service.js";
+import { evaluateDisputePanel } from "../services/dispute-panel-evaluate.service.js";
 import {
   buildDisputePrecedentSnapshot,
   listApprovedDisputePrecedents,
@@ -166,6 +172,11 @@ import {
   updateDisputeRecord,
 } from "../services/dispute-record.service.js";
 import { finalizeDisputeResolution } from "../services/dispute-resolution-finalizer.js";
+import {
+  escalationIssue,
+  reviewTier,
+  withReviewRoundLock,
+} from "../services/dispute-review-round.service.js";
 import { getDisputeSimilarityReviewAlertPolicyStatus } from "../services/dispute-similarity-review-alert.service.js";
 import {
   getDisputeSimilarityReviewAuditArchiveHealth,
@@ -548,6 +559,7 @@ const confirmUsdcSchema = z.object({
 });
 
 const escalateSchema = z.object({
+  expected_tier: z.union([z.literal(1), z.literal(2)]).optional(),
   escalated_by: z.enum(["buyer", "seller", "system"]),
   reason: z.string().max(INPUT_LIMITS.disputeSummaryChars).optional(),
 });
@@ -577,6 +589,74 @@ function containsVerifiedCameraEvidenceMarker(value: string | undefined): boolea
 }
 
 export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
+  const reviewBondMockAllowed =
+    process.env.NODE_ENV !== "production" && process.env.VERCEL_ENV !== "production";
+
+  async function primaryWallet(userId: string): Promise<string | null> {
+    const row = await db.query.userWallets.findFirst({
+      where: (fields, ops) =>
+        ops.and(ops.eq(fields.userId, userId), ops.eq(fields.isPrimary, true)),
+    });
+    return row?.walletAddress ?? null;
+  }
+
+  async function activateReviewIfFunded(disputeId: string, tier: 2 | 3) {
+    const deposits = await getReviewDeposits(db, disputeId, tier);
+    if (deposits.length !== 2 || deposits.some((item) => item.status !== "DEPOSITED")) {
+      return { started: false, reason: "REVIEW_BONDS_INCOMPLETE" };
+    }
+    const mockOnly = deposits.every((item) => item.metadata?.rail === "mock");
+    if (mockOnly && !reviewBondMockAllowed) throw new Error("MOCK_REVIEW_BONDS_FORBIDDEN");
+    if (!mockOnly) {
+      if (deposits.some((item) => item.metadata?.rail !== "usdc")) {
+        throw new Error("REVIEW_BOND_RAIL_MISMATCH");
+      }
+      const onChain = await readBondTier(disputeId, tier);
+      if (!onChain.buyerFunded || !onChain.sellerFunded) {
+        return { started: false, reason: "REVIEW_BONDS_UNCONFIRMED_ON_CHAIN" };
+      }
+      await startFundedReview(disputeId, tier);
+    }
+    return withReviewRoundLock(db, disputeId, async (lockedDb) => {
+      const current = await getDisputeById(lockedDb, disputeId);
+      if (!current || reviewTier(current) !== tier)
+        return { started: false, reason: "REVIEW_TIER_CHANGED" };
+      const metadata = (current.metadata ?? {}) as Record<string, unknown>;
+      if (metadata.review_phase === "ACTIVE") return { started: true, alreadyStarted: true };
+      if (metadata.review_phase !== "AWAITING_BONDS")
+        return { started: false, reason: "REVIEW_PHASE_CHANGED" };
+      const lockedDeposits = await getReviewDeposits(lockedDb, disputeId, tier);
+      if (
+        lockedDeposits.length !== 2 ||
+        lockedDeposits.some((item) => item.status !== "DEPOSITED")
+      ) {
+        return { started: false, reason: "REVIEW_BONDS_INCOMPLETE" };
+      }
+      const order = await getCommerceOrderByOrderId(lockedDb, current.order_id);
+      const amount = Number(order?.amountMinor);
+      if (!order || !Number.isSafeInteger(amount) || amount <= 0) {
+        return { started: false, reason: "INVALID_DISPUTE_AMOUNT" };
+      }
+      await updateDisputeRecord(lockedDb, {
+        ...current,
+        metadata: {
+          ...metadata,
+          review_phase: "ACTIVE",
+          review_started_at: new Date().toISOString(),
+        },
+      });
+      const assignment = await assignReviewersToDispute(
+        lockedDb,
+        disputeId,
+        tier,
+        amount,
+        order.buyerId,
+        order.sellerId,
+      );
+      const panel = await evaluateDisputePanel(lockedDb, disputeId);
+      return { started: true, assignment, panel: panel.evaluation };
+    });
+  }
   const disputeService = new DisputeService();
   const { requireDisputeParty } = createOwnershipMiddleware(db);
 
@@ -1723,19 +1803,18 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     return reply.code(201).send({ ...result, test_contract_lock: testContractLock });
   });
 
-  // POST /disputes/deposits/expire — admin/cron: forfeit expired deposits
+  // POST /disputes/deposits/expire — report expired quotes for human review.
+  // Pending funds do not exist and must never be marked FORFEITED by a timer.
   // Registered BEFORE /:id routes to avoid route collision
   app.post("/disputes/deposits/expire", { preHandler: [requireAdmin] }, async (_request, reply) => {
     const expired = await getPendingExpiredDeposits(db);
-    let forfeited = 0;
-    for (const deposit of expired) {
-      await updateDepositStatus(db, deposit.id, "FORFEITED", { resolvedAt: new Date() });
-      forfeited++;
-    }
-    return reply.send({ forfeited_count: forfeited });
+    return reply.send({
+      expired_deposit_ids: expired.map((deposit) => deposit.id),
+      forfeited_count: 0,
+    });
   });
 
-  // POST /disputes/:id/escalate — escalate T1→T2→T3 with auto deposit
+  // POST /disputes/:id/escalate — create two separate, unfunded review bonds.
   app.post<{ Params: { id: string } }>(
     "/disputes/:id/escalate",
     { preHandler: [requireAuth, requireDisputeParty()] },
@@ -1772,80 +1851,95 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         });
       }
 
-      // Determine current tier from metadata or default to T1
-      const currentTier = ((dispute.metadata as Record<string, unknown>)?.tier as number) ?? 1;
-      if (currentTier >= 3) {
-        return reply
-          .code(400)
-          .send({ error: "MAX_TIER_REACHED", message: "Cannot escalate beyond T3" });
-      }
-
-      const nextTier = (currentTier + 1) as DisputeTier;
-
-      // Compute cost for next tier using dispute-core — use order amount as GMV basis
-      const amountCents = order?.amountMinor ? parseInt(String(order.amountMinor), 10) : 0;
-
-      if (amountCents <= 0) {
-        return reply.code(400).send({
-          error: "INVALID_DISPUTE_AMOUNT",
-          message: "Order must have a positive amount for escalation",
-        });
-      }
-
-      const cost = computeDisputeCost(amountCents, nextTier);
-
-      // Update dispute metadata with new tier
-      await updateDisputeRecord(db, {
-        ...dispute,
-        metadata: {
-          ...(dispute.metadata as Record<string, unknown>),
-          tier: nextTier,
-          escalated_by: escalatedBy,
-          escalated_reason: parsed.data.reason ?? null,
-        },
-      });
-
-      // For T2/T3: create deposit requirement (seller-only deposit)
-      let deposit = null;
-      if (nextTier >= 2) {
-        const depositReq = createDepositRequirement(id, nextTier as 2 | 3, amountCents);
-        deposit = await createDeposit(db, {
+      // Share the resolution lease so escalation cannot race money finalization.
+      if (
+        !(await acquireOperationLeaseGuard({
+          request,
+          reply,
           disputeId: id,
-          tier: nextTier,
-          amountCents: depositReq.amount_cents,
-          deadlineHours: depositReq.deadline_hours,
-          deadlineAt: new Date(Date.now() + depositReq.deadline_hours * 60 * 60 * 1000),
-        });
-      }
-
-      // Auto-assign reviewers for T2/T3 escalation
-      let reviewerAssignment = null;
-      if (nextTier >= 2 && order) {
-        try {
-          reviewerAssignment = await assignReviewersToDispute(
-            db,
-            id,
-            nextTier,
-            amountCents,
-            order.buyerId,
-            order.sellerId,
-          );
-        } catch (assignErr) {
-          console.error(
-            "[disputes] Auto-assign reviewers failed:",
-            assignErr instanceof Error ? assignErr.message : String(assignErr),
+          operation: "dispute_resolution",
+          conflictError: "DISPUTE_OPERATION_IN_PROGRESS",
+          conflictMessage: "A review transition or resolution is already in progress",
+        }))
+      )
+        return;
+      const result = await withReviewRoundLock(db, id, async (db) => {
+        const respond = (status: number, body: object) => ({ status, body });
+        const current = await getDisputeById(db, id);
+        if (!current) return respond(404, { error: "DISPUTE_NOT_FOUND" });
+        const issue = escalationIssue(current, parsed.data.expected_tier);
+        if (issue) return respond(409, { error: issue });
+        const currentTier = reviewTier(current);
+        if (currentTier === 2) {
+          const panel = await evaluateDisputePanel(db, id, { persist: false });
+          if (!panel.evaluation.ready) return respond(409, { error: "PANEL_REVIEW_NOT_READY" });
+        }
+        const nextTier = (currentTier + 1) as 2 | 3;
+        const amountCents = Number(order?.amountMinor);
+        if (!Number.isSafeInteger(amountCents) || amountCents <= 0) {
+          return respond(400, { error: "INVALID_DISPUTE_AMOUNT" });
+        }
+        const cost = computeDisputeCost(amountCents, nextTier);
+        const now = new Date();
+        const metadata = (current.metadata ?? {}) as Record<string, unknown>;
+        const previousDecision =
+          currentTier === 1 ? metadata.ai_resolution_assessor : metadata.panel_review_evaluation;
+        const existingBonds = await getReviewDeposits(db, id, nextTier);
+        if (existingBonds.length) return respond(409, { error: "REVIEW_BONDS_ALREADY_CREATED" });
+        const requirement = createDepositRequirement(id, nextTier, cost.cost_cents);
+        const deadlineAt = new Date(now.getTime() + requirement.deadline_hours * 3600000);
+        const deposits = [];
+        for (const party of ["buyer", "seller"] as const) {
+          deposits.push(
+            await createDeposit(db, {
+              disputeId: id,
+              tier: nextTier,
+              party,
+              policyVersion: 2,
+              amountCents: requirement.amount_cents,
+              deadlineHours: requirement.deadline_hours,
+              deadlineAt,
+            }),
           );
         }
-      }
-
-      return reply.send({
-        dispute_id: id,
-        previous_tier: currentTier,
-        new_tier: nextTier,
-        cost,
-        deposit,
-        reviewer_assignment: reviewerAssignment,
+        await updateDisputeRecord(db, {
+          ...current,
+          status: "UNDER_REVIEW",
+          metadata: {
+            ...metadata,
+            tier: nextTier,
+            escalated_by: escalatedBy,
+            escalated_reason: parsed.data.reason ?? null,
+            review_phase: "AWAITING_BONDS",
+            review_policy_version: 2,
+            review_requested_at: now.toISOString(),
+            previous_tier_decision: previousDecision,
+            panel_review_evaluation: null,
+            current_tier_cost: cost,
+            review_history: [
+              ...(Array.isArray(metadata.review_history) ? metadata.review_history : []),
+              {
+                tier: currentTier,
+                decision: previousDecision,
+                escalated_at: now.toISOString(),
+                escalated_by: escalatedBy,
+                reason: parsed.data.reason ?? null,
+              },
+            ],
+          },
+        });
+        const updated = await getDisputeById(db, id);
+        return respond(200, {
+          dispute_id: id,
+          dispute: updated,
+          previous_tier: currentTier,
+          new_tier: nextTier,
+          cost,
+          deposits,
+          review_phase: "AWAITING_BONDS",
+        });
       });
+      return reply.code(result.status).send(result.body);
     },
   );
 
@@ -1858,7 +1952,15 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       if (!dispute) {
         return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
       }
-      return reply.send({ dispute });
+      if (reviewTier(dispute) >= 2) {
+        const panel = await evaluateDisputePanel(db, dispute.id, { persist: false });
+        dispute.metadata = { ...dispute.metadata, panel_review_evaluation: panel.evaluation };
+      }
+      const reviewDeposits =
+        reviewTier(dispute) >= 2
+          ? await getReviewDeposits(db, dispute.id, reviewTier(dispute) as 2 | 3)
+          : [];
+      return reply.send({ dispute, review_deposits: reviewDeposits });
     },
   );
 
@@ -2671,6 +2773,27 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       });
     }
 
+    if (
+      dispute.metadata?.review_policy_version === 2 &&
+      dispute.metadata?.review_phase !== "ACTIVE"
+    ) {
+      return reply.code(409).send({ error: "REVIEW_BONDS_NOT_READY_FOR_RESOLUTION" });
+    }
+
+    if (reviewTier(dispute) >= 2 && dispute.status === "UNDER_REVIEW") {
+      const { evaluation } = await evaluateDisputePanel(db, disputeId, { persist: false });
+      if (!evaluation.ready) return reply.code(409).send({ error: "PANEL_REVIEW_NOT_READY" });
+      if (
+        parsed.data.outcome !== evaluation.outcome ||
+        (parsed.data.refund_amount_minor ?? 0) !== evaluation.refund_amount_minor
+      ) {
+        return reply.code(409).send({
+          error: "PANEL_RESOLUTION_MISMATCH",
+          message: "The resolution must match the current panel recommendation",
+        });
+      }
+    }
+
     try {
       const result = disputeService.resolve(dispute, parsed.data);
       if (!result.value) {
@@ -2711,6 +2834,88 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       });
     }
   });
+
+  // An admin verifies an expired seller quote. This is an administrative
+  // nonpayment outcome, not a panel decision about the merits.
+  app.post<{ Params: { id: string } }>(
+    "/disputes/:id/settle-seller-nonpayment",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const id = request.params.id;
+      if (
+        !(await acquireOperationLeaseGuard({
+          request,
+          reply,
+          disputeId: id,
+          operation: "dispute_resolution",
+          conflictError: "DISPUTE_RESOLUTION_IN_PROGRESS",
+          conflictMessage: "Another API instance is already resolving this dispute",
+        }))
+      )
+        return;
+      const dispute = await getDisputeById(db, id);
+      if (!dispute) return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
+      const tier = reviewTier(dispute);
+      if (
+        (tier !== 2 && tier !== 3) ||
+        dispute.status !== "UNDER_REVIEW" ||
+        dispute.metadata?.review_policy_version !== 2 ||
+        dispute.metadata?.review_phase !== "AWAITING_BONDS"
+      ) {
+        return reply.code(409).send({ error: "SELLER_NONPAYMENT_NOT_ELIGIBLE" });
+      }
+      const pair = await getReviewDeposits(db, id, tier);
+      const buyer = pair.find((item) => item.party === "buyer");
+      const seller = pair.find((item) => item.party === "seller");
+      if (
+        pair.length !== 2 ||
+        !buyer ||
+        !["DEPOSITED", "REFUNDED"].includes(buyer.status) ||
+        !seller ||
+        !["PENDING", "CANCELLED"].includes(seller.status) ||
+        !seller.deadlineAt ||
+        seller.deadlineAt.getTime() >= Date.now()
+      ) {
+        return reply.code(409).send({ error: "SELLER_NONPAYMENT_NOT_PROVEN" });
+      }
+      if (appealBlocksResolution(dispute))
+        return reply.code(409).send({ error: "APPEAL_REVIEW_REQUIRED" });
+      const withDefault = {
+        ...dispute,
+        metadata: {
+          ...dispute.metadata,
+          review_phase: "SELLER_DEFAULT",
+          review_default_reason: "seller_deposit_timeout",
+          review_default_tier: tier,
+          review_default_verified_at: new Date().toISOString(),
+        },
+      } as DisputeCase;
+      try {
+        const result = disputeService.resolve(withDefault, {
+          outcome: "buyer_favor",
+          summary: `Seller did not fund the T${tier} review bond before its deadline. No T${tier} panel review occurred.`,
+        });
+        if (!result.value) throw new Error("RESOLUTION_RESULT_MISSING");
+        const finalization = await finalizeDisputeResolution(
+          db,
+          withDefault,
+          result.value,
+          result.dispute,
+        );
+        return reply.send({
+          dispute: finalization.dispute,
+          auto_refund: finalization.auto_refund,
+          review_bond_settlement: finalization.review_bond_settlement,
+          reason: "seller_deposit_timeout",
+        });
+      } catch (error) {
+        return reply.code(503).send({
+          error: "SELLER_NONPAYMENT_SETTLEMENT_FAILED",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  );
 
   // POST /disputes/:id/close — close the dispute
   app.post(
@@ -2761,99 +2966,99 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
           .send({ error: "INVALID_DEPOSIT_REQUEST", issues: parsed.error.issues });
       }
 
-      // 1. Validate deposit exists and is PENDING
-      const deposit = await getDepositByDisputeId(db, id);
-      if (!deposit) {
-        return reply.code(404).send({ error: "DEPOSIT_NOT_FOUND" });
-      }
-
-      if (deposit.status !== "PENDING") {
-        return reply.code(400).send({
-          error: "DEPOSIT_ALREADY_PROCESSED",
-          message: `Deposit status is ${deposit.status}`,
-        });
-      }
-
-      // 2. Validate caller is the seller (deposits are seller-only)
       const order = (request as unknown as Record<string, unknown>).orderResource as
         | { id: string; buyerId: string; sellerId: string; amountMinor?: unknown }
         | undefined;
       const userId = request.user!.id;
-      if (order && userId !== order.sellerId) {
-        return reply
-          .code(403)
-          .send({ error: "SELLER_ONLY", message: "Only the seller can post a deposit" });
+      const party =
+        userId === order?.buyerId ? "buyer" : userId === order?.sellerId ? "seller" : null;
+      if (!order || !party) return reply.code(403).send({ error: "DISPUTE_PARTY_REQUIRED" });
+      const dispute = await getDisputeById(db, id);
+      const tier = dispute ? reviewTier(dispute) : 0;
+      if ((tier !== 2 && tier !== 3) || dispute?.metadata?.review_phase !== "AWAITING_BONDS") {
+        return reply.code(409).send({ error: "REVIEW_BONDS_NOT_AWAITED" });
       }
-
-      // 3. Validate wallet address if provided (for USDC rail)
-      if (parsed.data.wallet_address && !isAddress(parsed.data.wallet_address)) {
-        return reply.code(400).send({
-          error: "INVALID_WALLET_ADDRESS",
-          message: "wallet_address must be a valid Ethereum address",
-        });
+      const deposits = await getReviewDeposits(db, id, tier);
+      const deposit = deposits.find((item) => item.party === party);
+      if (!deposit) return reply.code(404).send({ error: "REVIEW_BOND_NOT_FOUND" });
+      if (deposit.status !== "PENDING") {
+        return reply.code(409).send({ error: "DEPOSIT_ALREADY_PROCESSED", deposit });
       }
-
-      // 4. Amount is ALWAYS server-computed — never trust client
-      const amountCents = deposit.amountCents;
-
-      // 5. Initiate deposit collection
+      if (!deposit.deadlineAt || deposit.deadlineAt.getTime() < Date.now()) {
+        return reply.code(409).send({ error: "REVIEW_BOND_DEADLINE_PASSED" });
+      }
+      const rail = parsed.data.rail ?? (reviewBondMockAllowed ? "mock" : "usdc");
+      if (rail === "stripe") {
+        return reply.code(409).send({ error: "REVIEW_BOND_STRIPE_UNSUPPORTED" });
+      }
+      if (
+        deposits.some(
+          (item) => item.party !== party && item.metadata?.rail && item.metadata.rail !== rail,
+        )
+      ) {
+        return reply.code(409).send({ error: "REVIEW_BOND_RAIL_MISMATCH" });
+      }
+      if (tier === 3) {
+        const prior = await getReviewDeposits(db, id, 2);
+        if (prior.length !== 2 || prior.some((item) => item.metadata?.rail !== rail)) {
+          return reply.code(409).send({ error: "REVIEW_BOND_RAIL_MISMATCH" });
+        }
+      }
       try {
-        const result = await initiateDepositCollection({
-          deposit_id: deposit.id,
-          dispute_id: id,
-          amount_cents: amountCents,
-          seller_wallet_address: parsed.data.wallet_address,
-          seller_user_id: userId,
-          rail: parsed.data.rail,
-        });
-
-        const rail = result.rail;
-
         if (rail === "mock") {
-          // Mock: immediately mark as DEPOSITED
+          if (!reviewBondMockAllowed)
+            return reply.code(403).send({ error: "MOCK_REVIEW_BOND_FORBIDDEN" });
           const updated = await updateDepositStatus(db, deposit.id, "DEPOSITED", {
             depositedAt: new Date(),
-            metadata: {
-              ...(deposit.metadata ?? {}),
-              rail,
-              mock_tx_id: result.mock_tx_id,
-            },
+            metadata: { ...(deposit.metadata ?? {}), rail, mock_tx_id: `mock_${deposit.id}` },
           });
-          return reply.send({ deposit: updated, collection: result });
-        }
-
-        if (rail === "usdc") {
-          // USDC: update metadata with approval instructions, status stays PENDING
-          await updateDepositMetadata(db, deposit.id, {
-            ...(deposit.metadata ?? {}),
-            rail,
-            wallet_address: parsed.data.wallet_address,
-            usdc_approval: result.usdc_approval,
-          });
+          const activation = await activateReviewIfFunded(id, tier);
           return reply.send({
-            deposit: { ...deposit, metadata: { ...(deposit.metadata ?? {}), rail } },
-            collection: result,
+            deposit: updated,
+            collection: { rail, status: "completed" },
+            activation,
           });
         }
-
-        if (rail === "stripe") {
-          // Stripe: update metadata with session info, status stays PENDING
-          await updateDepositMetadata(db, deposit.id, {
-            ...(deposit.metadata ?? {}),
-            rail,
-            stripe_payment_intent_id: result.stripe_payment_intent_id,
-          });
-          return reply.send({
-            deposit: { ...deposit, metadata: { ...(deposit.metadata ?? {}), rail } },
-            collection: result,
-          });
+        const buyerWallet = await primaryWallet(order.buyerId);
+        const sellerWallet = await primaryWallet(order.sellerId);
+        const wallet = party === "buyer" ? buyerWallet : sellerWallet;
+        if (
+          !wallet ||
+          !buyerWallet ||
+          !sellerWallet ||
+          !parsed.data.wallet_address ||
+          parsed.data.wallet_address.toLowerCase() !== wallet.toLowerCase()
+        ) {
+          return reply.code(409).send({ error: "REVIEW_PARTY_PRIMARY_WALLET_REQUIRED" });
         }
-
-        // Should not reach here
-        return reply.send({ deposit, collection: result });
+        await ensureBondTierOpen({
+          disputeId: id,
+          tier,
+          buyerWallet,
+          sellerWallet,
+          feeCents: deposit.amountCents,
+          deadline: deposit.deadlineAt!,
+        });
+        const approval = await reviewBondApproval({
+          disputeId: id,
+          tier,
+          party,
+          wallet,
+          feeCents: deposit.amountCents,
+        });
+        await updateDepositMetadata(db, deposit.id, {
+          ...(deposit.metadata ?? {}),
+          rail,
+          wallet_address: wallet,
+          escrow_contract: approval.spender_address,
+        });
+        return reply.send({
+          deposit: { ...deposit, metadata: { ...(deposit.metadata ?? {}), rail } },
+          collection: { rail, status: "pending", usdc_approval: approval },
+        });
       } catch (error) {
-        return reply.code(500).send({
-          error: "DEPOSIT_COLLECTION_FAILED",
+        return reply.code(503).send({
+          error: "REVIEW_BOND_INITIATION_FAILED",
           message: error instanceof Error ? error.message : String(error),
         });
       }
@@ -2873,71 +3078,66 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
           .send({ error: "INVALID_CONFIRM_REQUEST", issues: parsed.error.issues });
       }
 
-      // 1. Validate wallet address
-      if (!isAddress(parsed.data.wallet_address)) {
-        return reply.code(400).send({
-          error: "INVALID_WALLET_ADDRESS",
-          message: "wallet_address must be a valid Ethereum address",
-        });
-      }
-
-      // 2. Validate deposit exists and is PENDING
-      const deposit = await getDepositByDisputeId(db, id);
-      if (!deposit) {
-        return reply.code(404).send({ error: "DEPOSIT_NOT_FOUND" });
-      }
-
-      if (deposit.status !== "PENDING") {
-        return reply.code(400).send({
-          error: "DEPOSIT_ALREADY_PROCESSED",
-          message: `Deposit status is ${deposit.status}`,
-        });
-      }
-
-      // 3. Validate the deposit was initiated with USDC rail
-      const depositMeta = deposit.metadata as Record<string, unknown> | null;
-      if (depositMeta?.rail !== "usdc") {
-        return reply
-          .code(400)
-          .send({ error: "WRONG_RAIL", message: "This deposit was not initiated with USDC rail" });
-      }
-
-      // 4. Validate caller is the seller
       const order = (request as unknown as Record<string, unknown>).orderResource as
         | { id: string; buyerId: string; sellerId: string; amountMinor?: unknown }
         | undefined;
       const userId = request.user!.id;
-      if (order && userId !== order.sellerId) {
-        return reply
-          .code(403)
-          .send({ error: "SELLER_ONLY", message: "Only the seller can confirm a deposit" });
+      const party =
+        userId === order?.buyerId ? "buyer" : userId === order?.sellerId ? "seller" : null;
+      if (!party) return reply.code(403).send({ error: "DISPUTE_PARTY_REQUIRED" });
+      const dispute = await getDisputeById(db, id);
+      const tier = dispute ? reviewTier(dispute) : 0;
+      if ((tier !== 2 && tier !== 3) || dispute?.metadata?.review_phase !== "AWAITING_BONDS") {
+        return reply.code(409).send({ error: "REVIEW_BONDS_NOT_AWAITED" });
       }
-
-      // 5. Amount is server-computed — use the stored deposit amount
-      const amountCents = deposit.amountCents;
-
+      const deposits = await getReviewDeposits(db, id, tier);
+      const deposit = deposits.find((item) => item.party === party);
+      if (!deposit) return reply.code(404).send({ error: "REVIEW_BOND_NOT_FOUND" });
+      if (deposit.status === "DEPOSITED") {
+        const activation = await activateReviewIfFunded(id, tier);
+        return reply.send({ deposit, idempotent: true, activation });
+      }
+      if (deposit.status !== "PENDING")
+        return reply.code(409).send({ error: "DEPOSIT_ALREADY_PROCESSED" });
+      const depositMeta = deposit.metadata as Record<string, unknown> | null;
+      if (
+        depositMeta?.rail !== "usdc" ||
+        depositMeta.wallet_address !== parsed.data.wallet_address
+      ) {
+        return reply.code(409).send({ error: "REVIEW_BOND_WALLET_OR_RAIL_MISMATCH" });
+      }
+      if (
+        !(await acquireOperationLeaseGuard({
+          request,
+          reply,
+          disputeId: id,
+          operation: "dispute_bond_funding",
+          conflictError: "REVIEW_BOND_FUNDING_IN_PROGRESS",
+          conflictMessage: "Another bond funding request is in progress",
+        }))
+      )
+        return;
       try {
-        // 6. Execute transferFrom via gas relayer (verifies allowance on-chain)
-        const { tx_hash } = await confirmUsdcDeposit({
-          deposit_id: deposit.id,
-          seller_wallet_address: parsed.data.wallet_address,
-          amount_cents: amountCents,
+        const funded = await fundReviewBond({
+          disputeId: id,
+          tier,
+          party,
+          wallet: parsed.data.wallet_address,
+          feeCents: deposit.amountCents,
         });
-
-        // 7. Mark deposit as DEPOSITED
         const updated = await updateDepositStatus(db, deposit.id, "DEPOSITED", {
           depositedAt: new Date(),
           metadata: {
             ...(depositMeta ?? {}),
-            tx_hash,
+            tx_hash: funded.txHash ?? depositMeta?.tx_hash,
             confirmed_at: new Date().toISOString(),
           },
         });
-
-        return reply.send({ deposit: updated, tx_hash });
+        const activation = await activateReviewIfFunded(id, tier);
+        return reply.send({ deposit: updated, tx_hash: funded.txHash, activation });
       } catch (error) {
-        return reply.code(500).send({
-          error: "USDC_DEPOSIT_FAILED",
+        return reply.code(503).send({
+          error: "REVIEW_BOND_CONFIRMATION_FAILED",
           message: error instanceof Error ? error.message : String(error),
         });
       }
@@ -2950,11 +3150,42 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     { preHandler: [requireAuth, requireDisputeParty()] },
     async (request, reply) => {
       const { id } = request.params;
-      const deposit = await getDepositByDisputeId(db, id);
-      if (!deposit) {
-        return reply.code(404).send({ error: "DEPOSIT_NOT_FOUND" });
+      const dispute = await getDisputeById(db, id);
+      const tier = dispute ? reviewTier(dispute) : 0;
+      if (tier !== 2 && tier !== 3)
+        return reply.code(404).send({ error: "REVIEW_BONDS_NOT_FOUND" });
+      const deposits = await getReviewDeposits(db, id, tier);
+      const order = (request as unknown as Record<string, unknown>).orderResource as
+        | { buyerId: string; sellerId: string }
+        | undefined;
+      const party =
+        request.user!.id === order?.buyerId
+          ? "buyer"
+          : request.user!.id === order?.sellerId
+            ? "seller"
+            : null;
+      return reply.send({
+        deposits,
+        deposit: deposits.find((item) => item.party === party) ?? null,
+      });
+    },
+  );
+
+  // Recover an on-chain review start that succeeded before the DB commit, or
+  // retry reviewer allocation when the pool was previously short.
+  app.post<{ Params: { id: string } }>(
+    "/disputes/:id/start-review",
+    { preHandler: [requireAuth, requireDisputeParty()] },
+    async (request, reply) => {
+      const dispute = await getDisputeById(db, request.params.id);
+      const tier = dispute ? reviewTier(dispute) : 0;
+      if (tier !== 2 && tier !== 3) return reply.code(409).send({ error: "REVIEW_TIER_INVALID" });
+      try {
+        const result = await activateReviewIfFunded(request.params.id, tier);
+        return reply.code(result.started ? 200 : 409).send(result);
+      } catch (error) {
+        return reply.code(503).send({ error: "REVIEW_START_FAILED", message: String(error) });
       }
-      return reply.send({ deposit });
     },
   );
 

@@ -1,18 +1,18 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+import { computeDisputeCost } from "../dispute-cost.js";
 import {
+  checkDefaultJudgment,
   createDepositRequirement,
   recordDeposit,
-  checkDefaultJudgment,
   resolveDeposit,
 } from "../dispute-deposit.js";
-import { computeDisputeCost } from "../dispute-cost.js";
 
 // ---------------------------------------------------------------------------
 // createDepositRequirement
 // ---------------------------------------------------------------------------
 
 describe("createDepositRequirement", () => {
-  it("creates requirement for Tier 2 — seller only", () => {
+  it("requires equal buyer and seller bonds beyond the order principal", () => {
     const cost = computeDisputeCost(100_000, 2);
     const req = createDepositRequirement("d-001", 2, cost.cost_cents);
 
@@ -21,7 +21,8 @@ describe("createDepositRequirement", () => {
     expect(req.amount_cents).toBe(cost.cost_cents);
     expect(req.deadline_hours).toBe(48);
     expect(req.seller_deposit).toBeDefined();
-    expect((req as any).buyer_deposit).toBeUndefined();
+    expect(req.buyer_deposit.amount_cents).toBe(cost.cost_cents);
+    expect(req.buyer_deposit.status).toBe("PENDING");
   });
 
   it("creates requirement for Tier 3 with 72h deadline", () => {
@@ -46,7 +47,9 @@ describe("createDepositRequirement", () => {
 
   it("throws on non-positive amount", () => {
     expect(() => createDepositRequirement("d-006", 2, 0)).toThrow("amount_cents must be positive");
-    expect(() => createDepositRequirement("d-007", 2, -100)).toThrow("amount_cents must be positive");
+    expect(() => createDepositRequirement("d-007", 2, -100)).toThrow(
+      "amount_cents must be positive",
+    );
   });
 });
 
@@ -68,8 +71,9 @@ describe("recordDeposit", () => {
     let req = createDepositRequirement("d-013", 2, 2_000);
     req = recordDeposit(req, "2026-04-01T10:00:00Z");
 
-    expect(() => recordDeposit(req, "2026-04-01T11:00:00Z"))
-      .toThrow("seller deposit is already DEPOSITED");
+    expect(() => recordDeposit(req, "2026-04-01T11:00:00Z")).toThrow(
+      "seller deposit is already DEPOSITED",
+    );
   });
 });
 
@@ -95,12 +99,21 @@ describe("checkDefaultJudgment", () => {
   });
 
   it("buyer auto-wins when seller doesn't deposit by deadline", () => {
-    const req = createDepositRequirement("d-023", 2, 2_000);
+    const req = recordDeposit(
+      createDepositRequirement("d-023", 2, 2_000),
+      "2026-04-01T10:00:00Z",
+      "buyer",
+    );
 
     const result = checkDefaultJudgment(req, deadline, "2026-04-03T00:00:00Z");
     expect(result).not.toBeNull();
     expect(result!.winning_party).toBe("buyer");
     expect(result!.reason).toBe("seller_deposit_timeout");
+  });
+
+  it("does not default the seller when the buyer has not deposited", () => {
+    const req = createDepositRequirement("d-024", 2, 2_000);
+    expect(checkDefaultJudgment(req, deadline, "2026-04-03T00:00:00Z")).toBeNull();
   });
 });
 

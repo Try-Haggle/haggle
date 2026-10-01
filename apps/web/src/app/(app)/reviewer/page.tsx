@@ -2,670 +2,122 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Badge, buttonVariants, EmptyState, Spinner, TierBadge } from "@/components/ui";
+import { Alert, Badge, Button, EmptyState, Spinner } from "@/components/ui";
 import { api } from "@/lib/api-client";
-import { cn } from "@/lib/cn";
 
-// ─── Types ───────────────────────────────────────────────────
-interface ReviewerProfile {
-  user_id: string;
-  display_name: string;
-  tier: string;
-  stars: number;
-  score: number;
+interface Profile {
+  qualified: boolean;
+  ds_tier: string;
+  ds_score: number;
   vote_weight: number;
   cases_reviewed: number;
-  zone_hit_rate: number;
-  participation_rate: number;
-  avg_response_hours: number;
   active_slots: number;
   max_slots: number;
-  qualified: boolean;
-  qualified_at: string | null;
-  next_tier: string | null;
-  next_tier_score: number | null;
-  earnings_7d: number;
-  earnings_7d_cases: number;
-  earnings_30d: number;
-  earnings_30d_cases: number;
-  earnings_all: number;
-  earnings_all_cases: number;
-  specializations: Specialization[];
-  qualification: {
-    transactions: number;
-    trust_score: number;
-    test_score: number | null;
-  };
+  total_earnings_cents: number;
 }
-
-interface Specialization {
-  tag: string;
-  cases: number;
-  hit_rate: number;
-  score: number;
-  tier: string;
-  stars: number;
-}
-
 interface Assignment {
-  id: string;
+  assignment_id: string;
   dispute_id: string;
+  tier: number;
   status: "active" | "voted" | "decided";
   item_title: string | null;
   amount_minor: number | null;
-  tier: string | null;
-  deadline: string | null;
-  reward_usdc: number | null;
-  your_vote: number | null;
-  in_majority: boolean | null;
-  ds_impact: number | null;
-  outcome_pct: number | null;
-  outcome_label: string | null;
+  vote_value: number | null;
 }
-
-interface AssignmentsResponse {
-  assignments: Assignment[];
-  total: number;
-}
-
-// ─── Constants ───────────────────────────────────────────────
-type CaseTab = "active" | "voted" | "decided";
-
-function formatCurrency(minor: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(minor / 100);
-}
-
-// ─── Main Page ───────────────────────────────────────────────
 export default function ReviewerDashboardPage() {
-  const [profile, setProfile] = useState<ReviewerProfile | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<Assignment["status"]>("active");
   const [error, setError] = useState<string | null>(null);
-  const [caseTab, setCaseTab] = useState<CaseTab>("active");
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const refresh = useCallback(async () => {
     try {
-      const [profileData, assignmentsData] = await Promise.all([
-        api.get<ReviewerProfile>("/reviewer/profile"),
-        api.get<AssignmentsResponse>("/reviewer/assignments?status=all"),
+      const [p, a] = await Promise.all([
+        api.get<Profile>("/reviewer/profile"),
+        api.get<{ assignments: Assignment[] }>("/reviewer/assignments?status=all"),
       ]);
-      setProfile(profileData);
-      setAssignments(assignmentsData.assignments);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to load reviewer data";
-      setError(msg);
-    } finally {
-      setLoading(false);
+      setProfile(p);
+      setAssignments(a.assignments);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to load reviews");
     }
   }, []);
-
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  // ─── Loading state ──────────────────────────────────────
-  if (loading) {
-    return (
-      <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-5xl mx-auto">
-        <div className="flex items-center justify-center gap-2 py-20 text-ink-secondary text-sm">
-          <Spinner size="sm" />
-          Loading reviewer dashboard...
-        </div>
-      </main>
-    );
-  }
-
-  // ─── Error / not qualified ──────────────────────────────
-  if (error || !profile) {
-    return (
-      <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-5xl mx-auto">
-        <EmptyState className="bg-surface-sunken/50" title={error ?? "Unable to load profile."} />
-      </main>
-    );
-  }
-
-  // API may omit `qualification` for some profiles — fall back to zeros so the
-  // requirement cards render instead of crashing.
-  const qual = profile.qualification ?? { transactions: 0, trust_score: 0, test_score: null };
-
-  // ─── Not qualified: show CTA ────────────────────────────
-  if (!profile.qualified) {
-    return (
-      <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-3xl mx-auto">
-        <div className="rounded-xl border border-line bg-surface-sunken/50 p-10 text-center">
-          <div className="text-5xl mb-4">&#x2696;&#xFE0F;</div>
-          <h1 className="text-2xl font-bold text-ink tracking-tight">Become a Dispute Reviewer</h1>
-          <p className="mt-3 text-ink-secondary max-w-md mx-auto leading-relaxed">
-            Earn USDC by reviewing disputes. Complete the qualification test to join the reviewer
-            panel.
-          </p>
-
-          <div className="mt-8 grid grid-cols-3 gap-4 max-w-sm mx-auto">
-            <QualReqCard
-              label="Transactions"
-              value={`${qual.transactions}`}
-              required="5+"
-              met={qual.transactions >= 5}
-            />
-            <QualReqCard
-              label="Trust Score"
-              value={`${qual.trust_score}`}
-              required="50+"
-              met={qual.trust_score >= 50}
-            />
-            <QualReqCard
-              label="Test Score"
-              value={qual.test_score != null ? `${qual.test_score}%` : "N/A"}
-              required="70%+"
-              met={(qual.test_score ?? 0) >= 70}
-            />
-          </div>
-
-          <Link
-            href="/reviewer/qualify"
-            className={cn(buttonVariants({ variant: "primary", size: "lg" }), "mt-8")}
-          >
-            Take Qualification Test
-          </Link>
-        </div>
-      </main>
-    );
-  }
-
-  // ─── Qualified: full dashboard ──────────────────────────
-  const activeCases = assignments.filter((a) => a.status === "active");
-  const votedCases = assignments.filter((a) => a.status === "voted");
-  const decidedCases = assignments.filter((a) => a.status === "decided");
-
-  const tabCases: Record<CaseTab, Assignment[]> = {
-    active: activeCases,
-    voted: votedCases,
-    decided: decidedCases,
-  };
-
+    void refresh();
+  }, [refresh]);
+  const visible = assignments.filter((a) => a.status === tab);
   return (
-    <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-ink">Reviewer Dashboard</h1>
-        <p className="text-sm text-ink-secondary mt-0.5">Dispute Specialist Panel</p>
-      </div>
-
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-        {/* LEFT column */}
-        <div className="space-y-5">
-          {/* Profile Card */}
-          <section className="rounded-xl border border-line bg-surface-sunken/50 p-6">
-            <div className="flex items-start justify-between mb-5">
-              <div className="flex items-center gap-4">
-                <div className="grid h-14 w-14 place-items-center rounded-full bg-gradient-to-br from-action-primary/30 to-info/30 text-lg font-bold text-on-accent">
-                  {(profile.display_name ?? "R").slice(0, 2).toUpperCase()}
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-ink">{profile.display_name}</h2>
-                  <div className="flex items-center gap-2 mt-1">
-                    <TierBadge tier={profile.tier} className="gap-1.5 font-mono">
-                      {"*".repeat(profile.stars)} {profile.tier}
-                    </TierBadge>
-                    <span className="font-mono text-xs text-ink-secondary">
-                      Score {profile.score}/100
-                    </span>
-                    <span className="font-mono text-xs text-ink-secondary">
-                      Weight {profile.vote_weight}x
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <Badge tone="success" size="sm" className="font-mono">
-                Qualified
-              </Badge>
-            </div>
-
-            {/* Stats grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <StatBox label="Cases reviewed" value={String(profile.cases_reviewed)} />
-              <StatBox
-                label="Zone hit rate"
-                value={`${Math.round(profile.zone_hit_rate * 100)}%`}
-                accent
-              />
-              <StatBox
-                label="Participation"
-                value={`${Math.round(profile.participation_rate * 100)}%`}
-              />
-              <StatBox label="Avg response" value={`${profile.avg_response_hours}h`} />
-            </div>
-
-            {/* Tier progress */}
-            {profile.next_tier && profile.next_tier_score && (
-              <div className="mt-5 rounded-xl border border-line bg-surface-sunken/50 p-4">
-                <div className="flex items-center justify-between text-xs mb-2">
-                  <span className="text-ink-secondary">
-                    Progress to <span className="font-semibold text-info">{profile.next_tier}</span>
-                  </span>
-                  <span className="font-mono font-semibold text-ink">
-                    {profile.score} / {profile.next_tier_score}
-                  </span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-line">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-action-primary to-info"
-                    style={{
-                      width: `${Math.min(100, (profile.score / profile.next_tier_score) * 100)}%`,
-                    }}
-                  />
-                </div>
-                <div className="mt-2 text-[11px] text-ink-muted">
-                  {profile.next_tier_score - profile.score} more points needed
-                </div>
-              </div>
+    <main className="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:p-6">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-bold text-ink">Reviewer dashboard</h1>
+        <Button variant="secondary" onClick={refresh}>
+          Refresh
+        </Button>
+      </header>
+      {error && <Alert tone="error">{error}</Alert>}
+      {!profile && !error && <Spinner size="sm" />}
+      {profile && (
+        <>
+          <section className="space-y-3 rounded-xl border border-line bg-surface-raised p-4">
+            <Badge tone="info">{profile.ds_tier}</Badge>
+            <p className="text-sm text-ink-secondary">
+              Score {profile.ds_score} · Vote weight {profile.vote_weight} · {profile.active_slots}{" "}
+              / {profile.max_slots} active slots
+            </p>
+            <p className="text-sm text-ink-secondary">
+              {profile.cases_reviewed} reviews recorded · $
+              {(profile.total_earnings_cents / 100).toFixed(2)} recorded earnings
+            </p>
+            {!profile.qualified && (
+              <Link href="/reviewer/qualify" className="text-action-primary underline">
+                Take the reviewer qualification test
+              </Link>
             )}
           </section>
-
-          {/* Case Tabs */}
-          <section className="rounded-xl border border-line bg-surface-sunken/50">
-            <div className="flex items-center justify-between border-b border-line px-5 py-4">
-              <h2 className="text-sm font-semibold text-ink">My Reviews</h2>
-              <div className="inline-flex gap-0.5 rounded-lg border border-line bg-surface-sunken/50 p-[3px]">
-                {(["active", "voted", "decided"] as const).map((tab) => (
-                  <button
-                    type="button"
-                    key={tab}
-                    onClick={() => setCaseTab(tab)}
-                    className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
-                      caseTab === tab ? "bg-line text-ink" : "text-ink-secondary hover:text-ink"
-                    }`}
-                  >
-                    {tab === "active"
-                      ? `Active (${activeCases.length})`
-                      : tab === "voted"
-                        ? `Voted (${votedCases.length})`
-                        : `Decided (${decidedCases.length})`}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="p-5">
-              {tabCases[caseTab].length === 0 ? (
-                <div className="py-10 text-center text-sm text-ink-muted">
-                  {caseTab === "active"
-                    ? "No active reviews"
-                    : caseTab === "voted"
-                      ? "No pending results"
-                      : "No past decisions"}
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {tabCases[caseTab].map((assignment) => (
-                    <AssignmentRow key={assignment.id} assignment={assignment} />
-                  ))}
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* Specializations */}
-          {profile.specializations.length > 0 && (
-            <section className="rounded-xl border border-line bg-surface-sunken/50">
-              <div className="border-b border-line px-5 py-4">
-                <h2 className="text-sm font-semibold text-ink">Tag Specializations</h2>
-              </div>
-              <div className="p-5 space-y-3">
-                {profile.specializations.map((s) => {
-                  return (
-                    <div
-                      key={s.tag}
-                      className="flex items-center gap-4 rounded-xl border border-line bg-surface-sunken/50 p-4"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-ink">{s.tag}</span>
-                          <TierBadge tier={s.tier} size="sm" className="gap-1">
-                            {"*".repeat(s.stars)} {s.tier}
-                          </TierBadge>
-                        </div>
-                        <div className="text-xs text-ink-muted mt-1">
-                          {s.cases} cases · {Math.round(s.hit_rate * 100)}% hit rate · score{" "}
-                          {s.score}
-                        </div>
-                      </div>
-                      <div className="h-1.5 w-24 overflow-hidden rounded-full bg-line">
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-action-primary to-success"
-                          style={{ width: `${s.hit_rate * 100}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          )}
-        </div>
-
-        {/* RIGHT sidebar */}
-        <aside className="sticky top-[60px] space-y-4">
-          {/* Slot status */}
-          <section className="rounded-xl border border-line bg-surface-sunken/50 p-5">
-            <div className="font-mono text-[11px] uppercase tracking-widest text-ink-muted mb-3">
-              Active Slots
-            </div>
-            <div className="flex items-baseline gap-2 mb-3">
-              <span className="font-mono text-3xl font-bold text-ink">{profile.active_slots}</span>
-              <span className="text-sm text-ink-secondary">/ {profile.max_slots} used</span>
-            </div>
-            <div className="flex gap-2">
-              {Array.from({ length: profile.max_slots }, (_, i) => (
-                <div
-                  // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length slot capacity bars
-                  key={i}
-                  className={`h-3 flex-1 rounded-full ${i < profile.active_slots ? "bg-action-primary" : "bg-line"}`}
-                />
-              ))}
-            </div>
-            <div className="mt-3 text-[11px] text-ink-muted">
-              {profile.max_slots - profile.active_slots} slot
-              {profile.max_slots - profile.active_slots !== 1 ? "s" : ""} available
-            </div>
-          </section>
-
-          {/* Earnings */}
-          <section className="rounded-xl border border-line bg-surface-sunken/50 p-5">
-            <div className="font-mono text-[11px] uppercase tracking-widest text-ink-muted mb-3">
-              Earnings
-            </div>
-            <div className="space-y-2.5">
-              <EarningRow
-                label="Last 7 days"
-                amount={profile.earnings_7d}
-                cases={profile.earnings_7d_cases}
-              />
-              <EarningRow
-                label="Last 30 days"
-                amount={profile.earnings_30d}
-                cases={profile.earnings_30d_cases}
-              />
-              <div className="my-2 h-px bg-line" />
-              <EarningRow
-                label="All time"
-                amount={profile.earnings_all}
-                cases={profile.earnings_all_cases}
-                bold
-              />
-            </div>
-          </section>
-
-          {/* Qualification */}
-          <section className="rounded-xl border border-line bg-surface-sunken/50 p-5">
-            <div className="font-mono text-[11px] uppercase tracking-widest text-ink-muted mb-3">
-              Qualification
-            </div>
-            <div className="space-y-2">
-              <QualRow
-                label="Transactions"
-                value={`${qual.transactions} completed`}
-                pass={qual.transactions >= 5}
-              />
-              <QualRow
-                label="Trust Score"
-                value={`${qual.trust_score}`}
-                pass={qual.trust_score >= 50}
-              />
-              <QualRow
-                label="Qualify Test"
-                value={qual.test_score != null ? `${qual.test_score}% (passed)` : "N/A"}
-                pass={(qual.test_score ?? 0) >= 70}
-              />
-              {profile.qualified_at && (
-                <QualRow
-                  label="Qualified since"
-                  value={new Date(profile.qualified_at).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })}
-                />
-              )}
-            </div>
-          </section>
-
-          {/* Quick actions */}
-          <section className="rounded-xl border border-line bg-surface-sunken/50 p-5">
-            <div className="font-mono text-[11px] uppercase tracking-widest text-ink-muted mb-3">
-              Quick Actions
-            </div>
-            <div className="space-y-2">
-              {activeCases.length > 0 && (
-                <Link
-                  href={`/reviewer/cases/${activeCases[0].dispute_id}`}
-                  className={cn(buttonVariants({ variant: "secondary" }), "w-full")}
-                >
-                  Vote on active case
-                </Link>
-              )}
-              <Link
-                href="/reviewer/qualify"
-                className={cn(buttonVariants({ variant: "secondary" }), "w-full")}
+          <fieldset className="flex flex-wrap gap-2" aria-label="Review status">
+            {(["active", "voted", "decided"] as const).map((value) => (
+              <Button
+                key={value}
+                variant={tab === value ? "primary" : "secondary"}
+                onClick={() => setTab(value)}
+                aria-pressed={tab === value}
               >
-                Retake qualification test
+                {value === "active"
+                  ? "Needs your vote"
+                  : value === "voted"
+                    ? "Vote submitted"
+                    : "Completed review"}{" "}
+                ({assignments.filter((a) => a.status === value).length})
+              </Button>
+            ))}
+          </fieldset>
+          {visible.length === 0 && <EmptyState title="No reviews in this view" />}
+          <div className="space-y-3">
+            {visible.map((assignment) => (
+              <Link
+                key={assignment.assignment_id}
+                href={`/reviewer/cases/${assignment.dispute_id}`}
+                className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface-raised p-4 hover:bg-surface-sunken"
+              >
+                <div>
+                  <p className="font-semibold text-ink">
+                    {assignment.item_title ?? "Dispute review"}
+                  </p>
+                  <p className="mt-1 text-sm text-ink-secondary">
+                    {assignment.amount_minor === null
+                      ? "Amount unavailable"
+                      : `$${(assignment.amount_minor / 100).toFixed(2)}`}
+                    {assignment.vote_value !== null
+                      ? ` · Your vote ${assignment.vote_value}/100`
+                      : ""}
+                  </p>
+                </div>
+                <Badge tone="info">Tier {assignment.tier}</Badge>
               </Link>
-            </div>
-          </section>
-
-          {/* Tier info */}
-          <section className="rounded-xl border border-line bg-surface-sunken/50 p-4">
-            <div className="text-[11px] text-ink-muted leading-relaxed">
-              <strong className="text-ink-secondary">DS Tiers.</strong> Your Dispute Specialist
-              score (0-100) determines tier, vote weight, and assignment priority. Higher tiers =
-              more influence + higher priority. Minority votes reduce your score.
-            </div>
-            <div className="mt-3 grid grid-cols-5 gap-1 text-center font-mono text-[9px]">
-              {(["BRONZE", "SILVER", "GOLD", "PLATINUM", "DIAMOND"] as const).map((t) => {
-                const active = t === profile.tier;
-                return active ? (
-                  <TierBadge
-                    key={t}
-                    tier={t}
-                    size="sm"
-                    className="justify-center rounded-md px-0 py-1.5 font-bold tracking-normal"
-                  >
-                    {t.slice(0, 3)}
-                  </TierBadge>
-                ) : (
-                  <div key={t} className="rounded-md border border-line p-1.5 text-ink-muted">
-                    {t.slice(0, 3)}
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        </aside>
-      </div>
+            ))}
+          </div>
+        </>
+      )}
     </main>
-  );
-}
-
-// ─── Sub-components ──────────────────────────────────────────
-
-function StatBox({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div className="rounded-lg border border-line bg-surface-sunken/50 p-3">
-      <div
-        className={`font-mono text-xl font-bold tracking-tight ${accent ? "text-success" : "text-ink"}`}
-      >
-        {value}
-      </div>
-      <div className="text-[11px] text-ink-muted mt-1">{label}</div>
-    </div>
-  );
-}
-
-function AssignmentRow({ assignment }: { assignment: Assignment }) {
-  const a = assignment;
-  const href =
-    a.status === "active"
-      ? `/reviewer/cases/${a.dispute_id}`
-      : a.status === "voted"
-        ? `/reviewer/cases/${a.dispute_id}`
-        : undefined;
-
-  const content = (
-    <div
-      className={`flex items-center gap-4 rounded-xl border p-4 transition-all ${
-        a.status === "active"
-          ? "border-action-primary/30 bg-action-primary/5 hover:border-focus"
-          : "border-line bg-surface-sunken/50 hover:border-line-strong"
-      } ${href ? "cursor-pointer hover:-translate-y-px" : ""}`}
-    >
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-ink truncate">
-            {a.item_title ?? "Dispute Case"}
-          </span>
-          {a.tier && (
-            <span className="rounded border border-line bg-surface-sunken px-1.5 py-0.5 font-mono text-[9px] font-bold text-ink-secondary">
-              {a.tier}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2 mt-1 text-xs text-ink-muted">
-          <span className="font-mono">{a.dispute_id.slice(0, 12)}...</span>
-          {a.status === "active" && a.deadline && (
-            <>
-              <span className="h-[3px] w-[3px] rounded-full bg-ink-muted" />
-              <span className="text-warning font-medium">
-                Ends{" "}
-                {new Date(a.deadline).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                })}
-              </span>
-            </>
-          )}
-          {a.status === "voted" && (
-            <>
-              <span className="h-[3px] w-[3px] rounded-full bg-ink-muted" />
-              <span>Awaiting results</span>
-            </>
-          )}
-          {a.status === "decided" && a.outcome_label && (
-            <>
-              <span className="h-[3px] w-[3px] rounded-full bg-ink-muted" />
-              <span>{a.outcome_label}</span>
-            </>
-          )}
-        </div>
-      </div>
-
-      <div className="flex flex-col items-end gap-1 flex-shrink-0">
-        {a.amount_minor != null && (
-          <span className="font-mono text-sm font-semibold text-ink">
-            {formatCurrency(a.amount_minor)}
-          </span>
-        )}
-        {a.status === "active" && (
-          <span className="rounded-full border border-action-primary/30 bg-action-primary/20 px-2 py-0.5 font-mono text-[10px] font-semibold text-action-primary">
-            Vote now
-          </span>
-        )}
-        {a.status === "voted" && (
-          <span className="rounded-full border border-line bg-surface-sunken px-2 py-0.5 font-mono text-[10px] font-semibold text-ink-secondary">
-            Sealed
-          </span>
-        )}
-        {a.status === "decided" && (
-          <span
-            className={`rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold ${
-              a.in_majority
-                ? "border-success/30 bg-success-soft text-success"
-                : "border-error/30 bg-error-soft text-error"
-            }`}
-          >
-            {a.in_majority ? "+" : ""}
-            {a.reward_usdc != null ? `$${a.reward_usdc.toFixed(2)}` : "$0.00"}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-
-  if (href) {
-    return (
-      <Link href={href} className="block">
-        {content}
-      </Link>
-    );
-  }
-
-  // Decided cases show result inline (no navigation needed, but make clickable for detail)
-  return (
-    <Link href={`/reviewer/cases/${a.dispute_id}`} className="block">
-      {content}
-    </Link>
-  );
-}
-
-function EarningRow({
-  label,
-  amount,
-  cases,
-  bold,
-}: {
-  label: string;
-  amount: number;
-  cases: number;
-  bold?: boolean;
-}) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className={`text-sm ${bold ? "font-semibold text-ink" : "text-ink-secondary"}`}>
-        {label}
-      </span>
-      <div className="text-right">
-        <span className={`font-mono text-sm ${bold ? "font-bold" : "font-semibold"} text-success`}>
-          ${amount.toFixed(2)}
-        </span>
-        <span className="ml-2 font-mono text-[11px] text-ink-muted">{cases} cases</span>
-      </div>
-    </div>
-  );
-}
-
-function QualRow({ label, value, pass }: { label: string; value: string; pass?: boolean }) {
-  return (
-    <div className="flex items-center justify-between text-sm">
-      <span className="text-ink-secondary">{label}</span>
-      <span className="flex items-center gap-1.5 font-medium text-ink">
-        {pass && <span className="text-success">&#10003;</span>}
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function QualReqCard({
-  label,
-  value,
-  required,
-  met,
-}: {
-  label: string;
-  value: string;
-  required: string;
-  met: boolean;
-}) {
-  return (
-    <div
-      className={`rounded-xl border p-4 ${met ? "border-success/30 bg-success-soft" : "border-line bg-surface-sunken/50"}`}
-    >
-      <div className={`font-mono text-xl font-bold ${met ? "text-success" : "text-ink"}`}>
-        {value}
-      </div>
-      <div className="text-[11px] text-ink-muted mt-1">{label}</div>
-      <div className="text-[10px] text-ink-muted mt-0.5">req: {required}</div>
-    </div>
   );
 }

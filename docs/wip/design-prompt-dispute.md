@@ -9,6 +9,8 @@
 
 Haggle uses a 3-tier dispute resolution system modeled after a jury trial. When a buyer or seller has an issue with a transaction, they can open a dispute. The system escalates through tiers if either party is unsatisfied.
 
+**Settlement update (2026-09-27, confirmed target design):** Follow [the canonical dispute policy, sections 6–7](../features/분쟁_시스템_v2.md) for funding and settlement. The final winner pays no dispute fee. Both parties fund fee collateral before T2/T3 review; the buyer's collateral is additional to the purchase principal. These are separate smart-contract balances. Charge actual review fees to the final loser's collateral and return the winner's collateral in full; never deduct the losing buyer's fee from the winning seller's sale proceeds. This policy is not implemented by the current temporary payment code.
+
 **Important terminology:** Haggle CANNOT use legal terms like "lawyer", "attorney", "judge", or "court". Instead:
 - Party support AI → **"Case Guide"** (구매자측 Case Guide, 판매자측 Case Guide)
 - Tier 1 platform review AI → **"Resolution Assessor"** (T1 only)
@@ -23,13 +25,15 @@ Haggle uses a 3-tier dispute resolution system modeled after a jury trial. When 
 
 | Tier | Name | Who Decides | Cost | Speed |
 |------|------|-------------|------|-------|
-| T1 | AI Review | Resolution Assessor recommends; **human before resolve** (SoT 2026-09-07) | $5 flat (or 0.5% if >$600) | Minutes |
-| T2 | Panel Review | 3–27 Community Reviewers | ~1.2% of transaction | 24–48 hours |
-| T3 | Grand Panel | 5–31 Community Reviewers | ~6% of transaction | 48–72 hours |
+| T1 | AI Review | Resolution Assessor recommends; **human before resolve** (SoT 2026-09-07) | max(0.5%, $3) | Minutes |
+| T2 | Panel Review | 5–29 Community Reviewers | max(2%, $12) | 24–48 hours after funding |
+| T3 | Grand Panel | 7–33 Community Reviewers | max(5%, $30) | 48–72 hours after funding |
+
+These are per-tier quotes, not a confirmed cumulative invoice. Cross-tier fee aggregation and prior-panel reward treatment must be finalized before enabling financial settlement. An unstarted panel closed for seller non-deposit has a $0 fee and $0 reviewer/platform allocation for that tier.
 
 **Key Principles to SHOW in the design:**
 1. **Fair to BOTH sides** — Each side gets their own Case Guide. The system is neutral.
-2. **Loser pays** — Dispute cost is always borne by the losing party. This deters frivolous disputes.
+2. **Loser pays** — The final winner pays no dispute fee and receives all of their fee collateral back. Charge only an actually performed review; no fee is earned for a panel that never starts.
 3. **Transparent** — Every cost, every step, every timeline is visible. No hidden fees.
 4. **On-chain evidence** — Evidence is anchored on-chain for tamper-proof records. *(UI badges / per-item gallery anchoring: **Planned/Not wired**; resolve-time registry anchor may exist separately.)*
 5. **Community-driven** — Real users (who passed a qualification test) serve as reviewers.
@@ -175,7 +179,7 @@ Transparent cost card:
 ```
 ┌─ Dispute Cost ──────────────────────────────────┐
 │                                                  │
-│  Tier 1 (AI Review)              $5.00           │
+│  Tier 1 (AI Review)              $3.00           │
 │  ──────────────────────────────────────          │
 │  Paid by: Losing party                           │
 │  Current escrow: $500.00 (held in smart contract)│
@@ -184,9 +188,11 @@ Transparent cost card:
 │  If escalated to Tier 3:         $30.00          │
 │                                                  │
 │  ℹ️ You only pay if you lose.                     │
-│  The winner's costs are fully refunded.          │
+│  The final winner's fee collateral is refunded.  │
 └──────────────────────────────────────────────────┘
 ```
+
+Show purchase principal separately from buyer/seller fee collateral, with each collateral balance labeled waiting, funded, returned, or applied to fees. Do not imply that the principal also funds the buyer's dispute fee. A funding request must show the confirmed total, reserved prior-tier amounts, and additional amount; do not invent a cumulative total from the tier prices.
 
 #### Section: Case Status Updates (Reverse chronological)
 ```
@@ -257,7 +263,7 @@ Defending your position · Reviewing buyer's claims
 ```
 
 #### Seller-specific sections:
-- **Deposit requirement card** (if T2/T3): "You must deposit $12.00 within 48 hours to contest this dispute. Failure to deposit = automatic loss."
+- **Deposit requirement card** (if T2/T3): show the actual tier quote and deadline (T2: 48 hours; T3: 72 hours). Example: "Deposit $12.00 in fee collateral within 48 hours. It is returned in full if you ultimately win. Review starts after the required collateral is confirmed. If the buyer has funded and you miss the deadline, the case closes in the buyer's favor without this panel review or this tier's fee."
 - **Response deadline** prominent countdown timer
 - **Counter-evidence upload** section with guidance from Case Guide
 - Same cost breakdown but from seller's perspective
@@ -283,14 +289,14 @@ Defending your position · Reviewing buyer's claims
 
 ### PAGE 3: T2 Panel Review View (`dispute-panel.html`)
 
-This shows the case AFTER T1 decision, when it's been escalated to T2 Community Panel Review. This view is split — showing what both parties see.
+This shows the case AFTER T1 decision, when T2 Community Panel Review has been requested. This view is split — showing what both parties see. Before required funding is confirmed, display **Awaiting fee collateral** with buyer/seller funding status, amount, deadline, and no assigned reviewers. The voting clock starts only after funding and assignment. Seller non-deposit closes the unstarted tier with no review, fee, reward, or reviewer score change; return the buyer's collateral for that tier. Verify notices and timely deposits before closing, including delayed confirmations. Prior-tier obligations remain separate.
 
 **Layout:** Two-column split view with shared center panel.
 
 #### Top: Escalation Banner
 ```
 ⚡ Escalated to Tier 2 — Community Panel Review
-9 reviewers have been assigned · Voting period: 48 hours
+5 reviewers have been assigned · Voting period: 48 hours
 Decision expected by: Apr 22, 2026 · 14:32 UTC
 ```
 
@@ -362,7 +368,7 @@ Decision expected by: Apr 22, 2026 · 14:32 UTC
 
 #### Panel Status Section
 ```
-Reviewers: 9 assigned · 6 voted · 3 remaining
+Reviewers: 5 assigned · 3 voted · 2 remaining
 Voting Deadline: 38:24:15 remaining
 
 Vote Distribution (anonymized until close):
@@ -376,7 +382,7 @@ Both buyer and seller have their own chat section where they can talk to their C
 ```
 [You]: What's happening with the panel review?
 
-[Case Guide]: 6 of 9 reviewers have voted.
+[Case Guide]: 3 of 5 reviewers have voted.
   The voting period closes in 38 hours.
 
   I've also requested a Specialist Verification
@@ -399,15 +405,16 @@ Both buyer and seller have their own chat section where they can talk to their C
   If you're unsatisfied with the T2 outcome, you can
   escalate to T3 (Grand Panel) for approximately $30.
 
-  ⚠️ Note: If you escalate and lose at T3,
-  the dispute cost increases to ~$30.
+  Before you continue, you'll see your total fee collateral,
+  including any amounts reserved for earlier reviews.
+  If you ultimately win, your fee collateral is returned in full.
 ```
 
 #### Settlement Preview
 ```
 ┌─ If Buyer Wins ─────────┐  ┌─ If Seller Wins ────────┐
 │ Buyer receives: $500.00  │  │ Buyer receives: $0.00   │
-│ Seller receives: $0.00   │  │ Seller receives: $488.00│
+│ Seller receives: $0.00   │  │ Seller receives: $500.00│
 │                          │  │                          │
 │ Dispute cost: $12.00     │  │ Dispute cost: $12.00     │
 │ Paid by: Seller          │  │ Paid by: Buyer           │
@@ -415,9 +422,14 @@ Both buyer and seller have their own chat section where they can talk to their C
 │ Reviewers: $8.40 (70%)   │  │ Reviewers: $8.40 (70%)   │
 │ Platform: $3.60 (30%)    │  │ Platform: $3.60 (30%)    │
 │                          │  │                          │
-│ Seller deposit: Forfeited│  │ Seller deposit: Refunded │
+│ Buyer collateral: Return│  │ Buyer collateral: Fee  │
+│ Seller collateral: Fee  │  │ Seller collateral: Return│
 └──────────────────────────┘  └──────────────────────────┘
 ```
+
+The preview shows principal separately from each party's $12 fee collateral and covers this T2 tier only. On a buyer win, the buyer receives $500 principal plus their $12 collateral; on a seller win, the seller receives $500 principal plus their $12 collateral. The losing party's separate $12 collateral funds the $8.40 reviewer pool and $3.60 platform fee. Return any unused collateral.
+
+**Seller non-deposit before this panel starts:** show "Closed — seller did not fund", buyer principal refund $500, buyer tier collateral return $12, this tier's fee $0, reviewers $0, platform $0. Do not show votes, majority, or reviewer performance changes. If this is a T3 funding failure, preserve existing T2 fees/rewards and show their settlement separately. Buyer/both-party funding failure is a pending policy decision, not automatic seller loss.
 
 ---
 
@@ -652,8 +664,8 @@ Once the reviewer votes, the page transitions to:
 │  Estimated: Apr 22, 2026 · 14:32 UTC                            │
 │                                                                  │
 │  ──────────────────────────────────────────────────              │
-│  Voting Progress: 7/9 reviewers voted                            │
-│  ████████████████████████░░░ 78%                                 │
+│  Voting Progress: 4/5 reviewers voted                            │
+│  ████████████████████████░░░ 80%                                 │
 │                                                                  │
 │  [View My Other Active Cases →]                                  │
 └─────────────────────────────────────────────────────────────────┘
@@ -830,27 +842,35 @@ Transaction Complete → Escrow Holds Funds
          │                                       │
     [Human accept]                        [Escalate → T2]
          ↓                                       ↓
-    Settlement                    Seller deposits $12
+    Settlement                    Await required fee collateral
+                                  (principal remains separate)
                                          ↓
-                           T2: 9 Community Reviewers (48h)
+                           Funding confirmed → assign reviewers
+                           T2: 5 Community Reviewers (48h)
                                          ↓
                               ┌──────────┴──────────┐
                          [Accept]              [Escalate → T3]
                               ↓                      ↓
-                         Settlement          Seller deposits $30
+                         Settlement          Await T3 fee collateral
+                                             (preserve prior reserves)
                                                      ↓
-                                       T3: 15+ Reviewers (72h)
+                                       Funding confirmed → assign
+                                       T3: 7 Reviewers (72h)
                                                      ↓
                                                FINAL Decision
                                                      ↓
                                                Settlement
 ```
 
+Example panel sizes above are for a $500 transaction. At either funding gate, verified seller non-deposit after the deadline (with buyer funded) exits to buyer-favor settlement without starting that panel or charging that tier. An already assigned/completed review cannot be reclassified as unperformed to cancel its compensation. Cross-tier aggregation and buyer/both-party non-deposit rules remain open decisions in the canonical policy.
+
 Each settlement shows:
 - Who gets the escrowed funds
 - Who pays the dispute cost
 - How dispute cost is split (70% reviewers, 30% platform)
-- Seller deposit status (refunded or forfeited)
+- Both parties' fee collateral: returned, applied to actual fees, or awaiting funding
+- Purchase principal separately; the final winner's dispute cost is $0
+- Non-deposit closure and unstarted-tier fee $0, separately from any prior-tier fees
 
 ---
 

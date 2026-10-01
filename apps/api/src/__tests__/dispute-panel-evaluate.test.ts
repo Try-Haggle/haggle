@@ -1,3 +1,6 @@
+vi.unmock("@haggle/db");
+
+import { PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it, vi } from "vitest";
 import { DISPUTE_PANEL_EVALUATE_FORBIDDEN_MONEY_SIDE_EFFECTS } from "../lib/dispute-panel-evaluate-money-guard.js";
 import {
@@ -24,6 +27,16 @@ import { getCommerceOrderByOrderId } from "../services/payment-record.service.js
 const mockGetDisputeById = getDisputeById as ReturnType<typeof vi.fn>;
 const mockUpdateDisputeRecord = updateDisputeRecord as ReturnType<typeof vi.fn>;
 const mockGetCommerceOrderByOrderId = getCommerceOrderByOrderId as ReturnType<typeof vi.fn>;
+
+function lockedDb() {
+  const db = {
+    transaction: vi.fn(async (fn) => fn(db)),
+    select: vi.fn(() => ({
+      from: () => ({ where: () => ({ for: vi.fn().mockResolvedValue([]) }) }),
+    })),
+  };
+  return db as never;
+}
 
 describe("E2 panel evaluatePanelReview wiring goldens", () => {
   it("T2 insufficient assignments → not ready", () => {
@@ -111,7 +124,7 @@ describe("E2 panel evaluatePanelReview wiring goldens", () => {
       { reviewerId: "r5", voteValue: 20, voteWeight: "1" },
     ];
 
-    const result = await evaluateDisputePanel({} as never, "some-id", {
+    const result = await evaluateDisputePanel(lockedDb(), "some-id", {
       persist: true,
       assignments,
     });
@@ -164,7 +177,7 @@ describe("E2 panel evaluatePanelReview wiring goldens", () => {
       { reviewerId: "r5", voteValue: 68, voteWeight: "1" },
     ];
 
-    const result = await evaluateDisputePanel({} as never, "some-id", {
+    const result = await evaluateDisputePanel(lockedDb(), "some-id", {
       persist: true,
       assignments,
     });
@@ -191,4 +204,13 @@ it("reviewer tally path stays money-inert (no finalize import)", async () => {
   expect(reviewerSrc).toMatch(/evaluateDisputePanel/);
   expect(reviewerSrc).not.toMatch(/from "\.\.\/services\/dispute-resolution-finalizer/);
   expect(reviewerSrc).not.toMatch(/await finalizeDisputeResolution\(/);
+});
+
+it("loads only the requested panel tier, excluding previous-tier votes", async () => {
+  const where = vi.fn().mockResolvedValue([]);
+  const db = { select: () => ({ from: () => ({ where }) }) };
+  await listReviewerAssignmentsForDispute(db as never, "d1", 3);
+  const query = new PgDialect().sqlToQuery(where.mock.calls[0][0]);
+  expect(query.sql).toContain('"reviewer_assignments"."tier"');
+  expect(query.params).toEqual(["d1", 3]);
 });

@@ -1,4 +1,16 @@
-import { boolean, integer, numeric, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import {
+  boolean,
+  check,
+  index,
+  integer,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 export const reviewerAssignments = pgTable(
   "reviewer_assignments",
@@ -6,6 +18,7 @@ export const reviewerAssignments = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     disputeId: uuid("dispute_id").notNull(),
     reviewerId: uuid("reviewer_id").notNull(),
+    tier: integer("tier").notNull().default(2),
     slotCost: integer("slot_cost").notNull().default(1),
     assignedAt: timestamp("assigned_at", { withTimezone: true }).notNull().defaultNow(),
     voteValue: integer("vote_value"),
@@ -14,6 +27,11 @@ export const reviewerAssignments = pgTable(
     reasoning: text("reasoning"),
   },
   (table) => ({
+    validTier: check("reviewer_assignments_tier_check", sql`${table.tier} IN (2, 3)`),
+    disputeTierIndex: index("idx_reviewer_assignments_dispute_tier").on(
+      table.disputeId,
+      table.tier,
+    ),
     uniqueDisputeReviewer: unique("reviewer_assignments_dispute_reviewer_uniq").on(
       table.disputeId,
       table.reviewerId,

@@ -4,8 +4,14 @@ export const disputeDeposits = pgTable("dispute_deposits", {
   id: uuid("id").defaultRandom().primaryKey(),
   disputeId: uuid("dispute_id").notNull(),
   tier: integer("tier").notNull(),
+  party: text("party", { enum: ["buyer", "seller"] })
+    .notNull()
+    .default("seller"),
+  policyVersion: integer("policy_version").notNull().default(1),
   amountCents: integer("amount_cents").notNull(),
-  status: text("status", { enum: ["PENDING", "DEPOSITED", "FORFEITED", "REFUNDED"] }).notNull().default("PENDING"),
+  status: text("status", { enum: ["PENDING", "DEPOSITED", "FORFEITED", "REFUNDED", "CANCELLED"] })
+    .notNull()
+    .default("PENDING"),
   deadlineHours: integer("deadline_hours").notNull(),
   deadlineAt: timestamp("deadline_at", { withTimezone: true }),
   depositedAt: timestamp("deposited_at", { withTimezone: true }),

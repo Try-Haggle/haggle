@@ -72,7 +72,7 @@ export function evaluatePanelReview(params: {
   if (params.tier !== 2 && params.tier !== 3) {
     issues.push("INVALID_TIER");
   }
-  if (!Number.isFinite(params.amount_cents) || params.amount_cents <= 0) {
+  if (!Number.isSafeInteger(params.amount_cents) || params.amount_cents <= 0) {
     issues.push("INVALID_AMOUNT");
   }
 
@@ -89,7 +89,10 @@ export function evaluatePanelReview(params: {
         (!Number.isInteger(assignment.vote) || assignment.vote < 0 || assignment.vote > 100)),
   );
 
-  if (hasInvalidAssignment) {
+  if (
+    hasInvalidAssignment ||
+    new Set(params.assignments.map((a) => a.reviewer_id)).size !== assignedCount
+  ) {
     issues.push("INVALID_ASSIGNMENT");
   }
   if (expectedReviewerCount !== null && assignedCount < expectedReviewerCount) {

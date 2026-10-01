@@ -37,6 +37,7 @@ vi.mock("../../services/dispute-record.service.js", () => ({
 
 vi.mock("../../services/dispute-deposit.service.js", () => ({
   getDepositByDisputeId: vi.fn().mockResolvedValue(null),
+  getReviewDeposits: vi.fn().mockResolvedValue([]),
   createDeposit: vi.fn().mockResolvedValue(null),
   getPendingExpiredDeposits: vi.fn().mockResolvedValue([]),
   updateDepositStatus: vi.fn().mockResolvedValue(null),
@@ -93,6 +94,11 @@ vi.mock("../../services/dispute-operation-lease.service.js", async (importOrigin
     releaseDisputeOperationLease: vi.fn().mockResolvedValue(undefined),
   };
 });
+
+vi.mock("../../services/dispute-review-round.service.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../services/dispute-review-round.service.js")>()),
+  withReviewRoundLock: async (db: unknown, _id: string, run: (db: unknown) => unknown) => run(db),
+}));
 
 vi.mock("../../services/authentication-record.service.js", () => ({
   getAuthenticationByOrderId: vi.fn().mockResolvedValue(null),
@@ -322,9 +328,14 @@ describe("E2E: Dispute lifecycle", () => {
 
   // ── Step 3: Escalate T1 → T2 ─────────────────────────────────────
 
-  it("Step 3 — POST /disputes/:id/escalate returns 400 when dispute has no refund amount", async () => {
+  it("Step 3 — POST /disputes/:id/escalate rejects an order without a positive amount", async () => {
     // Without a positive order amount, escalate returns 400 INVALID_DISPUTE_AMOUNT
-    mockGetDisputeById.mockResolvedValue(makeDispute());
+    mockGetDisputeById.mockResolvedValue(
+      makeDispute({
+        status: "UNDER_REVIEW",
+        metadata: { tier: 1, ai_resolution_assessor: { status: "COMPLETED" } },
+      }),
+    );
     mockGetCommerceOrderByOrderId.mockResolvedValue(makeOrder({ amountMinor: null }));
 
     const res = await app.inject({
@@ -339,7 +350,7 @@ describe("E2E: Dispute lifecycle", () => {
         reason: "Seller has not responded to T1 mediation within 48 hours.",
       },
     });
-    // refundAmountMinor is null/0 so escalation is blocked
+    // The order amount is null, so the new review fee cannot be quoted.
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toBe("INVALID_DISPUTE_AMOUNT");
   });

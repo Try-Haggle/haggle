@@ -3,7 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { refundDeposit } from "../payments/deposit-refunder.js";
 import { createPaymentServiceFromEnv } from "../payments/providers.js";
 import { executeRefund } from "../payments/refund-executor.js";
-import { getDepositByDisputeId, updateDepositStatus } from "../services/dispute-deposit.service.js";
+import {
+  getDepositByDisputeId,
+  getReviewDeposits,
+  updateDepositStatus,
+} from "../services/dispute-deposit.service.js";
 import {
   createDisputeModuleWebhookOutboxRecord,
   deliverDisputeModuleWebhookOutboxRecord,
@@ -43,6 +47,7 @@ vi.mock("../services/dispute-record.service.js", () => ({
 
 vi.mock("../services/dispute-deposit.service.js", () => ({
   getDepositByDisputeId: vi.fn().mockResolvedValue(null),
+  getReviewDeposits: vi.fn().mockResolvedValue([]),
   updateDepositStatus: vi.fn().mockResolvedValue(null),
 }));
 
@@ -101,6 +106,7 @@ const mockUpdateDisputeRecord = vi.mocked(updateDisputeRecord);
 const mockCreateDisputeResolutionRecord = vi.mocked(createDisputeResolutionRecord);
 const mockExecuteRefund = vi.mocked(executeRefund);
 const mockGetDepositByDisputeId = vi.mocked(getDepositByDisputeId);
+const mockGetReviewDeposits = vi.mocked(getReviewDeposits);
 const mockUpdateDepositStatus = vi.mocked(updateDepositStatus);
 const mockRefundDeposit = vi.mocked(refundDeposit);
 const mockCreateDisputeModuleWebhookOutboxRecord = vi.mocked(
@@ -164,6 +170,150 @@ describe("finalizeDisputeResolution", () => {
       sellerId: "seller_1",
       amountMinor: "10000",
     } as Awaited<ReturnType<typeof getCommerceOrderByOrderId>>);
+  });
+
+  it("charges both completed review tiers to the loser and holds reviewer payment", async () => {
+    const db = createDbMock();
+    mockGetReviewDeposits.mockResolvedValue([
+      {
+        id: "t2buyer",
+        tier: 2,
+        party: "buyer",
+        amountCents: 1200,
+        status: "DEPOSITED",
+        metadata: { rail: "mock" },
+      },
+      {
+        id: "t2seller",
+        tier: 2,
+        party: "seller",
+        amountCents: 1200,
+        status: "DEPOSITED",
+        metadata: { rail: "mock" },
+      },
+      {
+        id: "t3buyer",
+        tier: 3,
+        party: "buyer",
+        amountCents: 3000,
+        status: "DEPOSITED",
+        metadata: { rail: "mock" },
+      },
+      {
+        id: "t3seller",
+        tier: 3,
+        party: "seller",
+        amountCents: 3000,
+        status: "DEPOSITED",
+        metadata: { rail: "mock" },
+      },
+    ] as never);
+    const result = await finalizeDisputeResolution(
+      db as never,
+      dispute({
+        metadata: { tier: 3, review_policy_version: 2, review_phase: "ACTIVE" },
+      }),
+      resolution({ outcome: "seller_favor", refund_amount_minor: 0 }),
+    );
+    expect(result.review_bond_settlement?.fee_cents).toBe(4200);
+    expect(mockUpdateDepositStatus).toHaveBeenCalledTimes(4);
+    expect(mockUpdateDepositStatus).toHaveBeenCalledWith(
+      db,
+      "t2buyer",
+      "FORFEITED",
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          reviewer_payment_status: "HELD",
+          review_fee_cents: 1200,
+        }),
+      }),
+    );
+    expect(mockUpdateDepositStatus).toHaveBeenCalledWith(
+      db,
+      "t3seller",
+      "REFUNDED",
+      expect.anything(),
+    );
+    expect(mockRefundDeposit).not.toHaveBeenCalled();
+    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(db, "ord_1", "CLOSED");
+  });
+
+  it("returns an unstarted T3 buyer bond while retaining only the completed T2 fee", async () => {
+    const db = createDbMock();
+    mockGetReviewDeposits.mockResolvedValue([
+      {
+        id: "t2buyer",
+        tier: 2,
+        party: "buyer",
+        amountCents: 1200,
+        status: "DEPOSITED",
+        metadata: { rail: "mock" },
+      },
+      {
+        id: "t2seller",
+        tier: 2,
+        party: "seller",
+        amountCents: 1200,
+        status: "DEPOSITED",
+        metadata: { rail: "mock" },
+      },
+      {
+        id: "t3buyer",
+        tier: 3,
+        party: "buyer",
+        amountCents: 3000,
+        status: "DEPOSITED",
+        metadata: { rail: "mock" },
+      },
+      {
+        id: "t3seller",
+        tier: 3,
+        party: "seller",
+        amountCents: 3000,
+        status: "PENDING",
+        deadlineAt: new Date(0),
+      },
+    ] as never);
+    mockGetPaymentIntentByOrderId.mockResolvedValue({
+      id: "pi_1",
+      order_id: "ord_1",
+      amount: { currency: "USD", amount_minor: 10000 },
+      selected_rail: "stripe",
+      status: "SETTLED",
+    } as never);
+    mockCreatePaymentServiceFromEnv.mockReturnValue({
+      refundIntent: vi.fn().mockImplementation(async (_intent, refund) => ({
+        refund: { ...refund, status: "COMPLETED" },
+        metadata: {},
+      })),
+    } as never);
+    const result = await finalizeDisputeResolution(
+      db as never,
+      dispute({
+        metadata: { tier: 3, review_policy_version: 2, review_phase: "SELLER_DEFAULT" },
+      }),
+      resolution({ outcome: "buyer_favor", refund_amount_minor: 10000 }),
+    );
+    expect(result.review_bond_settlement?.fee_cents).toBe(1200);
+    expect(mockUpdateDepositStatus).toHaveBeenCalledWith(
+      db,
+      "t3buyer",
+      "REFUNDED",
+      expect.anything(),
+    );
+    expect(mockUpdateDepositStatus).toHaveBeenCalledWith(
+      db,
+      "t3seller",
+      "CANCELLED",
+      expect.anything(),
+    );
+    expect(mockUpdateDepositStatus).toHaveBeenCalledWith(
+      db,
+      "t2seller",
+      "FORFEITED",
+      expect.anything(),
+    );
+    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(db, "ord_1", "REFUNDED");
   });
 
   it("does not mark an order refunded when the real refund execution fails", async () => {

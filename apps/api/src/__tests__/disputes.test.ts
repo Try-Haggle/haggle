@@ -12,6 +12,18 @@ import {
 import { ADMIN_HEADERS, AUTH_HEADERS, closeTestApp, getTestApp } from "./helpers.js";
 
 // --- Mock service layers ---
+vi.mock("../services/dispute-review-round.service.js", async (original) => ({
+  ...(await original<typeof import("../services/dispute-review-round.service.js")>()),
+  withReviewRoundLock: async (db: unknown, _id: string, run: (db: unknown) => unknown) => run(db),
+}));
+vi.mock("../services/dispute-panel-evaluate.service.js", () => ({ evaluateDisputePanel: vi.fn() }));
+vi.mock("../routes/reviewer.js", () => ({
+  registerReviewerRoutes: () => {},
+  assignReviewersToDispute: vi.fn().mockResolvedValue({ assigned: 0, reviewers: [] }),
+}));
+
+import { evaluateDisputePanel } from "../services/dispute-panel-evaluate.service.js";
+
 vi.mock("../services/payment-record.service.js", () => ({
   createAgentPaymentGrantRecord: vi.fn().mockResolvedValue(null),
   getAgentPaymentGrantById: vi.fn().mockResolvedValue(null),
@@ -457,6 +469,7 @@ vi.mock("../services/dispute-ai-audit-archive-alert.service.js", async (importOr
 
 vi.mock("../services/dispute-deposit.service.js", () => ({
   getDepositByDisputeId: vi.fn().mockResolvedValue(null),
+  getReviewDeposits: vi.fn().mockResolvedValue([]),
   createDeposit: vi.fn().mockResolvedValue(null),
   getPendingExpiredDeposits: vi.fn().mockResolvedValue([]),
   updateDepositStatus: vi.fn().mockResolvedValue(null),
@@ -536,7 +549,7 @@ import {
 } from "../services/dispute-ai-audit-archive.service.js";
 import { createSignedDisputeAiAuditExport } from "../services/dispute-ai-audit-export.service.js";
 import { verifyCameraChallenge } from "../services/dispute-camera-challenge.service.js";
-import { createDeposit } from "../services/dispute-deposit.service.js";
+import { createDeposit, getReviewDeposits } from "../services/dispute-deposit.service.js";
 import {
   getDisputeEvidenceRetentionSummary,
   setDisputeEvidenceLegalHold,
@@ -601,6 +614,7 @@ const mockUpdateCommerceOrderStatus = updateCommerceOrderStatus as ReturnType<ty
 const mockCreateRefundRecord = createRefundRecord as ReturnType<typeof vi.fn>;
 const mockCreateSettlementReleaseRecord = createSettlementReleaseRecord as ReturnType<typeof vi.fn>;
 const mockFinalizeDisputeResolution = finalizeDisputeResolution as ReturnType<typeof vi.fn>;
+const mockGetReviewDeposits = getReviewDeposits as ReturnType<typeof vi.fn>;
 const mockGetShipmentByOrderId = getShipmentByOrderId as ReturnType<typeof vi.fn>;
 const mockCreateDisputeRecord = createDisputeRecord as ReturnType<typeof vi.fn>;
 const mockCreateDisputeEvidenceUploadRecord = createDisputeEvidenceUploadRecord as ReturnType<
@@ -847,6 +861,7 @@ describe("Dispute routes", () => {
     mockGetCommerceOrderByOrderId.mockResolvedValue(null);
     mockGetShipmentByOrderId.mockResolvedValue(null);
     mockGetDisputeById.mockResolvedValue(null);
+    mockGetReviewDeposits.mockResolvedValue([]);
     mockGetDisputeByOrderId.mockResolvedValue(null);
     mockCreateDisputeRecord.mockResolvedValue(null);
     mockUpdateCommerceOrderStatus.mockResolvedValue(null);
@@ -4839,11 +4854,140 @@ describe("Dispute routes", () => {
     expect(mockCreateDeposit).not.toHaveBeenCalled();
   });
 
+  it("quotes separate buyer and seller bonds for each review tier before assigning", async () => {
+    let current: Omit<ReturnType<typeof fakeDispute>, "metadata"> & {
+      metadata: Record<string, unknown>;
+    } = fakeDispute({
+      status: "UNDER_REVIEW",
+      metadata: { tier: 1, ai_resolution_assessor: { status: "COMPLETED" } },
+    });
+    mockGetDisputeById.mockImplementation(async () => current);
+    mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
+    mockUpdateDisputeRecord.mockImplementation(async (_db, value) => {
+      current = value;
+    });
+    mockCreateDeposit.mockImplementation(async (_db, value) => {
+      return { id: `dep-${value.tier}-${value.party}`, status: "PENDING", ...value };
+    });
+    vi.mocked(evaluateDisputePanel).mockImplementation(
+      async () =>
+        ({ evaluation: current.metadata.panel_review_evaluation ?? { ready: false } }) as never,
+    );
+    const tier2 = await app.inject({
+      method: "POST",
+      url: "/disputes/some-id/escalate",
+      headers: AUTH_HEADERS,
+      payload: { escalated_by: "buyer", expected_tier: 1, reason: "Review the photo" },
+    });
+    expect(tier2.statusCode).toBe(200);
+    expect(tier2.json().dispute.metadata).toMatchObject({
+      tier: 2,
+      review_phase: "AWAITING_BONDS",
+      panel_review_evaluation: null,
+      review_history: [{ tier: 1, reason: "Review the photo" }],
+    });
+    expect(tier2.json().deposits).toHaveLength(2);
+    expect(tier2.json().reviewer_assignment).toBeUndefined();
+    current.metadata.review_phase = "ACTIVE";
+    current.metadata.panel_review_evaluation = {
+      ready: true,
+      tier: 2,
+      outcome: "partial_refund",
+    };
+    const tier3 = await app.inject({
+      method: "POST",
+      url: "/disputes/some-id/escalate",
+      headers: AUTH_HEADERS,
+      payload: { escalated_by: "buyer", expected_tier: 2 },
+    });
+    expect(tier3.statusCode).toBe(200);
+    expect(tier3.json().dispute.metadata.tier).toBe(3);
+    expect(tier3.json().dispute.metadata.review_history).toHaveLength(2);
+    expect(tier3.json().dispute.metadata.panel_review_evaluation).toBeNull();
+    expect(mockCreateDeposit).toHaveBeenCalledTimes(4);
+    expect(mockCreateDeposit.mock.calls.map(([, value]) => [value.tier, value.party])).toEqual([
+      [2, "buyer"],
+      [2, "seller"],
+      [3, "buyer"],
+      [3, "seller"],
+    ]);
+  });
+
+  it("blocks a panel resolution while either review bond is still missing", async () => {
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        status: "UNDER_REVIEW",
+        metadata: { tier: 2, review_policy_version: 2, review_phase: "AWAITING_BONDS" },
+      }),
+    );
+    const result = await app.inject({
+      method: "POST",
+      url: "/disputes/some-id/resolve",
+      headers: ADMIN_HEADERS,
+      payload: { outcome: "buyer_favor", summary: "Panel decision" },
+    });
+    expect(result.statusCode).toBe(409);
+    expect(result.json().error).toBe("REVIEW_BONDS_NOT_READY_FOR_RESOLUTION");
+    expect(mockFinalizeDisputeResolution).not.toHaveBeenCalled();
+  });
+
+  it("records seller nonpayment as a separate outcome after the buyer funded and the deadline passed", async () => {
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        status: "UNDER_REVIEW",
+        metadata: { tier: 2, review_policy_version: 2, review_phase: "AWAITING_BONDS" },
+      }),
+    );
+    mockGetReviewDeposits.mockResolvedValue([
+      { id: "buyer", tier: 2, party: "buyer", status: "DEPOSITED" },
+      { id: "seller", tier: 2, party: "seller", status: "PENDING", deadlineAt: new Date(0) },
+    ]);
+    const result = await app.inject({
+      method: "POST",
+      url: "/disputes/some-id/settle-seller-nonpayment",
+      headers: ADMIN_HEADERS,
+    });
+    expect(result.statusCode).toBe(200);
+    expect(result.json().reason).toBe("seller_deposit_timeout");
+    expect(mockFinalizeDisputeResolution).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          review_phase: "SELLER_DEFAULT",
+          review_default_reason: "seller_deposit_timeout",
+        }),
+      }),
+      expect.objectContaining({ outcome: "buyer_favor" }),
+      expect.anything(),
+    );
+  });
+
+  it("rejects a duplicate escalation from an old tab", async () => {
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({ status: "UNDER_REVIEW", metadata: { tier: 2 } }),
+    );
+    mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
+    const result = await app.inject({
+      method: "POST",
+      url: "/disputes/some-id/escalate",
+      headers: AUTH_HEADERS,
+      payload: { escalated_by: "buyer", expected_tier: 1 },
+    });
+    expect(result.statusCode).toBe(409);
+    expect(result.json().error).toBe("REVIEW_TIER_CHANGED");
+    expect(mockCreateDeposit).not.toHaveBeenCalled();
+    expect(mockUpdateDisputeRecord).not.toHaveBeenCalled();
+  });
+
   // POST /disputes/:id/deposit
   it("POST /disputes/:id/deposit returns 404 when no deposit exists", async () => {
     // requireDisputeParty middleware needs dispute + order to exist
-    mockGetDisputeById.mockResolvedValueOnce(fakeDispute());
-    mockGetCommerceOrderByOrderId.mockResolvedValueOnce(fakeOrder());
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        metadata: { tier: 2, review_phase: "AWAITING_BONDS" },
+      }),
+    );
+    mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
 
     const res = await app.inject({
       method: "POST",
@@ -4852,6 +4996,6 @@ describe("Dispute routes", () => {
       payload: { amount_cents: 500 },
     });
     expect(res.statusCode).toBe(404);
-    expect(res.json().error).toBe("DEPOSIT_NOT_FOUND");
+    expect(res.json().error).toBe("REVIEW_BOND_NOT_FOUND");
   });
 });

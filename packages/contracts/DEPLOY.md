@@ -55,6 +55,30 @@ Staging uses the `base-sepolia-husdc` settlement asset profile. The test buyer
 `0x0da9Ebd940a2B0bBB91d9A3813F72dfc2FA1A658` received 100,000 hUSDC. Production
 uses the separate `base-usdc` profile, which pins the official Base USDC contract.
 
+## T2/T3 review bond escrow (separate deployment)
+
+`HaggleDisputeBondEscrow` holds each party's USDC review bond separately from the
+order payment. It is not part of the settlement deployment above. Deploy it with
+the asset address selected by `HAGGLE_SETTLEMENT_ASSET_PROFILE`, a fee vault, and
+the backend relayer address as `operator`. The deployer is the initial owner; use
+`transferOwnership`/`acceptOwnership` to move ownership to the intended multisig.
+The owner can rotate the operator with `setOperator` and is the only account that
+can release held fees to the vault. The API never calls `releaseFees` in this slice.
+
+```bash
+forge create sol/HaggleDisputeBondEscrow.sol:HaggleDisputeBondEscrow \
+  --rpc-url "$BASE_SEPOLIA_RPC_URL" \
+  --private-key "$DEPLOYER_PRIVATE_KEY" \
+  --constructor-args "$USDC_ADDRESS" "$FEE_VAULT_ADDRESS" "$SIGNER_ADDRESS"
+```
+
+Set `HAGGLE_DISPUTE_BOND_ESCROW_ADDRESS` in the matching API environment only
+after checking on-chain `asset`, `operator`, and the selected network. Funding
+and review start fail closed if the address is missing or those values mismatch.
+Apply migrations `0157` and `0158` only after final CI succeeds on the same SHA,
+then release the API and web together. The contract has not been deployed by
+this code change.
+
 ## Deploy to Base Mainnet (Production)
 
 ```bash
