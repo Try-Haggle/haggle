@@ -21,7 +21,11 @@
   제시한다.
 - 품질·테스트·Playwright·production dependency audit 등 변경 영역에 맞는 검증을 실행한다.
 - 공유 DB migration은 같은 SHA의 최종 CI 성공 전에 실행하지 않는다.
-- 사용자의 명시적 요청 없이 commit, push, merge, PR 생성, staging/production 배포를 하지 않는다.
+- `staging` 기준 `feature/*` 브랜치 생성·커밋·push·`staging` 대상 PR 생성은 사용자 건별 승인 없이 한다.
+  `feature/*` → `staging` merge(staging 배포 포함)도 같은 SHA의 CI 통과와 구현자가 아닌 단일 리뷰어
+  승인이 있으면 사용자 건별 승인 없이 한다 (2026-10-01 사용자 상시 승인, HAGA-93).
+- `main` 대상 push·merge·프로덕션 배포, `staging`/`main` force push·삭제, 공유 DB migration 실행,
+  live provider·실제 가치 자산 활성화, 스마트 컨트랙트 배포는 사용자의 명시적 승인 없이 하지 않는다.
 - 개발 기간에는 `main`을 변경하지 않는다.
 
 ## 완료 조건

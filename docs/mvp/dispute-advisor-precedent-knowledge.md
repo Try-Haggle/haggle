@@ -72,6 +72,6 @@ Advisor는 법원이나 법률 자문 서비스가 아니다. 전문적인 플�
 - 원본 증거, 주소, 이메일, 지갑 주소를 판례 요약에 넣지 않는다.
 - 분석 및 정책 버전과 사용한 판례 ID를 감사 metadata에 남긴다.
 - 승인 판례 snapshot이 바뀌면 동일 evidence라도 기존 AI 판정을 idempotent 결과로 재사용하지 않는다.
-- migration 적용, cron 활성화, staging/production 배포는 명시적 승인 후 수행한다.
+- migration 적용, cron 활성화, production 배포는 명시적 승인 후 수행한다. staging 배포는 CI 통과와 단일 리뷰어 승인으로 진행한다 (HAGA-93).
 
 콜드스타트, Seed/Holdout 분리, 실제 수렴 기준은 [분쟁 판례 콜드스타트·수렴 실제 테스트](../wip/dispute-precedent-cold-start-and-convergence-test.md)를 따른다.
