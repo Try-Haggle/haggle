@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
 import { serverApi } from "@/lib/api-server";
+import { isDemoCheckoutEnabled } from "@/lib/demo-checkout";
 import { createClient } from "@/lib/supabase/server";
 import { GuestClaimBanner } from "./_guest-claim-banner";
-import { isDemoCheckoutEnabled } from "@/lib/demo-checkout";
 import { type CheckoutApprovalSummary, getCheckoutCta } from "./checkout-contract";
 import { LiveNegotiation } from "./live-negotiation";
 import { isMissingNegotiationSessionError, isNegotiationSessionId } from "./load-buyer-negotiation";

@@ -3505,17 +3505,17 @@ const Step7 = ({
   const later = (fn: () => void, ms: number) => {
     stepTimers.current.push(setTimeout(fn, ms));
   };
-  const clearStepTimers = () => {
+  const clearStepTimers = useCallback(() => {
     stepTimers.current.forEach(clearTimeout);
     stepTimers.current = [];
-  };
+  }, []);
   useEffect(() => {
     if (disputeMode) {
       clearStepTimers();
       setPhase("dispute");
     }
-  }, [disputeMode]);
-  useEffect(() => clearStepTimers, []);
+  }, [disputeMode, clearStepTimers]);
+  useEffect(() => clearStepTimers, [clearStepTimers]);
   const [buddy, setBuddy] = useState<{
     species: (typeof BUDDY_SPECIES)[0];
     rarity: (typeof BUDDY_RARITIES)[0];
@@ -6490,7 +6490,7 @@ export default function CheckoutFlow({
       return;
     }
     if (idx < 6) setIdx(idx + 1);
-  }, [idx, addLog, md, cancelSettle, s.amount, s.rail, autoSpeed]);
+  }, [idx, addLog, md, cancelSettle, autoSpeed]);
 
   const shipAct = useCallback(() => {
     const cur = SHIP_SEQ.indexOf(shipSub);
@@ -6524,12 +6524,15 @@ export default function CheckoutFlow({
     setDisputeMode(false);
   }, [cancelSettle]);
 
-  const jump = useCallback((i: number) => {
-    cancelSettle();
-    setSettling(false);
-    setIdx(i);
-    if (i < 6) setShipSub("labelPending");
-  }, [cancelSettle]);
+  const jump = useCallback(
+    (i: number) => {
+      cancelSettle();
+      setSettling(false);
+      setIdx(i);
+      if (i < 6) setShipSub("labelPending");
+    },
+    [cancelSettle],
+  );
 
   // Auto-play
   useEffect(() => {
