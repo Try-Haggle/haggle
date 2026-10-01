@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { buttonVariants } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { DemoCheckoutButton } from "./demo-checkout-button";
 import { formatPrice, formatSignedPct } from "./format";
 import type { PlaybackResponse } from "./types";
 
@@ -14,6 +15,8 @@ interface ResultRevealProps {
   data: PlaybackResponse;
   checkoutHref?: string;
   checkoutLabel?: string;
+  /** Staging/local only: offer the simulated checkout handoff. */
+  demoCheckout?: boolean;
   onReplay?: () => void;
   /**
    * Where a viewer goes when the negotiation ended without a deal. Defaults to
@@ -32,6 +35,7 @@ export function ResultReveal({
   data,
   checkoutHref,
   checkoutLabel = "Continue to checkout",
+  demoCheckout = false,
   onReplay: _onReplay,
   noDealCta = { href: "/browse", label: "Browse other listings" },
 }: ResultRevealProps) {
@@ -208,11 +212,23 @@ export function ResultReveal({
           transition={{ duration: 0.5, delay: 0.4 }}
           className="shrink-0 sm:self-center"
         >
-          {isAccepted && checkoutHref ? (
-            <Link href={checkoutHref} className={cn(buttonVariants(), "w-full sm:w-auto")}>
-              {checkoutLabel}
-              <ArrowRight className="size-3.5" />
-            </Link>
+          {isAccepted && (checkoutHref || demoCheckout) ? (
+            <div className="flex w-full flex-col gap-2 sm:w-auto">
+              {checkoutHref && (
+                <Link href={checkoutHref} className={cn(buttonVariants(), "w-full sm:w-auto")}>
+                  {checkoutLabel}
+                  <ArrowRight className="size-3.5" />
+                </Link>
+              )}
+              {demoCheckout && (
+                <DemoCheckoutButton
+                  agreedPriceUsd={settlementPrice}
+                  listingPriceUsd={baseline}
+                  item={listing.title}
+                  rounds={rounds.length}
+                />
+              )}
+            </div>
           ) : !isAccepted ? (
             <Link
               href={noDealCta.href}
