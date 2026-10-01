@@ -3501,9 +3501,21 @@ const Step7 = ({
 
   const [phase, setPhase] = useState<DeliveredPhase>("delivered");
   // Presenter panel can set the dispute stage directly.
+  const stepTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const later = (fn: () => void, ms: number) => {
+    stepTimers.current.push(setTimeout(fn, ms));
+  };
+  const clearStepTimers = () => {
+    stepTimers.current.forEach(clearTimeout);
+    stepTimers.current = [];
+  };
   useEffect(() => {
-    if (disputeMode) setPhase("dispute");
+    if (disputeMode) {
+      clearStepTimers();
+      setPhase("dispute");
+    }
   }, [disputeMode]);
+  useEffect(() => clearStepTimers, []);
   const [buddy, setBuddy] = useState<{
     species: (typeof BUDDY_SPECIES)[0];
     rarity: (typeof BUDDY_RARITIES)[0];
@@ -3511,9 +3523,9 @@ const Step7 = ({
 
   function handleConfirm() {
     setPhase("confirming");
-    setTimeout(() => {
+    later(() => {
       setPhase("confirmed");
-      setTimeout(() => {
+      later(() => {
         const b = rollBuddy();
         setBuddy(b);
         setPhase("egg_offer");
@@ -3523,9 +3535,9 @@ const Step7 = ({
 
   function handleOpenEgg() {
     setPhase("egg_crack");
-    setTimeout(() => setPhase("egg_hatch"), 1300);
-    setTimeout(() => setPhase("buddy_reveal"), 2100);
-    setTimeout(() => setPhase("complete"), 3600);
+    later(() => setPhase("egg_hatch"), 1300);
+    later(() => setPhase("buddy_reveal"), 2100);
+    later(() => setPhase("complete"), 3600);
   }
 
   const apvScenarios = [
