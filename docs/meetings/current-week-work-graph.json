@@ -1068,7 +1068,7 @@
         "API"
       ],
       "outcome": "빌더 첫 응답 502 경로를 조사하고, 재현 가능한 모델 출력 오류를 복구해 사용자 재입력 없이 정상 응답하게 한다.",
-      "nextAction": "Railway 로그 행 상세에서 ZodError path와 받은 값, 모델 호출 상태·지연, 배포 SHA를 확인한다. Engineer 2가 로컬 재시도 수정과 로그 증거를 검토하고, 팀 리드 경유 staging 모바일 독립 QA를 요청한다.",
+      "nextAction": "GitHub 연결 복구 확인. PR #197의 Engineer 2 독립 리뷰(HAGA-94), CI 완료 후 팀 리드 경유 모바일 staging QA(HAGA-95)와 staging 적용 SHA를 확인한다. Railway ZodError 상세 path·모델 호출 상태·지연·실행 SHA도 확인한다.",
       "reviewBrief": "모델 출력 JSON 파싱·스키마 검증·truncation 실패에만 재시도 1회를 허용하고 transport 오류는 중복 재시도하지 않는지 검토한다. 502 재현·회복과 예산 메모리 보존, staging 모바일 QA를 확인한다.",
       "evidence": [
         "staging API 로그 또는 재현 기록",
@@ -1078,13 +1078,18 @@
         "2026-10-01 18:04 UTC 익명 staging API 재현: 알려진 조건(iPhone 15 Pro $850, Bargain Hunter, 목표 $680·최대 $850)과 합성 listing ID로 요청 시 9.159초 후 CHAT_TURN_FAILED/502. 같은 요청 재시도는 5.817초 후 200, budgetMax 850·targetPrice 680으로 복구.",
         "2026-10-01 18:09 UTC HAGA-86 조사 보고: 원격 staging 최신 커밋 ddd6c885는 데모 체크아웃 PR #195이며 빌더 502 수정 커밋은 확인되지 않음. Railway 실행 SHA는 미확인.",
         "2026-10-01 로컬 수정: builder 서비스에서 모델 응답의 JSON/스키마/truncation 오류만 한 번 재시도. 신규 5개 + 기존 라우트 4개 + 관련 빌더 42개 테스트 통과, API TypeScript 검사 통과. staging 미적용.",
-        "2026-10-01 사용자 Railway Log Explorer 스크린샷: 화면 시간대 GMT-6의 2026-10-02 02:41:37, 03:04:04, 03:04:48, 03:50:40에 negotiation agent builder chat turn failed와 ZodError(expected object, invalid_type)가 표시됨. 각 err.message/path와 모델 호출 상태는 화면에서 잘림; 앞선 18:04 UTC 재현과 다른 시간대의 로그."
+        "2026-10-01 사용자 Railway Log Explorer 스크린샷: 화면 시간대 GMT-6의 2026-10-02 02:41:37, 03:04:04, 03:04:48, 03:50:40에 negotiation agent builder chat turn failed와 ZodError(expected object, invalid_type)가 표시됨. 각 err.message/path와 모델 호출 상태는 화면에서 잘림; 앞선 18:04 UTC 재현과 다른 시간대의 로그.",
+        "2026-10-01 단일 GitHub 연결로 Try-Haggle/haggle 접근 확인. staging 22ee6653 기반 PR #197(head 98eb9bba) 게시, diff는 빌더 서비스 +23/-6·회귀 테스트 +93·그래프 +34."
       ],
       "remainingGaps": [
         "Railway 화면에서 ZodError는 확인했으나 err.message의 path/received와 모델 호출 상태·지연·배포 SHA는 잘려 있어 미확인. 해당 로그 행의 상세 JSON 또는 원문 필요",
-        "로컬 수정은 staging 미적용이며, staging 모바일 QA와 Engineer 2 리뷰어 판단 미확인"
+        "로컬 수정은 staging 미적용이며, staging 모바일 QA와 Engineer 2 리뷰어 판단 미확인",
+        "2026-10-01 PR #197 게시 완료. Engineer 2 리뷰, CI, staging 배포 SHA 및 모바일 독립 QA는 미완료."
       ],
-      "dependsOn": [],
+      "dependsOn": [
+        "HAGA-94",
+        "HAGA-95"
+      ],
       "dueDate": null,
       "sourceNote": "Paperclip HAGA-88. HAGA-86 사용자 스크린샷(2026-10-01)에서 발견. HAGA-86 결제 핸드오프 증거와 별개 작업이다."
     }
