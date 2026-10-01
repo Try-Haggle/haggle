@@ -1278,7 +1278,1738 @@ ${usePlanner ? formatCandidatePlanForPrompt(initialCandidatePlan) : "None — no
 
   // A builder turn can run ~30s and used to hit callLLM's 30s ceiling (timeout
   // 502s as context grew). Keep a generous token budget and timeout so the turn
-  // can finish. The builder …17001 tokens truncated…k|prompt injection|너의\s*(?:시스템|개발자)\s*지시|이전\s*지시\s*무시|프롬프트\s*인젝션|내부\s*(?:프롬프트|지시)|규칙을\s*무시)/i.test(
+  // can finish. The builder model defaults to Flash. BUILDER_LLM_MODEL may name
+  // another Flash id for this path only; Pro or unknown values fall back to Flash.
+  const llmOptions = {
+    correlationId: "intelligence-demo-advisor-turn",
+    maxTokens: 6000,
+    timeoutMs: 90_000,
+    model: getBuilderLlmModel(),
+  };
+
+  // Retry one malformed or truncated model output before failing the chat turn.
+  // Transport failures are handled by callLLM and must not start another call here.
+  let response: Awaited<ReturnType<typeof callLLM>> | undefined;
+  let parsed: z.infer<typeof negotiationAgentBuilderTurnResultSchema> | undefined;
+  const turnUsage = { prompt_tokens: 0, completion_tokens: 0 };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    response = await callLLM(advisorSystemPrompt, advisorUserPrompt, llmOptions);
+    turnUsage.prompt_tokens += response.usage.prompt_tokens;
+    turnUsage.completion_tokens += response.usage.completion_tokens;
+    if (response.finish_reason === "length") {
+      if (attempt === 1) throw new Error("Negotiation advisor response was truncated");
+      continue;
+    }
+    try {
+      parsed = negotiationAgentBuilderTurnResultSchema.parse(parseJSON(response.content));
+      break;
+    } catch (err) {
+      if (attempt === 1) throw err;
+    }
+  }
+  if (!response || !parsed) throw new Error("Negotiation advisor returned no usable response");
+  const sourceCandidates =
+    parsed.memory.source.length > 0
+      ? parsed.memory.source.slice(-7)
+      : input.previous_memory.source.slice(-7);
+  const parsedSource = unique([
+    ...sourceCandidates.filter((source) => shouldKeepAdvisorSource(source, input.previous_memory)),
+    ...(shouldKeepAdvisorSource(input.message, input.previous_memory) ? [input.message] : []),
+  ]).slice(-8);
+  const memory = sanitizeNegotiationAgentBuilderMemoryFacts(
+    applyConflictConfirmationAnswer(
+      applyAmbiguousPendingAnswerGuard(
+        applyPendingSlotAnswerScope(
+          applyScopedConditionConfirmation(
+            applyNoPreferenceAnswer(
+              normalizeNegotiationAgentBuilderBudgetMemory(
+                {
+                  ...parsed.memory,
+                  structured: parsed.memory.structured ?? input.previous_memory.structured,
+                  source: parsedSource,
+                },
+                {
+                  latestMessage: input.message,
+                  previousMemory: input.previous_memory,
+                  listings: input.listings,
+                },
+              ),
+              input.message,
+              input.previous_memory,
+            ),
+            input.message,
+            input.previous_memory,
+          ),
+          input.message,
+          input.previous_memory,
+        ),
+        input.message,
+        input.previous_memory,
+      ),
+      input.message,
+      input.previous_memory,
+    ),
+    input.previous_memory,
+  );
+  // The seller side and standalone (no-listing) buyer agents have no buyer
+  // requirement slots (budget, buyer priority, …), so feed an empty plan into
+  // the structured-memory + question-plan builders. Otherwise buyer-only slots
+  // (and their Korean prompts) leak into the persisted agent memory.
+  const finalRequirementPlan = usePlanner
+    ? buildAdvisorRequirementPlan({
+        memory,
+        listings: input.listings,
+        askedQuestions: input.previous_memory.questions,
+        learnedChecks: input.learned_checks ?? [],
+      })
+    : EMPTY_TAG_REQUIREMENT_PLAN;
+  const finalCandidatePlan = applyRequirementGateToCandidatePlan(
+    buildAdvisorCandidatePlan({
+      listings: input.listings,
+      budgetKnown: Boolean(memory.budgetMax),
+      hasBuyerPreference: hasAdvisorBuyerPreference(memory),
+      memory,
+    }),
+    finalRequirementPlan,
+  );
+  // Without the planner (seller, or standalone buyer with no listing) the
+  // requirement/candidate questions are buyer+listing specific (and Korean), so
+  // use the LLM's own questions instead.
+  let nextQuestions = usePlanner
+    ? chooseNextAdvisorQuestions(finalCandidatePlan, finalRequirementPlan, memory)
+    : (parsed.memory.questions ?? []);
+  const finalMemory = {
+    ...memory,
+    questions: nextQuestions,
+  };
+  // Phase G: reconcile category criteria deterministically — the taxonomy scaffold
+  // owns the check set + ids; only requirement/stance flow from the LLM (this turn)
+  // or previous memory. Keeps the structured layer trustworthy for Flow 2 (mirror)
+  // and Flow 3 (pause) regardless of what the LLM echoes back. When a turn arrives
+  // WITHOUT listing context (empty scaffold — e.g. the web sends listings:[] when the
+  // price is momentarily absent), PRESERVE the criteria captured on earlier turns
+  // instead of wiping them to [].
+  finalMemory.categoryCriteria =
+    criteriaScaffold.length > 0
+      ? reconcileCategoryCriteria(
+          criteriaScaffold,
+          parsed.memory.categoryCriteria,
+          input.previous_memory.categoryCriteria,
+        )
+      : // No scaffold this turn: preserve prior criteria, but still enforce the
+        // "only real taxonomy check ids" invariant so a client-crafted
+        // previous_memory can't smuggle fabricated criteria onto the agent.
+        input.previous_memory.categoryCriteria.filter((c) => isTaxonomyCheckId(c.checkId));
+  finalMemory.structured = buildStructuredNegotiationAgentBuilderMemory({
+    memory: finalMemory,
+    previousMemory: input.previous_memory,
+    latestMessage: input.message,
+    requirementPlan: finalRequirementPlan,
+  });
+  finalMemory.source = pruneSupersededAdvisorSources(
+    finalMemory.source,
+    finalMemory.structured.memoryConflicts,
+  );
+  const conflictQuestion = usePlanner
+    ? chooseConflictResolutionQuestion(finalMemory.structured)
+    : null;
+  if (conflictQuestion) {
+    nextQuestions = [conflictQuestion];
+    finalMemory.questions = nextQuestions;
+  }
+  // Flow 2 (deterministic mirroring): once nothing higher-priority is pending (no
+  // conflict, no blocking planner slot), FORCE the buyer to address each criterion the
+  // seller marked required — one per turn, ask-once. This makes mirroring reliable
+  // instead of relying on the LLM to volunteer the [SELLER REQUIRES] question, so the
+  // buyer actually sets a stance on every seller requirement before closing.
+  if (
+    usePlanner &&
+    !conflictQuestion &&
+    !finalRequirementPlan.hasBlockingMissingSlots &&
+    input.seller_required_criteria.length > 0
+  ) {
+    const mirrorQuestion = pickSellerMirrorQuestion(
+      input.seller_required_criteria,
+      finalMemory.categoryCriteria,
+      input.previous_memory.questions,
+    );
+    if (mirrorQuestion) {
+      nextQuestions = [mirrorQuestion];
+      finalMemory.questions = nextQuestions;
+    }
+  }
+  finalMemory.structured.questionPlan = buildStructuredQuestionPlan({
+    nextQuestions,
+    requirementPlan: finalRequirementPlan,
+    structured: finalMemory.structured,
+  });
+  const reply = !usePlanner
+    ? ensureReplyInvitesMore(keepSingleQuestion(parsed.reply), input.side)
+    : buildAdvisorReplyAfterPlanning({
+        parsedReply: parsed.reply,
+        nextQuestions,
+        candidatePlan: finalCandidatePlan,
+        requirementPlan: finalRequirementPlan,
+        latestMessage: input.message,
+        previousMemory: input.previous_memory,
+        memory: finalMemory,
+        agentProfileName: agentProfile.name,
+      });
+
+  return {
+    ...parsed,
+    memory: finalMemory,
+    reply,
+    strategy: parsed.strategy ? clampChatStrategy(parsed.strategy) : undefined,
+    tag_requirements: finalRequirementPlan,
+    advisor_plan: finalCandidatePlan,
+    turn_cost: buildNegotiationAgentBuilderTurnCost(turnUsage),
+    learning_observations: collectLearningObservations({
+      // ONLY the LLM's own generative questions. Planner-authored questions (universal
+      // buyer slots, hardcoded tag requirements, mirror/conflict prompts) are ours, not
+      // evidence of a taxonomy gap — recording them would promote "예산 범위는?" into a
+      // permanent "learned check" and then re-observe itself every turn.
+      questions: parsed.memory.questions ?? [],
+      listings: input.listings,
+      scaffold: criteriaScaffold,
+      plannedQuestions: finalRequirementPlan.requiredSlots.map((s) => s.questionKo),
+    }),
+  };
+}
+
+/**
+ * Feature ②: long-tail questions the LLM had to invent because the static taxonomy has no
+ * check for them. Emitting them (rather than persisting here) keeps this service free of
+ * DB I/O — the route records them best-effort.
+ *
+ * The signal is ALLOWLISTED, not denylisted: only the model's own generative questions
+ * count, and anything the taxonomy scaffold or the requirement planner already asks is
+ * excluded. Recording our own planner questions would promote them into permanent
+ * "learned checks" that then re-observe themselves every turn.
+ *
+ * The observation is attributed to the MOST SPECIFIC taxonomy path the listing resolves
+ * (not the bare category), so a question learned from an iPhone is not served on every TV.
+ * The listing id is the distinct source, so one seller can never promote a check alone.
+ */
+export interface BuilderLearningObservation {
+  categoryPath: string;
+  questionKo: string;
+  sourceId: string;
+}
+
+function collectLearningObservations(args: {
+  questions: string[];
+  listings: Array<{ id: string; category?: string; tags: string[] }>;
+  scaffold: CategoryCriterion[];
+  plannedQuestions: string[];
+}): BuilderLearningObservation[] {
+  const listing = args.listings[0];
+  // No listing context → no category to attribute the question to.
+  if (!listing) return [];
+
+  // Where these questions get attributed. A listing that resolves the taxonomy uses its
+  // deepest node; one that resolves nothing (category "other" with unmodelled tags) falls
+  // back to tag scopes, so the genuinely uncategorised long tail — the case this feature
+  // exists for — accumulates instead of being dropped. Still nothing to key on (no tags
+  // at all, or only generic ones) → skip: a row no lookup can ever reach is write-only.
+  const listingTags = [listing.category, ...listing.tags].filter(
+    (t): t is string => typeof t === "string" && t.length > 0,
+  );
+  const scopes = learningWriteScopes(listingTags);
+  if (scopes.length === 0) return [];
+
+  // Questions we already ask — taxonomy scaffold (either framing) + planner slots.
+  // Compared on normalized CONTENT WORDS, not raw strings: exact matching let a
+  // reworded copy of the taxonomy's own lien gate through during e2e, differing from
+  // `buyerAskKo` only by "&"→"and" and "loan/lien"→"loan or lien". Promoting that would
+  // have made the buyer answer the same question twice, once per source.
+  const covered: string[][] = [];
+  const addCovered = (text: string | undefined) => {
+    const tokens = questionTokens(text ?? "");
+    if (tokens.length > 0) covered.push(tokens);
+  };
+  for (const c of args.scaffold) {
+    addCovered(c.questionKo);
+    addCovered(c.buyerAskKo);
+  }
+  for (const q of args.plannedQuestions) addCovered(q);
+
+  const isDuplicate = (tokens: string[], against: readonly string[][]) =>
+    against.some((known) => questionSimilarity(tokens, known) >= LEARNING_DUPLICATE_SIMILARITY);
+
+  const out: BuilderLearningObservation[] = [];
+  const seen: string[][] = [];
+  for (const q of args.questions) {
+    const question = q?.trim();
+    if (!question) continue;
+    const tokens = questionTokens(question);
+    // Nothing but framing words — no learnable check in it.
+    if (tokens.length === 0) continue;
+    if (isDuplicate(tokens, covered) || isDuplicate(tokens, seen)) continue;
+    seen.push(tokens);
+    // One row per (scope, question). For a taxonomy hit that is a single row; for the
+    // long tail it fans out across the candidate tags so the thresholds can pick the
+    // one that actually identifies the item.
+    for (const scope of scopes) {
+      out.push({ categoryPath: scope, questionKo: question, sourceId: listing.id });
+    }
+  }
+  return out;
+}
+
+function formatAdvisorListingsForPrompt(
+  listings: Array<z.infer<typeof advisorListingSchema>>,
+): string {
+  if (listings.length === 0) return "none";
+
+  return listings
+    .slice(0, ADVISOR_TURN_LISTING_CONTEXT_LIMIT)
+    .map((listing, index) => {
+      const tags = listing.tags.slice(0, 8).join(", ") || "none";
+      const sellerNote = listing.sellerNote ? ` | note=${listing.sellerNote.slice(0, 120)}` : "";
+      return [
+        `${index + 1}. ${listing.title}`,
+        `category=${listing.category ?? "unknown"}`,
+        `condition=${listing.condition}`,
+        `ask=$${(listing.askPriceMinor / 100).toFixed(0)}`,
+        `floor=$${(listing.floorPriceMinor / 100).toFixed(0)}`,
+        `market=$${(listing.marketMedianMinor / 100).toFixed(0)}`,
+        `tags=${tags}${sellerNote}`,
+      ].join(" | ");
+    })
+    .join("\n");
+}
+
+function hasAdvisorBuyerPreference(memory: NegotiationAgentBuilderMemory): boolean {
+  if (memory.mustHave.length > 0 || memory.avoid.length > 0) return true;
+  if (hasGeneralNoPreference(memoryTextFromNegotiationAgentBuilderMemory(memory))) return true;
+  if (memory.riskStyle !== "balanced") return true;
+  if (memory.negotiationStyle !== "balanced") return true;
+  if (memory.openingTactic !== "fair_market_anchor") return true;
+
+  const memoryText = [memory.categoryInterest, ...memory.source].join(" ").toLowerCase();
+
+  return /가격|저렴|싼|최저|lowest|cheap|상태|안전|검증|빠른|speed/.test(memoryText);
+}
+
+function chooseNextAdvisorQuestions(
+  candidatePlan: AdvisorCandidatePlan,
+  requirementPlan: TagRequirementPlan,
+  memory: NegotiationAgentBuilderMemory,
+): string[] {
+  if (requirementPlan.blockingSlots.length > 0) {
+    const firstBlockingQuestion = requirementPlan.blockingSlots[0]?.questionKo;
+    if (firstBlockingQuestion && isScopedConditionConfirmationQuestion(firstBlockingQuestion)) {
+      return [firstBlockingQuestion];
+    }
+
+    const questions = requirementPlan.blockingSlots
+      .slice(0, ADVISOR_MAX_QUESTIONS_PER_TURN)
+      .map((slot, index) =>
+        index === 0 &&
+        candidatePlan.nextAction.question &&
+        candidateQuestionSatisfiesBlockingSlot(candidatePlan, slot)
+          ? candidatePlan.nextAction.question
+          : slot.questionKo,
+      );
+    return unique(questions);
+  }
+
+  if (
+    candidatePlan.nextAction.slot === "buyer_priority" &&
+    hasGeneralNoPreference(memoryTextFromNegotiationAgentBuilderMemory(memory))
+  ) {
+    return [];
+  }
+  if (candidatePlan.nextAction.question) return [candidatePlan.nextAction.question];
+  if (
+    candidatePlan.nextAction.action === "recommend" &&
+    requirementPlan.nextSlot &&
+    ["shopping_intent", "max_budget", "buyer_priority"].includes(requirementPlan.nextSlot.slotId)
+  ) {
+    return [];
+  }
+  return requirementPlan.question ? [requirementPlan.question] : [];
+}
+
+function isScopedConditionConfirmationQuestion(question: string): boolean {
+  return question.startsWith("전에 ") && question.includes("그대로 적용");
+}
+
+function candidateQuestionSatisfiesBlockingSlot(
+  candidatePlan: AdvisorCandidatePlan,
+  blockingSlot: TagRequirementSlot,
+): boolean {
+  const candidateSlot = candidatePlan.nextAction.slot;
+  if (blockingSlot.slotId === "max_budget") return candidateSlot === "budget";
+  if (blockingSlot.slotId === "shopping_intent") {
+    return ["search_intent", "product_type", "model_family"].includes(candidateSlot);
+  }
+  return candidateSlot === blockingSlot.slotId;
+}
+
+function applyRequirementGateToCandidatePlan(
+  candidatePlan: AdvisorCandidatePlan,
+  requirementPlan: TagRequirementPlan,
+): AdvisorCandidatePlan {
+  const blockingSlot = requirementPlan.blockingSlots[0];
+  if (!blockingSlot || candidatePlan.nextAction.reasonCode !== "ready") return candidatePlan;
+
+  return {
+    ...candidatePlan,
+    nextAction: {
+      action: blockingSlot.slotId === "max_budget" ? "ask_budget" : "ask_preference",
+      slot: mapRequirementSlotToAdvisorSlot(blockingSlot),
+      reasonCode: blockingSlot.slotId === "max_budget" ? "budget_missing" : "preference_missing",
+      question: blockingSlot.questionKo,
+    },
+  };
+}
+
+function mapRequirementSlotToAdvisorSlot(
+  slot: TagRequirementSlot,
+): AdvisorCandidatePlan["nextAction"]["slot"] {
+  if (slot.slotId === "shopping_intent") return "search_intent";
+  if (slot.slotId === "max_budget") return "budget";
+  return "buyer_priority";
+}
+
+function buildAdvisorReplyAfterPlanning(input: {
+  parsedReply: string;
+  nextQuestions: string[];
+  candidatePlan: AdvisorCandidatePlan;
+  requirementPlan: TagRequirementPlan;
+  latestMessage: string;
+  previousMemory: NegotiationAgentBuilderMemory;
+  memory: NegotiationAgentBuilderMemory;
+  agentProfileName: string;
+}): string {
+  if (input.nextQuestions.length > 0) {
+    return sanitizeAdvisorReply(
+      mergeAdvisorQuestion(
+        input.parsedReply,
+        formatBundledAdvisorQuestions(input.nextQuestions),
+        input.candidatePlan,
+        input.requirementPlan,
+      ),
+    );
+  }
+
+  if (
+    isNoPreferenceAnswer(input.latestMessage) &&
+    input.previousMemory.questions.length > 0 &&
+    replyAsksQuestion(input.parsedReply)
+  ) {
+    return buildNoPreferenceAcknowledgement(input.memory, input.agentProfileName);
+  }
+
+  return sanitizeAdvisorReply(input.parsedReply);
+}
+
+function buildNegotiationAgentBuilderTurnCost(usage: {
+  prompt_tokens: number;
+  completion_tokens: number;
+}) {
+  const prompt = usage.prompt_tokens;
+  const completion = usage.completion_tokens;
+  const total = prompt + completion;
+  const estimatedUsd = prompt * INPUT_TOKEN_USD + completion * OUTPUT_TOKEN_USD;
+
+  return {
+    model: getBuilderLlmModel(),
+    tokens: {
+      prompt,
+      completion,
+      total,
+    },
+    estimated_usd: Number(estimatedUsd.toFixed(8)),
+    pricing: {
+      prompt_usd_per_1m: INPUT_TOKEN_USD * 1_000_000,
+      completion_usd_per_1m: OUTPUT_TOKEN_USD * 1_000_000,
+    },
+  };
+}
+
+function mergeAdvisorQuestion(
+  reply: string,
+  question: string,
+  candidatePlan: AdvisorCandidatePlan,
+  requirementPlan: TagRequirementPlan,
+): string {
+  const trimmedReply = reply.trim();
+  if (!trimmedReply) return question;
+  if (trimmedReply.includes(question)) return trimmedReply;
+  if (requirementPlan.hasBlockingMissingSlots) {
+    if (
+      requirementPlan.nextSlot &&
+      replyAlreadyAsksForSlot(trimmedReply, requirementPlan.nextSlot) &&
+      getQuestionSentences(trimmedReply).length <= 1
+    ) {
+      return trimmedReply;
+    }
+    if (replyAlreadyAsksSimilarQuestion(trimmedReply, question)) {
+      return trimmedReply;
+    }
+    const withoutConflictingQuestion = stripAdvisorQuestions(trimmedReply);
+    const base = withoutConflictingQuestion || "좋아요, 그 기준으로 볼게요.";
+    const needsSentenceBreakForBase = !/[.!?。！？]$/.test(base);
+    return `${base}${needsSentenceBreakForBase ? "." : ""} ${question}`;
+  }
+  if (replyAlreadyAsksForAdvisorAction(trimmedReply, candidatePlan)) return trimmedReply;
+  if (requirementPlan.nextSlot && replyAlreadyAsksForSlot(trimmedReply, requirementPlan.nextSlot))
+    return trimmedReply;
+
+  const needsSentenceBreak = !/[.!?。！？]$/.test(trimmedReply);
+  return `${trimmedReply}${needsSentenceBreak ? "." : ""} ${question}`;
+}
+
+function formatBundledAdvisorQuestions(questions: string[]): string {
+  const uniqueQuestions = unique(questions).slice(0, ADVISOR_MAX_QUESTIONS_PER_TURN);
+  if (uniqueQuestions.length === 0) return "";
+  if (uniqueQuestions.length === 1) return uniqueQuestions[0]!;
+
+  return `이 ${uniqueQuestions.length}가지만 한 번에 알려주세요: ${uniqueQuestions
+    .map((question, index) => `${index + 1}) ${question}`)
+    .join(" ")}`;
+}
+
+function stripAdvisorQuestions(reply: string): string {
+  return reply
+    .split(/(?<=[.!?。！？])\s+/)
+    .filter((sentence) => !replyAsksQuestion(sentence))
+    .join(" ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function getQuestionSentences(reply: string): string[] {
+  return reply.split(/(?<=[.!?。！？])\s+/).filter((sentence) => replyAsksQuestion(sentence));
+}
+
+function replyAlreadyAsksForAdvisorAction(reply: string, plan: AdvisorCandidatePlan): boolean {
+  const questionWindows = getQuestionWindows(reply);
+  if (questionWindows.length === 0) return false;
+
+  const termsBySlot: Record<string, string[]> = {
+    search_intent: ["제품", "브랜드", "구체", "찾"],
+    product_type: ["본체", "액세서리", "종류"],
+    model_family: ["모델", "트림", "세대"],
+    price_band: ["가격대", "가격", "범위"],
+    condition: ["상태", "컨디션"],
+    budget: ["예산", "가격선", "가격", "범위"],
+    buyer_priority: ["우선", "가격", "상태", "안전"],
+  };
+  const terms = termsBySlot[plan.nextAction.slot] ?? [];
+
+  return questionWindows.some((window) => {
+    const normalized = normalizeForQuestionMatch(window);
+    return terms.some((term) => normalized.includes(normalizeForQuestionMatch(term)));
+  });
+}
+
+function formatCandidatePlanForPrompt(plan: AdvisorCandidatePlan): string {
+  return [
+    `candidate_count: ${plan.candidateCount}`,
+    `dominant_cluster: ${plan.dominantCluster ? `${plan.dominantCluster.label} (${plan.dominantCluster.count}, share ${plan.dominantCluster.share})` : "none"}`,
+    `next_action: ${plan.nextAction.action} | slot=${plan.nextAction.slot} | reason=${plan.nextAction.reasonCode} | question="${plan.nextAction.question ?? "none"}"`,
+    "facets:",
+    ...plan.facets.map(
+      (facet) =>
+        `- ${facet.slot} | entropy=${facet.entropy} | values=${facet.values.map((value) => `${value.label}:${value.count}`).join(", ")}`,
+    ),
+  ].join("\n");
+}
+
+function replyAlreadyAsksForSlot(reply: string, slot: TagRequirementSlot): boolean {
+  const questionWindows = getQuestionWindows(reply);
+  if (questionWindows.length === 0) return false;
+
+  const slotTerms = getRequirementSlotTerms(slot);
+  return questionWindows.some((window) => {
+    const normalizedWindow = normalizeForQuestionMatch(window);
+    return slotTerms.some((term) => normalizedWindow.includes(term));
+  });
+}
+
+function replyAlreadyAsksSimilarQuestion(reply: string, question: string): boolean {
+  const questionWindows = getQuestionWindows(reply);
+  if (questionWindows.length === 0) return false;
+
+  const targetTokens = getQuestionMatchTokens(question);
+  if (targetTokens.length === 0) return false;
+
+  return questionWindows.some((window) => {
+    const windowTokens = new Set(getQuestionMatchTokens(window));
+    const overlap = targetTokens.filter((token) => windowTokens.has(token));
+    return overlap.length >= Math.min(2, targetTokens.length);
+  });
+}
+
+function getQuestionMatchTokens(value: string): string[] {
+  const normalized = value
+    .toLowerCase()
+    .replace(/[%?？.!。！,，]/g, " ")
+    .replace(/[_\-/]+/g, " ");
+  return Array.from(
+    new Set(
+      (normalized.match(/[a-z0-9]+|[가-힣]+/g) ?? [])
+        .map((token) => token.trim())
+        .filter((token) => token.length >= 2)
+        .filter(
+          (token) =>
+            !["인가요", "까요", "나요", "어요", "해요", "있나요", "어느", "정도"].includes(token),
+        ),
+    ),
+  );
+}
+
+function getQuestionWindows(reply: string): string[] {
+  const windows: string[] = [];
+  const questionMarkPattern = /[?？]/g;
+  let match: RegExpExecArray | null = questionMarkPattern.exec(reply);
+
+  while (match !== null) {
+    const index = match.index;
+    windows.push(reply.slice(Math.max(0, index - 120), Math.min(reply.length, index + 120)));
+    match = questionMarkPattern.exec(reply);
+  }
+
+  for (const sentence of reply.split(/(?<=[.!?。！？])\s+/)) {
+    if (/(?:나요|세요|까요|인가요|일까요|뭐예요|뭐에요|주시겠어요|알려주)/.test(sentence)) {
+      windows.push(sentence);
+    }
+  }
+
+  return windows;
+}
+
+function getRequirementSlotTerms(slot: TagRequirementSlot): string[] {
+  const slotSpecificTerms: Record<string, string[]> = {
+    shopping_intent: ["제품", "상품", "찾", "원하", "필요", "상황", "product", "intent"],
+    max_budget: ["예산", "최대", "가격대", "얼마", "budget", "maxbudget"],
+    buyer_priority: [
+      "용도",
+      "조건",
+      "선호",
+      "필수",
+      "꼭필요",
+      "우선",
+      "피하고",
+      "중요",
+      "priority",
+      "musthave",
+    ],
+    battery_health: ["배터리", "성능", "퍼센트", "%", "battery", "batteryhealth"],
+    carrier_lock: [
+      "언락",
+      "잠금",
+      "통신사",
+      "unlocked",
+      "locked",
+      "carrier",
+      "carrierlock",
+      "factoryunlocked",
+    ],
+    imei_verification: ["imei", "serial", "시리얼", "블랙리스트", "깨끗", "cleanimei"],
+    find_my_status: ["findmy", "나의찾기", "아이클라우드", "icloud", "activationlock"],
+  };
+  const terms = [
+    slot.slotId,
+    slot.label,
+    slot.questionKo,
+    ...slot.aliases,
+    ...(slotSpecificTerms[slot.slotId] ?? []),
+  ];
+
+  return Array.from(new Set(terms.map(normalizeForQuestionMatch).filter(Boolean)));
+}
+
+function normalizeForQuestionMatch(value: string): string {
+  return value.toLowerCase().replace(/[\s"'`.,:;()[\]{}_\-/]+/g, "");
+}
+
+function sanitizeAdvisorReply(reply: string): string {
+  return reply
+    .replace(
+      /(?:Tag Garden|태그 가든|requirement slots?|context engineering)[^.!?。！？]*(?:[.!?。！？]|$)/gi,
+      "",
+    )
+    .replace(/(^|[\s.!?。！？])됐고[,\s—-]*/g, "$1")
+    .replace(/^음,\s*/, "Okay, ")
+    .replace(/(^|[\s.,!?。！？])잠깐(?=[\s,.!?。！？]|$)/g, "$1Wait")
+    .replace(/(^|[\s.,!?。！？])대박(?=[\s,.!?。！？]|$)/g, "$1whoa")
+    .replace(/(^|[\s.,!?。！？])아이고(?=[\s,.!?。！？]|$)/g, "$1oof")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function applyNoPreferenceAnswer(
+  memory: NegotiationAgentBuilderMemory,
+  latestMessage: string,
+  previousMemory: NegotiationAgentBuilderMemory,
+): NegotiationAgentBuilderMemory {
+  if (!isNoPreferenceAnswer(latestMessage) || previousMemory.questions.length === 0) return memory;
+
+  const previousQuestionText = previousMemory.questions.join(" ");
+  const facts = noPreferenceFactsForQuestion(previousQuestionText);
+  if (facts.length === 0) return memory;
+
+  return {
+    ...memory,
+    source: unique([...memory.source, ...facts]),
+  };
+}
+
+function applyPendingSlotAnswerScope(
+  memory: NegotiationAgentBuilderMemory,
+  latestMessage: string,
+  previousMemory: NegotiationAgentBuilderMemory,
+): NegotiationAgentBuilderMemory {
+  const pendingSlot = previousMemory.structured?.pendingSlots
+    .slice()
+    .reverse()
+    .find((slot) => slot.productScope && slot.enforcement === "hard");
+  if (!pendingSlot?.productScope) return memory;
+
+  if (pendingSlot.slotId === "battery_health") {
+    const threshold =
+      extractBatteryThresholdLabel(latestMessage.toLowerCase()) ??
+      extractPlainBatteryThresholdFromAnswer(latestMessage, previousMemory);
+    if (threshold) {
+      const fact = `battery >= ${threshold}`;
+      return {
+        ...memory,
+        mustHave: unique([...memory.mustHave, fact]),
+        source: unique([...memory.source, `${pendingSlot.productScope} ${fact}`]),
+      };
+    }
+    if (isNoPreferenceAnswer(latestMessage)) {
+      return {
+        ...memory,
+        source: unique([...memory.source, `${pendingSlot.productScope} battery no preference`]),
+      };
+    }
+  }
+
+  if (pendingSlot.slotId === "carrier_lock") {
+    const facts = normalizeStructuredFacts(latestMessage).filter((fact) =>
+      structuredSlotsForFacts([fact]).includes("carrier_lock"),
+    );
+    if (facts.length > 0) {
+      return {
+        ...memory,
+        source: unique([
+          ...memory.source,
+          ...facts.map((fact) => `${pendingSlot.productScope} ${fact}`),
+        ]),
+      };
+    }
+    if (isNoPreferenceAnswer(latestMessage)) {
+      return {
+        ...memory,
+        source: unique([...memory.source, `${pendingSlot.productScope} carrier no preference`]),
+      };
+    }
+  }
+
+  return memory;
+}
+
+function shouldKeepAdvisorSource(
+  source: string,
+  previousMemory: NegotiationAgentBuilderMemory,
+): boolean {
+  const text = source.trim();
+  if (!text) return false;
+  if (isSecurityAttackInput(text)) return false;
+  if (isNoPreferenceAnswer(text) && previousMemory.questions.length > 0) return true;
+  if (isApplyScopedConditionAnswer(text) && previousMemory.questions.length > 0) return false;
+
+  return /(?:iphone|아이폰|ipad|아이패드|macbook|맥북|laptop|노트북|tesla|테슬라|model\s*\d|모델\s*\d|pro\b|budget|예산|target|price|가격|\$\s*\d|\d+\s*(?:usd|dollars?|달러|불)|battery|배터리|성능|unlocked|locked|carrier|언락|잠금|통신사|imei|find\s*my|icloud|아이클라우드|condition|상태|screen|화면|box|박스|damage|wear|active intent|interest|expanded|narrowed|required|preference|confirmed|applied|budget change|search)/i.test(
+    text,
+  );
+}
+
+function sanitizeNegotiationAgentBuilderMemoryFacts(
+  memory: NegotiationAgentBuilderMemory,
+  previousMemory: NegotiationAgentBuilderMemory,
+): NegotiationAgentBuilderMemory {
+  return {
+    ...memory,
+    mustHave: unique(memory.mustHave.filter((fact) => shouldKeepAdvisorFact(fact, previousMemory))),
+    avoid: unique(memory.avoid.filter((fact) => shouldKeepAdvisorFact(fact, previousMemory))),
+  };
+}
+
+function pruneSupersededAdvisorSources(
+  sources: string[],
+  memoryConflicts: NonNullable<NegotiationAgentBuilderMemory["structured"]>["memoryConflicts"],
+): string[] {
+  const superseded = memoryConflicts.filter(
+    (conflict) =>
+      conflict.status === "superseded" &&
+      Boolean(conflict.productScope) &&
+      Boolean(conflict.previousValue) &&
+      shouldPruneSupersededConflict(conflict, memoryConflicts),
+  );
+  if (superseded.length === 0) return sources;
+
+  return sources.filter(
+    (source) =>
+      !superseded.some((conflict) =>
+        sourceContainsStructuredFact(source, conflict.productScope!, conflict.previousValue!),
+      ),
+  );
+}
+
+function sourceContainsStructuredFact(source: string, productScope: string, fact: string): boolean {
+  return (
+    extractStructuredProductScopes(source).includes(productScope) &&
+    normalizeStructuredFacts(source).includes(fact)
+  );
+}
+
+function pruneSupersededPromotionDecisions(
+  decisions: NonNullable<NegotiationAgentBuilderMemory["structured"]>["promotionDecisions"],
+  memoryConflicts: NonNullable<NegotiationAgentBuilderMemory["structured"]>["memoryConflicts"],
+): NonNullable<NegotiationAgentBuilderMemory["structured"]>["promotionDecisions"] {
+  const superseded = memoryConflicts.filter(
+    (conflict) =>
+      conflict.status === "superseded" &&
+      Boolean(conflict.productScope) &&
+      Boolean(conflict.previousValue) &&
+      shouldPruneSupersededConflict(conflict, memoryConflicts),
+  );
+  if (superseded.length === 0) return decisions;
+
+  return decisions.filter(
+    (decision) =>
+      !superseded.some(
+        (conflict) =>
+          decision.decision === "promote" &&
+          decision.productScope === conflict.productScope &&
+          decision.text === conflict.previousValue,
+      ),
+  );
+}
+
+function shouldPruneSupersededConflict(
+  conflict: NonNullable<NegotiationAgentBuilderMemory["structured"]>["memoryConflicts"][number],
+  memoryConflicts: NonNullable<NegotiationAgentBuilderMemory["structured"]>["memoryConflicts"],
+): boolean {
+  if (!conflict.productScope || !conflict.previousValue) return false;
+  const latestCurrent = memoryConflicts
+    .slice()
+    .reverse()
+    .find(
+      (candidate) =>
+        candidate.status === "current" &&
+        candidate.slotId === conflict.slotId &&
+        candidate.productScope === conflict.productScope &&
+        Boolean(candidate.currentValue),
+    );
+
+  return latestCurrent?.currentValue !== conflict.previousValue;
+}
+
+function shouldKeepAdvisorFact(
+  fact: string,
+  previousMemory: NegotiationAgentBuilderMemory,
+): boolean {
+  const text = fact.trim();
+  if (!text || isSecurityAttackInput(text)) return false;
+  if (text.length < 2) return false;
+  if (shouldKeepAdvisorSource(text, previousMemory)) return true;
+
+  return /(?:battery|배터리|성능|unlocked|locked|carrier|언락|잠금|통신사|imei|find\s*my|icloud|아이클라우드|screen|화면|box|박스|damage|wear|crack|scratch|pro model|clean|original)/i.test(
+    text,
+  );
+}
+
+function buildStructuredNegotiationAgentBuilderMemory(input: {
+  memory: NegotiationAgentBuilderMemory;
+  previousMemory: NegotiationAgentBuilderMemory;
+  latestMessage: string;
+  requirementPlan: TagRequirementPlan;
+}): NonNullable<NegotiationAgentBuilderMemory["structured"]> {
+  const previousStructured = input.previousMemory.structured;
+  let productRequirements: NonNullable<
+    NegotiationAgentBuilderMemory["structured"]
+  >["productRequirements"] = {
+    ...(previousStructured?.productRequirements ?? {}),
+  };
+
+  const activeIntent = resolveStructuredActiveIntent(input.memory, input.latestMessage);
+  const activeScope = activeIntent.productScope;
+  if (activeScope && !productRequirements[activeScope]) {
+    productRequirements[activeScope] = {
+      mustHave: [],
+      avoid: [],
+      answeredSlots: [],
+      ambiguousSlots: [],
+    };
+  }
+
+  for (const source of input.memory.source) {
+    const scopes = extractStructuredProductScopes(source);
+    const scopedFacts = normalizeStructuredFacts(source);
+    if (scopes.length === 0 || scopedFacts.length === 0) continue;
+
+    for (const scope of scopes) {
+      const current = productRequirements[scope] ?? {
+        mustHave: [],
+        avoid: [],
+        answeredSlots: [],
+        ambiguousSlots: [],
+      };
+      productRequirements[scope] = {
+        ...current,
+        mustHave: unique([...current.mustHave, ...scopedFacts]),
+        answeredSlots: unique([...current.answeredSlots, ...structuredSlotsForFacts(scopedFacts)]),
+      };
+    }
+  }
+
+  if (activeScope && productRequirements[activeScope]) {
+    productRequirements[activeScope] = {
+      ...productRequirements[activeScope],
+      mustHave: unique([...productRequirements[activeScope].mustHave, ...input.memory.mustHave]),
+      avoid: unique([...productRequirements[activeScope].avoid, ...input.memory.avoid]),
+      answeredSlots: unique([
+        ...productRequirements[activeScope].answeredSlots,
+        ...structuredSlotsForFacts(input.memory.mustHave),
+        ...structuredSlotsForFacts(input.memory.avoid),
+      ]),
+    };
+  }
+
+  if (
+    activeScope &&
+    isAmbiguousAnswer(input.latestMessage) &&
+    input.previousMemory.questions.length > 0
+  ) {
+    const current = productRequirements[activeScope] ?? {
+      mustHave: [],
+      avoid: [],
+      answeredSlots: [],
+      ambiguousSlots: [],
+    };
+    productRequirements[activeScope] = {
+      ...current,
+      ambiguousSlots: unique([
+        ...current.ambiguousSlots,
+        ...pendingQuestionKinds(input.previousMemory.questions.join(" ")),
+      ]),
+    };
+  }
+
+  const conflictResult = applyStructuredConflictHandling({
+    productRequirements,
+    previousMemory: input.previousMemory,
+    latestMessage: input.latestMessage,
+    activeScope,
+  });
+  productRequirements = conflictResult.productRequirements;
+  const discardedSignals = buildStructuredDiscardedSignals(input);
+  const lifecycle = buildStructuredMemoryLifecycle({
+    memory: input.memory,
+    latestMessage: input.latestMessage,
+    previousMemory: input.previousMemory,
+    requirementPlan: input.requirementPlan,
+    activeScope,
+    productRequirements,
+    discardedSignals,
+    memoryConflicts: conflictResult.memoryConflicts,
+  });
+
+  return {
+    activeIntent,
+    productRequirements,
+    globalPreferences: {
+      mustHave: input.memory.mustHave,
+      avoid: input.memory.avoid,
+      budgetMax: input.memory.budgetMax,
+      targetPrice: input.memory.targetPrice,
+      riskStyle: input.memory.riskStyle,
+      negotiationStyle: input.memory.negotiationStyle,
+      openingTactic: input.memory.openingTactic,
+    },
+    pendingSlots: input.requirementPlan.missingSlots.map((slot) => ({
+      slotId: slot.slotId,
+      question: slot.questionKo,
+      enforcement: slot.enforcement,
+      productScope: activeScope,
+      status:
+        isAmbiguousAnswer(input.latestMessage) &&
+        input.previousMemory.questions.includes(slot.questionKo)
+          ? "ambiguous"
+          : "pending",
+    })),
+    discardedSignals,
+    memoryConflicts: conflictResult.memoryConflicts,
+    scopedConditionDecisions: uniqueScopedConditionDecisions([
+      ...(previousStructured?.scopedConditionDecisions ?? []),
+      ...(input.memory.structured?.scopedConditionDecisions ?? []),
+    ]),
+    sessionMemory: lifecycle.sessionMemory,
+    longTermMemory: lifecycle.longTermMemory,
+    promotionDecisions: lifecycle.promotionDecisions,
+    compression: lifecycle.compression,
+  };
+}
+
+function buildStructuredMemoryLifecycle(input: {
+  memory: NegotiationAgentBuilderMemory;
+  previousMemory: NegotiationAgentBuilderMemory;
+  latestMessage: string;
+  requirementPlan: TagRequirementPlan;
+  activeScope?: string;
+  productRequirements: NonNullable<
+    NegotiationAgentBuilderMemory["structured"]
+  >["productRequirements"];
+  discardedSignals: NonNullable<NegotiationAgentBuilderMemory["structured"]>["discardedSignals"];
+  memoryConflicts: NonNullable<NegotiationAgentBuilderMemory["structured"]>["memoryConflicts"];
+}): Pick<
+  NonNullable<NegotiationAgentBuilderMemory["structured"]>,
+  "sessionMemory" | "longTermMemory" | "promotionDecisions" | "compression"
+> {
+  const previousStructured = input.previousMemory.structured;
+  const previousLongTerm = previousStructured?.longTermMemory;
+  const previousSession = previousStructured?.sessionMemory;
+  let promotionDecisions: NonNullable<
+    NegotiationAgentBuilderMemory["structured"]
+  >["promotionDecisions"] = [...(previousStructured?.promotionDecisions ?? [])];
+  const longTermFacts = new Set(previousLongTerm?.facts ?? []);
+  const globalFacts = new Set(previousLongTerm?.globalFacts ?? []);
+  const productScopes = new Set(previousLongTerm?.productScopes ?? []);
+  const sessionFacts = new Set(previousSession?.facts ?? []);
+
+  for (const conflict of input.memoryConflicts) {
+    if (
+      conflict.status !== "superseded" ||
+      !conflict.productScope ||
+      !conflict.previousValue ||
+      !shouldPruneSupersededConflict(conflict, input.memoryConflicts)
+    ) {
+      continue;
+    }
+    longTermFacts.delete(`${conflict.productScope}: ${conflict.previousValue}`);
+  }
+  promotionDecisions = pruneSupersededPromotionDecisions(promotionDecisions, input.memoryConflicts);
+
+  const addDecision = (
+    text: string,
+    decision: "promote" | "session_only" | "discard",
+    reason: NonNullable<
+      NegotiationAgentBuilderMemory["structured"]
+    >["promotionDecisions"][number]["reason"],
+    target: "long_term" | "session" | "none",
+    productScope?: string,
+  ) => {
+    promotionDecisions.push({
+      text,
+      decision,
+      reason,
+      target,
+      ...(productScope ? { productScope } : {}),
+    });
+  };
+
+  for (const [scope, requirements] of Object.entries(input.productRequirements)) {
+    const facts = unique([...requirements.mustHave, ...requirements.avoid]);
+    if (facts.length === 0) continue;
+    productScopes.add(scope);
+    for (const fact of facts) {
+      const scopedFact = `${scope}: ${fact}`;
+      longTermFacts.add(scopedFact);
+      addDecision(fact, "promote", "confirmed_product_requirement", "long_term", scope);
+    }
+  }
+
+  if (input.memory.budgetMax) {
+    const fact = `budgetMax: ${input.memory.budgetMax}`;
+    longTermFacts.add(fact);
+    globalFacts.add(fact);
+    addDecision(fact, "promote", "explicit_budget", "long_term");
+  }
+  if (input.memory.targetPrice) {
+    const fact = `targetPrice: ${input.memory.targetPrice}`;
+    longTermFacts.add(fact);
+    globalFacts.add(fact);
+    addDecision(fact, "promote", "explicit_budget", "long_term");
+  }
+  if (input.memory.riskStyle !== "balanced") {
+    const fact = `riskStyle: ${input.memory.riskStyle}`;
+    longTermFacts.add(fact);
+    globalFacts.add(fact);
+    addDecision(fact, "promote", "stable_global_preference", "long_term");
+  }
+  if (input.memory.negotiationStyle !== "balanced") {
+    const fact = `negotiationStyle: ${input.memory.negotiationStyle}`;
+    longTermFacts.add(fact);
+    globalFacts.add(fact);
+    addDecision(fact, "promote", "stable_global_preference", "long_term");
+  }
+  if (input.memory.openingTactic !== "fair_market_anchor") {
+    const fact = `openingTactic: ${input.memory.openingTactic}`;
+    longTermFacts.add(fact);
+    globalFacts.add(fact);
+    addDecision(fact, "promote", "stable_global_preference", "long_term");
+  }
+
+  for (const slot of input.requirementPlan.missingSlots) {
+    if (slot.enforcement === "hard") {
+      const pending = `${slot.slotId}: ${slot.questionKo}`;
+      sessionFacts.add(pending);
+      addDecision(pending, "session_only", "pending_hard_slot", "session", input.activeScope);
+    }
+  }
+
+  const latestDiscard = input.discardedSignals.at(-1);
+  if (latestDiscard?.text === input.latestMessage) {
+    const reason =
+      latestDiscard.reason === "security"
+        ? "security"
+        : latestDiscard.reason === "ambiguous"
+          ? "ambiguous"
+          : latestDiscard.reason === "off_topic"
+            ? "off_topic"
+            : "low_information";
+    addDecision(input.latestMessage, "discard", reason, "none", input.activeScope);
+  } else if (!shouldKeepAdvisorSource(input.latestMessage, input.previousMemory)) {
+    addDecision(input.latestMessage, "discard", "low_information", "none", input.activeScope);
+  }
+
+  const prunedSessionFacts = pruneSupersededAdvisorSources(
+    Array.from(sessionFacts),
+    input.memoryConflicts,
+  );
+  const recentWindowFacts = unique(
+    pruneSupersededAdvisorSources(input.memory.source.slice(-6), input.memoryConflicts),
+  );
+  const carriedForwardFacts = unique([...Array.from(longTermFacts), ...prunedSessionFacts]).slice(
+    -12,
+  );
+  const droppedSignals = input.discardedSignals
+    .slice(-6)
+    .map((signal) => `${signal.reason}: ${signal.text}`);
+  const pendingQuestions = unique(
+    input.requirementPlan.missingSlots.map((slot) => slot.questionKo),
+  );
+  const summaryParts = [
+    input.activeScope ? `active=${input.activeScope}` : "active=unscoped",
+    `longTerm=${longTermFacts.size}`,
+    `session=${sessionFacts.size}`,
+    pendingQuestions.length > 0 ? `pending=${pendingQuestions.length}` : "pending=0",
+    droppedSignals.length > 0 ? `dropped=${droppedSignals.length}` : "dropped=0",
+  ];
+
+  return {
+    sessionMemory: {
+      facts: prunedSessionFacts.slice(-12),
+      pendingQuestions,
+      reason: "facts that guide this advisor session but are not durable buyer preferences yet",
+    },
+    longTermMemory: {
+      facts: Array.from(longTermFacts).slice(-20),
+      productScopes: Array.from(productScopes).slice(-8),
+      globalFacts: Array.from(globalFacts).slice(-12),
+    },
+    promotionDecisions: promotionDecisions.slice(-24),
+    compression: {
+      recentWindowFacts,
+      carriedForwardFacts,
+      droppedSignals,
+      summary: summaryParts.join(" | "),
+    },
+  };
+}
+
+function chooseConflictResolutionQuestion(
+  structured: NegotiationAgentBuilderMemory["structured"] | undefined,
+): string | null {
+  const conflict = structured?.memoryConflicts
+    .slice()
+    .reverse()
+    .find((item) => item.status === "needs_confirmation" && item.resolutionQuestion);
+  return conflict?.resolutionQuestion ?? null;
+}
+
+function buildStructuredQuestionPlan(input: {
+  nextQuestions: string[];
+  requirementPlan: TagRequirementPlan;
+  structured: NonNullable<NegotiationAgentBuilderMemory["structured"]>;
+}): NonNullable<NegotiationAgentBuilderMemory["structured"]>["questionPlan"] {
+  const combinedQuestion = formatBundledAdvisorQuestions(input.nextQuestions);
+  const nextQuestionSet = new Set(input.nextQuestions);
+  const conflict = input.structured.memoryConflicts
+    .slice()
+    .reverse()
+    .find(
+      (item) =>
+        item.status === "needs_confirmation" &&
+        item.resolutionQuestion &&
+        nextQuestionSet.has(item.resolutionQuestion),
+    );
+  const askedSlots = input.requirementPlan.missingSlots.filter(
+    (slot) =>
+      nextQuestionSet.has(slot.questionKo) ||
+      input.nextQuestions.some((question) => questionTextMatchesRequirementSlot(question, slot)),
+  );
+  const askedSlot = askedSlots[0];
+  const askedSlotIds = new Set(askedSlots.map((slot) => slot.slotId));
+  const fallbackAskedSlot =
+    input.requirementPlan.missingSlots.find((slot) => slot.questionKo === combinedQuestion) ??
+    input.requirementPlan.missingSlots.find((slot) =>
+      combinedQuestion ? questionTextMatchesRequirementSlot(combinedQuestion, slot) : false,
+    );
+  const primaryAskedSlot = askedSlot ?? fallbackAskedSlot;
+  const askedKind = conflict
+    ? "conflict"
+    : primaryAskedSlot
+      ? primaryAskedSlot.enforcement === "hard"
+        ? "hard_slot"
+        : "soft_slot"
+      : input.nextQuestions.length > 0
+        ? "candidate"
+        : "none";
+  const maxQuestionsPerTurn = conflict ? 1 : ADVISOR_MAX_QUESTIONS_PER_TURN;
+  const deferred = input.requirementPlan.missingSlots
+    .filter((slot) => !nextQuestionSet.has(slot.questionKo) && !askedSlotIds.has(slot.slotId))
+    .map((slot) => ({
+      slotId: slot.slotId,
+      question: slot.questionKo,
+      enforcement: slot.enforcement,
+      reason: questionDeferReason({
+        slot,
+        conflictActive: Boolean(conflict),
+        askedSlot: primaryAskedSlot,
+        nextQuestion: combinedQuestion || null,
+        blockingSlots: input.requirementPlan.blockingSlots,
+      }),
+      productScope: input.structured.activeIntent?.productScope,
+    }));
+
+  return {
+    policy: {
+      maxQuestionsPerTurn,
+      order: ["conflict_resolution", "hard_slot", "candidate_narrowing", "soft_slot"],
+      rationale:
+        "Resolve contradictions first, then bundle blocking hard slots when they can be answered together, then candidate narrowing, and defer lower-priority soft preferences.",
+    },
+    budget: {
+      maxQuestionsPerTurn,
+      used: input.nextQuestions.length,
+    },
+    askedThisTurn: {
+      kind: askedKind,
+      ...(combinedQuestion ? { question: combinedQuestion } : {}),
+      ...(conflict?.slotId || primaryAskedSlot?.slotId
+        ? { slotId: conflict?.slotId ?? primaryAskedSlot?.slotId }
+        : {}),
+      ...(conflict?.productScope || input.structured.activeIntent?.productScope
+        ? { productScope: conflict?.productScope ?? input.structured.activeIntent?.productScope }
+        : {}),
+    },
+    deferred,
+  };
+}
+
+function questionTextMatchesRequirementSlot(question: string, slot: TagRequirementSlot): boolean {
+  const normalizedQuestion = normalizeForQuestionMatch(question);
+  return getRequirementSlotTerms(slot).some((term) => normalizedQuestion.includes(term));
+}
+
+function questionDeferReason(input: {
+  slot: TagRequirementSlot;
+  conflictActive: boolean;
+  askedSlot: TagRequirementSlot | undefined;
+  nextQuestion: string | null;
+  blockingSlots: TagRequirementSlot[];
+}): NonNullable<
+  NonNullable<NegotiationAgentBuilderMemory["structured"]>["questionPlan"]
+>["deferred"][number]["reason"] {
+  if (input.conflictActive) return "conflict_resolution_first";
+  if (
+    input.slot.enforcement === "soft" &&
+    (input.askedSlot?.enforcement === "hard" ||
+      input.blockingSlots.some((slot) => slot.slotId !== input.askedSlot?.slotId))
+  ) {
+    return "lower_priority";
+  }
+  if (input.nextQuestion) return "question_budget";
+  return "lower_priority";
+}
+
+function applyStructuredConflictHandling(input: {
+  productRequirements: NonNullable<
+    NegotiationAgentBuilderMemory["structured"]
+  >["productRequirements"];
+  previousMemory: NegotiationAgentBuilderMemory;
+  latestMessage: string;
+  activeScope?: string;
+}): {
+  productRequirements: NonNullable<
+    NegotiationAgentBuilderMemory["structured"]
+  >["productRequirements"];
+  memoryConflicts: NonNullable<NegotiationAgentBuilderMemory["structured"]>["memoryConflicts"];
+} {
+  const memoryConflicts = [...(input.previousMemory.structured?.memoryConflicts ?? [])];
+  if (!input.activeScope) {
+    return {
+      productRequirements: input.productRequirements,
+      memoryConflicts: memoryConflicts.slice(-16),
+    };
+  }
+
+  const current = input.productRequirements[input.activeScope];
+  if (!current) {
+    return {
+      productRequirements: input.productRequirements,
+      memoryConflicts: memoryConflicts.slice(-16),
+    };
+  }
+
+  let nextCurrent = { ...current };
+  const pendingConflict = findPendingMemoryConflict(input.previousMemory, input.activeScope);
+  if (pendingConflict?.currentValue && pendingConflict.previousValue) {
+    const withoutPending = memoryConflicts.filter(
+      (conflict) => !sameMemoryConflict(conflict, pendingConflict),
+    );
+    if (isConfirmConflictAnswer(input.latestMessage)) {
+      nextCurrent = addCurrentSlotFact(removeSlotFacts(nextCurrent, pendingConflict.slotId), {
+        slotId: pendingConflict.slotId,
+        fact: pendingConflict.currentValue,
+        list: "mustHave",
+      });
+      withoutPending.push(
+        {
+          slotId: pendingConflict.slotId,
+          productScope: input.activeScope,
+          previousValue: pendingConflict.previousValue,
+          currentValue: pendingConflict.currentValue,
+          status: "superseded",
+          reason: "user confirmed tentative change",
+        },
+        {
+          slotId: pendingConflict.slotId,
+          productScope: input.activeScope,
+          currentValue: pendingConflict.currentValue,
+          status: "current",
+          reason: "user confirmed tentative change",
+        },
+      );
+      return {
+        productRequirements: {
+          ...input.productRequirements,
+          [input.activeScope]: nextCurrent,
+        },
+        memoryConflicts: withoutPending.slice(-16),
+      };
+    }
+    if (isRejectConflictAnswer(input.latestMessage)) {
+      nextCurrent = addCurrentSlotFact(removeSlotFacts(nextCurrent, pendingConflict.slotId), {
+        slotId: pendingConflict.slotId,
+        fact: pendingConflict.previousValue,
+        list: "mustHave",
+      });
+      withoutPending.push({
+        slotId: pendingConflict.slotId,
+        productScope: input.activeScope,
+        currentValue: pendingConflict.previousValue,
+        status: "current",
+        reason: "user rejected tentative change",
+      });
+      return {
+        productRequirements: {
+          ...input.productRequirements,
+          [input.activeScope]: nextCurrent,
+        },
+        memoryConflicts: withoutPending.slice(-16),
+      };
+    }
+  }
+
+  for (const update of detectLatestSlotFacts(input.latestMessage, input.previousMemory)) {
+    const previousValue = findSlotFact(nextCurrent, update.slotId);
+    if (!previousValue || previousValue === update.fact) continue;
+
+    if (update.needsConfirmation) {
+      nextCurrent = removeSlotFact(nextCurrent, update.slotId, update.fact);
+      memoryConflicts.push({
+        slotId: update.slotId,
+        productScope: input.activeScope,
+        previousValue,
+        currentValue: update.fact,
+        status: "needs_confirmation",
+        resolutionQuestion: buildConflictResolutionQuestion(
+          input.activeScope,
+          update.slotId,
+          previousValue,
+          update.fact,
+        ),
+        reason: "latest answer was tentative",
+      });
+      continue;
+    }
+
+    nextCurrent = addCurrentSlotFact(removeSlotFacts(nextCurrent, update.slotId), update);
+    memoryConflicts.push(
+      {
+        slotId: update.slotId,
+        productScope: input.activeScope,
+        previousValue,
+        currentValue: update.fact,
+        status: "superseded",
+        reason: "latest explicit user message changed the requirement",
+      },
+      {
+        slotId: update.slotId,
+        productScope: input.activeScope,
+        currentValue: update.fact,
+        status: "current",
+        reason: "latest explicit user message",
+      },
+    );
+  }
+
+  return {
+    productRequirements: {
+      ...input.productRequirements,
+      [input.activeScope]: nextCurrent,
+    },
+    memoryConflicts: memoryConflicts.slice(-16),
+  };
+}
+
+function findPendingMemoryConflict(
+  memory: NegotiationAgentBuilderMemory,
+  activeScope?: string,
+): NonNullable<NegotiationAgentBuilderMemory["structured"]>["memoryConflicts"][number] | null {
+  return (
+    memory.structured?.memoryConflicts
+      .slice()
+      .reverse()
+      .find(
+        (conflict) =>
+          conflict.status === "needs_confirmation" &&
+          (!activeScope || conflict.productScope === activeScope) &&
+          Boolean(conflict.previousValue) &&
+          Boolean(conflict.currentValue),
+      ) ?? null
+  );
+}
+
+function sameMemoryConflict(
+  left: NonNullable<NegotiationAgentBuilderMemory["structured"]>["memoryConflicts"][number],
+  right: NonNullable<NegotiationAgentBuilderMemory["structured"]>["memoryConflicts"][number],
+): boolean {
+  return (
+    left.status === right.status &&
+    left.slotId === right.slotId &&
+    left.productScope === right.productScope &&
+    left.previousValue === right.previousValue &&
+    left.currentValue === right.currentValue
+  );
+}
+
+function detectLatestSlotFacts(
+  latestMessage: string,
+  previousMemory: NegotiationAgentBuilderMemory,
+): Array<{ slotId: string; fact: string; list: "mustHave" | "avoid"; needsConfirmation: boolean }> {
+  const facts: Array<{
+    slotId: string;
+    fact: string;
+    list: "mustHave" | "avoid";
+    needsConfirmation: boolean;
+  }> = [];
+  const pushFact = (slotId: string, fact: string) => {
+    facts.push({
+      slotId,
+      fact,
+      list: "mustHave",
+      needsConfirmation: isTentativeRequirementChange(latestMessage),
+    });
+  };
+  const battery =
+    extractBatteryThresholdLabel(latestMessage.toLowerCase()) ??
+    extractPlainBatteryThresholdFromAnswer(latestMessage, previousMemory);
+  if (battery) {
+    pushFact("battery_health", `battery >= ${battery}`);
+  }
+
+  if (isNoPreferenceAnswer(latestMessage)) {
+    const pendingKinds = pendingQuestionKinds(previousMemory.questions.join(" "));
+    if (pendingKinds.includes("battery")) pushFact("battery_health", "battery no preference");
+    if (pendingKinds.includes("carrier")) pushFact("carrier_lock", "carrier no preference");
+  }
+
+  for (const fact of normalizeStructuredFacts(latestMessage)) {
+    if (facts.some((existing) => existing.fact === fact)) continue;
+    if (/battery/.test(fact) && battery) continue;
+    for (const slotId of structuredSlotsForFacts([fact])) {
+      pushFact(slotId, fact);
+    }
+  }
+
+  return facts;
+}
+
+function extractPlainBatteryThresholdFromAnswer(
+  latestMessage: string,
+  previousMemory: NegotiationAgentBuilderMemory,
+): string | null {
+  if (!pendingQuestionKinds(previousMemory.questions.join(" ")).includes("battery")) return null;
+  const match = latestMessage.match(/\b([7-9][0-9]|100)\s*%?\b/);
+  if (!match?.[1]) return null;
+  return `${match[1]}%`;
+}
+
+function isTentativeRequirementChange(message: string): boolean {
+  return /(?:괜찮을까|될까|어때|어떨까|가능할까|봐도\s*돼|maybe|not\s*sure|unsure|could|would|should|상황(?:에)?\s*따라|그때\s*봐서)/i.test(
+    message,
+  );
+}
+
+function findSlotFact(
+  requirements: NonNullable<
+    NegotiationAgentBuilderMemory["structured"]
+  >["productRequirements"][string],
+  slotId: string,
+): string | null {
+  const allFacts = [...requirements.mustHave, ...requirements.avoid];
+  return allFacts.find((fact) => structuredSlotsForFacts([fact]).includes(slotId)) ?? null;
+}
+
+function removeSlotFacts(
+  requirements: NonNullable<
+    NegotiationAgentBuilderMemory["structured"]
+  >["productRequirements"][string],
+  slotId: string,
+): NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"][string] {
+  return {
+    ...requirements,
+    mustHave: requirements.mustHave.filter(
+      (fact) => !structuredSlotsForFacts([fact]).includes(slotId),
+    ),
+    avoid: requirements.avoid.filter((fact) => !structuredSlotsForFacts([fact]).includes(slotId)),
+  };
+}
+
+function removeSlotFact(
+  requirements: NonNullable<
+    NegotiationAgentBuilderMemory["structured"]
+  >["productRequirements"][string],
+  slotId: string,
+  factToRemove: string,
+): NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"][string] {
+  return {
+    ...requirements,
+    mustHave: requirements.mustHave.filter(
+      (fact) => fact !== factToRemove || !structuredSlotsForFacts([fact]).includes(slotId),
+    ),
+    avoid: requirements.avoid.filter(
+      (fact) => fact !== factToRemove || !structuredSlotsForFacts([fact]).includes(slotId),
+    ),
+  };
+}
+
+function addCurrentSlotFact(
+  requirements: NonNullable<
+    NegotiationAgentBuilderMemory["structured"]
+  >["productRequirements"][string],
+  update: { slotId: string; fact: string; list: "mustHave" | "avoid" },
+): NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"][string] {
+  return {
+    ...requirements,
+    mustHave:
+      update.list === "mustHave"
+        ? unique([...requirements.mustHave, update.fact])
+        : requirements.mustHave,
+    avoid:
+      update.list === "avoid" ? unique([...requirements.avoid, update.fact]) : requirements.avoid,
+    answeredSlots: unique([...requirements.answeredSlots, update.slotId]),
+  };
+}
+
+function buildConflictResolutionQuestion(
+  productScope: string,
+  slotId: string,
+  previousValue: string,
+  currentValue: string,
+): string {
+  const label =
+    slotId === "battery_health"
+      ? "배터리 기준"
+      : slotId === "carrier_lock"
+        ? "언락/통신사 기준"
+        : "조건";
+  return `${productScope}의 ${label}을 "${previousValue}"에서 "${currentValue}"로 바꿀까요?`;
+}
+
+function resolveStructuredActiveIntent(
+  memory: NegotiationAgentBuilderMemory,
+  latestMessage: string,
+): { productScope?: string; source?: string } {
+  const latestScopes = extractStructuredProductScopes(latestMessage);
+  if (latestScopes.length > 0)
+    return { productScope: latestScopes[latestScopes.length - 1], source: latestMessage };
+
+  for (const source of [...memory.source].reverse()) {
+    const scopes = extractStructuredProductScopes(source);
+    if (scopes.length > 0) return { productScope: scopes[scopes.length - 1], source };
+  }
+
+  const latestScopeDecision = memory.structured?.scopedConditionDecisions.at(-1);
+  if (latestScopeDecision) {
+    return {
+      productScope: latestScopeDecision.targetScope,
+      source: `${latestScopeDecision.decision} ${latestScopeDecision.slotId} scope decision`,
+    };
+  }
+
+  const categoryScopes = extractStructuredProductScopes(memory.categoryInterest);
+  if (categoryScopes.length > 0)
+    return {
+      productScope: categoryScopes[categoryScopes.length - 1],
+      source: memory.categoryInterest,
+    };
+  return {};
+}
+
+function extractStructuredProductScopes(text: string): string[] {
+  const scopes: string[] = [];
+  const seen = new Set<string>();
+  const add = (value: string) => {
+    if (seen.has(value)) return;
+    seen.add(value);
+    scopes.push(value);
+  };
+
+  for (const match of text.matchAll(
+    /(?:iphone|아이폰)\s*(1[1-9]|[2-9])\s*(pro\s*max|pro|max|plus|mini)?/gi,
+  )) {
+    add(["iPhone", match[1], normalizeStructuredVariant(match[2])].filter(Boolean).join(" "));
+  }
+  for (const match of text.matchAll(/(?:tesla|테슬라)?\s*model\s*([3y])|모델\s*([3y])/gi)) {
+    const model = (match[1] ?? match[2])?.toUpperCase();
+    if (model) add(`Tesla Model ${model}`);
+  }
+
+  return scopes;
+}
+
+function normalizeStructuredVariant(value?: string): string | undefined {
+  if (!value) return undefined;
+  return value
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function normalizeStructuredFacts(text: string): string[] {
+  const facts: string[] = [];
+  const battery = extractBatteryThresholdLabel(text.toLowerCase());
+  if (battery) facts.push(`battery >= ${battery}`);
+  if (hasSlotNoPreference(text, "battery")) {
+    facts.push("battery no preference");
+  }
+  if (/(?:unlocked|factory unlocked|언락\s*필수)/i.test(text)) facts.push("unlocked");
+  if (hasSlotNoPreference(text, "carrier")) {
+    facts.push("carrier no preference");
+  }
+  return unique(facts);
+}
+
+function hasSlotNoPreference(text: string, slot: "battery" | "carrier"): boolean {
+  const normalized = text.toLowerCase();
+  if (slot === "battery" && /battery\s+no\s+preference/i.test(normalized)) return true;
+  if (slot === "carrier" && /carrier\s+no\s+preference/i.test(normalized)) return true;
+
+  const hasNoPreference =
+    /(?:상관\s*없|무관|필요\s*없|신경\s*안\s*써|no preference|doesn'?t matter|not important|no need)/i.test(
+      normalized,
+    );
+  if (!hasNoPreference) return false;
+
+  const hasBatteryTerm = /(?:battery|배터리|성능)/i.test(normalized);
+  const hasCarrierTerm = /(?:carrier|통신사|언락|unlocked|locked|잠금)/i.test(normalized);
+  const sharedNoPreference = hasSharedNoPreferenceForBatteryAndCarrier(normalized);
+  if (slot === "carrier") return hasCarrierTerm;
+  if (!hasBatteryTerm) return false;
+  if (extractBatteryThresholdLabel(normalized)) return false;
+  return !hasCarrierTerm || sharedNoPreference;
+}
+
+function hasSharedNoPreferenceForBatteryAndCarrier(normalized: string): boolean {
+  const noPreference = String.raw`(?:상관\s*없|무관|필요\s*없|신경\s*안\s*써|no preference|doesn'?t matter|not important|no need)`;
+  const battery = "(?:battery|배터리|성능)";
+  const carrier = "(?:carrier|통신사|언락|unlocked|locked|잠금)";
+  const connector = String.raw`(?:랑|와|과|및|하고|,|\/|&|\+|and)`;
+  return (
+    new RegExp(
+      `${battery}\\s*${connector}\\s*${carrier}[^.!?。！？]{0,40}${noPreference}`,
+      "i",
+    ).test(normalized) ||
+    new RegExp(
+      `${carrier}\\s*${connector}\\s*${battery}[^.!?。！？]{0,40}${noPreference}`,
+      "i",
+    ).test(normalized) ||
+    new RegExp(
+      `${battery}[^.!?。！？]{0,20}${carrier}[^.!?。！？]{0,20}(?:둘\\s*다|모두|both)[^.!?。！？]{0,20}${noPreference}`,
+      "i",
+    ).test(normalized) ||
+    new RegExp(
+      `${carrier}[^.!?。！？]{0,20}${battery}[^.!?。！？]{0,20}(?:둘\\s*다|모두|both)[^.!?。！？]{0,20}${noPreference}`,
+      "i",
+    ).test(normalized)
+  );
+}
+
+function structuredSlotsForFacts(facts: string[]): string[] {
+  const slots: string[] = [];
+  const text = facts.join(" ").toLowerCase();
+  if (/battery|배터리|성능/.test(text)) slots.push("battery_health");
+  if (/unlocked|locked|carrier|언락|잠금|통신사/.test(text)) slots.push("carrier_lock");
+  if (/imei/.test(text)) slots.push("imei_verification");
+  return slots;
+}
+
+function buildStructuredDiscardedSignals(input: {
+  previousMemory: NegotiationAgentBuilderMemory;
+  latestMessage: string;
+}): NonNullable<NegotiationAgentBuilderMemory["structured"]>["discardedSignals"] {
+  const previous = input.previousMemory.structured?.discardedSignals ?? [];
+  const discarded = [...previous];
+  if (isSecurityAttackInput(input.latestMessage)) {
+    discarded.push({
+      text: input.latestMessage,
+      reason: "security",
+      relatedQuestion: input.previousMemory.questions[0],
+    });
+  } else if (isAmbiguousAnswer(input.latestMessage)) {
+    discarded.push({
+      text: input.latestMessage,
+      reason: "ambiguous",
+      relatedQuestion: input.previousMemory.questions[0],
+    });
+  } else if (!shouldKeepAdvisorSource(input.latestMessage, input.previousMemory)) {
+    discarded.push({
+      text: input.latestMessage,
+      reason: "off_topic",
+      relatedQuestion: input.previousMemory.questions[0],
+    });
+  }
+  return discarded.slice(-12);
+}
+
+function isSecurityAttackInput(message: string): boolean {
+  const normalized = message
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .toLowerCase();
+
+  return /(?:ignore (?:all )?(?:previous|system|developer) instructions|system prompt|developer message|jailbreak|prompt injection|너의\s*(?:시스템|개발자)\s*지시|이전\s*지시\s*무시|프롬프트\s*인젝션|내부\s*(?:프롬프트|지시)|규칙을\s*무시)/i.test(
     normalized,
   );
 }
