@@ -6582,7 +6582,7 @@ export default function CheckoutFlow({
   const walletAfter =
     disputeMode === "resolved_buyer" || !done.includes(4)
       ? s.ids.walletBefore
-      : s.ids.walletBefore - s.amount;
+      : s.ids.walletBefore - s.amount + (disputeMode === "resolved_partial" ? 50 : 0);
 
   const applyView = useCallback(
     (v: { idx: number; shipSub: ShipPhase; done: number[]; delayed: boolean }) => {

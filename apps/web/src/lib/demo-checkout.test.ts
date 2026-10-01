@@ -66,6 +66,9 @@ describe("presenter transitions", () => {
       shipSub: "labelPending",
     });
   });
+  it("settle jump marks the settle step done so the wallet is debited", () => {
+    expect(presenterJumpStep(4).done).toEqual([0, 1, 2, 3, 4]);
+  });
   it("ship jump routes delivered to the delivered step", () => {
     expect(presenterJumpShip("inTransit")).toMatchObject({
       idx: 5,
