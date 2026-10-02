@@ -188,6 +188,16 @@ async function main() {
     // 1. whoami + search
     const who = await call("haggle_whoami", {});
     summary.grantedScopes = who.json.scopes ?? who.json.granted_scopes ?? null;
+    const role = who.json.role;
+    summary.role = typeof role === "string" ? role : null;
+    // account boundary: only a regular (non-admin) user may run the demo; unknown role fails closed
+    if (typeof role !== "string" || role.trim().toLowerCase() === "admin") {
+      throw new Error(
+        typeof role !== "string"
+          ? "haggle_whoami returned no string role; refusing to continue (fail closed). Use a regular buyer account."
+          : 'Token belongs to an "admin" account; refusing to continue. Use a regular buyer account.',
+      );
+    }
     const search = await call("haggle_search_listings", { q: query, limit: 5 });
     const listings: Array<{ public_id?: string; title?: string }> = search.json.listings ?? [];
     const slug = listingSlug ?? listings.find((l) => l.public_id)?.public_id;
