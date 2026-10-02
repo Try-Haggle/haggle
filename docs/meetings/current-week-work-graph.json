@@ -86,14 +86,15 @@
         "E2E"
       ],
       "outcome": "구매부터 결제, 실제 배송, 정산 또는 분쟁까지 한 거래를 테스트 자산으로 끝까지 재현한다.",
-      "nextAction": "2026-10-01 정행 결정: 실제 실시한 T2 $12와 T3 $30은 합산해 최종 패소자 $42, 리뷰어 실제 지급은 보류하고 심사·양측 별도 USDC 예치·최종 정산만 구현한다. W2026-08-08-01 구현 브랜치를 staging에 통합하고 같은 SHA의 CI·자동 migration 결과를 확인한다. 인오 reviewer proposed 확인을 기다린다. 공유 DB migration 0157·0158은 같은 SHA의 최종 CI 성공 전 적용하지 않는다. 계약은 별도 배포가 필요하며 이번 작업에서 배포하지 않는다. 크레딧 담보 재원, 사건별 보수 동의·거절 시 대체 절차, 구매자/양측 미납·부분 환불, 실제 지급·DS, 금융업/중재 적용은 후속 결정이다. 법적·실자금 출시 승인이나 작업 done으로 취급하지 않는다.",
+      "nextAction": "2026-10-01 정행 결정: 실제 실시한 T2 $12와 T3 $30은 합산해 최종 패소자 $42, 리뷰어 실제 지급은 보류하고 심사·양측 별도 USDC 예치·최종 정산만 구현한다. W2026-08-08-01 구현 브랜치를 staging에 통합하고 같은 SHA의 CI·자동 migration 결과를 확인한다. 인오 reviewer proposed 확인을 기다린다. 공유 DB migration 0157·0158은 같은 SHA의 최종 CI 성공 전 적용하지 않는다. 계약은 별도 배포가 필요하며 이번 작업에서 배포하지 않는다. 크레딧 담보 재원, 사건별 보수 동의·거절 시 대체 절차, 구매자/양측 미납·부분 환불, 실제 지급·DS, 금융업/중재 적용은 후속 결정이다. 법적·실자금 출시 승인이나 작업 done으로 취급하지 않는다. 2026-10-02 사용자 배포 승인: #200 최종 SHA CI 후 staging 통합, 이어 #201 태그 질문 통합과 API/Web 배포·실응답 검증. 리뷰어 확인은 배포 필수 조건에서 제외.",
       "reviewBrief": "협상이 round 0에서 멈추지 않고 종료까지 진행되며, 중복 청구·배송·정산이 없고, 분쟁 중 release가 멈추며, 외부 이벤트와 서버 장부가 일치하는지 확인한다.",
       "evidence": [
         "staging 실행 기록",
         "결제·배송 receipt",
         "양쪽 분쟁 결과",
         "재시도·중복 요청 결과",
-        "docs/wip/dispute-tier-review-implementation.md"
+        "docs/wip/dispute-tier-review-implementation.md",
+        "docs/wip/builder-staging-structured-response-fix.md"
       ],
       "verifiedEvidence": [
         "2026-08-12 commerce-core 147개 테스트 통과",
@@ -114,7 +115,9 @@
         "2026-08-29 정행: EasyPost·USPS Ground로 테스트 물건이 집까지 도착. 스탬프·도착 시간 확인. 캐리어는 일단 USPS만으로 시작해도 된다고 말했다.",
         "2026-09-26 T2/T3 로컬 slice: API 관련 148개, dispute-core 159개, 웹 컴포넌트 7개, mocked API Playwright 데스크톱·390px 모바일 4개 통과. migration journal 158개·schema·DB invariants 통과. 실제 PostgreSQL 경합·staging·담보 및 정산 검증과 reviewer confirmed는 남음.",
         "2026-10-01 양측 예치·누적 비용 로컬 검증: 계약 10개, dispute-core 152개, API 전체 3431개(2 skip), 웹 전체 377개, mocked API Playwright 데스크톱·모바일 4개, API/웹 빌드·타입 검사, migration journal 159개·DB 불변식·변경 파일 Biome 통과. 실제 체인·공유 DB·staging 검증은 미실시.",
-        "2026-10-01 staging 통합 전 병합 검증: staging 9f2203d3 반영 후 전체 29개 test task 통과(API 3449개·2 skip), 전체 32개 typecheck task·18개 build task, Playwright public smoke 3개, migration journal 159개·DB 불변식, production dependency audit 신규 critical/high 0건 통과. T1 미예치 비용 0 정책에 맞춰 거래 리허설 기대값을 수정. 실제 staging CI·공유 DB·온체인 검증은 아직 미실시."
+        "2026-10-01 staging 통합 전 병합 검증: staging 9f2203d3 반영 후 전체 29개 test task 통과(API 3449개·2 skip), 전체 32개 typecheck task·18개 build task, Playwright public smoke 3개, migration journal 159개·DB 불변식, production dependency audit 신규 critical/high 0건 통과. T1 미예치 비용 0 정책에 맞춰 거래 리허설 기대값을 수정. 실제 staging CI·공유 DB·온체인 검증은 아직 미실시.",
+        "2026-10-01 협상 빌더 예산 입력 slice: 19:40 MDT staging req-1j 로그에서 structured.pendingSlots 문자열로 인한 ZodError 확인. 선택적 모델 내부 메모만 복구하고 요청·핵심 메모 검증 유지. API 3459개(기존 live 2 skip), 웹 402개, API/웹 typecheck·빌드, mocked API Playwright 데스크톱·390px 모바일 2개, 변경 파일 Biome 통과. 실제 staging 반영·동일 SHA CI·인오 리뷰어 확인은 남음.",
+        "2026-10-02 사용자: 태그 질문 답변 흐름 확인 후 staging 배포 명시 승인. 리뷰어 승인은 선택 사항이며 PR #202 정책이 staging 05f6304b에 반영됨. 오류 복구 #200을 최신 staging과 통합 후 최종 SHA CI를 확인한다."
       ],
       "remainingGaps": [
         "분쟁 리허설과 양쪽 승소 receipt",
@@ -128,7 +131,8 @@
         "2026-10-01 누적 요금은 정행이 확정했고 양측 별도 USDC 예치·입금 확인 후 배정·미실시 단계 비용 0·최종 승소자 보증금 반환은 로컬 구현했다. 실제 계약 배포·온체인 end-to-end·공유 DB migration·staging 검증은 미완료. T1 비용 재원, T3 번복 시 이전 보수·DS, 구매자/양측 미납 정책은 남음.",
         "2026-09-27 법적 검토: 다수파만 보수·패소자 비용·미예치 종료의 적용 법률과 집행 가능성, signer/pause를 포함한 금융업 분류를 실자금 출시 전에 확인. 크레딧 합산 표시·출처 복원 방향은 합의했으나 유료 판매·환산/담보 재원·해외 리뷰어 고용/세금/제재 처리는 미완료. 후속 구현 담당자는 임의 배정하지 않음.",
         "2026-09-27 상세 초안 후속: 실제 자기 이용료와 공동 심사비의 귀속 확인, 취소/합의·재심 기한·부분 환불 비용 결정이 남음. 크레딧 hold/capture/release 및 회사 담보는 C0 후속 범위이며 다수/소수별 USDC/크레딧 보수는 법적 해결책으로 확정하지 않음. 리뷰어 실제 지급은 2026-10-01 정행 결정으로 보류.",
-        "2026-09-29 유타 운영안: 선택형/필수 절차 결정, 정확한 보수식·소수파 DS의 사건별 고지·동의, 미동의/미응답과 미납의 분리, 실제 대체 절차·기한·비용·자금 보존/반환, 익명 증거·독립 투표 검증, T2/T3 적용 범위 및 보수·DS 확정이 남음. 유타 준거법·중재지의 유효성 및 CA Standard 16 적용 여부와 Delaware 약관 소스 불일치도 정비 대상. 동일 보수식 승인 판례·인허가 취득·실자금 출시를 확인한 것은 아님."
+        "2026-09-29 유타 운영안: 선택형/필수 절차 결정, 정확한 보수식·소수파 DS의 사건별 고지·동의, 미동의/미응답과 미납의 분리, 실제 대체 절차·기한·비용·자금 보존/반환, 익명 증거·독립 투표 검증, T2/T3 적용 범위 및 보수·DS 확정이 남음. 유타 준거법·중재지의 유효성 및 CA Standard 16 적용 여부와 Delaware 약관 소스 불일치도 정비 대상. 동일 보수식 승인 판례·인허가 취득·실자금 출시를 확인한 것은 아님.",
+        "협상 빌더 slice: feature/w2026-08-08-01-builder-structured-response, staging a1c8b381의 HAGA-88 다음에 병합. 2026-10-01 사용자 반영 요청으로 커밋·push·draft PR 진행. reviewer proposed 유지, 단일 리뷰어 확정·승인, 동일 SHA CI 및 staging 실제 AI 검증은 남음. 작업 조회는 기존 MCP 항목의 리뷰어 누락으로 실패; 배정을 임의 변경하지 않음."
       ],
       "dependsOn": [],
       "dueDate": "2026-09-05",
@@ -530,7 +534,7 @@
         "테스트"
       ],
       "outcome": "같은 상품이라도 상태·저장공간 같은 사실이 타결가와 대사에 드러나고, 사용자가 전략이 있다고 느낄 수 있다.",
-      "nextAction": "인오가 용량별 다른 호가와 retail-msrp 스킬로 타결가·대사를 재측한다. 같은 호가에서 용량만 다른 민감도는 한계로 두고 모든 조합을 돌리지 않는다. 리뷰어는 proposed. 2026-10-01 사용자 지시로 리뷰어는 선택 사항으로 전환. 태그 질문 답변 시점 설명과 사용자 확인 후 PR #200·#201 및 정책 slice를 같은 SHA CI 확인 뒤 staging에 통합한다. 확인 전 배포하지 않는다. 작업 카드 docs/wip/optional-review-policy.md.",
+      "nextAction": "인오가 용량별 다른 호가와 retail-msrp 스킬로 타결가·대사를 재측한다. 같은 호가에서 용량만 다른 민감도는 한계로 두고 모든 조합을 돌리지 않는다. 리뷰어는 proposed. 2026-10-01 사용자 지시로 리뷰어는 선택 사항으로 전환. 태그 질문 답변 시점 설명과 사용자 확인 후 PR #200·#201 및 정책 slice를 같은 SHA CI 확인 뒤 staging에 통합한다. 2026-10-02 사용자가 흐름을 확인하고 staging 배포를 승인했다. 작업 카드 docs/wip/optional-review-policy.md.",
       "reviewBrief": "저장공간만 다른 두 케이스가 같은 가격으로 끝나지 않는지, 대사가 단순 반복이 아닌지, 지연이 더 나빠지지 않았는지 본다.",
       "evidence": [
         "동일 시나리오 전후 로그",
@@ -581,7 +585,8 @@
         "2026-08-29 정행: 그룹 F Flash 3건 staging-F-2026-08-30T010821664Z. Anker $22→$17 ACCEPTED, Kindle $55→$47 ACCEPTED, AirPods $80 REJECT(IMEI). 모델 deepseek-v4-flash. 21라운드, 추정 $0.109. 건당 약 $0.053 / $0.028 / $0.027.",
         "2026-08-29 정행: AirPods에는 IMEI가 없다. electronics-knowledge HARD를 열린 태그 체크로 바꿈. 랩은 열린 HARD를 전부 채움. 판매자 발행·구매자 Start는 미답 HARD를 막음.",
         "2026-08-29 정행: 같은 호가면 용량 사다리를 강제하기 어렵다고 말했다. 고정 타결표는 협상 가치를 떨어뜨리므로 정가 스킬만 주고 모델이 판단하게 둔다. 인오에게는 호가를 나눠 재측해 달라고 했다.",
-        "2026-10-01 사용자 명시 지시: 리뷰어 필수 조건 제거, 에이전트 생성의 태그 질문 답변 시점을 설명하고 사용자와 확인한 뒤 staging 배포. 기존 인오 배정은 기록으로 보존하고 리뷰 승인 대기는 필수 차단에서 제외. 정책 slice를 W2026-08-22-02의 배포 선행 작업으로 연결."
+        "2026-10-01 사용자 명시 지시: 리뷰어 필수 조건 제거, 에이전트 생성의 태그 질문 답변 시점을 설명하고 사용자와 확인한 뒤 staging 배포. 기존 인오 배정은 기록으로 보존하고 리뷰 승인 대기는 필수 차단에서 제외. 정책 slice를 W2026-08-22-02의 배포 선행 작업으로 연결.",
+        "2026-10-02 사용자: 선택한 답이 협상 조건에 전달되고 이미 답한 태그 질문은 재질문하지 않는 흐름을 확인, staging 배포 명시 승인. PR #202 최종 CI 성공 후 staging에 통합."
       ],
       "remainingGaps": [
         "용량별 다른 호가 + retail-msrp 재측. 리뷰어는 proposed",

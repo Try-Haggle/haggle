@@ -60,6 +60,80 @@ beforeEach(() => callLLMMock.mockReset());
 
 describe("builder model output recovery", () => {
   it.each([
+    { pendingSlots: ["battery_health", "carrier_unlock", "imei", "box", "condition"] },
+    { globalPreferences: { budgetMax: "unknown" } },
+    null,
+  ])("rebuilds malformed optional structured memory without retrying the model", async (structured) => {
+    callLLMMock.mockResolvedValueOnce(
+      modelResponse(
+        JSON.stringify({
+          memory: { ...memory, structured },
+          reply: "I'll aim for $680 and stay under $850.",
+        }),
+      ),
+    );
+
+    const result = await processNegotiationAgentBuilderTurn(input);
+
+    expect(callLLMMock).toHaveBeenCalledTimes(1);
+    expect(result.memory).toMatchObject({ targetPrice: 680, budgetMax: 850 });
+    expect(result.memory.structured?.globalPreferences).toMatchObject({
+      targetPrice: 680,
+      budgetMax: 850,
+    });
+    expect(result.memory.structured?.pendingSlots.length).toBeGreaterThan(0);
+    for (const slot of result.memory.structured?.pendingSlots ?? []) {
+      expect(slot).toMatchObject({
+        slotId: expect.any(String),
+        question: expect.any(String),
+        status: "pending",
+      });
+    }
+    // The server-built result remains valid as input to the next turn.
+    expect(
+      negotiationAgentBuilderTurnBodySchema.safeParse({ ...input, previous_memory: result.memory })
+        .success,
+    ).toBe(true);
+  });
+
+  it("keeps previous scope decisions when discarding a malformed model scratchpad", async () => {
+    const decision = {
+      slotId: "battery",
+      sourceScope: "iphone",
+      targetScope: "galaxy",
+      decision: "rejected" as const,
+    };
+    const previousInput = negotiationAgentBuilderTurnBodySchema.parse({
+      ...input,
+      previous_memory: {
+        ...input.previous_memory,
+        structured: { scopedConditionDecisions: [decision] },
+      },
+    });
+    callLLMMock.mockResolvedValueOnce(
+      modelResponse(
+        JSON.stringify({
+          memory: { ...memory, structured: { pendingSlots: ["imei"] } },
+          reply: "I'll aim for $680 and stay under $850.",
+        }),
+      ),
+    );
+
+    const result = await processNegotiationAgentBuilderTurn(previousInput);
+
+    expect(result.memory.structured?.scopedConditionDecisions).toContainEqual(decision);
+  });
+
+  it("still rejects malformed structured memory supplied by a caller", () => {
+    expect(
+      negotiationAgentBuilderTurnBodySchema.safeParse({
+        ...input,
+        previous_memory: { ...memory, structured: { pendingSlots: ["imei"] } },
+      }).success,
+    ).toBe(false);
+  });
+
+  it.each([
     modelResponse("{incomplete"),
     modelResponse("", "length"),
     modelResponse(JSON.stringify({ reply: "missing memory" })),
