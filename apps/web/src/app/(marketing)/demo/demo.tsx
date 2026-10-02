@@ -995,10 +995,10 @@ export function Demo() {
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-action-primary">
                 Lumen Tutorial
               </p>
-              <h2 className="mt-1 text-lg font-semibold text-ink">거래 흐름 튜토리얼 해보기</h2>
+              <h2 className="mt-1 text-lg font-semibold text-ink">Try the trade flow tutorial</h2>
               <p className="mt-1 text-sm leading-6 text-ink-secondary">
-                리스팅, 오퍼, 결제, 정산을 먼저 체험하고 거래 완료 뒤 선택형 에그/버디 레이어를
-                확인합니다.
+                Walk through listing, offer, payment, and settlement first, then explore the
+                optional Egg and Buddy layers once the trade is complete.
               </p>
             </div>
             <Link
