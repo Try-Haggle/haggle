@@ -16,6 +16,7 @@ export interface PrepListing {
   category: string | null;
   condition: string | null;
   targetPrice: string | null;
+  photoUrl?: string | null;
   tags?: string[] | null;
   negotiationAgentSnapshot?: unknown;
 }
@@ -117,6 +118,8 @@ export function buildPrepareNegotiationView(
       category: listing.category,
       condition: listing.condition,
       asking_price: Number.isFinite(askMajor) ? askMajor : null,
+      photo_url: listing.photoUrl ?? null,
+      image_markdown: listingImageMarkdown(listing.title, listing.photoUrl),
     },
     required_criteria: required.map((c) => ({ ...c, must_answer: true })),
     tag_questions: listingTagQuestions(listing),
@@ -148,4 +151,55 @@ export function summarizeTranscript(messages: McpRecentMessage[]) {
     price_minor: m.price_minor ?? null,
     line: (m.message ?? "").replace(/\s+/g, " ").trim().slice(0, 160),
   }));
+}
+
+/** `![title](photo_url)` for a listing photo, or null. Text clients render it inline. */
+export function listingImageMarkdown(
+  title: string | null | undefined,
+  photoUrl: string | null | undefined,
+): string | null {
+  if (!photoUrl) return null;
+  const alt = (title ?? "listing").replace(/[[\]\n]/g, " ").trim() || "listing";
+  return `![${alt}](${photoUrl})`;
+}
+
+const money = (minor: string | number | null | undefined) => {
+  const major = Number(minor) / 100;
+  return minor == null || !Number.isFinite(major)
+    ? "-"
+    : major.toLocaleString("en-US", {
+        style: "currency",
+        currency: "USD",
+        maximumFractionDigits: 2,
+      });
+};
+
+/** Round table (round / seller offer / my offer / note) + status + chat link. No full message dump. */
+export function negotiationSummaryMarkdown(
+  messages: McpRecentMessage[],
+  status: string | null | undefined,
+  chatUrl: string,
+): string {
+  const byRound = new Map<number, { seller: string; mine: string; note: string }>();
+  for (const m of messages) {
+    const row = byRound.get(m.round_no) ?? { seller: "-", mine: "-", note: "" };
+    if (m.speaker === "BUYER") row.mine = money(m.price_minor);
+    else row.seller = money(m.price_minor);
+    const line = (m.message ?? "")
+      .replace(/[\s|]+/g, " ")
+      .trim()
+      .slice(0, 80);
+    row.note = row.note || line;
+    byRound.set(m.round_no, row);
+  }
+  const rows = [...byRound.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([round, r]) => `| ${round} | ${r.seller} | ${r.mine} | ${r.note} |`);
+  return [
+    "| round | seller offer | my offer | note |",
+    "| --- | --- | --- | --- |",
+    ...rows,
+    "",
+    `Status: ${status ?? "unknown"} · [Open chat](${chatUrl})`,
+  ].join("\n");
 }

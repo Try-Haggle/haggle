@@ -285,3 +285,27 @@ describe("haggle_whoami", () => {
     expect(out.my_deals_url).toMatch(/\/buy\/dashboard$/);
   });
 });
+
+describe("negotiationSummaryMarkdown / listingImageMarkdown", () => {
+  it("builds a round table with status and chat link", async () => {
+    const { negotiationSummaryMarkdown, listingImageMarkdown } = await import(
+      "../mcp/tools/mcp-negotiation-prep.js"
+    );
+    const msg = (
+      round_no: number,
+      speaker: "BUYER" | "SELLER",
+      price_minor: number,
+      message: string,
+    ) => ({ round_no, speaker, price_minor, message }) as never;
+    const md = negotiationSummaryMarkdown(
+      [msg(1, "SELLER", 50000, "Asking $500"), msg(1, "BUYER", 40000, "How about 400 | ok")],
+      "ACTIVE",
+      "https://app/chat/1",
+    );
+    expect(md).toContain("| round | seller offer | my offer | note |");
+    expect(md).toContain("| 1 | $500.00 | $400.00 | Asking $500 |");
+    expect(md).toContain("Status: ACTIVE · [Open chat](https://app/chat/1)");
+    expect(listingImageMarkdown("T", null)).toBeNull();
+    expect(listingImageMarkdown("T", "https://x/y.png")).toBe("![T](https://x/y.png)");
+  });
+});

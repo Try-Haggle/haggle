@@ -78,13 +78,16 @@ import {
   advisorInputFromListing,
   buildPrepareNegotiationView,
   defaultBuilderMemory,
+  listingImageMarkdown,
   MCP_MODE_GUIDANCE,
+  negotiationSummaryMarkdown,
   summarizeTranscript,
 } from "./mcp-negotiation-prep.js";
 import { hagglePlayNextInputSchema } from "./mcp-play-next-schema.js";
 import { haggleStartNegotiationInputSchema } from "./mcp-start-schema.js";
 import {
   buildMcpGetNegotiationExpandView,
+  expandMcpTranscript,
   mcpNegotiationTranscript,
   mcpStartNextActions,
   negotiationSayToUser,
@@ -215,6 +218,7 @@ export function publicListingView(listing: {
     condition: listing.condition,
     target_price: listing.targetPrice,
     photo_url: listing.photoUrl,
+    image_markdown: listingImageMarkdown(listing.title, listing.photoUrl),
     claimed: listing.sellerId === undefined ? undefined : Boolean(listing.sellerId),
     listing_url: listing.publicId ? `${publicAppBaseUrl()}/l/${listing.publicId}` : null,
     required_criteria: buyerVisibleRequiredCriteria(listing.negotiationAgentSnapshot),
@@ -278,7 +282,7 @@ export function registerPlatformTools(
 
   server.tool(
     "haggle_search_listings",
-    "Search published Haggle listings. Public — no account required.",
+    "Search published Haggle listings. Public — no account required. When presenting a listing, show image_markdown (a Markdown image) when it is not null.",
     {
       q: z.string().optional(),
       category: z.string().optional(),
@@ -300,7 +304,7 @@ export function registerPlatformTools(
     "haggle_get_listing",
     {
       description:
-        "Get a published listing by its public id (the /l/:publicId slug). Returns required_criteria as {checkId, ask}[] from extractSellerRequiredCriteria(listing.negotiationAgentSnapshot) — same source as the web start wizard. Empty when the seller has no required checks. Do not assume IMEI/완납/침수/Find My.",
+        "Get a published listing by its public id (the /l/:publicId slug). Returns required_criteria as {checkId, ask}[] from extractSellerRequiredCriteria(listing.negotiationAgentSnapshot) — same source as the web start wizard. Empty when the seller has no required checks. Do not assume IMEI/완납/침수/Find My. When presenting a listing, show image_markdown (a Markdown image) when it is not null.",
       inputSchema: haggleGetListingInputSchema,
       outputSchema: haggleGetListingOutputSchema,
     },
@@ -557,7 +561,7 @@ export function registerPlatformTools(
 
   server.tool(
     "haggle_prepare_negotiation",
-    "Step 1 of a guided buyer negotiation (same path as the web start wizard). Returns required_criteria (must_answer), tag_questions with options, price_questions (targetPrice / budgetMax in whole dollars), presets, the user's saved agents, fulfillment_choices and an instruction. Ask the must-answers first, offer a strategy chat (haggle_builder_chat_turn with public_id), then ask consult vs delegate before haggle_start_negotiation.",
+    "Step 1 of a guided buyer negotiation (same path as the web start wizard). Returns required_criteria (must_answer), tag_questions with options, price_questions (targetPrice / budgetMax in whole dollars), presets, the user's saved agents, fulfillment_choices and an instruction. Ask the must-answers first, offer a strategy chat (haggle_builder_chat_turn with public_id), then ask consult vs delegate before haggle_start_negotiation. When presenting the listing, show listing.image_markdown (a Markdown image) when it is not null.",
     { public_id: z.string().min(1).describe("Listing slug (jc6r2T3d) or full /l/... URL") },
     async ({ public_id }) => {
       const scoped = requireScopedActor("negotiate");
@@ -745,7 +749,7 @@ export function registerPlatformTools(
     "haggle_get_negotiation",
     {
       description:
-        "Read the live negotiation. Immediately quote say_to_user to the human — that is the counterpart's line. If pause_questions are present, ask those next; do not treat them as the seller's bargain line. Do not stop silently. Default response includes full transcript + offers (plus recent_messages). expand is optional if you only need a subset.",
+        "Read the live negotiation. Immediately quote say_to_user to the human — that is the counterpart's line. If pause_questions are present, ask those next; do not treat them as the seller's bargain line. Do not stop silently. Default response includes full transcript + offers (plus recent_messages). expand is optional if you only need a subset. Show summary_markdown (round table with seller offer / my offer / note, status, chat_url link) to the user instead of dumping every message; the structured fields remain for follow-up.",
       inputSchema: haggleGetNegotiationInputSchema,
     },
     async ({ session_id, expand }) => {
@@ -837,6 +841,11 @@ export function registerPlatformTools(
         ...(foldView.offers ? { offers: foldView.offers } : {}),
         pause_questions: pauseAsks.map((c) => c.ask),
         pause_check_ids: pauseAsks.map((c) => c.checkId),
+        summary_markdown: negotiationSummaryMarkdown(
+          foldView.transcript ?? recent,
+          session.status,
+          negotiationChatUrl(session.id),
+        ),
         next_actions: nextActions,
         ...talk,
         instruction:
@@ -849,7 +858,7 @@ export function registerPlatformTools(
     "haggle_play_next",
     {
       description:
-        "Advance one Haggle auto-play round (DeepSeek plays a side). After the tool returns, immediately quote say_to_user. If ask_user asked for a price/accept, pass the user's counter as price_minor (integer cents, 42000 = $420) and optional message — same as the web counter, not hnp_submit_offer. Omit both fields to autoplay. Consult mode: call this once per round and discuss each counterpart line and price with the user. Rejected with BUYER_CRITERIA_REQUIRED if seller required criteria exist and buyerCriteria was not provided at start — do not start auto-play and do not use answer_pause.",
+        "Advance one Haggle auto-play round (DeepSeek plays a side). After the tool returns, immediately quote say_to_user. If ask_user asked for a price/accept, pass the user's counter as price_minor (integer cents, 42000 = $420) and optional message — same as the web counter, not hnp_submit_offer. Omit both fields to autoplay. Consult mode: call this once per round and discuss each counterpart line and price with the user. Rejected with BUYER_CRITERIA_REQUIRED if seller required criteria exist and buyerCriteria was not provided at start — do not start auto-play and do not use answer_pause. Show summary_markdown (round table with seller offer / my offer / note, status, chat_url link) to the user instead of dumping every message; the structured fields remain for follow-up.",
       inputSchema: hagglePlayNextInputSchema,
     },
     async ({ session_id, price_minor, message }) => {
@@ -908,6 +917,11 @@ export function registerPlatformTools(
         message: spoken,
         current_round: transcript.current_round,
         recent_messages: transcript.recent_messages,
+        summary_markdown: negotiationSummaryMarkdown(
+          expandMcpTranscript(toTranscriptRounds(rounds)),
+          typeof played.body.session_status === "string" ? played.body.session_status : null,
+          negotiationChatUrl(session_id),
+        ),
         ...talk,
         instruction: "Speak say_to_user now. Ask ask_user. Do not stop silently.",
       });
@@ -916,7 +930,7 @@ export function registerPlatformTools(
 
   server.tool(
     "haggle_play_until",
-    "Delegate mode: advance auto-play rounds until the session is terminal, paused, or the round cap is hit. Returns transcript_summary (per round: who, price_minor, one line) and chat_url. For consult mode use haggle_play_next each round instead.",
+    "Delegate mode: advance auto-play rounds until the session is terminal, paused, or the round cap is hit. Returns transcript_summary (per round: who, price_minor, one line) and chat_url. For consult mode use haggle_play_next each round instead. Show summary_markdown (round table with seller offer / my offer / note, status, chat_url link) to the user instead of dumping every message; the structured fields remain for follow-up.",
     {
       session_id: z.string().uuid(),
       max_rounds: z.number().int().min(1).max(8).optional(),
@@ -952,6 +966,11 @@ export function registerPlatformTools(
           steps,
           ...last,
           transcript_summary: summarizeTranscript(transcript ?? []),
+          summary_markdown: negotiationSummaryMarkdown(
+            transcript ?? [],
+            typeof last.session_status === "string" ? last.session_status : null,
+            negotiationChatUrl(session_id),
+          ),
           chat_url: negotiationChatUrl(session_id),
         },
         failed,
