@@ -204,7 +204,69 @@ const Ic = {
       <path d="M12 6v2M12 16v2" />
     </g>,
   ),
+  split: I(
+    <g>
+      <path d="M3 12h6" />
+      <path d="M9 12l5-5h6" />
+      <path d="M9 12l5 5h6" />
+      <path d="M17 4l3 3-3 3M17 14l3 3-3 3" />
+    </g>,
+  ),
+  clock: I(
+    <g>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </g>,
+  ),
+  scale: I(
+    <g>
+      <path d="M12 4v16M8 20h8M5 7h14" />
+      <path d="M5 7l-3 6a3 3 0 006 0zM19 7l-3 6a3 3 0 006 0z" />
+    </g>,
+  ),
+  freeze: I(
+    <g>
+      <path d="M8 3h8l5 5v8l-5 5H8l-5-5V8z" />
+      <path d="M10 9v6M14 9v6" />
+    </g>,
+  ),
+  refund: I(
+    <g>
+      <path d="M9 14L4 9l5-5" />
+      <path d="M4 9h11a5 5 0 010 10h-3" />
+    </g>,
+  ),
+  help: I(
+    <g>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.5 9a2.5 2.5 0 015 0c0 1.5-2.5 2-2.5 3.5M12 17v.01" />
+    </g>,
+  ),
 };
+
+/* ===== brand marks (simulated settlement visuals) ===== */
+const USDC_BLUE = "#2775CA";
+const BASE_BLUE = "#0052FF";
+
+const UsdcMark = ({ size = 14 }: { size?: number }) => (
+  <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="12" fill={USDC_BLUE} />
+    <path
+      d="M15.2 13.6c0-1.7-1-2.3-3-2.5-1.5-.2-1.8-.6-1.8-1.3s.5-1.1 1.5-1.1c.9 0 1.4.3 1.6 1.1 0 .1.1.2.2.2h.9c.1 0 .2-.1.2-.2-.2-1.1-1-1.9-2.2-2v-1.2c0-.1-.1-.2-.3-.3h-.8c-.1 0-.2.1-.3.3v1.2c-1.5.2-2.4 1.2-2.4 2.4 0 1.6 1 2.2 3 2.5 1.3.2 1.8.6 1.8 1.4s-.7 1.3-1.6 1.3c-1.3 0-1.7-.5-1.9-1.2 0-.2-.2-.2-.3-.2h-.9c-.1 0-.2.1-.2.2.2 1.3 1 2.1 2.5 2.4v1.2c0 .1.1.2.3.3h.8c.1 0 .2-.1.3-.3v-1.2c1.5-.3 2.6-1.3 2.6-2.6z"
+      fill="#fff"
+    />
+    <path
+      d="M9.7 18.8c-3.8-1.4-5.8-5.6-4.4-9.4.7-2 2.3-3.6 4.4-4.4.2-.1.3-.2.3-.4v-.7c0-.2-.1-.3-.3-.3h-.1C5 5 2.5 10 4 14.6c.9 2.7 3 4.9 5.8 5.8.2.1.4 0 .4-.2l.1-.1v-.7c-.1-.3-.4-.5-.6-.6zm4.7-15.4c-.2-.1-.4 0-.4.2l-.1.1v.7c0 .2.2.4.3.5 3.8 1.4 5.8 5.6 4.4 9.4-.7 2-2.3 3.6-4.4 4.4-.2.1-.3.2-.3.4v.7c0 .2.1.3.3.3h.1c4.6-1.5 7.1-6.4 5.6-11-.9-2.8-3-4.9-5.5-5.7z"
+      fill="#fff"
+    />
+  </svg>
+);
+
+const BaseMark = ({ size = 14 }: { size?: number }) => (
+  <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24">
+    <rect width="24" height="24" rx="5" fill={BASE_BLUE} />
+  </svg>
+);
 
 /* ===== primitives ===== */
 const Card = ({
@@ -4111,7 +4173,7 @@ const Step7 = ({
           const isLast = i === SHIP_EVENTS.length - 1;
           return (
             <div
-              key={e.code}
+              key={`${e.code}-${e.t}`}
               style={{
                 display: "grid",
                 gridTemplateColumns: "120px 18px 1fr auto",
@@ -5065,6 +5127,7 @@ const DN = ({
   ic,
   big,
   small: _small,
+  brand,
 }: {
   x: number;
   y: number;
@@ -5073,9 +5136,10 @@ const DN = ({
   lbl: string;
   sub: string;
   tone: "slate" | "cyan" | "violet" | "em";
-  ic: "wallet" | "shield" | "card" | "flame";
+  ic: "wallet" | "shield" | "card" | "flame" | "percent";
   big?: boolean;
   small?: boolean;
+  brand?: "usdc" | "haggle";
 }) => {
   const cs = {
     slate: {
@@ -5089,10 +5153,17 @@ const DN = ({
   }[tone];
   const ps: Record<string, string> = {
     wallet: "M3 6h18v13H3zM3 10h18M16 14h3",
-    shield: "M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z",
+    shield: "M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3zM9 12l2 2 4-4",
     card: "M3 6h18v12H3zM3 10h18",
     flame: "M12 3s5 4 5 9a5 5 0 01-10 0c0-2 1-3 2-4",
+    percent:
+      "M19 5L5 19M7 4.5a2.5 2.5 0 110 5 2.5 2.5 0 010-5zM17 14.5a2.5 2.5 0 110 5 2.5 2.5 0 010-5z",
   };
+  const tile = _small ? 24 : 30;
+  // Router node: Haggle wordmark on top, icon row underneath.
+  const top = big ? y + 40 : y + (h - tile) / 2;
+  const textX = x + 14 + tile + 10;
+  const textY = top + tile / 2;
   return (
     <g>
       <rect
@@ -5100,37 +5171,89 @@ const DN = ({
         y={y}
         width={w}
         height={h}
-        rx={12}
+        rx={14}
+        fill="var(--bg-raised)"
+        filter="url(#nShadow)"
+      />
+      <rect
+        x={x}
+        y={y}
+        width={w}
+        height={h}
+        rx={14}
         fill={cs.b}
         stroke={cs.d}
         strokeWidth={big ? 1.6 : 1}
       />
       {big && (
         <rect
-          x={x - 3}
-          y={y - 3}
-          width={w + 6}
-          height={h + 6}
-          rx={14}
+          x={x - 4}
+          y={y - 4}
+          width={w + 8}
+          height={h + 8}
+          rx={17}
           fill="none"
           stroke={cs.d}
-          strokeWidth={0.5}
+          strokeWidth={0.8}
           strokeDasharray="4 4"
+          style={{ animation: "haggle-dash 3s linear infinite" }}
         />
       )}
+      {big && (
+        <foreignObject x={x + 14} y={y + 12} width={w - 28} height={20}>
+          <div
+            style={{
+              height: 20,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              color: C.ink,
+            }}
+          >
+            <Logo className="block h-[15px] w-auto" />
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "1px 6px 1px 3px",
+                borderRadius: 999,
+                border: `1px solid ${C.line2}`,
+                background: "var(--bg-raised)",
+                fontSize: 9,
+                fontWeight: 600,
+                color: C.dim,
+                fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+              }}
+            >
+              <BaseMark size={10} />
+              Base
+            </span>
+          </div>
+        </foreignObject>
+      )}
+      <rect
+        x={x + 14}
+        y={top}
+        width={tile}
+        height={tile}
+        rx={9}
+        fill="var(--bg-raised)"
+        stroke={cs.d}
+      />
       <g
-        transform={`translate(${x + 12}, ${y + 14})`}
+        transform={`translate(${x + 14 + (tile - 24 * (tile / 34)) / 2}, ${top + (tile - 24 * (tile / 34)) / 2}) scale(${tile / 34})`}
         fill="none"
         stroke={cs.f}
-        strokeWidth="1.5"
+        strokeWidth="1.8"
         strokeLinecap="round"
         strokeLinejoin="round"
       >
         <path d={ps[ic]} />
       </g>
       <text
-        x={x + 46}
-        y={y + 24}
+        x={textX}
+        y={textY - 3}
         fill={cs.f}
         fontSize={_small ? 11 : 12.5}
         fontWeight="600"
@@ -5139,15 +5262,38 @@ const DN = ({
         {lbl}
       </text>
       <text
-        x={x + 46}
-        y={y + 40}
+        x={textX}
+        y={textY + 12}
         fill="currentColor"
         style={{ color: "color-mix(in srgb, var(--text-secondary) 78%, transparent)" }}
-        fontSize={11}
+        fontSize={_small ? 10 : 11}
         fontFamily="JetBrains Mono, monospace"
       >
         {sub}
       </text>
+      {brand === "usdc" && (
+        <g transform={`translate(${x + w - 24}, ${y + 9})`}>
+          <circle cx={7} cy={7} r={7} fill={USDC_BLUE} />
+          <text
+            x={7}
+            y={10}
+            fill="#fff"
+            fontSize={9}
+            fontWeight={700}
+            textAnchor="middle"
+            fontFamily="Inter, sans-serif"
+          >
+            $
+          </text>
+        </g>
+      )}
+      {brand === "haggle" && (
+        <foreignObject x={x + w - 58} y={y + 7} width={48} height={14}>
+          <div style={{ height: 14, display: "flex", justifyContent: "flex-end", color: C.ink }}>
+            <Logo className="block h-[11px] w-auto" />
+          </div>
+        </foreignObject>
+      )}
     </g>
   );
 };
@@ -5159,6 +5305,7 @@ const EE = ({
   lx,
   ly,
   flow,
+  tokenFlow,
 }: {
   d: string;
   tone: "cyan" | "violet" | "em" | "slate";
@@ -5166,6 +5313,7 @@ const EE = ({
   lx?: number;
   ly?: number;
   flow: boolean;
+  tokenFlow: boolean;
 }) => {
   const g =
     tone === "cyan"
@@ -5181,9 +5329,16 @@ const EE = ({
     em: C.emFg,
     slate: C.dim,
   };
+  const bd: Record<string, string> = {
+    cyan: C.cyanBd,
+    violet: C.violetBd,
+    em: C.emBd,
+    slate: C.line2,
+  };
+  const pillW = lbl ? lbl.length * 6.8 + 16 : 0;
   return (
     <g>
-      <path d={d} fill="none" stroke={g} strokeWidth={1.8} />
+      <path d={d} fill="none" stroke={g} strokeWidth={2} strokeLinecap="round" />
       {flow && (
         <path
           d={d}
@@ -5195,17 +5350,46 @@ const EE = ({
           style={{ animation: "haggle-dash 1.6s linear infinite" }}
         />
       )}
+      {tokenFlow && (
+        // USDC token travelling along the edge
+        <g>
+          <animateMotion dur="2.4s" repeatCount="indefinite" path={d} />
+          <circle r={7.5} fill={USDC_BLUE} stroke="var(--bg-raised)" strokeWidth={1.5} />
+          <text
+            y={3.2}
+            fill="#fff"
+            fontSize={9}
+            fontWeight={700}
+            textAnchor="middle"
+            fontFamily="Inter, sans-serif"
+          >
+            $
+          </text>
+        </g>
+      )}
       {lbl && lx !== undefined && ly !== undefined && (
-        <text
-          x={lx}
-          y={ly}
-          fill={cs[tone]}
-          fontSize="11"
-          fontFamily="JetBrains Mono, monospace"
-          textAnchor="middle"
-        >
-          {lbl}
-        </text>
+        <g>
+          <rect
+            x={lx - pillW / 2}
+            y={ly - 13}
+            width={pillW}
+            height={19}
+            rx={9.5}
+            fill="var(--bg-raised)"
+            stroke={bd[tone]}
+          />
+          <text
+            x={lx}
+            y={ly}
+            fill={cs[tone]}
+            fontSize="11"
+            fontWeight="600"
+            fontFamily="JetBrains Mono, monospace"
+            textAnchor="middle"
+          >
+            {lbl}
+          </text>
+        </g>
       )}
     </g>
   );
@@ -5233,6 +5417,8 @@ const OnChain = ({
     disputeMode === "resolved_seller";
   // Flow animation: stop when disputed (frozen), resume when resolved
   const flow = (settling || curStep >= 4) && (!inDispute || isResolved);
+  // USDC tokens travel only while the settle call is actually running
+  const tokenFlow = settling && (!inDispute || isResolved);
   return (
     <div
       style={{
@@ -5255,13 +5441,30 @@ const OnChain = ({
           >
             ON-CHAIN SETTLEMENT
           </div>
-          <div style={{ fontSize: 15, fontWeight: 600 }}>
-            HaggleSettlementRouter · atomic USDC split
+          <Row gap={10}>
+            <span style={{ color: C.ink, display: "inline-flex" }}>
+              <Logo className="h-[18px]" />
+            </span>
+            <span style={{ width: 1, height: 16, background: C.line2 }} />
+            <span style={{ fontSize: 15, fontWeight: 600 }}>Settlement Router</span>
+          </Row>
+          <div
+            style={{
+              fontSize: 11,
+              color: C.mute,
+              marginTop: 4,
+              fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+            }}
+          >
+            atomic USDC split · executeSettlement()
           </div>
         </div>
         <Row gap={8}>
-          <Badge tone="violet" subtle>
+          <Badge tone="slate" subtle icon={<BaseMark size={11} />}>
             Base
+          </Badge>
+          <Badge tone="slate" subtle icon={<UsdcMark size={12} />}>
+            USDC
           </Badge>
           <Badge tone="slate" subtle>
             <span
@@ -5300,6 +5503,9 @@ const OnChain = ({
             <stop offset="0.5" stopColor="rgba(5,150,105,0.7)" />
             <stop offset="1" stopColor="rgba(5,150,105,0.15)" />
           </linearGradient>
+          <filter id="nShadow" x="-20%" y="-20%" width="140%" height="160%">
+            <feDropShadow dx="0" dy="3" stdDeviation="5" floodColor="#1B2A4A" floodOpacity="0.1" />
+          </filter>
         </defs>
         {s.rail === "x402" ? (
           <>
@@ -5312,12 +5518,13 @@ const OnChain = ({
               sub={shortHex(s.ids.buyer)}
               tone="slate"
               ic="wallet"
+              brand="usdc"
             />
             <DN
-              x={360}
-              y={80}
-              w={180}
-              h={120}
+              x={350}
+              y={88}
+              w={200}
+              h={104}
               lbl="Settlement Router"
               sub="executeSettlement()"
               tone="violet"
@@ -5325,48 +5532,53 @@ const OnChain = ({
               ic="shield"
             />
             <DN
-              x={700}
+              x={690}
               y={30}
-              w={160}
+              w={170}
               h={66}
               lbl="Seller Wallet"
               sub={`$${sel.toFixed(2)}`}
               tone="em"
               ic="wallet"
+              brand="usdc"
             />
             <DN
-              x={700}
+              x={690}
               y={160}
-              w={160}
+              w={170}
               h={66}
-              lbl="Haggle Fee"
-              sub={`$${hf.toFixed(2)}`}
+              lbl="Protocol fee"
+              sub={`$${hf.toFixed(2)} · 1.5%`}
               tone="cyan"
-              ic="flame"
+              ic="percent"
+              brand="haggle"
             />
             <EE
-              d="M 190 140 C 270 140, 300 140, 360 140"
+              d="M 190 140 C 270 140, 290 140, 350 140"
               tone="slate"
               lbl={`USDC $${s.amount.toFixed(2)}`}
               lx={275}
               ly={132}
               flow={flow}
+              tokenFlow={tokenFlow}
             />
             <EE
-              d="M 540 125 C 620 120, 640 70, 700 63"
+              d="M 550 125 C 620 120, 630 70, 690 63"
               tone="em"
               lbl={`$${sel.toFixed(2)}`}
               lx={615}
               ly={87}
               flow={flow}
+              tokenFlow={tokenFlow}
             />
             <EE
-              d="M 540 160 C 620 170, 640 190, 700 193"
+              d="M 550 160 C 620 170, 630 190, 690 193"
               tone="cyan"
               lbl={`$${hf.toFixed(2)}`}
               lx={615}
               ly={190}
               flow={flow}
+              tokenFlow={tokenFlow}
             />
           </>
         ) : (
@@ -5421,16 +5633,18 @@ const OnChain = ({
               sub={`$${sel.toFixed(2)}`}
               tone="em"
               ic="wallet"
+              brand="usdc"
             />
             <DN
               x={700}
               y={170}
               w={160}
               h={66}
-              lbl="Haggle Fee"
-              sub={`$${hf.toFixed(2)}`}
+              lbl="Protocol fee"
+              sub={`$${hf.toFixed(2)} · 1.5%`}
               tone="cyan"
-              ic="flame"
+              ic="percent"
+              brand="haggle"
             />
             <EE
               d="M 150 140 C 175 140, 180 140, 200 140"
@@ -5439,6 +5653,7 @@ const OnChain = ({
               lx={175}
               ly={132}
               flow={flow}
+              tokenFlow={tokenFlow}
             />
             <EE
               d="M 340 125 C 365 90, 380 60, 395 46"
@@ -5447,6 +5662,7 @@ const OnChain = ({
               lx={360}
               ly={82}
               flow={flow}
+              tokenFlow={tokenFlow}
             />
             <EE
               d="M 340 155 C 365 160, 380 165, 395 165"
@@ -5455,6 +5671,7 @@ const OnChain = ({
               lx={365}
               ly={180}
               flow={flow}
+              tokenFlow={tokenFlow}
             />
             <EE
               d="M 555 150 C 620 150, 640 105, 700 103"
@@ -5463,6 +5680,7 @@ const OnChain = ({
               lx={620}
               ly={122}
               flow={flow}
+              tokenFlow={tokenFlow}
             />
             <EE
               d="M 555 180 C 620 190, 640 200, 700 203"
@@ -5471,6 +5689,7 @@ const OnChain = ({
               lx={620}
               ly={210}
               flow={flow}
+              tokenFlow={tokenFlow}
             />
           </>
         )}
@@ -5491,30 +5710,52 @@ const OnChain = ({
           ? [
               {
                 id: "buyer",
-                icon: "💰",
+                icon: <Ic.wallet size={16} />,
                 label: "Buyer",
                 sub: `$${(s.amount + sf).toFixed(2)}`,
                 col: C.dim,
               },
-              { id: "lock", icon: "🔒", label: "Locked", sub: "Router", col: C.violetFg },
-              { id: "split", icon: "⚡", label: "Split", sub: "Atomic", col: C.cyanFg },
-              { id: "freeze", icon: "🛑", label: "Frozen", sub: "Disputed", col: C.redFg },
+              {
+                id: "lock",
+                icon: <Ic.lock size={16} />,
+                label: "Locked",
+                sub: "Router",
+                col: C.violetFg,
+              },
+              {
+                id: "split",
+                icon: <Ic.split size={16} />,
+                label: "Split",
+                sub: "Atomic",
+                col: C.cyanFg,
+              },
+              {
+                id: "freeze",
+                icon: <Ic.freeze size={16} />,
+                label: "Frozen",
+                sub: "Disputed",
+                col: C.redFg,
+              },
               {
                 id: "resolve",
-                icon: "⚖️",
+                icon: <Ic.scale size={16} />,
                 label: "Resolve",
                 sub: isResolved ? "Done" : "Pending",
                 col: isResolved ? C.emFg : C.amberFg,
               },
               {
                 id: "result",
-                icon: isResolved
-                  ? disputeMode === "resolved_buyer"
-                    ? "↩️"
-                    : disputeMode === "resolved_partial"
-                      ? "⚖️"
-                      : "✅"
-                  : "❓",
+                icon: isResolved ? (
+                  disputeMode === "resolved_buyer" ? (
+                    <Ic.refund size={16} />
+                  ) : disputeMode === "resolved_partial" ? (
+                    <Ic.scale size={16} />
+                  ) : (
+                    <Ic.check size={16} />
+                  )
+                ) : (
+                  <Ic.help size={16} />
+                ),
                 label: isResolved
                   ? disputeMode === "resolved_buyer"
                     ? "Refunded"
@@ -5529,16 +5770,46 @@ const OnChain = ({
           : [
               {
                 id: "buyer",
-                icon: "💰",
+                icon: <Ic.wallet size={16} />,
                 label: "Buyer",
                 sub: `$${(s.amount + sf).toFixed(2)}`,
                 col: C.dim,
               },
-              { id: "lock", icon: "🔒", label: "Locked", sub: "Router", col: C.violetFg },
-              { id: "split", icon: "⚡", label: "Split", sub: "Atomic", col: C.cyanFg },
-              { id: "ship", icon: "📦", label: "Shipping", sub: "In transit", col: C.dim },
-              { id: "review", icon: "⏳", label: "Review", sub: "24h", col: C.emFg },
-              { id: "done", icon: "✅", label: "Released", sub: "Seller paid", col: C.emFg },
+              {
+                id: "lock",
+                icon: <Ic.lock size={16} />,
+                label: "Locked",
+                sub: "Router",
+                col: C.violetFg,
+              },
+              {
+                id: "split",
+                icon: <Ic.split size={16} />,
+                label: "Split",
+                sub: "Atomic",
+                col: C.cyanFg,
+              },
+              {
+                id: "ship",
+                icon: <Ic.truck size={16} />,
+                label: "Shipping",
+                sub: "In transit",
+                col: C.dim,
+              },
+              {
+                id: "review",
+                icon: <Ic.clock size={16} />,
+                label: "Review",
+                sub: "24h",
+                col: C.emFg,
+              },
+              {
+                id: "done",
+                icon: <Ic.check size={16} />,
+                label: "Released",
+                sub: "Seller paid",
+                col: C.emFg,
+              },
             ];
 
         // Map curStep to active node index
@@ -5597,10 +5868,11 @@ const OnChain = ({
               <div
                 style={{
                   position: "absolute",
-                  top: 18,
-                  left: "8%",
-                  right: "8%",
-                  height: 2,
+                  top: 19,
+                  left: `${50 / nodes.length}%`,
+                  right: `${50 / nodes.length}%`,
+                  height: 3,
+                  borderRadius: 3,
                   background: C.line,
                   zIndex: 0,
                 }}
@@ -5608,14 +5880,15 @@ const OnChain = ({
               <div
                 style={{
                   position: "absolute",
-                  top: 18,
-                  left: "8%",
-                  height: 2,
+                  top: 19,
+                  left: `${50 / nodes.length}%`,
+                  height: 3,
+                  borderRadius: 3,
                   zIndex: 1,
                   background: inDispute
                     ? `linear-gradient(90deg, ${C.cyanFg}, ${C.redFg})`
                     : `linear-gradient(90deg, ${C.cyanFg}, ${C.em})`,
-                  width: `${Math.max(0, (doneIdx / (nodes.length - 1)) * 100)}%`,
+                  width: `calc(${Math.max(0, doneIdx / (nodes.length - 1))} * (100% - ${100 / nodes.length}%))`,
                   transition: "width 0.6s",
                 }}
               />
@@ -5634,28 +5907,35 @@ const OnChain = ({
                     }}
                   >
                     <div
-                      className={active ? "pulse-ring" : ""}
                       style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 10,
-                        background: done ? C.emBg : active ? C.cyanBg : C.card,
-                        border: `2px solid ${done ? C.emBd : active ? C.cyanBd : C.line}`,
+                        width: 40,
+                        height: 40,
+                        borderRadius: 999,
+                        background: done
+                          ? `linear-gradient(180deg, ${C.emBg}, var(--bg-raised))`
+                          : active
+                            ? `linear-gradient(180deg, ${C.cyanBg}, var(--bg-raised))`
+                            : C.card,
+                        border: `2px solid ${done ? C.em : active ? C.cyan : C.line}`,
+                        color: done ? C.emFg : active ? C.cyanFg : C.mute,
+                        boxShadow: active
+                          ? undefined
+                          : "0 1px 2px color-mix(in srgb, var(--text-primary) 8%, transparent)",
+                        animation: active ? "haggle-pulse 1.8s ease-out infinite" : undefined,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        fontSize: done ? 14 : 16,
                         transition: "all 0.3s",
                       }}
                     >
-                      {done ? <Ic.check size={14} color={C.emFg} sw={2.5} /> : n.icon}
+                      {done ? <Ic.check size={16} sw={2.4} /> : n.icon}
                     </div>
                     <div
                       style={{
-                        fontSize: 10,
-                        fontWeight: 600,
+                        fontSize: 11,
+                        fontWeight: active ? 700 : 600,
                         color: done ? C.emFg : active ? C.cyanFg : C.mute,
-                        marginTop: 6,
+                        marginTop: 7,
                       }}
                     >
                       {n.label}
@@ -5751,7 +6031,11 @@ const OnChain = ({
                       }}
                     >
                       <span style={{ fontSize: 12, fontWeight: 600, color: C.redFg }}>
-                        🛑 ${sel.toFixed(2)} FROZEN · dispute in progress
+                        <Ic.freeze
+                          size={13}
+                          style={{ display: "inline-block", verticalAlign: -2, marginRight: 4 }}
+                        />
+                        ${sel.toFixed(2)} FROZEN · dispute in progress
                       </span>
                     </div>
                   )}
@@ -5768,7 +6052,11 @@ const OnChain = ({
                       }}
                     >
                       <span style={{ fontSize: 11, fontWeight: 600, color: C.emFg }}>
-                        ↩️ ${s.amount.toFixed(2)} → buyer refund
+                        <Ic.refund
+                          size={12}
+                          style={{ display: "inline-block", verticalAlign: -2, marginRight: 4 }}
+                        />
+                        ${s.amount.toFixed(2)} → buyer refund
                       </span>
                     </div>
                   )}
@@ -5785,8 +6073,19 @@ const OnChain = ({
                           gap: 3,
                         }}
                       >
-                        <span style={{ fontSize: 9, fontWeight: 600, color: C.amberFg }}>
-                          ↩️ $50
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 2,
+                            whiteSpace: "nowrap",
+                            fontSize: 9,
+                            fontWeight: 600,
+                            color: C.amberFg,
+                          }}
+                        >
+                          <Ic.refund size={10} />
+                          $50
                         </span>
                       </div>
                       <div
@@ -5834,7 +6133,11 @@ const OnChain = ({
                         }}
                       >
                         <span style={{ fontSize: 10, fontWeight: 600, color: C.emFg }}>
-                          ✅ ${sel.toFixed(2)} → seller released
+                          <Ic.check
+                            size={12}
+                            style={{ display: "inline-block", verticalAlign: -2, marginRight: 4 }}
+                          />
+                          ${sel.toFixed(2)} → seller released
                         </span>
                       </div>
                       <div
@@ -5865,8 +6168,9 @@ const OnChain = ({
                         gap: 6,
                       }}
                     >
+                      <UsdcMark size={15} />
                       <span style={{ fontSize: 12, color: C.dim }}>
-                        💰 <strong>${s.amount.toFixed(2)}</strong> in buyer wallet
+                        <strong>${s.amount.toFixed(2)}</strong> USDC in buyer wallet
                       </span>
                     </div>
                   )}
@@ -5882,7 +6186,11 @@ const OnChain = ({
                       }}
                     >
                       <span style={{ fontSize: 12, fontWeight: 600, color: C.violetFg }}>
-                        🔒 ${s.amount.toFixed(2)} in Settlement Router
+                        <Ic.lock
+                          size={13}
+                          style={{ display: "inline-block", verticalAlign: -2, marginRight: 4 }}
+                        />
+                        ${s.amount.toFixed(2)} locked in Settlement Router
                       </span>
                     </div>
                   )}
@@ -5901,7 +6209,9 @@ const OnChain = ({
                           gap: 4,
                         }}
                       >
-                        <span style={{ fontSize: 10 }}>{curStep >= 6 ? "⏳" : "🔒"}</span>
+                        <span style={{ display: "inline-flex", color: C.emFg }}>
+                          {curStep >= 6 ? <Ic.clock size={12} /> : <Ic.lock size={12} />}
+                        </span>
                         <span style={{ fontSize: 10, fontWeight: 600, color: C.emFg }}>
                           ${prodAmt.toFixed(2)}
                         </span>
@@ -5917,7 +6227,9 @@ const OnChain = ({
                           gap: 3,
                         }}
                       >
-                        <span style={{ fontSize: 9 }}>🔒</span>
+                        <span style={{ display: "inline-flex", color: C.violetFg }}>
+                          <Ic.lock size={11} />
+                        </span>
                         <span style={{ fontSize: 10, fontWeight: 600, color: C.violetFg }}>
                           ${buf.toFixed(2)}
                         </span>
@@ -6066,10 +6378,20 @@ const OnChain = ({
                       >
                         {(
                           [
-                            { icon: "🛑", label: "Freeze", sub: "All funds held", col: C.redFg },
-                            { icon: "📋", label: "T1 Auto", sub: "Trust-based", col: C.amberFg },
-                            { icon: "👥", label: "T2 Panel", sub: "DS review", col: C.violetFg },
-                            { icon: "⚖️", label: "T3 Arbitration", sub: "Final ruling", col: C.dim },
+                            {
+                              Icon: Ic.freeze,
+                              label: "Freeze",
+                              sub: "All funds held",
+                              col: C.redFg,
+                            },
+                            { Icon: Ic.file, label: "T1 Auto", sub: "Trust-based", col: C.amberFg },
+                            { Icon: Ic.sig, label: "T2 Panel", sub: "DS review", col: C.violetFg },
+                            {
+                              Icon: Ic.scale,
+                              label: "T3 Arbitration",
+                              sub: "Final ruling",
+                              col: C.dim,
+                            },
                           ] as const
                         ).map((d, i) => (
                           <React.Fragment key={d.label}>
@@ -6090,7 +6412,9 @@ const OnChain = ({
                                 flexShrink: 0,
                               }}
                             >
-                              <span style={{ fontSize: 13 }}>{d.icon}</span>
+                              <span style={{ display: "inline-flex", color: d.col }}>
+                                <d.Icon size={14} />
+                              </span>
                               <div>
                                 <div style={{ fontSize: 10, fontWeight: 600, color: d.col }}>
                                   {d.label}
