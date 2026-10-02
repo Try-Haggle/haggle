@@ -84,6 +84,12 @@ const KEYFRAMES = `
   50% { transform: rotate(8deg) scale(1.1); }
   75% { transform: rotate(-6deg) scale(1.12); }
 }
+@media (max-width: 800px) {
+  .haggle-demo-main-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .haggle-demo-timeline { overflow-x: auto; }
+  .haggle-demo-timeline > div { min-width: 680px; }
+  .haggle-demo-release-phases { grid-template-columns: minmax(0, 1fr) !important; }
+}
 `;
 
 /* ===== icons ===== */
@@ -272,11 +278,13 @@ const BaseMark = ({ size = 14 }: { size?: number }) => (
 const Card = ({
   children,
   accent,
+  className,
   style,
   onClick,
 }: {
   children?: React.ReactNode;
   accent?: "cyan" | "violet" | "em" | "red" | "amber";
+  className?: string;
   style?: React.CSSProperties;
   onClick?: () => void;
 }) => {
@@ -311,6 +319,7 @@ const Card = ({
     return (
       <button
         type="button"
+        className={className}
         onClick={onClick}
         style={{
           appearance: "none",
@@ -325,7 +334,11 @@ const Card = ({
       </button>
     );
   }
-  return <div style={cardStyle}>{children}</div>;
+  return (
+    <div className={className} style={cardStyle}>
+      {children}
+    </div>
+  );
 };
 
 const Btn = ({
@@ -3590,19 +3603,26 @@ const Step7 = ({
   reset,
   disputeMode,
   onDispute,
+  phase,
+  onPhaseChange,
+  onComplete,
 }: {
   s: SessionState;
   reset: () => void;
   disputeMode: DisputeMode;
   onDispute: (mode: DisputeMode) => void;
+  phase: DeliveredPhase;
+  onPhaseChange: (phase: DeliveredPhase) => void;
+  onComplete: () => void;
 }) => {
   const hf = s.amount * 0.015;
   const sel = s.amount - hf;
   const tier = WEIGHT_TIERS[0];
   const phase2Amt = tier.buffer;
   const phase1Amt = sel - phase2Amt;
+  const phase1Released =
+    !disputeMode && phase !== "delivered" && phase !== "confirming" && phase !== "dispute";
 
-  const [phase, setPhase] = useState<DeliveredPhase>("delivered");
   // Presenter panel can set the dispute stage directly.
   const stepTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const later = (fn: () => void, ms: number) => {
@@ -3615,9 +3635,9 @@ const Step7 = ({
   useEffect(() => {
     if (disputeMode) {
       clearStepTimers();
-      setPhase("dispute");
+      onPhaseChange("dispute");
     }
-  }, [disputeMode, clearStepTimers]);
+  }, [disputeMode, clearStepTimers, onPhaseChange]);
   useEffect(() => clearStepTimers, [clearStepTimers]);
   const [buddy, setBuddy] = useState<{
     species: (typeof BUDDY_SPECIES)[0];
@@ -3625,22 +3645,36 @@ const Step7 = ({
   } | null>(null);
 
   function handleConfirm() {
-    setPhase("confirming");
-    later(() => {
-      setPhase("confirmed");
-      later(() => {
-        const b = rollBuddy();
-        setBuddy(b);
-        setPhase("egg_offer");
-      }, 1200);
-    }, 1000);
+    onPhaseChange("confirming");
   }
 
+  useEffect(() => {
+    if (phase !== "confirming") return;
+    const timer = setTimeout(() => onPhaseChange("confirmed"), 1000);
+    return () => clearTimeout(timer);
+  }, [phase, onPhaseChange]);
+
+  useEffect(() => {
+    if (phase !== "confirmed") return;
+    const timer = setTimeout(() => {
+      setBuddy(rollBuddy());
+      onPhaseChange("egg_offer");
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [phase, onPhaseChange]);
+
+  useEffect(() => {
+    if (phase === "delivered" || phase === "dispute" || phase === "done") {
+      clearStepTimers();
+      if (phase === "delivered") setBuddy(null);
+    }
+  }, [phase, clearStepTimers]);
+
   function handleOpenEgg() {
-    setPhase("egg_crack");
-    later(() => setPhase("egg_hatch"), 1300);
-    later(() => setPhase("buddy_reveal"), 2100);
-    later(() => setPhase("complete"), 3600);
+    onPhaseChange("egg_crack");
+    later(() => onPhaseChange("egg_hatch"), 1300);
+    later(() => onPhaseChange("buddy_reveal"), 2100);
+    later(() => onPhaseChange("complete"), 3600);
   }
 
   const apvScenarios = [
@@ -3680,7 +3714,7 @@ const Step7 = ({
 
       {/* delivered hero */}
       <Card accent="em" style={{ marginBottom: 14, padding: 22 }}>
-        <Row gap={16} align="center">
+        <Row gap={16} align="center" wrap>
           <div
             style={{
               width: 56,
@@ -3731,6 +3765,7 @@ const Step7 = ({
           Settlement release · 2 phases
         </SL>
         <div
+          className="haggle-demo-release-phases"
           style={{
             display: "grid",
             gridTemplateColumns: "1fr 1fr",
@@ -3742,12 +3777,16 @@ const Step7 = ({
             lbl="Product amount"
             amt={phase1Amt}
             pct={sel > 0 ? Math.round((phase1Amt / sel) * 100) : 99}
-            cond="Delivery + 24h buyer review period"
-            countdown="Releases in 23h 57m"
+            cond={
+              phase1Released
+                ? "Buyer review complete · seller paid"
+                : "Delivery + 24h buyer review period"
+            }
+            countdown={phase1Released ? "Released to seller · demo" : "Releases in 23h 57m"}
             deadline="Apr 21 · 14:33 CT"
             tone="cyan"
-            active
-            status="COUNTDOWN"
+            active={!phase1Released}
+            status={phase1Released ? "RELEASED" : "COUNTDOWN"}
           />
           <PhaseBig
             n="2"
@@ -4299,7 +4338,7 @@ const Step7 = ({
                 size="sm"
                 icon={<Ic.alert size={13} />}
                 onClick={() => {
-                  setPhase("dispute");
+                  onPhaseChange("dispute");
                   onDispute("open");
                 }}
               >
@@ -4352,10 +4391,10 @@ const Step7 = ({
           >
             <Ic.check size={24} sw={2.5} />
           </div>
-          <div style={{ fontSize: 16, fontWeight: 600 }}>Payment released!</div>
+          <div style={{ fontSize: 16, fontWeight: 600 }}>Phase 1 released!</div>
           <div style={{ fontSize: 12, color: C.mute, marginTop: 6 }}>
-            <Money value={phase1Amt} size={13} tone="em" bold /> sent to seller wallet. Trade
-            complete.
+            <Money value={phase1Amt} size={13} tone="em" bold /> sent to seller wallet. The weight
+            buffer remains held for APV.
           </div>
         </Card>
       )}
@@ -4391,7 +4430,7 @@ const Step7 = ({
               </div>
             </Row>
             <Row gap={8} wrap>
-              <Btn v="secondary" onClick={() => setPhase("done")}>
+              <Btn v="secondary" onClick={() => onPhaseChange("done")}>
                 나중에 보기
               </Btn>
               <Btn onClick={handleOpenEgg}>에그 열기</Btn>
@@ -4419,7 +4458,7 @@ const Step7 = ({
               <Ic.check size={20} sw={2.5} />
             </div>
             <div>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>Trade complete</div>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>Phase 1 released</div>
               <div style={{ fontSize: 12, color: C.mute, marginTop: 3 }}>
                 에그는 보상함에 저장됩니다. 버디를 몰라도 거래는 그대로 사용할 수 있습니다.
               </div>
@@ -5109,6 +5148,9 @@ const Step7 = ({
           <Btn v="secondary" onClick={reset} icon={<Ic.restart size={14} />}>
             Run demo again
           </Btn>
+          <Btn v="ghost" onClick={onComplete}>
+            New scenario
+          </Btn>
         </Row>
       )}
     </div>
@@ -5400,25 +5442,29 @@ const OnChain = ({
   settling,
   curStep,
   disputeMode,
+  deliveredPhase,
 }: {
   s: SessionState;
   settling: boolean;
   curStep: number;
   disputeMode: DisputeMode;
+  deliveredPhase: DeliveredPhase;
 }) => {
   const hf = s.amount * 0.015;
   const sf = s.rail === "stripe" ? s.amount * 0.015 : 0;
   const sel = s.amount - hf;
   const buyerT = s.amount + sf;
   const inDispute = !!disputeMode;
-  const isResolved =
-    disputeMode === "resolved_buyer" ||
-    disputeMode === "resolved_partial" ||
-    disputeMode === "resolved_seller";
-  // Flow animation: stop when disputed (frozen), resume when resolved
-  const flow = (settling || curStep >= 4) && (!inDispute || isResolved);
-  // USDC tokens travel only while the settle call is actually running
-  const tokenFlow = settling && (!inDispute || isResolved);
+  const releasing = !inDispute && curStep >= 6 && deliveredPhase === "confirming";
+  const released =
+    !inDispute &&
+    curStep >= 6 &&
+    deliveredPhase !== "delivered" &&
+    deliveredPhase !== "confirming" &&
+    deliveredPhase !== "dispute";
+  // These edges represent the initial settlement, not a later seller payout or refund.
+  const flow = settling && !inDispute;
+  const tokenFlow = flow;
   return (
     <div
       style={{
@@ -5807,7 +5853,7 @@ const OnChain = ({
                 id: "done",
                 icon: <Ic.check size={16} />,
                 label: "Released",
-                sub: "Seller paid",
+                sub: "Phase 1 paid",
                 col: C.emFg,
               },
             ];
@@ -5830,7 +5876,9 @@ const OnChain = ({
                 : curStep === 5
                   ? 3
                   : curStep >= 6
-                    ? 4
+                    ? releasing || released
+                      ? 5
+                      : 4
                     : 0;
         const doneIdx = inDispute
           ? isResolved
@@ -5849,7 +5897,11 @@ const OnChain = ({
                 : curStep === 5
                   ? 2
                   : curStep >= 6
-                    ? 3
+                    ? released
+                      ? 5
+                      : releasing
+                        ? 4
+                        : 3
                     : -1;
 
         return (
@@ -5899,6 +5951,8 @@ const OnChain = ({
                 return (
                   <div
                     key={n.id}
+                    data-testid={`settlement-stage-${n.id}`}
+                    data-state={done ? "done" : active ? "active" : "pending"}
                     style={{
                       display: "flex",
                       flexDirection: "column",
@@ -5985,7 +6039,11 @@ const OnChain = ({
                         ? "Settlement executing"
                         : curStep === 5
                           ? "Awaiting delivery"
-                          : "Buyer review period"}
+                          : released
+                            ? "Phase 1 released · weight buffer held"
+                            : releasing
+                              ? "Releasing after buyer review"
+                              : "Buyer review period"}
                 </span>
                 <div style={{ display: "flex", gap: 6 }}>
                   {(["EIP-712", "Non-custodial", "Atomic"] as const).map((t) => (
@@ -6210,7 +6268,13 @@ const OnChain = ({
                         }}
                       >
                         <span style={{ display: "inline-flex", color: C.emFg }}>
-                          {curStep >= 6 ? <Ic.clock size={12} /> : <Ic.lock size={12} />}
+                          {released ? (
+                            <Ic.check size={12} />
+                          ) : curStep >= 6 ? (
+                            <Ic.clock size={12} />
+                          ) : (
+                            <Ic.lock size={12} />
+                          )}
                         </span>
                         <span style={{ fontSize: 10, fontWeight: 600, color: C.emFg }}>
                           ${prodAmt.toFixed(2)}
@@ -6279,13 +6343,13 @@ const OnChain = ({
                           marginBottom: 4,
                         }}
                       >
-                        PHASE 1 · 24H
+                        {released ? "PHASE 1 · RELEASED" : "PHASE 1 · 24H"}
                       </div>
                       <div style={{ fontSize: 14, fontWeight: 700, color: C.emFg }}>
                         ${prodAmt.toFixed(2)}
                       </div>
                       <div style={{ fontSize: 9.5, color: C.mute, marginTop: 3 }}>
-                        Buyer confirm or auto → seller
+                        {released ? "Paid to seller · demo" : "Buyer confirm or auto → seller"}
                       </div>
                     </div>
                     <div
@@ -6645,16 +6709,22 @@ const PresenterPanel = ({
   shipSub,
   delayed,
   disputeMode,
+  deliveredPhase,
   onView,
   onDispute,
+  onReview,
+  onRelease,
   onReset,
 }: {
   idx: number;
   shipSub: string;
   delayed: boolean;
   disputeMode: DisputeMode;
+  deliveredPhase: DeliveredPhase;
   onView: (v: ReturnType<typeof presenterJumpStep>) => void;
   onDispute: (m: DisputeMode) => void;
+  onReview: () => void;
+  onRelease: () => void;
   onReset: () => void;
 }) => {
   const [open, setOpen] = useState(true);
@@ -6749,6 +6819,30 @@ const PresenterPanel = ({
         </>,
       )}
       {group(
+        "Normal settlement",
+        <>
+          <button
+            type="button"
+            style={chip(idx === 6 && !disputeMode && deliveredPhase === "delivered")}
+            onClick={onReview}
+          >
+            Buyer review
+          </button>
+          <button
+            type="button"
+            style={chip(
+              idx === 6 &&
+                !disputeMode &&
+                deliveredPhase !== "delivered" &&
+                deliveredPhase !== "dispute",
+            )}
+            onClick={onRelease}
+          >
+            Release phase 1
+          </button>
+        </>,
+      )}
+      {group(
         "Dispute",
         PRESENTER_DISPUTE.map(([m, l]) => (
           <button
@@ -6792,6 +6886,7 @@ export default function CheckoutFlow({
   const [disputeMode, setDisputeMode] = useState<
     false | "open" | "t1" | "t2" | "resolved_buyer" | "resolved_partial" | "resolved_seller"
   >(false);
+  const [deliveredPhase, setDeliveredPhase] = useState<DeliveredPhase>("delivered");
   const [log, setLog] = useState<LogEntry[]>([]);
   const [logOpen, setLogOpen] = useState(true);
   const [auto, setAuto] = useState(false);
@@ -6891,6 +6986,7 @@ export default function CheckoutFlow({
     setAuto(false);
     setDelayed(false);
     setDisputeMode(false);
+    setDeliveredPhase("delivered");
   }, [cancelSettle]);
 
   const jump = useCallback(
@@ -6899,6 +6995,8 @@ export default function CheckoutFlow({
       setSettling(false);
       setIdx(i);
       if (i < 6) setShipSub("labelPending");
+      setDisputeMode(false);
+      setDeliveredPhase("delivered");
     },
     [cancelSettle],
   );
@@ -6911,15 +7009,17 @@ export default function CheckoutFlow({
         if (idx < 4) next();
         else if (idx === 4 && !settling && done.includes(4)) setIdx(5);
         else if (idx === 5) shipAct();
-        else {
+        else if (idx === 6 && !disputeMode && deliveredPhase === "delivered") {
+          addLog("Buyer review completed (demo)", "simulated 24h review window");
+          setDeliveredPhase("confirming");
+        } else {
           setAuto(false);
-          onComplete();
         }
       },
       settling ? 3400 / autoSpeed : 1200 / autoSpeed,
     );
     return () => clearTimeout(to);
-  }, [auto, idx, settling, done, next, shipAct, autoSpeed, onComplete]);
+  }, [auto, idx, settling, done, next, shipAct, autoSpeed, disputeMode, deliveredPhase, addLog]);
 
   const renderStep = () => {
     const k = STEPS[idx].k;
@@ -6941,11 +7041,56 @@ export default function CheckoutFlow({
       );
     if (k === "ship") return <Step6 s={s} sub={shipSub} act={shipAct} />;
     if (k === "delivered")
-      return <Step7 s={s} reset={reset} disputeMode={disputeMode} onDispute={setDisputeMode} />;
+      return (
+        <Step7
+          s={s}
+          reset={reset}
+          disputeMode={disputeMode}
+          onDispute={setDisputeMode}
+          phase={deliveredPhase}
+          onPhaseChange={setDeliveredPhase}
+          onComplete={onComplete}
+        />
+      );
     return null;
   };
 
   const cur = STEPS[idx];
+  const disputeResolved =
+    disputeMode === "resolved_buyer" ||
+    disputeMode === "resolved_partial" ||
+    disputeMode === "resolved_seller";
+  const normalReleased =
+    !disputeMode &&
+    deliveredPhase !== "delivered" &&
+    deliveredPhase !== "confirming" &&
+    deliveredPhase !== "dispute";
+  const displaySteps = [
+    ...STEPS,
+    { k: "review", lbl: disputeMode ? "Dispute review" : "Review", ep: "—" },
+    {
+      k: "release",
+      lbl:
+        disputeMode === "resolved_buyer"
+          ? "Refunded"
+          : disputeMode === "resolved_partial"
+            ? "Partial refund"
+            : "Released",
+      ep: "—",
+    },
+  ];
+  const displayIdx =
+    idx < 6 ? idx : normalReleased || disputeResolved || deliveredPhase === "confirming" ? 8 : 7;
+  const displayDone =
+    idx < 6
+      ? done
+      : [
+          ...done,
+          6,
+          ...(displayIdx === 8 ? [7] : []),
+          ...(normalReleased || disputeResolved ? [8] : []),
+        ];
+  const displayStep = displaySteps[displayIdx];
   const market = Math.max(marketPrice ?? s.amount, s.amount);
   const saved = market - s.amount;
   const walletAfter =
@@ -6963,6 +7108,7 @@ export default function CheckoutFlow({
       setDone(v.done);
       setDelayed(v.delayed);
       setDisputeMode(false);
+      setDeliveredPhase("delivered");
       addLog("Presenter jump", STEPS[v.idx].ep);
     },
     [addLog, cancelSettle],
@@ -7152,7 +7298,9 @@ export default function CheckoutFlow({
                   animation: "haggle-pulse 1.8s cubic-bezier(0.4,0,0.6,1) infinite",
                 }}
               />
-              <span style={{ fontSize: 14, fontWeight: 600 }}>{cur.lbl}</span>
+              <span data-testid="demo-current-step" style={{ fontSize: 14, fontWeight: 600 }}>
+                {displayStep.lbl}
+              </span>
               <span
                 style={{
                   fontSize: 11,
@@ -7160,7 +7308,7 @@ export default function CheckoutFlow({
                   fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
                 }}
               >
-                {idx + 1}/{STEPS.length}
+                {displayIdx + 1}/{displaySteps.length}
               </span>
             </Row>
             <div
@@ -7171,7 +7319,17 @@ export default function CheckoutFlow({
                 fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
               }}
             >
-              {cur.ep !== "—" ? `next: ${cur.ep}` : "rail selection"}
+              {displayIdx === 7
+                ? disputeMode
+                  ? "Dispute review · demo"
+                  : "Buyer review · 24h demo window"
+                : displayIdx === 8
+                  ? disputeMode
+                    ? "Dispute outcome · demo"
+                    : "Phase 1 seller payout · demo"
+                  : cur.ep !== "—"
+                    ? `next: ${cur.ep}`
+                    : "rail selection"}
             </div>
           </div>
         </Row>
@@ -7179,6 +7337,7 @@ export default function CheckoutFlow({
 
       {/* main grid */}
       <div
+        className="haggle-demo-main-grid"
         style={{
           display: "grid",
           gridTemplateColumns: "minmax(0, 1fr) minmax(0, 280px)",
@@ -7187,8 +7346,19 @@ export default function CheckoutFlow({
         }}
       >
         <div style={{ minWidth: 0 }}>
-          <Card style={{ marginBottom: 18, padding: "18px 24px 14px" }}>
-            <Timeline steps={STEPS} cur={idx} done={done} onJump={jump} />
+          <Card
+            className="haggle-demo-timeline"
+            style={{ marginBottom: 18, padding: "18px 24px 14px" }}
+          >
+            <Timeline
+              steps={displaySteps}
+              cur={displayIdx}
+              done={displayDone}
+              onJump={(i) => {
+                if (i <= 6) jump(i);
+                else if (i === 7) applyView(presenterJumpShip("delivered"));
+              }}
+            />
           </Card>
           <Card style={{ padding: 28, minHeight: 540 }}>{renderStep()}</Card>
         </div>
@@ -7349,7 +7519,13 @@ export default function CheckoutFlow({
 
       {/* on-chain diagram */}
       <div style={{ marginTop: 18 }}>
-        <OnChain s={s} settling={settling} curStep={idx} disputeMode={disputeMode} />
+        <OnChain
+          s={s}
+          settling={settling}
+          curStep={idx}
+          disputeMode={disputeMode}
+          deliveredPhase={deliveredPhase}
+        />
       </div>
 
       <div
@@ -7374,10 +7550,23 @@ export default function CheckoutFlow({
           shipSub={shipSub}
           delayed={delayed}
           disputeMode={disputeMode}
+          deliveredPhase={deliveredPhase}
           onView={applyView}
           onDispute={(m) => {
-            if (!done.includes(5)) applyView(presenterJumpShip("delivered"));
+            if (!done.includes(5) || deliveredPhase !== "delivered") {
+              applyView(presenterJumpShip("delivered"));
+            }
             setDisputeMode(m);
+            setDeliveredPhase("dispute");
+          }}
+          onReview={() => {
+            applyView(presenterJumpShip("delivered"));
+          }}
+          onRelease={() => {
+            if (idx !== 6 || disputeMode) applyView(presenterJumpShip("delivered"));
+            setDisputeMode(false);
+            setDeliveredPhase("done");
+            addLog("Phase 1 released (demo)", "buyer review → seller payout");
           }}
           onReset={reset}
         />
