@@ -8,11 +8,14 @@ import { isDogfoodAuthWebSurfaceEnabled } from "./dogfood-auth-gate";
 export const DEMO_CHECKOUT_STORAGE_KEY = "haggle_checkout";
 export const DEMO_CHECKOUT_PATH = "/demo/checkout";
 
+/** Mirrors staging demo listing demo01 so a direct visit still shows a real photo. */
 export const DEFAULT_DEMO_CHECKOUT = {
-  price: 45000,
-  market: 52000,
-  item: "iPhone 14 Pro 128GB · Space Black",
-  rounds: 3,
+  price: 23000,
+  market: 26500,
+  item: "[Demo] Sony WH-1000XM5 headphones",
+  rounds: 4,
+  imageUrl:
+    "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=1200&q=85",
 } as const;
 
 /** Prices are minor units (cents). */

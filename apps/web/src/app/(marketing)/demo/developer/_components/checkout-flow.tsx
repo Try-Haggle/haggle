@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Logo } from "@/components/ui";
 import {
   type DemoChainIds,
   deriveDemoChainIds,
@@ -2407,6 +2408,10 @@ const Step6 = ({ s, sub, act }: { s: SessionState; sub: string; act: () => void 
               >
                 Package details
               </SL>
+              <Row gap={12} style={{ marginBottom: 10 }}>
+                <PS label={s.item.slice(0, 24)} size={48} src={s.imageUrl} />
+                <div style={{ fontSize: 13, fontWeight: 600, color: C.ink }}>{s.item}</div>
+              </Row>
               <div
                 style={{
                   display: "grid",
@@ -2418,8 +2423,8 @@ const Step6 = ({ s, sub, act }: { s: SessionState; sub: string; act: () => void 
                   [
                     ["Declared weight", "0.82 lb", "weight tier T1"],
                     ["Dimensions", "7 × 5 × 3 in", "LWH inches"],
-                    ["Category", "Electronics · phone", "restricted list OK"],
-                    ["Contents", "iPhone 14 Pro 128GB", "$1,200 declared value"],
+                    ["Category", "Marketplace item", "restricted list OK"],
+                    ["Contents", s.item, `$${s.amount.toFixed(2)} declared value`],
                     ["Origin", "Austin, TX 78701", "seller verified"],
                     ["Destination", "Brooklyn, NY 11201", "buyer confirmed"],
                   ] as const
@@ -3638,6 +3643,7 @@ const Step7 = ({
               Signed for at Brooklyn, NY 11201 · left at front door
             </div>
           </div>
+          <PS label={s.item.slice(0, 24)} size={56} src={s.imageUrl} />
           <Row gap={6}>
             <Badge tone="em">Delivered</Badge>
             <SLABadge status="fulfilled" />
@@ -4570,8 +4576,8 @@ const Step7 = ({
                   lineHeight: 1.6,
                 }}
               >
-                <strong style={{ color: C.redFg }}>Reason:</strong> Item not as described — battery
-                health 72% vs listed 92%.
+                <strong style={{ color: C.redFg }}>Reason:</strong> Item not as described —
+                condition does not match the listing photos.
               </div>
               <Btn full onClick={() => onDispute("t1")} icon={<Ic.arrow size={14} />}>
                 Start T1 auto-review
@@ -4636,7 +4642,7 @@ const Step7 = ({
                   <div style={{ fontSize: 12, color: C.mute, marginTop: 4, lineHeight: 1.5 }}>
                     Based on trust scores (buyer: 78, seller: 65) and evidence analysis, the system
                     recommends a <strong style={{ color: C.amberFg }}>$50.00 partial refund</strong>{" "}
-                    for the battery discrepancy.
+                    for the condition discrepancy.
                   </div>
                 </div>
               </Row>
@@ -4690,7 +4696,7 @@ const Step7 = ({
                       $50.00
                     </div>
                     <div style={{ fontSize: 10, color: C.mute, marginTop: 3 }}>
-                      Refund for battery discrepancy
+                      Refund for condition discrepancy
                     </div>
                     <div style={{ fontSize: 10, color: C.dim, marginTop: 1 }}>+ keeps the item</div>
                   </div>
@@ -4827,7 +4833,7 @@ const Step7 = ({
                     Panel ruling: buyer wins
                   </div>
                   <div style={{ fontSize: 12, color: C.mute, marginTop: 4, lineHeight: 1.5 }}>
-                    DS panel reviewed photos + IMEI check. Battery at 72% confirmed — seller
+                    DS panel compared delivery photos with the listing photos — seller
                     misrepresented condition.
                     <strong style={{ color: C.emFg }}> Full refund ordered.</strong>
                   </div>
@@ -6267,6 +6273,7 @@ interface SessionState {
   amount: number;
   rail: string;
   item: string;
+  imageUrl?: string;
   ids: DemoChainIds;
   delayed: boolean;
 }
@@ -6485,6 +6492,7 @@ export default function CheckoutFlow({
     amount: agreedPrice,
     rail,
     item: itemTitle,
+    imageUrl: itemImageUrl,
     ids: deriveDemoChainIds(itemTitle, Math.round(agreedPrice * 100)),
     delayed,
   };
@@ -6665,27 +6673,13 @@ export default function CheckoutFlow({
       {/* top bar */}
       <Row justify="space-between" style={{ marginBottom: 18 }} wrap gap={12}>
         <Row gap={12}>
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 9,
-              background: `linear-gradient(135deg, ${C.cyan}, ${C.violet})`,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "var(--text-on-accent)",
-              fontWeight: 800,
-              fontSize: 15,
-              fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
-            }}
-          >
-            H
-          </div>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>
-              Haggle <span style={{ color: C.mute, fontWeight: 400 }}>· checkout</span>
-            </div>
+            <Row gap={8} align="center">
+              <span style={{ color: C.ink, display: "inline-flex" }}>
+                <Logo className="h-6" />
+              </span>
+              <span style={{ fontSize: 14, color: C.mute }}>· checkout</span>
+            </Row>
             <div
               style={{
                 fontSize: 10.5,
