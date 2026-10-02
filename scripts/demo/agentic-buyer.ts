@@ -221,7 +221,13 @@ async function main() {
     summary.finalStatus = status;
     summary.pausedForBuyer = Boolean(until.json.paused_for_buyer);
 
-    // 4. scope boundary: minimal token must NOT reach checkout
+    // 4. scope boundary: never call checkout when the token already carries "orders"
+    if (Array.isArray(summary.grantedScopes) && summary.grantedScopes.includes("orders")) {
+      throw new Error(
+        'Token carries the "orders" scope; refusing to call haggle_create_checkout. Use a listings+negotiate token.',
+      );
+    }
+    // scope boundary: minimal token must NOT reach checkout
     const checkout = await call("haggle_create_checkout", { session_id: sessionId });
     const denied = checkout.isError && checkout.json.error === "INSUFFICIENT_SCOPE";
     summary.checkoutDenied = denied;

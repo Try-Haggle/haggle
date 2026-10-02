@@ -13,6 +13,12 @@ import { assertSafeTarget } from "./target-guard.ts";
 
 const TOKEN = "demo-token-abcdef1234567890";
 
+test("target guard rejects lookalike staging hosts", () => {
+  assert.throws(() => assertSafeTarget("https://staging.evil.example.com"));
+  assert.throws(() => assertSafeTarget("https://api.tryhaggle.ai.staging.evil.io"));
+  assert.throws(() => assertSafeTarget("https://staging-api.example.net"));
+});
+
 test("target guard allows local/staging only", () => {
   assert.doesNotThrow(() => assertSafeTarget("http://localhost:3001"));
   assert.doesNotThrow(() => assertSafeTarget("https://api.staging.tryhaggle.ai"));
@@ -22,14 +28,16 @@ test("target guard allows local/staging only", () => {
   assert.throws(() => assertSafeTarget(""));
 });
 
-function fakeServer() {
+const checkoutCalls = { count: 0 };
+
+function fakeServer(scopes: string[] = ["listings", "negotiate"]) {
   const server = new McpServer({ name: "fake-haggle", version: "0" });
   const json = (data: unknown, isError = false) => ({
     isError,
     content: [{ type: "text" as const, text: JSON.stringify(data) }],
   });
   server.tool("haggle_whoami", {}, async () =>
-    json({ connected: true, scopes: ["listings", "negotiate"], email: "buyer@example.com" }),
+    json({ connected: true, scopes, email: "buyer@example.com" }),
   );
   server.tool(
     "haggle_search_listings",
@@ -60,12 +68,13 @@ function fakeServer() {
   server.tool("haggle_get_negotiation", { session_id: z.string() }, async () =>
     json({ status: "ACCEPTED" }),
   );
-  server.tool("haggle_create_checkout", { session_id: z.string() }, async () =>
-    json(
+  server.tool("haggle_create_checkout", { session_id: z.string() }, async () => {
+    checkoutCalls.count += 1;
+    return json(
       { error: "INSUFFICIENT_SCOPE", required: "orders", granted: ["listings", "negotiate"] },
       true,
-    ),
-  );
+    );
+  });
   return server;
 }
 
@@ -109,4 +118,37 @@ test("runner: search -> negotiate -> checkout denied, trace masked", async () =>
   assert.ok(!text.includes(TOKEN));
   assert.ok(!text.includes("buyer@example.com"));
   assert.match(text, /"outcome": "passed"/);
+});
+
+test("runner: aborts before checkout when token carries orders scope", async () => {
+  checkoutCalls.count = 0;
+  const http = createServer(async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const c of req) chunks.push(c as Buffer);
+    const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : undefined;
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    await fakeServer(["listings", "negotiate", "orders"]).connect(transport);
+    await transport.handleRequest(req, res, body);
+  });
+  await new Promise<void>((r) => http.listen(0, "127.0.0.1", r));
+  const port = (http.address() as AddressInfo).port;
+  const dir = await mkdtemp(join(tmpdir(), "h136-"));
+  const code = await new Promise<number>((resolve) => {
+    const child = execFile(
+      process.execPath,
+      ["--import", "tsx", "scripts/demo/agentic-buyer.ts", "--trace-dir", dir],
+      {
+        env: {
+          ...process.env,
+          HAGGLE_API_URL: `http://127.0.0.1:${port}`,
+          HAGGLE_MCP_TOKEN: TOKEN,
+        },
+      },
+      () => undefined,
+    );
+    child.on("exit", (c) => resolve(c ?? 1));
+  });
+  http.close();
+  assert.notEqual(code, 0);
+  assert.equal(checkoutCalls.count, 0);
 });

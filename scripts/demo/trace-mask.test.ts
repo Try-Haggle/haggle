@@ -31,3 +31,29 @@ test("masks tokens, nested JSON text, emails and phones", () => {
   assert.ok(!masked.includes("abc123"));
   assert.ok(masked.includes("42000"));
 });
+
+test("preserves UUIDs and wallet addresses", () => {
+  const uuid = "123e4567-e89b-12d3-a456-426614174000";
+  const wallet = "0x1234567890123456789012345678901234567890";
+  const masked = JSON.stringify(
+    maskTrace({ session_id: uuid, wallet_address: wallet, note: `session ${uuid} wallet ${wallet}` }),
+  );
+  assert.ok(masked.includes(uuid));
+  assert.ok(masked.includes(wallet));
+  assert.ok(!masked.includes("[PHONE]"));
+});
+
+test("masks nested address name fields and shipping_address", () => {
+  const masked = JSON.stringify(
+    maskTrace({
+      order: {
+        shipping_address: { name: "Jane Roe", line: "9 Elm" },
+        ship: { address: { first_name: "Jane", last_name: "Roe", city: "SF" } },
+        recipient: { name: "John Doe" },
+      },
+      listing: { name: "Phone X" },
+    }),
+  );
+  for (const v of ["Jane", "Roe", "9 Elm", "John Doe"]) assert.ok(!masked.includes(v), v);
+  assert.ok(masked.includes("Phone X"));
+});
