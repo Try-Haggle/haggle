@@ -52,6 +52,25 @@ ChatGPT는 경로형 메타데이터(`/.well-known/oauth-protected-resource/mcp`
 쓰기 도구(`haggle_start_negotiation`, `haggle_play_until` 등)는 ChatGPT가 실행 전 확인을 요청한다.
 시연 중 "확인"을 눌러 진행한다.
 
+## 4-1. 웹과 같은 협상 준비 (HAGA-147)
+
+`haggle_prepare_negotiation` → (선택) `haggle_builder_chat_turn` → `haggle_start_negotiation` 순서로 웹 시작 마법사와 같은 경로를 탄다. 가격(`budgetMax`, `targetPrice`)은 **달러 정수**, `haggle_play_next`의 `price_minor`는 센트다.
+
+### 상의 모드 (라운드마다 같이 결정)
+
+1. "이 리스팅 협상 준비해줘 jc6r2T3d" → `haggle_prepare_negotiation`. 필수 질문(`required_criteria`)부터 묻는다.
+2. 태그 질문(`tag_questions`)과 이상가/상한가를 답한다.
+3. "전략 상의하자" → `haggle_builder_chat_turn {public_id, message}`. 결과의 `builder_memory`를 다음 턴 `previous_memory`로 넘기며 여러 턴 대화한다.
+4. "상의하면서 할래" → `haggle_start_negotiation {public_id, buyerCriteria, builder_memory, buyer_control_mode: "manual", fulfillment}`.
+5. 매 라운드 `haggle_play_next` → 상대 말과 가격을 보여주고, 사용자가 정한 다음 수(`price_minor`)로 진행한다. 채팅 URL(`chat_url`)에서 같은 진행이 보인다.
+
+### 위임 모드 (한도 주고 맡기기)
+
+1~3단계는 같다.
+4. "한도 $420로 맡길게" → `haggle_start_negotiation {..., builder_memory:{budgetMax:420,targetPrice:380}, buyer_control_mode:"auto"}`.
+5. `haggle_play_until {session_id}` → `transcript_summary`(라운드별 누가/가격/한 줄)와 `chat_url`을 읽어 준다.
+6. 합의되면 `haggle_create_checkout`. 내 계정/딜 목록은 `haggle_whoami`의 `email`, `display_name`, `my_deals_url`.
+
 ## 5. 알려진 제약
 
 - 게스트/무로그인 모드는 없다. 모든 MCP 호출은 OAuth 토큰이 필요하다(검색 포함).
