@@ -10,6 +10,7 @@ export interface AttemptControlPolicy {
   cooldownSeconds: number;
   maxRoundsPerSession: number;
   marketplaceDailyAttempts: number;
+  unlimitedAttempts?: boolean;
   entitlementSource: "free";
 }
 
@@ -62,15 +63,23 @@ export function isAttemptControlRateLimited(error: AttemptControlError | undefin
 }
 
 export function defaultAttemptControlPolicy(): AttemptControlPolicy {
+  const unlimitedAttempts = process.env.HAGGLE_ENV?.trim().toLowerCase() === "staging";
+  // Keep the numeric HNP snapshot compatible; this sentinel is informational.
+  const unlimitedSnapshot = Number.MAX_SAFE_INTEGER;
   return {
+    unlimitedAttempts,
     scope: "buyer_per_listing",
     principalType: "authenticated_credential",
     maxConcurrentSessions: intEnv("HNP_MAX_CONCURRENT_BUYER_LISTING_SESSIONS", 1),
-    maxSessionsPerWindow: intEnv("HNP_MAX_BUYER_LISTING_SESSIONS_PER_WINDOW", 3),
+    maxSessionsPerWindow: unlimitedAttempts
+      ? unlimitedSnapshot
+      : intEnv("HNP_MAX_BUYER_LISTING_SESSIONS_PER_WINDOW", 3),
     windowSeconds: intEnv("HNP_ATTEMPT_WINDOW_SECONDS", 86_400),
-    cooldownSeconds: intEnv("HNP_ATTEMPT_COOLDOWN_SECONDS", 43_200),
+    cooldownSeconds: unlimitedAttempts ? 0 : intEnv("HNP_ATTEMPT_COOLDOWN_SECONDS", 43_200),
     maxRoundsPerSession: intEnv("HNP_MAX_ROUNDS_PER_SESSION", 10),
-    marketplaceDailyAttempts: intEnv("HNP_MARKETPLACE_DAILY_ATTEMPTS", 5),
+    marketplaceDailyAttempts: unlimitedAttempts
+      ? unlimitedSnapshot
+      : intEnv("HNP_MARKETPLACE_DAILY_ATTEMPTS", 5),
     entitlementSource: "free",
   };
 }
@@ -175,7 +184,7 @@ export async function evaluateAttemptControl(
     };
   }
 
-  if (sessionsInWindow >= policy.maxSessionsPerWindow) {
+  if (!policy.unlimitedAttempts && sessionsInWindow >= policy.maxSessionsPerWindow) {
     return {
       allowed: false,
       error: "ATTEMPT_WINDOW_EXCEEDED",
@@ -185,7 +194,7 @@ export async function evaluateAttemptControl(
     };
   }
 
-  if (marketplaceAttemptsToday >= policy.marketplaceDailyAttempts) {
+  if (!policy.unlimitedAttempts && marketplaceAttemptsToday >= policy.marketplaceDailyAttempts) {
     const msUntilUtcDayEnd = dayStart.getTime() + 86_400_000 - now.getTime();
     return {
       allowed: false,
