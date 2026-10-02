@@ -1,11 +1,11 @@
 name: Weekly development task
-description: 주간 회의에서 담당자, 리뷰어, 검증 경로를 함께 확정합니다.
+description: 주간 회의에서 담당자, 선택적 리뷰어, 검증 경로를 함께 기록합니다.
 title: "[Weekly] "
 body:
   - type: markdown
     attributes:
       value: |
-        이 카드는 토요일 주간 회의의 합의를 개발 그래프에 고정합니다. 작업마다 담당자 1명과 리뷰어 1명만 둡니다. 담당자가 불명확하면 이 카드를 만들지 않고 그래프의 미배정 상태로 남겼다가, 담당 확정 후 카드를 만듭니다.
+        이 카드는 토요일 주간 회의의 합의를 개발 그래프에 고정합니다. 작업마다 담당자 1명을 둡니다. 리뷰어 지정·승인은 선택 사항입니다. 담당자가 불명확하면 이 카드를 만들지 않고 그래프의 미배정 상태로 남겼다가, 담당 확정 후 카드를 만듭니다.
 
   - type: input
     id: meeting
@@ -44,22 +44,23 @@ body:
   - type: input
     id: reviewer
     attributes:
-      label: 단일 리뷰어
-      description: 작성자와 다른 한 사람만 지정합니다. 보호 영역이면 그 위험을 판단할 수 있는 사람을 선택합니다.
+      label: 리뷰어 (선택)
+      description: 리뷰가 필요하면 작성자와 다른 한 사람만 지정합니다. 비워 두어도 구현·완료·staging 통합을 막지 않습니다.
       placeholder: "@reviewer"
     validations:
-      required: true
+      required: false
 
   - type: dropdown
     id: reviewer_status
     attributes:
       label: 리뷰어 확인 상태
-      description: 새 작업은 시작 전 확인을 권장하며, 늦어도 PR 리뷰 요청 전에는 confirmed여야 합니다.
+      description: 리뷰를 요청하는 경우에만 역할을 확인하고 confirmed로 기록합니다.
       options:
+        - not_assigned — 리뷰어를 지정하지 않음
         - proposed — 아직 다음 회의 또는 비동기 확인이 필요함
         - confirmed — 리뷰어가 역할과 판단 범위를 확인함
     validations:
-      required: true
+      required: false
 
   - type: textarea
     id: outcome
