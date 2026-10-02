@@ -41,7 +41,8 @@ export async function apiServer<T = unknown>(
   });
 
   if (!res.ok) {
-    throw new Error(`API ${res.status}: ${path}`);
+    // `status` lets callers tell a transient failure (429/5xx) from a real one.
+    throw Object.assign(new Error(`API ${res.status}: ${path}`), { status: res.status });
   }
 
   return res.json() as Promise<T>;

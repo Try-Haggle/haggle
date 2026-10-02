@@ -18,7 +18,7 @@ import {
 } from "@/app/l/[publicId]/negotiation-agent-builder-chat";
 import { AgentStudio } from "@/components/agent-studio";
 import type { StudioSelection } from "@/components/agent-studio/types";
-import { Spinner } from "@/components/ui";
+import { Button, Spinner } from "@/components/ui";
 import type { NegotiationAgentBuilderMemory } from "@/lib/negotiation-agent-builder-types";
 import {
   createNegotiationAgent,
@@ -30,6 +30,7 @@ import {
   saveBuilderThread,
   updateNegotiationAgent,
 } from "@/lib/negotiation-agents-api";
+import { retryTransient } from "@/lib/retry";
 
 /**
  * The Agents tab — the Agent Studio wired to the production agents API.
@@ -109,12 +110,14 @@ export function AgentStudioPage({ role }: { role: Role }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [savedAgents, setSavedAgents] = useState<NegotiationAgent[] | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const presetParam = searchParams.get("preset");
   const agentParam = searchParams.get("agent");
 
   const refresh = useCallback(async () => {
-    const rows = await listNegotiationAgents(role);
+    const rows = await retryTransient(() => listNegotiationAgents(role));
     // System rows are the presets themselves; the roster renders those from
     // the shared catalogue, so only the user's own agents come from the API.
     return rows.filter((row) => !row.isSystem).map(rowToNegotiationAgent);
@@ -126,23 +129,25 @@ export function AgentStudioPage({ role }: { role: Role }) {
     sweepExpiredSessions();
   }, []);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is the "Try again" trigger
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      setLoadFailed(false);
       try {
         const agents = await refresh();
         if (!cancelled) setSavedAgents(agents);
       } catch {
-        // Non-fatal: the four presets alone are enough to build an agent, so a
-        // failed roster fetch degrades to "no saved agents" rather than an
-        // error page that blocks the whole tab.
-        if (!cancelled) setSavedAgents([]);
+        // Not an empty roster: showing "no saved agents" after a failed fetch
+        // told people their agents had been deleted, and the next reload
+        // brought them back. Say it failed and offer a retry instead.
+        if (!cancelled) setLoadFailed(true);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [refresh]);
+  }, [refresh, reloadKey]);
 
   const handleSave = useCallback(
     async (state: AgentBuilderState, memory: NegotiationAgentBuilderMemory | null) => {
@@ -212,6 +217,20 @@ export function AgentStudioPage({ role }: { role: Role }) {
 
   // The roster is what the studio seeds selections from, so the first paint
   // waits for it rather than mounting empty and re-seeding underneath the user.
+  if (savedAgents === null && loadFailed) {
+    return (
+      <div className="mx-auto flex h-[calc(100dvh-4rem)] items-center justify-center px-4 md:h-[calc(100dvh-var(--spacing-header))] lg:max-w-7xl lg:px-6">
+        <div className="flex max-w-sm flex-col items-center gap-4 text-center">
+          <p className="font-semibold text-ink text-lg">Couldn&apos;t load your agents</p>
+          <p className="text-base text-ink-secondary">
+            Your agents are safe. We just couldn&apos;t reach them right now.
+          </p>
+          <Button onClick={() => setReloadKey((key) => key + 1)}>Try again</Button>
+        </div>
+      </div>
+    );
+  }
+
   if (savedAgents === null) {
     return (
       <div className="mx-auto flex h-[calc(100dvh-4rem)] items-center md:h-[calc(100dvh-var(--spacing-header))] justify-center lg:max-w-7xl lg:px-6">
