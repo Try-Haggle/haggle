@@ -350,7 +350,7 @@ export default function HowItWorksPage() {
                         </div>
                         <div className="text-sm font-bold text-ink">{opt.total}</div>
                         {"recommended" in opt && opt.recommended && (
-                          <span className="text-[10px] text-success">추천</span>
+                          <span className="text-[10px] text-success">Recommended</span>
                         )}
                       </div>
                     ))}
