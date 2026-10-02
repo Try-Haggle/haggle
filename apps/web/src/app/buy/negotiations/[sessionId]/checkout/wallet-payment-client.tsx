@@ -2,6 +2,7 @@
 
 import type { createSoftAgreementAck } from "@/lib/soft-agreement-ack";
 import { WalletProvider } from "@/lib/wallet-provider";
+import { useLocale } from "@/providers/locale-provider";
 import { PaymentStep } from "../payment-step";
 
 export function WalletPaymentClient(props: {
@@ -16,8 +17,9 @@ export function WalletPaymentClient(props: {
   } | null;
   softAgreementAck: ReturnType<typeof createSoftAgreementAck>;
 }) {
+  const { locale } = useLocale();
   return (
-    <WalletProvider>
+    <WalletProvider locale={locale}>
       <PaymentStep {...props} />
     </WalletProvider>
   );

@@ -1,7 +1,12 @@
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render as renderUi, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { LocaleProvider } from "@/providers/locale-provider";
 import { PaymentStep } from "./payment-step";
+
+function render(ui: React.ReactNode) {
+  return renderUi(ui, { wrapper: LocaleProvider });
+}
 
 const walletState = vi.hoisted(() => ({
   address: undefined as `0x${string}` | undefined,
@@ -173,6 +178,8 @@ async function reachQuoteStep(user: ReturnType<typeof userEvent.setup>) {
 describe("PaymentStep navigation and wallet reuse", () => {
   beforeEach(() => {
     window.sessionStorage.clear();
+    document.documentElement.lang = "en";
+    delete document.documentElement.dataset.locale;
     walletState.address = undefined;
     walletState.isConnected = false;
     walletState.chainId = 84532;
@@ -182,7 +189,11 @@ describe("PaymentStep navigation and wallet reuse", () => {
     onrampListeners.handlers = [];
   });
 
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    document.documentElement.lang = "en";
+    delete document.documentElement.dataset.locale;
+  });
 
   it("keeps checkout choices when the buyer goes back or reopens checkout", async () => {
     const user = userEvent.setup();
@@ -219,6 +230,22 @@ describe("PaymentStep navigation and wallet reuse", () => {
       ),
     );
     expect(screen.getByText(/Direct/).closest("button")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("keeps Korean payment choices and wallet instructions consistent with the selected locale", async () => {
+    document.documentElement.dataset.locale = "ko";
+    const user = userEvent.setup();
+    render(<PaymentStep {...props} />);
+    expect(screen.getByText("결제 수단 선택")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /카드로 결제/ })).toBeDisabled();
+    expect(screen.getByText(/위에서 배송 테스트를 선택/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /연동 테스트/ }));
+    await user.click(screen.getByRole("button", { name: /hUSDC 직접 결제/ }));
+    expect(screen.getByText("USDC로 결제할 지갑을 연결하세요.")).toBeInTheDocument();
+    expect(screen.getByText(/MetaMask, Coinbase Wallet 또는/)).toBeInTheDocument();
+    expect(screen.queryByText("Choose a payment method")).not.toBeInTheDocument();
+    expect(apiPost).not.toHaveBeenCalled();
+    expect(sendCallsSyncAsync).not.toHaveBeenCalled();
   });
 
   it("shows a connected wallet without asking the buyer to connect again", async () => {

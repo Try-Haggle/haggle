@@ -37,6 +37,8 @@ import {
   HAGGLE_WALLET_CHAIN_ID,
   HAGGLE_WALLET_NETWORK,
 } from "@/lib/wallet-network";
+import { useLocale } from "@/providers/locale-provider";
+import { checkoutCopy } from "./checkout-copy";
 
 // USDC contract ABI (minimal: approve)
 const USDC_ABI = [
@@ -284,6 +286,8 @@ export function PaymentStep({
   physicalShippingReadiness,
   softAgreementAck,
 }: PaymentStepProps) {
+  const { locale } = useLocale();
+  const copy = checkoutCopy(locale);
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
   const { data: balance } = useBalance({ address, chainId: HAGGLE_WALLET_CHAIN_ID });
@@ -381,18 +385,18 @@ export function PaymentStep({
   const buyerFeeDisplay = confirmedAmounts?.buyer_fee ?? buyerFee;
   const sellerFeeDisplay = confirmedAmounts?.seller_fee ?? sellerFee;
   const railLabel =
-    quoteConfirmation?.display?.rail_label ??
+    (locale === "en" ? quoteConfirmation?.display?.rail_label : undefined) ??
     (quoteConfirmation?.rail === "stripe"
-      ? "Card via Stripe"
-      : `${HAGGLE_SETTLEMENT_ASSET.symbol} Direct`);
-  const buyerTotalLabel = quoteConfirmation?.display?.buyer_total_label ?? "Buyer pays";
+      ? copy.cardRail
+      : copy.directRail(HAGGLE_SETTLEMENT_ASSET.symbol));
+  const buyerTotalLabel =
+    (locale === "en" ? quoteConfirmation?.display?.buyer_total_label : undefined) ?? copy.buyerPays;
   const sellerReceivesLabel =
-    quoteConfirmation?.display?.seller_receives_label ?? "Seller receives";
+    (locale === "en" ? quoteConfirmation?.display?.seller_receives_label : undefined) ??
+    copy.sellerReceives;
   const feeSummaryLabel =
-    quoteConfirmation?.display?.fee_summary_label ??
-    (quoteConfirmation?.rail === "stripe"
-      ? "Buyer pays the Stripe onramp fee. Haggle fee is deducted from seller proceeds."
-      : "No buyer fee. Haggle fee is deducted from seller proceeds.");
+    (locale === "en" ? quoteConfirmation?.display?.fee_summary_label : undefined) ??
+    (quoteConfirmation?.rail === "stripe" ? copy.cardFees : copy.directFees);
   const hasPreparedPayment = paymentIntentId !== null;
 
   async function handleResumePreparedPayment() {
@@ -406,18 +410,18 @@ export function PaymentStep({
 
   function assertExpectedWalletNetwork() {
     if (chainId !== HAGGLE_WALLET_CHAIN_ID) {
-      throw new Error(`Switch your wallet to ${HAGGLE_WALLET_CHAIN.name} before continuing.`);
+      throw new Error(copy.networkRequired(HAGGLE_WALLET_CHAIN.name));
     }
   }
 
   async function handlePrepare() {
     if (!isConnected || !address) {
-      setError("Connect a wallet before continuing.");
+      setError(copy.connectRequired);
       setStep("connect_wallet");
       return;
     }
     if (requiresShipping && !shippingExecutionMode) {
-      setError("Choose a fulfillment test before continuing.");
+      setError(copy.shippingRequired);
       return;
     }
     setIsLoading(true);
@@ -438,7 +442,7 @@ export function PaymentStep({
       const intentId = data.intent?.id;
       const preparedOrderId = data.order?.id;
       if (!intentId || !preparedOrderId) {
-        throw new Error("The payment intent or order was not returned.");
+        throw new Error(copy.intentMissing);
       }
       if (requiresShipping && data.shipping_execution_mode) {
         setShippingExecutionMode(data.shipping_execution_mode);
@@ -472,9 +476,7 @@ export function PaymentStep({
       );
       const confirmation = quote.quote_confirmation;
       if (!isConfirmedSettlementAmount(confirmation?.amount_confirmation?.settlement_amount)) {
-        throw new Error(
-          `${HAGGLE_SETTLEMENT_ASSET.symbol} quote did not include a confirmed settlement amount.`,
-        );
+        throw new Error(copy.quoteMissing(HAGGLE_SETTLEMENT_ASSET.symbol));
       }
       setQuoteConfirmation(confirmation);
       const request = await requestConditionalSettlementWithOnrampRetry(
@@ -506,7 +508,7 @@ export function PaymentStep({
 
   async function handleStripeOnramp(intentId = paymentIntentId) {
     if (!intentId || !address) {
-      setError("Connect a wallet before starting card onramp.");
+      setError(copy.onrampWalletRequired);
       setStep("error");
       return;
     }
@@ -530,14 +532,13 @@ export function PaymentStep({
             ? {
                 rail: "stripe",
                 display: {
-                  rail_label: "Card via Stripe",
+                  rail_label: checkoutCopy("en").cardRail,
                   payment_method_label: "Pay by card; Stripe converts to USDC on Base",
                   settlement_asset: "USDC",
                   settlement_network: "Base",
-                  buyer_total_label: "Buyer pays",
-                  seller_receives_label: "Seller receives",
-                  fee_summary_label:
-                    "Buyer pays the Stripe onramp fee. Haggle fee is deducted from seller proceeds.",
+                  buyer_total_label: checkoutCopy("en").buyerPays,
+                  seller_receives_label: checkoutCopy("en").sellerReceives,
+                  fee_summary_label: checkoutCopy("en").cardFees,
                 },
                 amount: fallbackAmount,
                 buyer_total: data.buyer_payable,
@@ -587,7 +588,7 @@ export function PaymentStep({
     try {
       assertExpectedWalletNetwork();
       if (!conditionalSettlement) {
-        throw new Error("A verified conditional settlement request is required before funding.");
+        throw new Error(copy.requestRequired);
       }
       const target = assertConditionalSettlementTarget({
         contractAddress: conditionalSettlement.contract.address,
@@ -624,11 +625,11 @@ export function PaymentStep({
         ],
       });
       if (callsStatus.status !== "success" || callsStatus.atomic !== true) {
-        throw new Error("The wallet did not complete the payment as one atomic transaction.");
+        throw new Error(copy.atomicFailed);
       }
       const txHash = callsStatus.receipts?.at(-1)?.transactionHash;
       if (!txHash) {
-        throw new Error("The wallet did not return the confirmed payment transaction hash.");
+        throw new Error(copy.transactionMissing);
       }
       await api.post(
         `/payments/${paymentIntentId}/x402/conditional-settlement-funding`,
@@ -650,7 +651,7 @@ export function PaymentStep({
       const message = err instanceof Error ? err.message : String(err);
       setError(
         /atomic|wallet_sendCalls|method.*(not found|not supported)/i.test(message)
-          ? "This wallet cannot combine approval and payment into one confirmation. Use a wallet with atomic batch support."
+          ? copy.atomicUnsupported
           : message,
       );
       setStep("error");
@@ -659,7 +660,7 @@ export function PaymentStep({
     }
   }
 
-  const progressSteps = ["Method", "Wallet", "Quote", "Pay", "Complete"];
+  const progressSteps = copy.progressSteps;
   const currentStepIndex: number =
     step === "select_method"
       ? 0
@@ -674,23 +675,23 @@ export function PaymentStep({
               : 3;
   const backLabel =
     step === "connect_wallet"
-      ? "Back to payment options"
+      ? copy.backToOptions
       : step === "check_balance"
-        ? "Back to wallet"
+        ? copy.backToWallet
         : step === "confirm_payment"
-          ? "Back to quote"
-          : "Back to payment options";
+          ? copy.backToQuote
+          : copy.backToOptions;
 
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <h2 className="font-semibold text-ink text-lg">Secure payment</h2>
+        <h2 className="font-semibold text-ink text-lg">{copy.paymentTitle}</h2>
         <p className="text-ink-secondary text-sm">
           {quoteConfirmation && <span className="font-medium text-ink">{railLabel}: </span>}
           {formatMinor(buyerPaysDisplay)}
           {buyerFeeDisplay.amount_minor > 0 && (
             <span className="ml-2 text-ink-muted text-xs">
-              includes {formatMinor(buyerFeeDisplay)} buyer fee
+              {copy.includesFee(formatMinor(buyerFeeDisplay))}
             </span>
           )}
         </p>
@@ -711,9 +712,8 @@ export function PaymentStep({
       )}
 
       {HAGGLE_WALLET_NETWORK === "base-sepolia" && (
-        <Alert tone="info" title="Base Sepolia testnet">
-          This checkout accepts test ETH and {HAGGLE_SETTLEMENT_ASSET.symbol} only. These assets
-          have no monetary value.
+        <Alert tone="info" title={copy.testnetTitle}>
+          {copy.testnetNote(HAGGLE_SETTLEMENT_ASSET.symbol)}
         </Alert>
       )}
 
@@ -723,25 +723,25 @@ export function PaymentStep({
             <section className="space-y-3" aria-labelledby="fulfillment-test-heading">
               <div>
                 <h3 id="fulfillment-test-heading" className="font-medium text-ink text-sm">
-                  Choose a fulfillment test
+                  {copy.fulfillmentTitle}
                 </h3>
-                <p className="mt-1 text-ink-secondary text-xs">
-                  This choice is locked when payment preparation starts.
-                </p>
+                <p className="mt-1 text-ink-secondary text-xs">{copy.fulfillmentNote}</p>
               </div>
               <SelectableOptionCard
                 selected={shippingExecutionMode === "integration_manual"}
                 icon={<FlaskConical className="size-5" />}
-                title="Integration test"
-                description="Use EasyPost test rates and labels. The team can advance carrier states without moving a parcel."
+                title={copy.integrationTitle}
+                description={copy.integrationDescription}
                 onClick={() => setShippingExecutionMode("integration_manual")}
                 disabled={hasPreparedPayment}
               />
               <SelectableOptionCard
                 selected={shippingExecutionMode === "physical_live"}
                 icon={<Truck className="size-5" />}
-                title="Physical shipping rehearsal"
-                description={`Use real addresses, a paid EasyPost label, and actual carrier scans. Haggle pays up to $${((physicalShippingReadiness?.live_label_max_minor ?? 5000) / 100).toFixed(2)} in staging postage.`}
+                title={copy.physicalTitle}
+                description={copy.physicalDescription(
+                  ((physicalShippingReadiness?.live_label_max_minor ?? 5000) / 100).toFixed(2),
+                )}
                 disabled={
                   hasPreparedPayment ||
                   (HAGGLE_WALLET_NETWORK === "base-sepolia" &&
@@ -752,23 +752,26 @@ export function PaymentStep({
               />
               {HAGGLE_WALLET_NETWORK === "base-sepolia" &&
                 physicalShippingReadiness?.ready !== true && (
-                  <Alert tone="warning" title="Physical shipping setup is incomplete">
+                  <Alert tone="warning" title={copy.shippingSetupTitle}>
                     {physicalShippingReadiness?.missing.length
                       ? physicalShippingReadiness.missing.join(" · ")
-                      : "Shipping readiness could not be verified."}
+                      : copy.shippingSetupNote}
                   </Alert>
                 )}
               {shippingExecutionMode === "physical_live" &&
                 HAGGLE_WALLET_NETWORK === "base-sepolia" && (
-                  <Alert tone="warning" title="Real postage, test settlement">
-                    EasyPost charges Haggle's staging payment method in USD. The order settlement
-                    still uses {HAGGLE_SETTLEMENT_ASSET.symbol}, which has no monetary value and
-                    does not reimburse that postage.
+                  <Alert tone="warning" title={copy.postageTitle}>
+                    {copy.postageNote(HAGGLE_SETTLEMENT_ASSET.symbol)}
                   </Alert>
                 )}
             </section>
           )}
 
+          {requiresShipping && !shippingExecutionMode && (
+            <p role="status" className="text-sm text-ink-secondary">
+              {copy.chooseShippingHint}
+            </p>
+          )}
           <section
             className="space-y-3"
             aria-labelledby="payment-method-heading"
@@ -776,17 +779,17 @@ export function PaymentStep({
           >
             <div>
               <h3 id="payment-method-heading" className="font-medium text-ink text-sm">
-                Choose a payment method
+                {copy.methodHeading}
               </h3>
               <p className="mt-1 text-ink-secondary text-xs">
-                Settlement asset: {HAGGLE_SETTLEMENT_ASSET.symbol} on {HAGGLE_WALLET_CHAIN.name}
+                {copy.assetNote(HAGGLE_SETTLEMENT_ASSET.symbol, HAGGLE_WALLET_CHAIN.name)}
               </p>
             </div>
             <SelectableOptionCard
               selected={method === "card"}
               icon={<CreditCard className="size-5" />}
-              title="Pay with card"
-              description="Stripe converts the card payment to USDC. The complete fee is shown before authorization."
+              title={copy.cardTitle}
+              description={copy.cardDescription}
               onClick={() => {
                 setMethod("card");
                 setStep("connect_wallet");
@@ -796,8 +799,8 @@ export function PaymentStep({
             <SelectableOptionCard
               selected={method === "crypto"}
               icon={<WalletCards className="size-5" />}
-              title={`${HAGGLE_SETTLEMENT_ASSET.symbol} Direct (${formatMinor(fallbackAmount)})`}
-              description={`Pay from a ${HAGGLE_WALLET_CHAIN.name} wallet. Haggle shows the settlement and seller fee before authorization.`}
+              title={copy.directTitle(HAGGLE_SETTLEMENT_ASSET.symbol, formatMinor(fallbackAmount))}
+              description={copy.directDescription(HAGGLE_WALLET_CHAIN.name)}
               onClick={() => {
                 setMethod("crypto");
                 setStep("connect_wallet");
@@ -805,14 +808,11 @@ export function PaymentStep({
               disabled={hasPreparedPayment || (requiresShipping && !shippingExecutionMode)}
             />
             {hasPreparedPayment && method && (
-              <Alert tone="info" title="Payment choices saved">
+              <Alert tone="info" title={copy.savedTitle}>
                 <div className="space-y-3">
-                  <p>
-                    Shipping mode and payment method are locked after payment preparation. You can
-                    review them here, then continue without reconnecting your wallet.
-                  </p>
+                  <p>{copy.savedNote}</p>
                   <Button onClick={handleResumePreparedPayment} loading={isLoading} fullWidth>
-                    Continue payment
+                    {copy.continuePayment}
                   </Button>
                 </div>
               </Alert>
@@ -823,7 +823,7 @@ export function PaymentStep({
 
       {step === "onramp_active" && (
         <div className="space-y-3">
-          <p className="text-ink-secondary text-sm">Complete the payment in Stripe.</p>
+          <p className="text-ink-secondary text-sm">{copy.stripeActive}</p>
           <div
             id="stripe-onramp-element"
             className="min-h-[400px] rounded-lg border border-line bg-surface-raised"
@@ -834,7 +834,7 @@ export function PaymentStep({
       {step === "onramp_loading" && (
         <div className="flex flex-col items-center gap-3 py-10 text-ink-secondary">
           <Spinner size="lg" />
-          <p className="text-sm">Setting up card payment...</p>
+          <p className="text-sm">{copy.stripeLoading}</p>
         </div>
       )}
 
@@ -844,39 +844,37 @@ export function PaymentStep({
             {!isConnected ? (
               <>
                 <p className="text-ink-secondary text-sm">
-                  {method === "card"
-                    ? "Connect the wallet that should receive USDC after your card payment."
-                    : "Connect your wallet to pay with USDC."}
+                  {method === "card" ? copy.connectCard : copy.connectDirect}
                 </p>
-                <ConnectButton />
-                <p className="text-ink-muted text-xs">You can use any wallet you control.</p>
+                <ConnectButton label={copy.connectWallet} />
+                <p className="text-ink-muted text-xs">{copy.walletsHint}</p>
               </>
             ) : (
               <>
                 <div className="flex items-center justify-between gap-3 rounded-lg border border-line bg-surface-sunken p-3">
                   <div className="min-w-0">
-                    <p className="text-xs font-medium text-success">Wallet connected</p>
+                    <p className="text-xs font-medium text-success">{copy.connected}</p>
                     <p className="truncate font-mono text-ink-secondary text-xs">{address}</p>
                   </div>
                   <ConnectButton.Custom>
                     {({ openAccountModal }) => (
                       <Button variant="secondary" size="sm" onClick={openAccountModal}>
-                        Change
+                        {copy.changeWallet}
                       </Button>
                     )}
                   </ConnectButton.Custom>
                 </div>
                 {isWrongNetwork && (
-                  <Alert tone="warning" title={`Switch to ${HAGGLE_WALLET_CHAIN.name}`}>
+                  <Alert tone="warning" title={copy.switchTitle(HAGGLE_WALLET_CHAIN.name)}>
                     <div className="space-y-3">
-                      <p>This checkout blocks transactions from every other network.</p>
+                      <p>{copy.switchNote}</p>
                       <Button
                         variant="secondary"
                         size="sm"
                         onClick={() => switchChain({ chainId: HAGGLE_WALLET_CHAIN_ID })}
                         loading={isSwitchingChain}
                       >
-                        Switch network
+                        {copy.switchNetwork}
                       </Button>
                     </div>
                   </Alert>
@@ -888,10 +886,10 @@ export function PaymentStep({
                     fullWidth
                   >
                     {isLoading
-                      ? "Preparing..."
+                      ? copy.preparing
                       : hasPreparedPayment
-                        ? "Continue prepared payment"
-                        : "Continue"}
+                        ? copy.continuePrepared
+                        : copy.continue}
                   </Button>
                 )}
               </>
@@ -903,13 +901,13 @@ export function PaymentStep({
           <div className="space-y-3">
             <div className="space-y-2 rounded-lg bg-surface-sunken p-4">
               <div className="flex justify-between text-sm">
-                <span className="text-ink-secondary">Your address</span>
+                <span className="text-ink-secondary">{copy.yourAddress}</span>
                 <span className="font-mono text-ink text-xs">
                   {address?.slice(0, 6)}...{address?.slice(-4)}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-ink-secondary">ETH balance</span>
+                <span className="text-ink-secondary">{copy.ethBalance}</span>
                 <span className="text-ink">
                   {balance ? `${Number(balance.formatted).toFixed(4)} ETH` : "—"}
                 </span>
@@ -921,7 +919,7 @@ export function PaymentStep({
               {method === "crypto" && (
                 <>
                   <div className="flex justify-between text-sm">
-                    <span className="text-ink-secondary">Rail</span>
+                    <span className="text-ink-secondary">{copy.rail}</span>
                     <span className="text-ink">{railLabel}</span>
                   </div>
                   {quoteConfirmation && (
@@ -934,20 +932,18 @@ export function PaymentStep({
               )}
             </div>
             {method === "card" && (
-              <Alert tone="info" title="Card on-ramp funded — finish settlement">
-                Stripe funded your wallet. Next, quote and fund the conditional settlement contract
-                with {HAGGLE_SETTLEMENT_ASSET.symbol} (staging uses base-sepolia test assets; Onramp
-                itself targets Base).
+              <Alert tone="info" title={copy.fundedTitle}>
+                {copy.fundedNote(HAGGLE_SETTLEMENT_ASSET.symbol)}
               </Alert>
             )}
             <Button onClick={handleQuote} loading={isLoading} disabled={isWrongNetwork} fullWidth>
               {isLoading
                 ? method === "card"
-                  ? "Waiting for on-ramp webhook / quoting..."
-                  : "Loading..."
+                  ? copy.waitingQuote
+                  : copy.loading
                 : method === "crypto"
-                  ? `Get ${HAGGLE_SETTLEMENT_ASSET.symbol} Quote`
-                  : `Continue to ${HAGGLE_SETTLEMENT_ASSET.symbol} settlement`}
+                  ? copy.getQuote(HAGGLE_SETTLEMENT_ASSET.symbol)
+                  : copy.continueSettlement(HAGGLE_SETTLEMENT_ASSET.symbol)}
             </Button>
           </div>
         )}
@@ -955,31 +951,29 @@ export function PaymentStep({
         {step === "confirm_payment" && (
           <div className="space-y-3">
             <p className="text-ink-secondary text-sm">
-              Confirm once in your wallet to approve and securely deposit{" "}
-              <strong>{formatMinor(settlementAmountDisplay ?? buyerPaysDisplay)}</strong>. The
-              seller is paid only after the release conditions are met.
+              {copy.confirmDeposit(formatMinor(settlementAmountDisplay ?? buyerPaysDisplay))}
             </p>
             {(buyerFeeDisplay.amount_minor > 0 || sellerFeeDisplay.amount_minor > 0) && (
               <div className="space-y-1 rounded-lg bg-surface-sunken p-3 text-ink-secondary text-xs">
                 <div className="flex justify-between font-medium">
-                  <span>Rail</span>
+                  <span>{copy.rail}</span>
                   <span className="text-ink">{railLabel}</span>
                 </div>
                 {settlementAmountDisplay && (
                   <div className="flex justify-between">
-                    <span>Settlement amount</span>
+                    <span>{copy.settlementAmount}</span>
                     <span>{formatMinor(settlementAmountDisplay)}</span>
                   </div>
                 )}
                 {buyerFeeDisplay.amount_minor > 0 && (
                   <div className="flex justify-between">
-                    <span>Buyer fee</span>
+                    <span>{copy.buyerFee}</span>
                     <span>{formatMinor(buyerFeeDisplay)}</span>
                   </div>
                 )}
                 {sellerFeeDisplay.amount_minor > 0 && (
                   <div className="flex justify-between">
-                    <span>Seller fee</span>
+                    <span>{copy.sellerFee}</span>
                     <span>{formatMinor(sellerFeeDisplay)}</span>
                   </div>
                 )}
@@ -990,11 +984,7 @@ export function PaymentStep({
                 <p className="pt-1 text-ink-muted">{feeSummaryLabel}</p>
               </div>
             )}
-            {conditionalSettlement && (
-              <p className="text-ink-muted text-xs">
-                Approval and deposit run together. If either action fails, neither is applied.
-              </p>
-            )}
+            {conditionalSettlement && <p className="text-ink-muted text-xs">{copy.atomicNote}</p>}
             <Button
               onClick={handleConfirmPayment}
               disabled={
@@ -1008,8 +998,8 @@ export function PaymentStep({
               fullWidth
             >
               {isLoading || isSendingCalls
-                ? "Confirming payment..."
-                : `Pay ${formatMinor(settlementAmountDisplay ?? buyerPaysDisplay)} securely`}
+                ? copy.confirming
+                : copy.pay(formatMinor(settlementAmountDisplay ?? buyerPaysDisplay))}
             </Button>
           </div>
         )}
@@ -1018,16 +1008,18 @@ export function PaymentStep({
           <ResultState
             tone="success"
             icon={<CheckCircle2 className="size-7" />}
-            title={conditionalSettlement ? "Funding confirmed" : "Payment submitted"}
+            title={conditionalSettlement ? copy.confirmedTitle : copy.submittedTitle}
             description={
               conditionalSettlement
-                ? `Your ${formatMinor(settlementAmountDisplay ?? buyerPaysDisplay)} funding transaction is confirmed. The funds remain protected by the release and dispute rules.`
-                : `Your payment of ${formatMinor(buyerPaysDisplay)} was submitted. If you used card on-ramp, confirm conditional settlement funding still completed.`
+                ? copy.confirmedDescription(
+                    formatMinor(settlementAmountDisplay ?? buyerPaysDisplay),
+                  )
+                : copy.submittedDescription(formatMinor(buyerPaysDisplay))
             }
             action={
               orderId ? (
                 <Link href={`/orders/${orderId}`} className={cn(buttonVariants(), "min-w-44")}>
-                  View order
+                  {copy.viewOrder}
                   <ExternalLink className="size-4" />
                 </Link>
               ) : undefined
@@ -1037,7 +1029,7 @@ export function PaymentStep({
 
         {step === "error" && (
           <div className="space-y-3">
-            <Alert tone="error" title="Payment could not continue">
+            <Alert tone="error" title={copy.errorTitle}>
               {error}
             </Alert>
             <Button
@@ -1053,7 +1045,7 @@ export function PaymentStep({
               fullWidth
             >
               <RotateCcw className="size-4" />
-              Try Again
+              {copy.retry}
             </Button>
           </div>
         )}
