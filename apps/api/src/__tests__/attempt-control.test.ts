@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { evaluateAttemptControl } from "../services/attempt-control.service.js";
 
 const BUYER_ID = "00000000-0000-4000-a000-000000000010";
@@ -42,6 +42,58 @@ function mockDb(row: Record<string, unknown> = {}) {
 }
 
 describe("evaluateAttemptControl", () => {
+  beforeEach(() => vi.stubEnv("HAGGLE_ENV", "production"));
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("allows repeated staging starts under NODE_ENV=production with exhausted attempt budgets", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("HAGGLE_ENV", "staging");
+    const result = await evaluateAttemptControl(
+      mockDb({
+        sessions_in_window: 100,
+        marketplace_attempts_today: 100,
+        last_listing_attempt_at: "2026-10-02T23:00:00.000Z",
+      }) as never,
+      {
+        buyerPrincipalId: BUYER_ID,
+        listingId: LISTING_ID,
+        nowMs: Date.parse("2026-10-02T23:07:00.000Z"),
+      },
+    );
+    expect(result.allowed).toBe(true);
+    expect(result.attemptControl.remaining_sessions).toBeGreaterThan(0);
+    expect(result.attemptControl.remaining_marketplace_attempts).toBeGreaterThan(0);
+    expect(result.attemptControl.retry_after_seconds).toBeNull();
+    expect(result.attemptControl.max_rounds_per_session).toBe(10);
+  });
+
+  it("keeps staging concurrent-session protection", async () => {
+    vi.stubEnv("HAGGLE_ENV", "staging");
+    const result = await evaluateAttemptControl(
+      mockDb({
+        active_sessions_on_listing: 1,
+        sessions_in_window: 100,
+        marketplace_attempts_today: 100,
+      }) as never,
+      { buyerPrincipalId: BUYER_ID, listingId: LISTING_ID },
+    );
+    expect(result.error).toBe("CONCURRENT_SESSION_LIMIT_EXCEEDED");
+  });
+
+  it.each([
+    "production",
+    "local",
+    "",
+    "preview",
+  ])("keeps the daily attempt cap outside staging (%s)", async (env) => {
+    vi.stubEnv("HAGGLE_ENV", env);
+    const result = await evaluateAttemptControl(
+      mockDb({ marketplace_attempts_today: 5 }) as never,
+      { buyerPrincipalId: BUYER_ID, listingId: LISTING_ID },
+    );
+    expect(result.error).toBe("MARKETPLACE_ATTEMPT_LIMIT_EXCEEDED");
+  });
+
   it("binds ISO timestamps instead of Date objects", async () => {
     const db = mockDb();
     const nowMs = Date.parse("2026-09-01T12:00:00.000Z");
