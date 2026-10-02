@@ -172,7 +172,9 @@ export function authorizationServerMetadata(request: FastifyRequest) {
   const app = publicAppBaseUrl();
   return {
     issuer: api,
-    authorization_endpoint: `${app}/connect`,
+    // Same origin as the issuer: Codex rejects a cross-origin authorization
+    // endpoint. /oauth/authorize forwards the query to the web /connect screen.
+    authorization_endpoint: `${api}/oauth/authorize`,
     token_endpoint: `${api}/oauth/token`,
     registration_endpoint: `${api}/oauth/register`,
     response_types_supported: ["code"],
