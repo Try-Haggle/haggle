@@ -3,6 +3,14 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import "./landing.css";
+import {
+  describeFeeDifference,
+  EBAY_COMPARISON_BADGE,
+  EBAY_COMPARISON_DISCLAIMER,
+  EBAY_CONDITIONS_TEXT,
+  ebayFeeEstimate,
+  HAGGLE_FEE_ASSUMPTION,
+} from "@/components/ebay-fee-terms";
 
 /* ── Fee Calculator Data ──────────────────── */
 const PLATFORMS: readonly {
@@ -13,7 +21,7 @@ const PLATFORMS: readonly {
   highlight?: boolean;
 }[] = [
   { name: "Poshmark", dot: "posh", pct: 20, flat: 0 },
-  { name: "eBay", dot: "ebay", pct: 15.6, flat: 0 },
+  { name: "eBay", dot: "ebay", pct: 13.6, flat: 0.4 },
   { name: "StockX", dot: "stk", pct: 12, flat: 0 },
   { name: "Mercari", dot: "mer", pct: 10, flat: 0 },
   { name: "Haggle", dot: "hag", pct: 1.5, flat: 0, highlight: true },
@@ -25,8 +33,8 @@ const CHIP_VALUES = [100, 500, 1000, 2000];
 const STAGES = [
   {
     p: 0.0,
-    name: "Poshmark Seller Receipt",
-    sub: "Order #PM-88217 · payout 3–5 days",
+    name: "Poshmark Seller Receipt · Demo",
+    sub: "Demo · hypothetical order · payout 3–5 days",
     fees: [{ k: "Commission (20%)", v: 100.0, chit: "Commission" }],
     total: 400.0,
     foot: "Payout in 3–5 business days",
@@ -34,21 +42,20 @@ const STAGES = [
   },
   {
     p: 0.18,
-    name: "eBay Seller Receipt",
-    sub: "Order #14-09221 · electronics category",
+    name: "eBay Seller Receipt · Demo",
+    sub: "Demo · hypothetical order · electronics",
     fees: [
-      { k: "Final value fee (13.25%)", v: 66.25, chit: "Final value" },
+      { k: "Fee on item price (13.6%)", v: 68.0, chit: "Item fee" },
       { k: "Per-order fixed fee", v: 0.4, chit: "Fixed fee" },
-      { k: "Payment processing", v: 11.25, chit: "Processing" },
     ],
-    total: 422.1,
-    foot: "Payout in 2 business days",
-    txt: "eBay — 15.55% once processing is added.",
+    total: 431.6,
+    foot: "Demo · illustrative payout timing",
+    txt: "Demo: eBay about 13.7% on a $500 item (hypothetical, item price only).",
   },
   {
     p: 0.36,
-    name: "StockX Seller Receipt",
-    sub: "Order #SX-1129 · authenticated sale",
+    name: "StockX Seller Receipt · Demo",
+    sub: "Demo · hypothetical order · authenticated sale",
     fees: [
       { k: "Transaction fee (9%)", v: 45.0, chit: "Transaction" },
       { k: "Payment processing (3%)", v: 15.0, chit: "Processing" },
@@ -59,8 +66,8 @@ const STAGES = [
   },
   {
     p: 0.54,
-    name: "Mercari Seller Receipt",
-    sub: "Order #ME-40221 · standard sale",
+    name: "Mercari Seller Receipt · Demo",
+    sub: "Demo · hypothetical order · standard sale",
     fees: [{ k: "Selling fee (10%)", v: 50.0, chit: "Selling" }],
     total: 450.0,
     foot: "Payout on buyer confirmation",
@@ -68,8 +75,8 @@ const STAGES = [
   },
   {
     p: 0.72,
-    name: "Haggle Settlement Receipt",
-    sub: "tx · 0x8f2a…b7c1 · Base L2 · block 18,420,317",
+    name: "Haggle Settlement Receipt · Demo",
+    sub: "Demo · illustrative settlement, not a real transaction",
     fees: [
       { k: "Haggle fee (1.5%)", v: 7.5, chit: "" },
       { k: "Gas fee (sponsored)", v: 0.0, chit: "" },
@@ -81,15 +88,15 @@ const STAGES = [
   },
   {
     p: 1.0,
-    name: "Haggle Settlement Receipt",
-    sub: "tx · 0x8f2a…b7c1 · Base L2 · block 18,420,317",
+    name: "Haggle Settlement Receipt · Demo",
+    sub: "Demo · illustrative settlement, not a real transaction",
     fees: [
       { k: "Haggle fee (1.5%)", v: 7.5, chit: "" },
       { k: "Gas fee (sponsored)", v: 0.0, chit: "" },
     ],
     total: 492.5,
     foot: "Settled in USDC on Base L2 · Non-custodial ✓",
-    txt: "+$92.50 in your pocket vs Poshmark. Every sale.",
+    txt: "Demo: illustrative $92.50 difference vs the Poshmark example, not a quote.",
     good: true,
     final: true,
   },
@@ -119,6 +126,26 @@ function lerp(a: number, b: number, t: number) {
 /* ══════════════════════════════════════════════
    Main Landing Component
    ══════════════════════════════════════════════ */
+const DEMO_PRICE = 500;
+const DEMO_EBAY_NET = (DEMO_PRICE - ebayFeeEstimate(DEMO_PRICE)).toFixed(2);
+const DEMO_HAGGLE_NET = (DEMO_PRICE * 0.985).toFixed(2);
+const DEMO_DIFF = describeFeeDifference(ebayFeeEstimate(DEMO_PRICE) - DEMO_PRICE * 0.015);
+
+/** Readable Demo/assumption notice beside the eBay comparison (inline styles: landing uses custom CSS). */
+function LandingEbayNotice({ tone = "light" }: { tone?: "light" | "dark" }) {
+  const color = tone === "dark" ? "rgba(255,255,255,.85)" : "rgba(255,255,255,.75)";
+  return (
+    <div
+      data-testid="landing-ebay-notice"
+      style={{ marginTop: 12, fontSize: 13, lineHeight: 1.55, color }}
+    >
+      <strong>{EBAY_COMPARISON_BADGE}.</strong> Electronics-category example.{" "}
+      {EBAY_COMPARISON_DISCLAIMER} {HAGGLE_FEE_ASSUMPTION}
+      <div style={{ marginTop: 6, fontSize: 12, opacity: 0.85 }}>{EBAY_CONDITIONS_TEXT}</div>
+    </div>
+  );
+}
+
 export function Landing() {
   const [price, setPrice] = useState(500);
   const [activeChip, setActiveChip] = useState(500);
@@ -517,27 +544,20 @@ export function Landing() {
   const renderFeeTable = useCallback((p: number) => {
     const feeBody = document.getElementById("hg-feeBody");
     const priceValEl = document.getElementById("hg-priceVal");
-    const avgLossEl = document.getElementById("hg-avgLoss");
-    const avgSaveEl = document.getElementById("hg-avgSave");
     if (!feeBody) return;
 
     if (priceValEl) priceValEl.textContent = fmtInt(p);
     feeBody.innerHTML = PLATFORMS.map((pl) => {
-      const fee = p * (pl.pct / 100) + pl.flat;
+      const fee = pl.dot === "ebay" ? ebayFeeEstimate(p) : p * (pl.pct / 100) + pl.flat;
       const rcv = p - fee;
       const cls = pl.highlight ? ' class="row-hg"' : "";
       return `<tr${cls}>
-        <td><div class="plat-cell"><span class="plat-dot ${pl.dot}"></span>${pl.highlight ? "<strong>" + pl.name + "</strong>" : pl.name}</div></td>
+        <td><div class="plat-cell"><span class="plat-dot ${pl.dot}"></span>${pl.highlight ? "<strong>" + pl.name + '</strong> <span class="plat-note">(illustrative)</span>' : pl.dot === "ebay" ? pl.name + " (Demo est.)" : pl.name}</div></td>
         <td class="num">${pl.pct}%</td>
         <td class="num ${pl.highlight ? "saved" : ""}">$${fmtDollar(rcv).slice(1)}</td>
         <td class="num ${pl.highlight ? "" : "lost"}">${pl.highlight ? "$" + fmtDollar(fee).slice(1) : "−$" + fmtDollar(fee).slice(1)}</td>
       </tr>`;
     }).join("");
-
-    const ebayFee = p * 0.156;
-    const hgFee = p * 0.015;
-    if (avgLossEl) avgLossEl.textContent = "$" + fmtInt(ebayFee * 12);
-    if (avgSaveEl) avgSaveEl.textContent = "$" + fmtInt((ebayFee - hgFee) * 12);
 
     // Trigger bar animation via mutation observer
     const trigger = document.createElement("div");
@@ -548,6 +568,11 @@ export function Landing() {
   useEffect(() => {
     renderFeeTable(price);
   }, [price, renderFeeTable]);
+
+  const annualModel = {
+    ebayFees: ebayFeeEstimate(price) * 12,
+    diff: describeFeeDifference((ebayFeeEstimate(price) - price * 0.015) * 12),
+  };
 
   const handleSlider = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = +e.target.value;
@@ -600,8 +625,8 @@ export function Landing() {
                 </h1>
                 <p className="sh-sub">
                   Haggle is the standard for AI-powered negotiation. Your agent bargains, the smart
-                  contract settles — <strong>1.5% total fee</strong>, non-custodial, final in
-                  seconds.
+                  contract settles — <strong>illustrative 1.5% fee assumption (Demo)</strong>,
+                  non-custodial, final in seconds.
                 </p>
                 <div className="sh-ctas">
                   <Link href="/demo" className="btn btn-primary">
@@ -653,6 +678,9 @@ export function Landing() {
                   <div className="foot" id="hg-receiptFoot">
                     Payout in 3–5 business days
                   </div>
+                  <div className="foot" style={{ fontWeight: 700, fontSize: 11 }}>
+                    DEMO — hypothetical order and illustrative fees, not a real receipt or quote.
+                  </div>
                 </div>
 
                 {[0, 1, 2, 3].map((i) => (
@@ -685,9 +713,9 @@ export function Landing() {
                 </div>
 
                 <div className="diff-cap" id="hg-diffCap">
-                  <span className="a">Poshmark · $400.00</span>
+                  <span className="a">Demo · Poshmark $400.00</span>
                   <span className="arrow">→</span>
-                  <span className="b">Haggle · $492.50</span>
+                  <span className="b">Illustrative Haggle $492.50</span>
                   <span className="plus">+$92.50</span>
                 </div>
               </div>
@@ -845,23 +873,25 @@ export function Landing() {
               </thead>
               <tbody id="hg-feeBody" />
             </table>
+            <LandingEbayNotice />
 
             <div className="stat-line">
               <div className="big">
-                The average seller loses{" "}
+                Hypothetical model: 12 sales/year at ${fmtInt(price)} would incur about{" "}
                 <span className="num" id="hg-avgLoss">
-                  $847
+                  ${fmtInt(annualModel.ebayFees)}
                 </span>{" "}
-                per year to platform fees.
+                in estimated eBay fees (Demo model).
               </div>
               <div className="sub">
-                Based on 12 sales/year at $500 avg price · Haggle saves you{" "}
+                Demo model: 12 sales/year at ${fmtInt(price)}, illustrative Haggle 1.5% fee
+                assumption · modelled difference{" "}
                 <span
                   className="mono"
                   id="hg-avgSave"
                   style={{ color: "#86efac", fontWeight: 700 }}
                 >
-                  $759
+                  {annualModel.diff.label.replace(/\.$/, "")}
                 </span>
                 .
               </div>
@@ -1025,7 +1055,7 @@ export function Landing() {
                 </div>
                 <div className="branch">
                   <div className="node split">
-                    <div className="lab">Seller wallet · 98.5%</div>
+                    <div className="lab">Seller wallet · 98.5% (Demo)</div>
                     <div className="addr">0x2C8…A091</div>
                     <div
                       className="mono"
@@ -1035,7 +1065,7 @@ export function Landing() {
                     </div>
                   </div>
                   <div className="node split">
-                    <div className="lab">Haggle fee · 1.5%</div>
+                    <div className="lab">Haggle fee · 1.5% (Demo assumption)</div>
                     <div className="addr">0xFee…Haggle</div>
                     <div
                       className="mono"
@@ -1105,7 +1135,7 @@ export function Landing() {
               </p>
               <div className="rail-stats">
                 <div className="s">
-                  <div className="k">Total fee</div>
+                  <div className="k">Total fee (Demo assumption)</div>
                   <div className="v g">1.5%</div>
                 </div>
                 <div className="s">
@@ -1416,11 +1446,12 @@ export function Landing() {
           <div className="final reveal">
             <h2>Stop losing money to platform fees.</h2>
             <div className="compare">
-              <span className="c1">eBay · you get $410.15</span>
+              <span className="c1">Demo eBay est. net · ${DEMO_EBAY_NET}</span>
               <span className="arw">→</span>
-              <span className="c2">Haggle · you get $492.50</span>
-              <span className="plus">+$82.35</span>
+              <span className="c2">Illustrative Haggle net · ${DEMO_HAGGLE_NET}</span>
+              <span className="plus">{DEMO_DIFF.label}</span>
             </div>
+            <LandingEbayNotice tone="dark" />
             <div className="ctas">
               <Link href="/demo" className="btn btn-primary">
                 Try AI Negotiation — Free Demo

@@ -1,12 +1,18 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { EbayComparisonNotice } from "@/components/ebay-comparison-notice";
+import {
+  describeFeeDifference,
+  EBAY_FAQ_ANSWER,
+  ebayFeeEstimate,
+  isEbayComparable,
+} from "@/components/ebay-fee-terms";
 import {
   CATEGORIES,
   calculateAll,
   negotiationZone,
   type PlatformResult,
-  savingsAnalogy,
   WEIGHT_TIERS,
 } from "@/components/fee-data";
 import { WaitlistForm } from "@/components/waitlist-form";
@@ -42,6 +48,16 @@ function PlatformRow({
           >
             {p.platformName}
           </span>
+          {p.platformName === "eBay" && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-sunken text-ink-secondary">
+              Demo est.
+            </span>
+          )}
+          {isHaggle && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-sunken text-ink-secondary">
+              Illustrative 1.5%
+            </span>
+          )}
           {p.negotiable && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-action-primary/20 text-action-primary">
               Negotiable
@@ -104,7 +120,8 @@ function NegotiationZoneViz({ listPrice, weightLbs }: { listPrice: number; weigh
     <div className="rounded-2xl border border-action-primary/20 bg-surface-raised p-6">
       <h3 className="text-lg font-semibold text-ink mb-1">Haggle Negotiation Zone</h3>
       <p className="text-xs text-ink-muted mb-5">
-        On Haggle, buyer and seller AI agents negotiate within this range. Everyone wins vs eBay.
+        On Haggle, buyer and seller AI agents negotiate within this range. Compared with an
+        estimated eBay seller net (Demo assumptions, see note below).
       </p>
 
       {/* Visual bar */}
@@ -169,10 +186,12 @@ function NegotiationZoneViz({ listPrice, weightLbs }: { listPrice: number; weigh
       </div>
 
       <p className="text-[10px] text-ink-muted mt-4 text-center">
-        At every price in this range, the seller keeps more than on eBay ({fmtR(zone.ebaySellerNet)}
+        At every price in this range, the seller keeps more than the estimated eBay net (
+        {fmtR(zone.ebaySellerNet)}
         ), and the buyer pays less than list price ({fmtR(zone.sellerAsk)}). Shipping cost (
         {fmt(zone.shippingCost)}) is also negotiable.
       </p>
+      <EbayComparisonNotice variant="demo" testId="ebay-disclaimer-zone" className="mt-3" />
     </div>
   );
 }
@@ -193,16 +212,20 @@ export function Calculator() {
 
   const haggle = results.find((r) => r.platformName === "Haggle");
   const ebay = results.find((r) => r.platformName === "eBay");
-  const sellerSavings = haggle && ebay ? haggle.sellerNet - ebay.sellerNet : 0;
+  // Fee-only, illustrative difference (shipping/split assumptions excluded).
+  const feeDiff =
+    haggle && ebay ? describeFeeDifference(ebayFeeEstimate(price) - haggle.totalFee) : null;
 
+  const comparable = isEbayComparable(category);
+  // Amount sharing cannot carry every assumption, so the share text is link-only.
   const handleShare = useCallback(() => {
-    if (!haggle || !ebay) return;
-    const text = `Selling for $${price}:\n\neBay: I keep $${Math.round(ebay.sellerNet)}\nHaggle: I keep $${Math.round(haggle.sellerNet)}\n\nThat's $${Math.round(sellerSavings)} more with @tryhaggle.\n\nCalculate yours:`;
+    const text =
+      "Compare marketplace fees and shipping with this calculator (Demo; assumption-based, not a quote):";
     window.open(
       `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent("https://tryhaggle.ai/calculator")}`,
       "_blank",
     );
-  }, [haggle, ebay, price, sellerSavings]);
+  }, []);
 
   return (
     <div className="min-h-screen">
@@ -260,6 +283,22 @@ export function Calculator() {
         {price > 0 && (
           <>
             {/* Comparison Table */}
+            {comparable ? (
+              <EbayComparisonNotice
+                variant="demo"
+                terms
+                testId="ebay-disclaimer-table"
+                className="rounded-xl border border-line bg-surface-raised p-3 mb-3"
+              />
+            ) : (
+              <p
+                data-testid="ebay-not-compared"
+                className="rounded-xl border border-line bg-surface-raised p-3 mb-3 text-xs text-ink-secondary"
+              >
+                eBay is not compared for this category: it is an exception or has not been verified
+                against eBay&apos;s published rates, so no eBay fee or difference is shown.
+              </p>
+            )}
             <div className="rounded-2xl border border-line bg-surface-raised overflow-hidden mb-8">
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -373,27 +412,41 @@ export function Calculator() {
               </div>
             </div>
 
-            {/* Savings Banner */}
-            {sellerSavings > 0 && (
+            {comparable && (
+              <EbayComparisonNotice
+                variant="demo"
+                testId="ebay-disclaimer-charts"
+                className="-mt-4 mb-6"
+              />
+            )}
+
+            {/* Fee difference banner */}
+            {feeDiff && (
               <div className="rounded-2xl border border-action-primary/30 bg-action-primary/5 p-6 text-center mb-8">
-                <p className="text-sm text-action-primary mb-1">On Haggle, seller keeps</p>
-                <p className="text-4xl font-bold text-ink mb-1">{fmtR(sellerSavings)} more</p>
-                <p className="text-ink-secondary mb-4">
-                  vs eBay — that&apos;s {savingsAnalogy(sellerSavings)}
+                <p className="text-sm text-action-primary mb-1">
+                  Demo · estimated seller fee vs eBay (same item price, assumptions below)
                 </p>
+                <p className="text-3xl font-bold text-ink mb-3">
+                  {feeDiff.kind === "none" ? "No difference" : feeDiff.label}
+                </p>
+                <EbayComparisonNotice
+                  variant="demo"
+                  testId="ebay-disclaimer-banner"
+                  className="mb-4 max-w-xl mx-auto"
+                />
                 <button
                   type="button"
                   onClick={handleShare}
                   className="rounded-xl bg-cta px-6 py-2.5 text-sm font-medium text-on-cta hover:bg-cta-hover transition-colors"
                 >
-                  Share on Twitter
+                  Share calculator link
                 </button>
               </div>
             )}
 
             {/* Negotiation Zone */}
             <div className="mb-8">
-              <NegotiationZoneViz listPrice={price} weightLbs={weightLbs} />
+              {comparable && <NegotiationZoneViz listPrice={price} weightLbs={weightLbs} />}
             </div>
           </>
         )}
@@ -401,7 +454,7 @@ export function Calculator() {
         {/* Waitlist */}
         <div className="max-w-md mx-auto mt-10">
           <p className="text-center text-ink-secondary mb-4">
-            Want to sell with 1.5% fees + negotiable shipping?
+            Interested in Haggle (illustrative 1.5% seller fee, negotiable shipping)?
           </p>
           <WaitlistForm source="calculator" />
         </div>
@@ -413,7 +466,7 @@ export function Calculator() {
             {[
               {
                 q: "How much are eBay fees in 2026?",
-                a: "eBay charges a Final Value Fee of 13.25% for most categories, plus 2.35% + $0.30 payment processing. Total: approximately 15.6% + $0.30 per transaction. Sellers also typically pay for shipping labels (eBay offers ~30% discount off USPS retail rates).",
+                a: EBAY_FAQ_ANSWER,
               },
               {
                 q: "What does Poshmark charge for shipping?",
@@ -428,8 +481,8 @@ export function Calculator() {
                 a: "Three things: (1) the item price, (2) who pays for shipping and how much, and (3) which carrier to use (USPS, UPS, FedEx). Your AI agent handles all of this automatically.",
               },
               {
-                q: "Why is Haggle so much cheaper than eBay?",
-                a: "Haggle uses USDC on the Base blockchain for payments, eliminating credit card processing fees (2.35%). The non-custodial smart contract approach also reduces operational costs. Plus, EasyPost commercial rates give better shipping prices than eBay's labels.",
+                q: "Why is the Haggle fee assumption lower than the eBay estimate?",
+                a: "This is a Demo comparison, not a quote. The eBay estimate uses the standard final value fee rate, which already includes payment processing (it is not a separate 2.35% charge). The Haggle figure is an illustrative 1.5% assumption pending verified fee data; actual fees and the difference may be higher or lower. Shipping is negotiated separately and is not part of this comparison.",
               },
               {
                 q: "Does Mercari charge the buyer?",

@@ -24,7 +24,9 @@ export function DemoHeader({ phase, round }: DemoHeaderProps) {
           </span>
           <div>
             <p className="text-sm font-semibold text-ink">iPhone 15 Pro 256GB</p>
-            <p className="text-xs text-ink-secondary">Market Price: $920 (Swappa)</p>
+            <p className="text-xs text-ink-secondary">
+              Demo item — illustrative price, not a live market quote
+            </p>
           </div>
         </div>
 

@@ -1,8 +1,10 @@
 /**
- * Marketplace fee + shipping comparison data — accurate as of March 2026.
+ * Marketplace fee + shipping comparison data — eBay terms from ebay-fee-terms.ts (item price only; shipping/tax excluded).
  * Sources: official fee pages, shipping rate cards.
  * Pure functions, no side effects.
  */
+
+import { ebayFeeEstimate, isEbayComparable } from "./ebay-fee-terms";
 
 /* ── Types ─────────────────────────────────── */
 
@@ -14,15 +16,15 @@ export interface PlatformResult {
   paymentFee: number;
   totalFee: number;
   feePercent: number;
-  sellerShippingCost: number;   // seller pays for shipping (label, etc.)
-  sellerNet: number;            // what seller actually keeps
+  sellerShippingCost: number; // seller pays for shipping (label, etc.)
+  sellerNet: number; // what seller actually keeps
   // Buyer side
-  buyerItemPrice: number;       // price buyer pays for the item
-  buyerShippingCost: number;    // shipping buyer pays
-  buyerProtectionFee: number;   // buyer-side platform fee (Mercari, etc.)
-  buyerTotalCost: number;       // total out-of-pocket for buyer
+  buyerItemPrice: number; // price buyer pays for the item
+  buyerShippingCost: number; // shipping buyer pays
+  buyerProtectionFee: number; // buyer-side platform fee (Mercari, etc.)
+  buyerTotalCost: number; // total out-of-pocket for buyer
   // Shipping info
-  shippingModel: string;        // human-readable description
+  shippingModel: string; // human-readable description
   shippingNote?: string;
   // Negotiation
   negotiable: boolean;
@@ -45,13 +47,13 @@ export const WEIGHT_TIERS: WeightTier[] = [
 
 // Approximate USPS Ground Advantage rates (2026, domestic US)
 function uspsRate(lbs: number): number {
-  if (lbs <= 1) return 4.50;
-  if (lbs <= 2) return 5.50;
-  if (lbs <= 3) return 6.50;
-  if (lbs <= 5) return 8.00;
-  if (lbs <= 7) return 10.00;
-  if (lbs <= 10) return 13.00;
-  return 16.00;
+  if (lbs <= 1) return 4.5;
+  if (lbs <= 2) return 5.5;
+  if (lbs <= 3) return 6.5;
+  if (lbs <= 5) return 8.0;
+  if (lbs <= 7) return 10.0;
+  if (lbs <= 10) return 13.0;
+  return 16.0;
 }
 
 // EasyPost commercial rate (approx 40-60% of retail)
@@ -61,32 +63,34 @@ function easyPostRate(lbs: number): number {
 
 /* ── Platform Definitions ────────────────── */
 
-// eBay Final Value Fee rates by category (2026)
-const EBAY_FVF: Record<string, number> = {
-  electronics: 0.1325, fashion: 0.1325, sneakers: 0.1325,
-  collectibles: 0.1325, musical_instruments: 0.06, general: 0.1325,
-};
-
 interface PlatformCalc {
   name: string;
   color: string;
-  calc: (price: number, cat: string, weightLbs: number) => Omit<PlatformResult, "platformName" | "color">;
+  calc: (
+    price: number,
+    cat: string,
+    weightLbs: number,
+  ) => Omit<PlatformResult, "platformName" | "color">;
 }
 
 const PLATFORMS: Record<string, PlatformCalc> = {
   ebay: {
     name: "eBay",
     color: "#e53e3e",
-    calc: (price, cat, lbs) => {
-      const fvf = price * (EBAY_FVF[cat] ?? 0.1325);
-      const payment = price * 0.0235 + 0.30;
-      const totalFee = fvf + payment;
+    calc: (price, _cat, lbs) => {
+      // Single non-store US term set; category exceptions are not modelled.
+      const totalFee = ebayFeeEstimate(price);
+      const fvf = totalFee;
+      const payment = 0; // processing is already included in the table rate
       // eBay: seller sets shipping, often "free shipping" (seller absorbs)
       // or buyer pays. Most common: seller offers free shipping + builds into price.
       // With eBay labels: ~20-40% discount off retail USPS
       const ebayLabelRate = uspsRate(lbs) * 0.7;
       return {
-        sellingFee: fvf, paymentFee: payment, totalFee, feePercent: (totalFee / price) * 100,
+        sellingFee: fvf,
+        paymentFee: payment,
+        totalFee,
+        feePercent: (totalFee / price) * 100,
         sellerShippingCost: ebayLabelRate, // seller pays label
         sellerNet: price - totalFee - ebayLabelRate,
         buyerItemPrice: price,
@@ -95,7 +99,8 @@ const PLATFORMS: Record<string, PlatformCalc> = {
         buyerTotalCost: price, // buyer pays listing price (shipping "free")
         shippingModel: "Free shipping (seller pays via eBay label)",
         shippingNote: `eBay label: ~$${ebayLabelRate.toFixed(2)} (30% discount)`,
-        negotiable: false, negotiableItems: [],
+        negotiable: false,
+        negotiableItems: [],
       };
     },
   },
@@ -104,12 +109,15 @@ const PLATFORMS: Record<string, PlatformCalc> = {
     name: "Poshmark",
     color: "#b91c1c",
     calc: (price, _cat, _lbs) => {
-      const fee = price >= 15 ? price * 0.20 : 2.95;
+      const fee = price >= 15 ? price * 0.2 : 2.95;
       // Poshmark: flat $8.27 prepaid USPS Priority Mail label (up to 5lbs)
       // Buyer always pays $8.27 shipping. Seller ships free (label provided).
       const buyerShip = 8.27;
       return {
-        sellingFee: fee, paymentFee: 0, totalFee: fee, feePercent: (fee / price) * 100,
+        sellingFee: fee,
+        paymentFee: 0,
+        totalFee: fee,
+        feePercent: (fee / price) * 100,
         sellerShippingCost: 0, // Poshmark provides free label
         sellerNet: price - fee,
         buyerItemPrice: price,
@@ -118,7 +126,8 @@ const PLATFORMS: Record<string, PlatformCalc> = {
         buyerTotalCost: price + buyerShip,
         shippingModel: "Flat $8.27 (buyer pays, USPS Priority, up to 5lbs)",
         shippingNote: "Over 5lbs: $8.27 + surcharge",
-        negotiable: false, negotiableItems: [],
+        negotiable: false,
+        negotiableItems: [],
       };
     },
   },
@@ -127,13 +136,16 @@ const PLATFORMS: Record<string, PlatformCalc> = {
     name: "Mercari",
     color: "#dc2626",
     calc: (price, _cat, lbs) => {
-      const fee = price * 0.10;
+      const fee = price * 0.1;
       // Mercari: seller chooses who pays shipping. Discounted labels available (~54% off)
       // Buyer also pays 3.6% "buyer protection fee" on item + shipping
       const mercariLabel = uspsRate(lbs) * 0.54;
       const buyerProtection = price * 0.036;
       return {
-        sellingFee: fee, paymentFee: 0, totalFee: fee, feePercent: (fee / price) * 100,
+        sellingFee: fee,
+        paymentFee: 0,
+        totalFee: fee,
+        feePercent: (fee / price) * 100,
         sellerShippingCost: mercariLabel, // typical: seller pays
         sellerNet: price - fee - mercariLabel,
         buyerItemPrice: price,
@@ -142,7 +154,8 @@ const PLATFORMS: Record<string, PlatformCalc> = {
         buyerTotalCost: price + buyerProtection,
         shippingModel: "Seller pays (Mercari label ~54% off USPS)",
         shippingNote: `Label: ~$${mercariLabel.toFixed(2)} + buyer pays 3.6% protection`,
-        negotiable: false, negotiableItems: [],
+        negotiable: false,
+        negotiableItems: [],
       };
     },
   },
@@ -156,10 +169,13 @@ const PLATFORMS: Record<string, PlatformCalc> = {
       const totalFee = sellFee + payFee;
       // StockX: seller ships to StockX auth center (~$4-5 via UPS).
       // Buyer pays separate shipping ($8-15 depending on item).
-      const sellerShip = 4.50;
+      const sellerShip = 4.5;
       const buyerShip = lbs <= 3 ? 9.95 : 13.95;
       return {
-        sellingFee: sellFee, paymentFee: payFee, totalFee, feePercent: (totalFee / price) * 100,
+        sellingFee: sellFee,
+        paymentFee: payFee,
+        totalFee,
+        feePercent: (totalFee / price) * 100,
         sellerShippingCost: sellerShip,
         sellerNet: price - totalFee - sellerShip,
         buyerItemPrice: price,
@@ -168,7 +184,8 @@ const PLATFORMS: Record<string, PlatformCalc> = {
         buyerTotalCost: price + buyerShip,
         shippingModel: "Seller → StockX → Buyer (authentication)",
         shippingNote: `Seller: ~$${sellerShip.toFixed(2)} to auth center. Buyer: $${buyerShip.toFixed(2)}`,
-        negotiable: false, negotiableItems: [],
+        negotiable: false,
+        negotiableItems: [],
       };
     },
   },
@@ -182,7 +199,10 @@ const PLATFORMS: Record<string, PlatformCalc> = {
       // No built-in discount. Typical: USPS retail or similar.
       const shipCost = uspsRate(lbs);
       return {
-        sellingFee: 0, paymentFee: payFee, totalFee: payFee, feePercent: (payFee / price) * 100,
+        sellingFee: 0,
+        paymentFee: payFee,
+        totalFee: payFee,
+        feePercent: (payFee / price) * 100,
         sellerShippingCost: shipCost, // seller typically pays
         sellerNet: price - payFee - shipCost,
         buyerItemPrice: price,
@@ -191,7 +211,8 @@ const PLATFORMS: Record<string, PlatformCalc> = {
         buyerTotalCost: price,
         shippingModel: "Seller pays (own label or Depop shipping)",
         shippingNote: `Retail USPS: ~$${shipCost.toFixed(2)} (no platform discount)`,
-        negotiable: false, negotiableItems: [],
+        negotiable: false,
+        negotiableItems: [],
       };
     },
   },
@@ -208,7 +229,10 @@ const PLATFORMS: Record<string, PlatformCalc> = {
       const sellerShipShare = shipCost * 0.5;
       const buyerShipShare = shipCost * 0.5;
       return {
-        sellingFee: fee, paymentFee: 0, totalFee: fee, feePercent: (fee / price) * 100,
+        sellingFee: fee,
+        paymentFee: 0,
+        totalFee: fee,
+        feePercent: (fee / price) * 100,
         sellerShippingCost: sellerShipShare,
         sellerNet: price - fee - sellerShipShare,
         buyerItemPrice: price,
@@ -218,7 +242,11 @@ const PLATFORMS: Record<string, PlatformCalc> = {
         shippingModel: "Negotiable split (EasyPost ~40-60% off)",
         shippingNote: `EasyPost label: ~$${shipCost.toFixed(2)} total. Split is negotiable.`,
         negotiable: true,
-        negotiableItems: ["Item price", "Shipping cost split (0-100%)", "Shipping method (USPS/UPS/FedEx)"],
+        negotiableItems: [
+          "Item price",
+          "Shipping cost split (0-100%)",
+          "Shipping method (USPS/UPS/FedEx)",
+        ],
       };
     },
   },
@@ -238,7 +266,8 @@ export const CATEGORIES = [
 
 export function calculateAll(price: number, category: string, weightLbs: number): PlatformResult[] {
   if (price <= 0) return [];
-  return PLATFORM_ORDER.map((key) => {
+  // eBay is omitted unless the category is a verified general-rate category.
+  return PLATFORM_ORDER.filter((key) => key !== "ebay" || isEbayComparable(category)).map((key) => {
     const p = PLATFORMS[key];
     return { platformName: p.name, color: p.color, ...p.calc(price, category, weightLbs) };
   });
@@ -247,12 +276,11 @@ export function calculateAll(price: number, category: string, weightLbs: number)
 /** Haggle negotiation zone: buyer and seller can negotiate price within this range */
 export function negotiationZone(listPrice: number, weightLbs: number) {
   const shipCost = easyPostRate(weightLbs);
-  const fee = listPrice * 0.015;
 
   // Buyer's perspective: wants to pay less
   // Seller's perspective: wants to keep more
   // The "zone" where both benefit vs other platforms:
-  const ebaySellerNet = listPrice - listPrice * 0.156 - 0.30 - uspsRate(weightLbs) * 0.7;
+  const ebaySellerNet = listPrice - ebayFeeEstimate(listPrice) - uspsRate(weightLbs) * 0.7;
   const haggleMinSellerNet = ebaySellerNet; // seller won't go below what they'd get on eBay
 
   // Reverse: what price gives seller the same net as eBay?
@@ -277,7 +305,9 @@ export function negotiationZone(listPrice: number, weightLbs: number) {
     // What seller keeps at each price point on Haggle (seller pays shipping)
     sellerNetAtAsk: Math.round(sellerAskPrice * 0.985 - shipCost),
     sellerNetAtMid: Math.round(((sellerAskPrice + buyerBestPrice) / 2) * 0.985 - shipCost),
-    sellerNetAtBuyerIdeal: Math.round(Math.max(buyerBestPrice, Math.round(listPrice * 0.7)) * 0.985 - shipCost),
+    sellerNetAtBuyerIdeal: Math.round(
+      Math.max(buyerBestPrice, Math.round(listPrice * 0.7)) * 0.985 - shipCost,
+    ),
   };
 }
 
@@ -288,8 +318,8 @@ export function calculateFees(price: number, category: string): PlatformResult[]
 
 export function calculateSavingsVsEbay(price: number, category: string) {
   const fees = calculateAll(price, category, 2);
-  const ebay = fees.find(f => f.platformName === "eBay");
-  const haggle = fees.find(f => f.platformName === "Haggle");
+  const ebay = fees.find((f) => f.platformName === "eBay");
+  const haggle = fees.find((f) => f.platformName === "Haggle");
   if (!ebay || !haggle) return null;
   return {
     savedAmount: ebay.totalFee - haggle.totalFee,
