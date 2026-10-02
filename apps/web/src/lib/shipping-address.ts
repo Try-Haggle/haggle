@@ -1,4 +1,4 @@
-export const PENDING_DEFAULT_ADDRESS_KEY = "haggle:pending-default-address";
+import { formatUsPhone, isCompleteUsPhone, phoneDigits } from "./phone";
 
 export interface ShippingAddressInput {
   name: string;
@@ -50,7 +50,7 @@ export function savedAddressToInput(address: SavedAddress): ShippingAddressInput
     state: address.state,
     zip: address.zip,
     country: address.country || "US",
-    phone: address.phone ?? "",
+    phone: formatUsPhone(address.phone ?? ""),
   };
 }
 
@@ -102,6 +102,33 @@ export function isCompleteShippingAddress(address: ShippingAddressInput): boolea
   );
 }
 
+export type ShippingAddressField = keyof ShippingAddressInput;
+
+/**
+ * Per-field messages for an address form, in form order (the first key is
+ * where focus goes). Empty when the address is complete — the same rule as
+ * isCompleteShippingAddress, phrased for a person.
+ */
+export function validateShippingAddress(
+  address: ShippingAddressInput,
+): Partial<Record<ShippingAddressField, string>> {
+  const errors: Partial<Record<ShippingAddressField, string>> = {};
+  if (!address.name.trim()) errors.name = "Enter the recipient's name.";
+  if (!address.street1.trim()) errors.street1 = "Enter a street address.";
+  if (!address.city.trim()) errors.city = "Enter a city.";
+  const state = address.state.trim();
+  if (!state) errors.state = "Enter a state.";
+  else if (!/^[A-Z]{2}$/.test(state)) errors.state = "Use the 2-letter code, like CA.";
+  const zip = address.zip.trim();
+  if (!zip) errors.zip = "Enter a ZIP code.";
+  else if (!/^\d{5}$/.test(zip)) errors.zip = "ZIP is 5 digits.";
+  // Optional, but if given it must be a whole number.
+  if (address.phone.trim() && !isCompleteUsPhone(address.phone)) {
+    errors.phone = "Enter a 10-digit phone number.";
+  }
+  return errors;
+}
+
 export function toApiAddress(address: ShippingAddressInput) {
   return {
     name: address.name.trim(),
@@ -111,36 +138,9 @@ export function toApiAddress(address: ShippingAddressInput) {
     state: address.state.trim().toUpperCase(),
     zip: address.zip.trim(),
     country: address.country.trim() || "US",
-    phone: address.phone.trim() || undefined,
+    // Stored as the 10 digits; the form shows it formatted.
+    phone: phoneDigits(address.phone) || undefined,
   };
-}
-
-export function readPendingDefaultAddress(): ShippingAddressInput | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(PENDING_DEFAULT_ADDRESS_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<ShippingAddressInput>;
-    const address: ShippingAddressInput = {
-      ...EMPTY_SHIPPING_ADDRESS,
-      ...parsed,
-      state: (parsed.state ?? "").toUpperCase(),
-    };
-    return isCompleteShippingAddress(address) ? address : null;
-  } catch {
-    return null;
-  }
-}
-
-export function writePendingDefaultAddress(address: ShippingAddressInput) {
-  if (typeof window === "undefined") return;
-  if (!isCompleteShippingAddress(address)) return;
-  window.localStorage.setItem(PENDING_DEFAULT_ADDRESS_KEY, JSON.stringify(toApiAddress(address)));
-}
-
-export function clearPendingDefaultAddress() {
-  if (typeof window === "undefined") return;
-  window.localStorage.removeItem(PENDING_DEFAULT_ADDRESS_KEY);
 }
 
 /** Full Soft-agreed address lines for checkout confirm (not the masked start cue). */
@@ -160,6 +160,6 @@ export function formatFullShippingAddressLines(
     .join(", ");
   if (cityBit) lines.push(cityBit);
   if (address.country && address.country !== "US") lines.push(address.country);
-  if (address.phone?.trim()) lines.push(address.phone.trim());
+  if (address.phone?.trim()) lines.push(formatUsPhone(address.phone) || address.phone.trim());
   return lines;
 }
