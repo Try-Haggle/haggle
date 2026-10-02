@@ -10,7 +10,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { EventDispatcher } from "../../lib/event-dispatcher.js";
 import { executeGroupTerminal } from "../../lib/group-executor.js";
-import { storeListingPhoto } from "../../lib/listing-photo.js";
+import { fetchStoredListingPhotoForMcp, storeListingPhoto } from "../../lib/listing-photo.js";
 import { isListingId } from "../../lib/listing-ref.js";
 import { getMcpActor } from "../../lib/mcp-actor.js";
 import { effectiveMcpScopes, requireActorWithScope } from "../../lib/mcp-scopes.js";
@@ -78,7 +78,6 @@ import {
   advisorInputFromListing,
   buildPrepareNegotiationView,
   defaultBuilderMemory,
-  listingImageMarkdown,
   MCP_MODE_GUIDANCE,
   negotiationSummaryMarkdown,
   summarizeTranscript,
@@ -94,7 +93,7 @@ import {
   spokenRoundPriceMinor,
   spokenRoundSpeaker,
 } from "./negotiation-talk.js";
-import { mcpError, mcpJson } from "./responses.js";
+import { mcpError, mcpJson, mcpJsonWithImages } from "./responses.js";
 
 const DEFAULT_BUILDER_SKILL_ID = "negotiation-agent-builder-v1";
 
@@ -218,7 +217,6 @@ export function publicListingView(listing: {
     condition: listing.condition,
     target_price: listing.targetPrice,
     photo_url: listing.photoUrl,
-    image_markdown: listingImageMarkdown(listing.title, listing.photoUrl),
     claimed: listing.sellerId === undefined ? undefined : Boolean(listing.sellerId),
     listing_url: listing.publicId ? `${publicAppBaseUrl()}/l/${listing.publicId}` : null,
     required_criteria: buyerVisibleRequiredCriteria(listing.negotiationAgentSnapshot),
@@ -282,7 +280,7 @@ export function registerPlatformTools(
 
   server.tool(
     "haggle_search_listings",
-    "Search published Haggle listings. Public — no account required. When presenting a listing, show image_markdown (a Markdown image) when it is not null.",
+    "Search published Haggle listings. Public — no account required. When presenting a listing, share listing_url so the user can open the photo. Do not embed photo_url as a Markdown image (it can render broken). Photos are not attached to search results to keep responses small; call haggle_get_listing for an attached image.",
     {
       q: z.string().optional(),
       category: z.string().optional(),
@@ -304,7 +302,7 @@ export function registerPlatformTools(
     "haggle_get_listing",
     {
       description:
-        "Get a published listing by its public id (the /l/:publicId slug). Returns required_criteria as {checkId, ask}[] from extractSellerRequiredCriteria(listing.negotiationAgentSnapshot) — same source as the web start wizard. Empty when the seller has no required checks. Do not assume IMEI/완납/침수/Find My. When presenting a listing, show image_markdown (a Markdown image) when it is not null.",
+        "Get a published listing by its public id (the /l/:publicId slug). Returns required_criteria as {checkId, ask}[] from extractSellerRequiredCriteria(listing.negotiationAgentSnapshot) — same source as the web start wizard. Empty when the seller has no required checks. Do not assume IMEI/완납/침수/Find My. When the listing has a stored photo, the response also carries it as an MCP image content block. Always share listing_url with the user; do not embed photo_url as a Markdown image (it can render broken).",
       inputSchema: haggleGetListingInputSchema,
       outputSchema: haggleGetListingOutputSchema,
     },
@@ -312,7 +310,9 @@ export function registerPlatformTools(
       const listing = await getPublishedListingByPublicId(db, public_id);
       if (!listing?.sellerId) return mcpError("LISTING_NOT_FOUND", { public_id });
       const view = { listing: publicListingView(listing) };
-      return { ...mcpJson(view), structuredContent: view };
+      const photo = await fetchStoredListingPhotoForMcp(listing.photoUrl);
+      const images = photo ? [{ type: "image" as const, ...photo }] : [];
+      return { ...mcpJsonWithImages(view, images), structuredContent: view };
     },
   );
 
@@ -561,7 +561,7 @@ export function registerPlatformTools(
 
   server.tool(
     "haggle_prepare_negotiation",
-    "Step 1 of a guided buyer negotiation (same path as the web start wizard). Returns required_criteria (must_answer), tag_questions with options, price_questions (targetPrice / budgetMax in whole dollars), presets, the user's saved agents, fulfillment_choices and an instruction. Ask the must-answers first, offer a strategy chat (haggle_builder_chat_turn with public_id), then ask consult vs delegate before haggle_start_negotiation. When presenting the listing, show listing.image_markdown (a Markdown image) when it is not null.",
+    "Step 1 of a guided buyer negotiation (same path as the web start wizard). Returns required_criteria (must_answer), tag_questions with options, price_questions (targetPrice / budgetMax in whole dollars), presets, the user's saved agents, fulfillment_choices and an instruction. Ask the must-answers first, offer a strategy chat (haggle_builder_chat_turn with public_id), then ask consult vs delegate before haggle_start_negotiation. When presenting the listing, share its listing_url; do not embed photo_url as a Markdown image.",
     { public_id: z.string().min(1).describe("Listing slug (jc6r2T3d) or full /l/... URL") },
     async ({ public_id }) => {
       const scoped = requireScopedActor("negotiate");

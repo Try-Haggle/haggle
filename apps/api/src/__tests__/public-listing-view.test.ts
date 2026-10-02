@@ -181,7 +181,7 @@ describe("MCP publicListingView", () => {
   });
 });
 
-describe("image_markdown", () => {
+describe("photo presentation", () => {
   const base = {
     publicId: "abc",
     title: "Pixel [8]",
@@ -190,12 +190,10 @@ describe("image_markdown", () => {
     targetPrice: "100",
   };
 
-  it("renders a Markdown image when photo_url is set", () => {
+  it("keeps photo_url and listing_url but no Markdown image", () => {
     const view = publicListingView({ ...base, photoUrl: "https://img.example/a.jpg" });
-    expect(view.image_markdown).toBe("![Pixel  8](https://img.example/a.jpg)");
-  });
-
-  it("is null without a photo", () => {
-    expect(publicListingView({ ...base, photoUrl: null }).image_markdown).toBeNull();
+    expect(view.photo_url).toBe("https://img.example/a.jpg");
+    expect(view.listing_url).toContain("/l/abc");
+    expect("image_markdown" in view).toBe(false);
   });
 });

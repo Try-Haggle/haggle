@@ -138,6 +138,10 @@ async function fetchRemoteListingPhoto(
       headers: { Accept: "image/jpeg,image/png,image/webp,image/*" },
     });
     if (!response.ok) return { ok: false, error: "PHOTO_FETCH_FAILED" };
+    const declared = Number(response.headers.get("content-length"));
+    if (Number.isFinite(declared) && declared > MAX_PHOTO_BYTES) {
+      return { ok: false, error: "PHOTO_TOO_LARGE" };
+    }
     const hinted = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
     const bytes = Buffer.from(await response.arrayBuffer());
     if (bytes.byteLength === 0 || bytes.byteLength > MAX_PHOTO_BYTES) {
@@ -148,5 +152,48 @@ async function fetchRemoteListingPhoto(
     return { ok: true, buffer: bytes, mime };
   } finally {
     clearTimeout(timer);
+  }
+}
+
+const STORED_PHOTO_PATH_PREFIX = "/storage/v1/object/public/listing-photos/";
+
+/**
+ * Strict allowlist for photos Haggle itself stored: https, the configured Supabase
+ * origin, and the public listing-photos bucket path. Anything else is never fetched.
+ */
+export function isStoredListingPhotoUrl(raw: string): boolean {
+  if (!isSafeListingPhotoUrl(raw)) return false;
+  const base = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!base) return false;
+  let origin: string;
+  try {
+    origin = new URL(base).origin;
+  } catch {
+    return false;
+  }
+  const parsed = new URL(raw);
+  return (
+    parsed.origin === origin &&
+    parsed.protocol === "https:" &&
+    parsed.pathname.startsWith(STORED_PHOTO_PATH_PREFIX) &&
+    parsed.pathname.length > STORED_PHOTO_PATH_PREFIX.length &&
+    !parsed.pathname.includes("..")
+  );
+}
+
+/**
+ * Fetch a stored listing photo for an MCP image content block.
+ * Never throws; any failure (disallowed URL, redirect, timeout, size, type) returns null.
+ */
+export async function fetchStoredListingPhotoForMcp(
+  url: string | null | undefined,
+): Promise<{ data: string; mimeType: "image/jpeg" | "image/png" | "image/webp" } | null> {
+  if (!url || !isStoredListingPhotoUrl(url)) return null;
+  try {
+    const fetched = await fetchRemoteListingPhoto(url);
+    if (!fetched.ok) return null;
+    return { data: fetched.buffer.toString("base64"), mimeType: fetched.mime };
+  } catch {
+    return null;
   }
 }
