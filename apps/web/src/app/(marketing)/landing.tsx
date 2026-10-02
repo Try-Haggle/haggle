@@ -544,8 +544,6 @@ export function Landing() {
   const renderFeeTable = useCallback((p: number) => {
     const feeBody = document.getElementById("hg-feeBody");
     const priceValEl = document.getElementById("hg-priceVal");
-    const avgLossEl = document.getElementById("hg-avgLoss");
-    const avgSaveEl = document.getElementById("hg-avgSave");
     if (!feeBody) return;
 
     if (priceValEl) priceValEl.textContent = fmtInt(p);
@@ -561,15 +559,6 @@ export function Landing() {
       </tr>`;
     }).join("");
 
-    const ebayFee = ebayFeeEstimate(p);
-    const hgFee = p * 0.015;
-    if (avgLossEl) avgLossEl.textContent = "$" + fmtInt(ebayFee * 12);
-    if (avgSaveEl)
-      avgSaveEl.textContent = describeFeeDifference((ebayFee - hgFee) * 12).label.replace(
-        /\.$/,
-        "",
-      );
-
     // Trigger bar animation via mutation observer
     const trigger = document.createElement("div");
     feeBody.appendChild(trigger);
@@ -579,6 +568,11 @@ export function Landing() {
   useEffect(() => {
     renderFeeTable(price);
   }, [price, renderFeeTable]);
+
+  const annualModel = {
+    ebayFees: ebayFeeEstimate(price) * 12,
+    diff: describeFeeDifference((ebayFeeEstimate(price) - price * 0.015) * 12),
+  };
 
   const handleSlider = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = +e.target.value;
@@ -883,21 +877,21 @@ export function Landing() {
 
             <div className="stat-line">
               <div className="big">
-                The average seller loses{" "}
+                Hypothetical model: 12 sales/year at ${fmtInt(price)} would incur about{" "}
                 <span className="num" id="hg-avgLoss">
-                  $847
+                  ${fmtInt(annualModel.ebayFees)}
                 </span>{" "}
-                per year to platform fees (Demo model).
+                in estimated eBay fees (Demo model).
               </div>
               <div className="sub">
-                Demo model: 12 sales/year at $500, illustrative Haggle 1.5% fee assumption ·
-                modelled difference{" "}
+                Demo model: 12 sales/year at ${fmtInt(price)}, illustrative Haggle 1.5% fee
+                assumption · modelled difference{" "}
                 <span
                   className="mono"
                   id="hg-avgSave"
                   style={{ color: "#86efac", fontWeight: 700 }}
                 >
-                  $759
+                  {annualModel.diff.label.replace(/\.$/, "")}
                 </span>
                 .
               </div>
