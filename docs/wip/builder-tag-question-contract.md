@@ -65,10 +65,10 @@ reconcile 규칙을 유지한다. 선택을 기록할 때 taxonomy HARD를 requi
 ## 병합과 다음 판단
 
 PR #200의 별도 staging 오류 복구와 동일 builder 파일을 수정한다. 독립 slice로 유지하고,
-먼저 병합된 변경이 생기면 staging에 rebase한 최종 SHA로 CI와 화면 회귀를 다시 확인한다.
+최신 staging 정책과 #200의 최종 head를 먼저 통합한 SHA로 CI와 화면 회귀를 다시 확인한다. #200을 staging에 반영한 뒤 #201을 통합한다.
 DB·migration·provider 설정·main에는 변경이 없다.
 
 인오는 정확한 리스팅 태그가 질문을 여는지, 서버와 선택지가 일치하는지, HARD와 SOFT가
-뒤바뀌지 않는지, 상품/조건 변경의 재확인이 남아 있는지 판단한다. CONTRIBUTING의 리뷰어
-confirmed 조건과 단일 리뷰어 승인, 같은 SHA 최종 CI 성공 전에는 완료 또는 staging 배포로
-표시하지 않는다.
+뒤바뀌지 않는지, 상품/조건 변경의 재확인이 남아 있는지 판단할 수 있다. 2026-10-02 사용자가
+질문 답변 흐름을 확인하고 staging 배포를 승인했다. PR #202 정책에 따라 리뷰어 승인은
+선택 사항이다. 통합된 최종 SHA의 CI 성공 후 staging에 반영하고 실제 API/Web 흐름을 확인한다.

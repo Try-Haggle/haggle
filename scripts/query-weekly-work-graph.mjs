@@ -72,8 +72,16 @@ function validateGraph() {
     if (typeof task.ownerId !== "string" || !peopleById.has(task.ownerId)) {
       fail(`${task.id}에 유효한 담당자 한 명이 필요함`);
     }
+    // Review is optional. Preserve legacy notes when no reviewer is assigned;
+    // validate identity and independence only for an actual assignment.
+    if (task.reviewerId == null) {
+      if (![null, undefined, "not_assigned"].includes(task.reviewerAssignmentStatus)) {
+        fail(`${task.id} 리뷰어 미지정 상태는 null 또는 not_assigned여야 함`);
+      }
+      continue;
+    }
     if (typeof task.reviewerId !== "string" || !peopleById.has(task.reviewerId)) {
-      fail(`${task.id}에 유효한 리뷰어 한 명이 필요함`);
+      fail(`${task.id}에 지정한 리뷰어 참조가 유효하지 않음`);
     }
     if (task.ownerId === task.reviewerId) {
       fail(`${task.id}의 담당자와 리뷰어는 달라야 함`);
@@ -141,8 +149,10 @@ function printTask(task, options = {}) {
   if (!reviewMode && task.reviewerId) {
     const assignmentLabel =
       task.reviewerAssignmentStatus === "confirmed" ? "확정" : "다음 회의 확인 제안";
-    console.log(`  리뷰어: ${personName(task.reviewerId)} · 정확히 1명 · ${assignmentLabel}`);
+    console.log(`  리뷰어 (선택): ${personName(task.reviewerId)} · ${assignmentLabel}`);
     console.log(`  리뷰어 선택 이유: ${task.reviewerReason}`);
+  } else if (!reviewMode) {
+    console.log("  리뷰어 (선택): 미지정 · 진행/완료/staging 통합 차단 사유 아님");
   }
   console.log(`  영역: ${task.domains.join(", ")} · 기한: ${dueLabel(task.dueDate)}`);
   console.log(`  결과: ${task.outcome}`);
@@ -234,7 +244,7 @@ function printTeam() {
     console.log(`\n${person.displayName} · 담당 ${owned.length}개 · 리뷰 ${reviews.length}개`);
     for (const task of owned) {
       console.log(
-        `- [${statusLabels[task.status] ?? task.status}] ${task.title} → 리뷰 ${personName(task.reviewerId)} (${task.reviewerAssignmentStatus === "confirmed" ? "확정" : "제안"})`,
+        `- [${statusLabels[task.status] ?? task.status}] ${task.title} → 리뷰 (선택) ${personName(task.reviewerId)}${task.reviewerId ? ` (${task.reviewerAssignmentStatus === "confirmed" ? "확정" : "제안"})` : ""}`,
       );
     }
   }

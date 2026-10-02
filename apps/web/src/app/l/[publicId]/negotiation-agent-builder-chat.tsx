@@ -1184,6 +1184,7 @@ export function NegotiationAgentBuilderChat({
             apiError?.code ??
             "Couldn't reach Haggle. Check your connection and try again.",
           timestamp: Date.now(),
+          retryText: userText,
         };
         setMessages((prev) => {
           if (agent && prev.length > 1) {
