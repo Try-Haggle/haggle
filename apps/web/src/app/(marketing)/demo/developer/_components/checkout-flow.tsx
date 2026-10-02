@@ -16,6 +16,8 @@ import {
 interface CheckoutFlowProps {
   agreedPrice: number;
   itemTitle: string;
+  /** Listing photo; falls back to the text tile when missing or broken. */
+  itemImageUrl?: string;
   rounds: number;
   /** Dollars. Defaults to the agreed price (no savings shown). */
   marketPrice?: number;
@@ -511,7 +513,41 @@ const Api = ({ method = "POST", ep }: { method?: string; ep: string }) => (
   </div>
 );
 
-const PS = ({ label = "PRODUCT SHOT", size = 64 }: { label?: string; size?: number }) => (
+const PS = ({
+  label = "PRODUCT SHOT",
+  size = 64,
+  src,
+}: {
+  label?: string;
+  size?: number;
+  src?: string;
+}) => {
+  const [broken, setBroken] = useState(false);
+  if (src && !broken) {
+    return (
+      // biome-ignore lint/performance/noImgElement: arbitrary listing hosts, demo-only thumbnail
+      <img
+        src={src}
+        alt={label}
+        width={size}
+        height={size}
+        onError={() => setBroken(true)}
+        style={{
+          width: size,
+          height: size,
+          flexShrink: 0,
+          borderRadius: 12,
+          border: `1px solid ${C.line}`,
+          objectFit: "cover",
+          background: C.card2,
+        }}
+      />
+    );
+  }
+  return <PSTile label={label} size={size} />;
+};
+
+const PSTile = ({ label, size }: { label: string; size: number }) => (
   <div
     style={{
       width: size,
@@ -6405,6 +6441,7 @@ const PresenterPanel = ({
 export default function CheckoutFlow({
   agreedPrice,
   itemTitle,
+  itemImageUrl,
   rounds,
   marketPrice,
   presenter = false,
@@ -6701,7 +6738,7 @@ export default function CheckoutFlow({
       <Card style={{ padding: "18px 22px" }}>
         <Row justify="space-between" wrap gap={18}>
           <Row gap={16} style={{ flex: "1 1 320px", minWidth: 0 }}>
-            <PS label={s.item.split(" · ")[0].slice(0, 24)} size={64} />
+            <PS label={s.item.split(" · ")[0].slice(0, 24)} size={64} src={itemImageUrl} />
             <div style={{ minWidth: 0 }}>
               <Row gap={8} style={{ marginBottom: 6 }}>
                 <Badge tone="em" icon={<Ic.check size={10} sw={3} />}>

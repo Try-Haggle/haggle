@@ -21,6 +21,8 @@ export interface DemoCheckoutPayload {
   market: number;
   item: string;
   rounds: number;
+  /** Listing photo (http/https only). Omitted when the listing has none. */
+  imageUrl?: string;
 }
 
 /** Same gate as dogfood auth: closed on production, open on staging/local. */
@@ -32,20 +34,39 @@ function positiveInt(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.round(v) : null;
 }
 
+function safeImageUrl(v: unknown): string | null {
+  if (typeof v !== "string" || !v.trim()) return null;
+  try {
+    const url = new URL(v.trim());
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function withImage(payload: DemoCheckoutPayload, image: unknown): DemoCheckoutPayload {
+  const imageUrl = safeImageUrl(image);
+  return imageUrl ? { ...payload, imageUrl } : payload;
+}
+
 export function buildDemoCheckoutPayload(input: {
   agreedPriceUsd: number;
   listingPriceUsd: number;
   item: string;
   rounds: number;
+  imageUrl?: string | null;
 }): DemoCheckoutPayload {
   const price = positiveInt(Math.round(input.agreedPriceUsd * 100)) ?? DEFAULT_DEMO_CHECKOUT.price;
   const listing = positiveInt(Math.round(input.listingPriceUsd * 100)) ?? price;
-  return {
-    price,
-    market: Math.max(listing, price),
-    item: input.item.trim() || DEFAULT_DEMO_CHECKOUT.item,
-    rounds: positiveInt(input.rounds) ?? 1,
-  };
+  return withImage(
+    {
+      price,
+      market: Math.max(listing, price),
+      item: input.item.trim() || DEFAULT_DEMO_CHECKOUT.item,
+      rounds: positiveInt(input.rounds) ?? 1,
+    },
+    input.imageUrl,
+  );
 }
 
 /** Tolerant parse of sessionStorage content; anything malformed falls back to the preset. */
@@ -55,13 +76,16 @@ export function parseDemoCheckoutPayload(raw: string | null): DemoCheckoutPayloa
     const p = JSON.parse(raw) as Record<string, unknown>;
     const price = positiveInt(p.price) ?? DEFAULT_DEMO_CHECKOUT.price;
     const market = positiveInt(p.market) ?? Math.max(price, DEFAULT_DEMO_CHECKOUT.market);
-    return {
-      price,
-      market: Math.max(market, price),
-      item:
-        typeof p.item === "string" && p.item.trim() ? p.item.trim() : DEFAULT_DEMO_CHECKOUT.item,
-      rounds: positiveInt(p.rounds) ?? DEFAULT_DEMO_CHECKOUT.rounds,
-    };
+    return withImage(
+      {
+        price,
+        market: Math.max(market, price),
+        item:
+          typeof p.item === "string" && p.item.trim() ? p.item.trim() : DEFAULT_DEMO_CHECKOUT.item,
+        rounds: positiveInt(p.rounds) ?? DEFAULT_DEMO_CHECKOUT.rounds,
+      },
+      p.imageUrl,
+    );
   } catch {
     return { ...DEFAULT_DEMO_CHECKOUT };
   }

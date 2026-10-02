@@ -225,6 +225,7 @@ export function ResultReveal({
                   agreedPriceUsd={settlementPrice}
                   listingPriceUsd={baseline}
                   item={listing.title}
+                  imageUrl={listing.imageUrl}
                   rounds={rounds.length}
                 />
               )}
