@@ -114,7 +114,9 @@ jobs:
         run: pnpm test:e2e:smoke
 
       - name: Verify checkout agreement, payment choices, language, and wallet chooser
-        run: pnpm exec playwright test --config playwright.checkout.config.ts
+        run: |
+          pnpm --filter @haggle/shared build
+          pnpm exec playwright test --config playwright.checkout.config.ts
 
       - name: Upload Playwright failure evidence
         if: failure()
