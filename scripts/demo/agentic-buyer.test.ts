@@ -52,7 +52,10 @@ function fakeServer() {
               "https://app.staging.tryhaggle.ai/buy/negotiations/11111111-1111-4111-8111-111111111111",
           })
         : json(
-            { error: "BUYER_CRITERIA_REQUIRED", required_criteria: [{ checkId: "imei_verification" }] },
+            {
+              error: "BUYER_CRITERIA_REQUIRED",
+              required_criteria: [{ checkId: "imei_verification" }],
+            },
             true,
           ),
   );
@@ -113,7 +116,10 @@ test("runner: search -> negotiate -> checkout denied, trace masked", async () =>
   const text = await readFile(join(dir, file), "utf8");
   assert.ok(text.includes("INSUFFICIENT_SCOPE"));
   assert.ok(text.includes("/checkout"));
-  assert.ok(!text.includes("BUYER_CRITERIA_REQUIRED"), "nested required_criteria must be read up front");
+  assert.ok(
+    !text.includes("BUYER_CRITERIA_REQUIRED"),
+    "nested required_criteria must be read up front",
+  );
   assert.ok(!text.includes(TOKEN));
   assert.ok(!text.includes("buyer@example.com"));
   assert.match(text, /"outcome": "passed"/);
