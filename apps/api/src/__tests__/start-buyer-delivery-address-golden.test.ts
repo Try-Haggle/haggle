@@ -153,8 +153,60 @@ describe("D1 delivery address gate (physical vs digital)", () => {
     listingFixture();
   });
 
+  function addressDb(rows: Record<string, unknown>[] = []) {
+    const findFirst = vi.fn().mockResolvedValue(rows[0]);
+    return { query: { userSavedAddresses: { findFirst } }, findFirst };
+  }
+
+  it.each([
+    "web",
+    "mcp",
+  ] as const)("%s uses a saved default when the request omits the address", async (driver) => {
+    const db = addressDb([{ ...DENVER, street2: null, phone: null }]);
+    const result = await startBuyerNegotiation(db as never, {
+      body: {
+        listing_public_id: "d1PhysAdr",
+        negotiation_agent_preset_id: "balancer",
+        fulfillment: { methods: ["carrier"] },
+      },
+      buyerId: "buyer-1",
+      isGuest: false,
+      driver,
+      allowGuest: false,
+    });
+    expect(result.ok).toBe(true);
+    expect(db.findFirst).toHaveBeenCalledOnce();
+    const where = db.findFirst.mock.calls[0][0].where;
+    const eq = vi.fn((field, value) => ({ field, value }));
+    where(
+      { userId: "user_id", isDefault: "is_default" },
+      { eq, and: (...args: unknown[]) => args },
+    );
+    expect(eq).toHaveBeenCalledWith("user_id", "buyer-1");
+    expect(eq).toHaveBeenCalledWith("is_default", true);
+    const sessionInput = createSession.mock.calls[0]?.[1];
+    expect(sessionInput).toBeDefined();
+    expect(JSON.stringify(sessionInput)).toContain(DENVER.street1);
+  });
+
+  it("an invalid saved address still blocks start", async () => {
+    const result = await startBuyerNegotiation(addressDb([{ ...DENVER, zip: "" }]) as never, {
+      body: {
+        listing_public_id: "d1PhysAdr",
+        negotiation_agent_preset_id: "balancer",
+        fulfillment: { methods: ["carrier"] },
+      },
+      buyerId: "buyer-1",
+      isGuest: false,
+      driver: "mcp",
+      allowGuest: false,
+    });
+    expect(result).toMatchObject({ ok: false, body: { error: DELIVERY_ADDRESS_REQUIRED } });
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
   it("physical carrier missing address → 409 DELIVERY_ADDRESS_REQUIRED, no session", async () => {
-    const result = await startBuyerNegotiation({} as never, {
+    const result = await startBuyerNegotiation(addressDb() as never, {
       body: {
         listing_public_id: "d1PhysAdr",
         negotiation_agent_preset_id: "balancer",
@@ -176,7 +228,8 @@ describe("D1 delivery address gate (physical vs digital)", () => {
   });
 
   it("physical carrier with address → not blocked by this gate", async () => {
-    const result = await startBuyerNegotiation({} as never, {
+    const db = addressDb([{ ...DENVER, street1: "Another default street" }]);
+    const result = await startBuyerNegotiation(db as never, {
       body: {
         listing_public_id: "d1PhysAdr",
         negotiation_agent_preset_id: "balancer",
@@ -198,12 +251,14 @@ describe("D1 delivery address gate (physical vs digital)", () => {
       expect(result.body.session_id).toBe("sess-d1");
     }
     expect(createSession).toHaveBeenCalledTimes(1);
+    expect(db.findFirst).not.toHaveBeenCalled();
+    expect(JSON.stringify(createSession.mock.calls[0]?.[1])).toContain(DENVER.street1);
   });
 
   it("digital (A4 no-shipment) without address → allowed", async () => {
     listingFixture({ fulfillment_type: "digital_delivery" });
 
-    const result = await startBuyerNegotiation({} as never, {
+    const result = await startBuyerNegotiation(addressDb() as never, {
       body: {
         listing_public_id: "d1PhysAdr",
         negotiation_agent_preset_id: "balancer",
@@ -223,7 +278,7 @@ describe("D1 delivery address gate (physical vs digital)", () => {
   it("digital listing stays exempt even if carrier fulfillment omits address", async () => {
     listingFixture({ fulfillment_type: "digital_delivery" });
 
-    const result = await startBuyerNegotiation({} as never, {
+    const result = await startBuyerNegotiation(addressDb() as never, {
       body: {
         listing_public_id: "d1PhysAdr",
         negotiation_agent_preset_id: "balancer",
@@ -241,7 +296,7 @@ describe("D1 delivery address gate (physical vs digital)", () => {
   });
 
   it("start without fulfillment body is not blocked by D1 (MCP / no shipping preference)", async () => {
-    const result = await startBuyerNegotiation({} as never, {
+    const result = await startBuyerNegotiation(addressDb() as never, {
       body: {
         listing_public_id: "d1PhysAdr",
         negotiation_agent_preset_id: "balancer",
