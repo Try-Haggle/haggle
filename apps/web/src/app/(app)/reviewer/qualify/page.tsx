@@ -145,7 +145,7 @@ export default function ReviewerQualifyPage() {
   const amt = parseFloat(currentCase?.amount.replace(/[$,]/g, "") || "0");
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-3xl mx-auto">
+    <main className="min-h-[calc(100vh-var(--spacing-header))] px-4 py-6 sm:p-6 max-w-3xl mx-auto">
       {/* Breadcrumb */}
       <div className="mb-5 flex items-center gap-2 font-mono text-xs text-ink-muted">
         <Link href="/reviewer" className="hover:text-ink transition-colors">

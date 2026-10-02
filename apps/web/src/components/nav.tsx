@@ -5,11 +5,20 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNotificationContext } from "@/app/(app)/_components/notification-provider";
 import { CreditBalanceChip } from "@/components/credit-balance/credit-balance-chip";
-import { Avatar, Logo, NavTab, NotificationItem, Spinner } from "@/components/ui";
+import {
+  Avatar,
+  NavTab,
+  NotificationItem,
+  SiteHeader,
+  Spinner,
+  TextLink,
+  textLinkVariants,
+} from "@/components/ui";
 import { useCreditBalance } from "@/hooks/use-credit-balance";
 import { useMessagesUnreadCount } from "@/hooks/use-messages-unread";
 import { useTheme } from "@/hooks/use-theme";
 import { type Notification, notificationApi } from "@/lib/api-client";
+import { cn } from "@/lib/cn";
 import { createClient } from "@/lib/supabase/client";
 
 type Mode = "selling" | "buying";
@@ -140,53 +149,34 @@ export function Nav({ userEmail, userName, userAvatarUrl, modeOverride }: NavPro
   const switchLabel = mode === "selling" ? "Switch to buying" : "Switch to selling";
 
   return (
-    <nav className="fixed inset-x-0 top-0 z-50 hidden border-line border-b bg-surface/80 backdrop-blur-md md:block">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
-        {/* Left: Logo + Tabs */}
-        <div className="flex h-full items-center gap-6">
-          <Link
-            href={logoHref}
-            aria-label="Haggle — home"
-            className="flex items-center text-ink transition-opacity hover:opacity-75"
-          >
-            {/* 24px: the wordmark's cap height then lands about twice the 14px tab
-                text, which reads as the primary mark without shouting. At 28px it
-                dominated the bar; below 20px the gold ligature between the two g's
-                muddies and the lockup stops being legible as two tones.
-
-                Lifted 1.5px because the artboard includes the descenders of the
-                two g's — its baseline sits at 113.55 of 127, so centring the BOX
-                drops the baseline 1.5px below the tabs' at this size. Type is
-                aligned on baselines, not bounding boxes. */}
-            <Logo className="-translate-y-[1.5px] h-6" />
-          </Link>
-
-          {/* Navigation Tabs */}
-          <div className="flex items-center gap-1">
-            {tabs.map((tab) => {
-              const isActive = activeHrefFromOrigin
-                ? tab.href === activeHrefFromOrigin
-                : pathname.startsWith(tab.href);
-              return (
-                <NavTab
-                  key={tab.href}
-                  href={tab.href}
-                  label={tab.label}
-                  active={isActive}
-                  badge={tab.href === "/messages" && messagesUnreadCount > 0}
-                />
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Right: Mode switch + User menu */}
-        <div className="flex items-center gap-5">
+    <SiteHeader
+      logoHref={logoHref}
+      className="hidden md:block"
+      start={
+        <nav aria-label="Primary" className="flex items-center gap-1">
+          {tabs.map((tab) => {
+            const isActive = activeHrefFromOrigin
+              ? tab.href === activeHrefFromOrigin
+              : pathname.startsWith(tab.href);
+            return (
+              <NavTab
+                key={tab.href}
+                href={tab.href}
+                label={tab.label}
+                active={isActive}
+                badge={tab.href === "/messages" && messagesUnreadCount > 0}
+              />
+            );
+          })}
+        </nav>
+      }
+      end={
+        <>
           {/* Mode switch — text only */}
           <button
             type="button"
             onClick={handleModeSwitch}
-            className="cursor-pointer text-ink-muted text-sm transition-colors hover:text-ink"
+            className="cursor-pointer text-[15px] text-ink-secondary transition-colors hover:text-ink"
           >
             {switchLabel}
           </button>
@@ -311,9 +301,9 @@ export function Nav({ userEmail, userName, userAvatarUrl, modeOverride }: NavPro
               </div>
             )}
           </div>
-        </div>
-      </div>
-    </nav>
+        </>
+      }
+    />
   );
 }
 
@@ -407,7 +397,7 @@ function NotificationBell() {
             <button
               type="button"
               onClick={handleMarkAllRead}
-              className="cursor-pointer text-action-primary text-xs transition-colors hover:text-action-primary-hover"
+              className={cn(textLinkVariants(), "cursor-pointer text-xs")}
             >
               Mark all read
             </button>
@@ -438,13 +428,13 @@ function NotificationBell() {
 
           {/* Footer */}
           <div className="border-line border-t px-4 py-2.5">
-            <Link
+            <TextLink
               href="/notifications"
               onClick={() => setOpen(false)}
-              className="block text-center text-action-primary text-xs transition-colors hover:text-action-primary-hover"
+              className="block text-center text-xs"
             >
               View all notifications →
-            </Link>
+            </TextLink>
           </div>
         </div>
       )}

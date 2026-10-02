@@ -1,6 +1,7 @@
 import { BottomNav } from "@/components/bottom-nav";
 import { Nav } from "@/components/nav";
 import { createClient } from "@/lib/supabase/server";
+import { getUserDisplayName } from "@/lib/user-display-name";
 
 export default async function BrowseLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -8,9 +9,7 @@ export default async function BrowseLayout({ children }: { children: React.React
     data: { user },
   } = await supabase.auth.getUser();
 
-  const userName = user
-    ? ((user.user_metadata?.display_name || user.user_metadata?.name || null) as string | null)
-    : null;
+  const userName = getUserDisplayName(user);
   const userAvatarUrl = user
     ? ((user.user_metadata?.custom_avatar_url || user.user_metadata?.avatar_url || null) as
         | string
@@ -41,7 +40,7 @@ export default async function BrowseLayout({ children }: { children: React.React
       )}
 
       {user ? (
-        <div className="pb-16 md:pt-16 md:pb-0">{children}</div>
+        <div className="pb-16 md:pt-header md:pb-0">{children}</div>
       ) : (
         <div style={{ paddingTop: "56px" }}>{children}</div>
       )}

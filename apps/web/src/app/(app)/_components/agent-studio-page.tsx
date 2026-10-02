@@ -214,7 +214,7 @@ export function AgentStudioPage({ role }: { role: Role }) {
   // waits for it rather than mounting empty and re-seeding underneath the user.
   if (savedAgents === null) {
     return (
-      <div className="mx-auto flex h-[calc(100dvh-4rem)] items-center justify-center lg:max-w-7xl lg:px-6">
+      <div className="mx-auto flex h-[calc(100dvh-4rem)] items-center md:h-[calc(100dvh-var(--spacing-header))] justify-center lg:max-w-7xl lg:px-6">
         <span className="flex items-center gap-2 text-[13px] text-ink-secondary">
           <Spinner size="sm" />
           Loading agents…
@@ -233,7 +233,7 @@ export function AgentStudioPage({ role }: { role: Role }) {
        On a phone it stays edge to edge: there is no column to align with
        there, and insetting a three-pane workspace on a 375px screen only
        costs it room. */
-    <div className="mx-auto h-[calc(100dvh-4rem)] lg:max-w-7xl lg:px-6">
+    <div className="mx-auto h-[calc(100dvh-4rem)] md:h-[calc(100dvh-var(--spacing-header))] lg:max-w-7xl lg:px-6">
       <AgentStudio
         role={role}
         savedAgents={savedAgents}

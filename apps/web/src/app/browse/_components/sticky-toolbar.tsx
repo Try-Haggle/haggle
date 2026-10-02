@@ -61,7 +61,7 @@ export function StickyToolbar({ children }: { children: React.ReactNode }) {
     <div
       ref={ref}
       id={STICKY_BAND_ID}
-      className={`sticky top-0 z-40 bg-surface/80 backdrop-blur-md transition-[border-color] md:top-16 ${
+      className={`sticky top-0 z-40 bg-surface/80 backdrop-blur-md transition-[border-color] md:top-header ${
         stuck ? "border-line border-b" : "border-transparent border-b"
       }`}
     >

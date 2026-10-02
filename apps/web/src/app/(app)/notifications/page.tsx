@@ -4,8 +4,9 @@ import { Bell } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { InboxTabs } from "@/app/(app)/_components/inbox-tabs";
-import { EmptyState, NotificationItem, Skeleton, Spinner } from "@/components/ui";
+import { EmptyState, NotificationItem, Skeleton, Spinner, textLinkVariants } from "@/components/ui";
 import { type Notification, notificationApi } from "@/lib/api-client";
+import { cn } from "@/lib/cn";
 import { useNotificationContext } from "../_components/notification-provider";
 
 export default function NotificationsPage() {
@@ -73,7 +74,7 @@ export default function NotificationsPage() {
   return (
     // Same frame as every other page in the app (browse, dashboards, orders):
     // this one was centred at max-w-2xl, which read as a different product.
-    <main className="mx-auto min-h-[calc(100vh-4rem)] max-w-7xl px-4 py-6 sm:p-6">
+    <main className="mx-auto min-h-[calc(100vh-var(--spacing-header))] max-w-7xl px-4 py-6 sm:p-6">
       {/* Pulled out of the page padding so the rail spans the screen and lands
           in exactly the same place as it does on the messages side. */}
       <InboxTabs className="-mx-4 -mt-6 mb-6 sm:-mx-6 md:hidden" />
@@ -83,7 +84,7 @@ export default function NotificationsPage() {
           <button
             type="button"
             onClick={handleMarkAll}
-            className="text-sm text-action-primary hover:text-action-primary-hover transition-colors cursor-pointer"
+            className={cn(textLinkVariants(), "cursor-pointer text-sm")}
           >
             Mark all read
           </button>

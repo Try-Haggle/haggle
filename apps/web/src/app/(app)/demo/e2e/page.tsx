@@ -51,7 +51,7 @@ export default function DemoE2EPage() {
   }
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-xl mx-auto">
+    <main className="min-h-[calc(100vh-var(--spacing-header))] px-4 py-6 sm:p-6 max-w-xl mx-auto">
       <Link
         href="/staging"
         className="inline-flex items-center gap-1.5 text-sm text-ink-secondary hover:text-ink transition-colors mb-6"
@@ -167,7 +167,7 @@ export default function DemoE2EPage() {
               placeholder={`${(DEMO_ITEMS[selected].amount / 100).toFixed(2)}`}
               value={customAmount}
               onChange={(e) => setCustomAmount(e.target.value)}
-              className="flex-1 rounded-lg border border-line bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-focus focus:outline-none"
+              className="flex-1 rounded-lg border border-line bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-placeholder focus:border-focus focus:outline-none"
             />
           </div>
         </div>

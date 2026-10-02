@@ -152,7 +152,7 @@ function NewDisputeForm() {
   }
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-xl mx-auto">
+    <main className="min-h-[calc(100vh-var(--spacing-header))] px-4 py-6 sm:p-6 max-w-xl mx-auto">
       <BackLink
         href={orderId.trim() ? `/orders/${encodeURIComponent(orderId.trim())}` : "/orders"}
         className="mb-6"
