@@ -2,7 +2,7 @@ import { formatMoney } from "@haggle/shared";
 import { LockKeyhole, PackageCheck, ShieldCheck } from "lucide-react";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { Badge, Card, PageHeader } from "@/components/ui";
+import { Card } from "@/components/ui";
 import { serverApi } from "@/lib/api-server";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -11,6 +11,7 @@ import {
   toPositiveMinor,
 } from "../checkout-contract";
 import type { CheckoutAgreementDisplay } from "../checkout-full-agreement";
+import { CheckoutHeader, CheckoutText } from "./checkout-chrome";
 import { CheckoutPayment } from "./checkout-payment";
 
 export const metadata: Metadata = {
@@ -112,18 +113,7 @@ export default async function NegotiationCheckoutPage({
   return (
     <main className="min-h-screen bg-surface px-4 py-6 sm:px-6 sm:py-10">
       <div className="mx-auto max-w-5xl">
-        <PageHeader
-          icon={<LockKeyhole className="size-6" />}
-          title="Secure checkout"
-          subtitle="Confirm the full Soft agreement, then pay as agreed."
-          backHref={`/buy/negotiations/${sessionId}`}
-          backLabel="Back to negotiation"
-          actions={
-            <Badge tone="success" dot>
-              Deal accepted
-            </Badge>
-          }
-        />
+        <CheckoutHeader sessionId={sessionId} />
 
         <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
           <Card padding="lg" radius="lg">
@@ -167,7 +157,9 @@ export default async function NegotiationCheckoutPage({
                   <p className="mt-2 font-bold text-action-primary text-xl tabular-nums">
                     {formatMoney(money)}
                   </p>
-                  <p className="mt-1 text-ink-muted text-xs">Negotiated price</p>
+                  <p className="mt-1 text-ink-muted text-xs">
+                    <CheckoutText message="negotiatedPrice" />
+                  </p>
                 </div>
               </div>
             </Card>
@@ -175,11 +167,15 @@ export default async function NegotiationCheckoutPage({
             <div className="space-y-3 border-line border-t pt-4 text-ink-secondary text-xs">
               <div className="flex gap-2.5">
                 <ShieldCheck className="mt-0.5 size-4 shrink-0 text-success" />
-                <p>Funds follow the accepted agreement and remain subject to release rules.</p>
+                <p>
+                  <CheckoutText message="fundsNote" />
+                </p>
               </div>
               <div className="flex gap-2.5">
                 <LockKeyhole className="mt-0.5 size-4 shrink-0 text-action-primary" />
-                <p>Payment preparation is restricted to the buyer on this negotiation.</p>
+                <p>
+                  <CheckoutText message="buyerNote" />
+                </p>
               </div>
             </div>
           </aside>

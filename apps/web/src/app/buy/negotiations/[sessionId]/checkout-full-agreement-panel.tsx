@@ -3,7 +3,8 @@
 import { formatMoney } from "@haggle/shared";
 import { FileText } from "lucide-react";
 import Link from "next/link";
-import { Button } from "@/components/ui";
+import { Alert, Button } from "@/components/ui";
+import { HAGGLE_SETTLEMENT_ASSET } from "@/lib/wallet-network";
 import { useLocale } from "@/providers/locale-provider";
 import {
   type CheckoutAgreementDisplay,
@@ -137,6 +138,22 @@ export function CheckoutFullAgreement({
       </section>
 
       <div className="space-y-3 pt-2">
+        <section
+          aria-labelledby="checkout-next-payment-options"
+          className="space-y-2 rounded-lg border border-line bg-surface-sunken/40 p-4"
+        >
+          <h3 id="checkout-next-payment-options" className="font-medium text-ink text-sm">
+            {t("checkout.fullAgreement.nextTitle")}
+          </h3>
+          <ul className="space-y-2 text-sm text-ink-secondary">
+            <li>{t("checkout.fullAgreement.cardOption")}</li>
+            <li>
+              {HAGGLE_SETTLEMENT_ASSET.symbol}: {t("checkout.fullAgreement.walletOption")}
+            </li>
+          </ul>
+          <p className="text-xs text-ink-muted">{t("checkout.fullAgreement.walletHint")}</p>
+        </section>
+        {!ready && <Alert tone="warning">{t("checkout.fullAgreement.incomplete")}</Alert>}
         <Button
           type="button"
           fullWidth
@@ -146,6 +163,9 @@ export function CheckoutFullAgreement({
         >
           {t("checkout.fullAgreement.cta")}
         </Button>
+        <p className="text-center text-ink-muted text-xs">
+          {t("checkout.fullAgreement.confirmHint")}
+        </p>
         <p className="text-center text-ink-muted text-xs">
           {t("checkout.fullAgreement.changeHint")}{" "}
           <Link href={leaveHref} className="text-action-primary underline-offset-2 hover:underline">

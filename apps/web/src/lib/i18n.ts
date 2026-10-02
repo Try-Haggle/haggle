@@ -58,6 +58,12 @@ type MessageTree = {
       cta: string;
       changeHint: string;
       leave: string;
+      nextTitle: string;
+      cardOption: string;
+      walletOption: string;
+      walletHint: string;
+      confirmHint: string;
+      incomplete: string;
     };
   };
   negotiation: {
@@ -92,7 +98,7 @@ const en: MessageTree = {
     fullAgreement: {
       title: "Confirm agreed terms",
       subtitle:
-        "Review the full Soft deal before payment. Card or wallet opens only after you confirm.",
+        "Review all agreed terms. After confirming, choose a payment method and connect your wallet.",
       price: "Agreed price",
       address: "Address",
       fulfillment: "Shipping / pickup",
@@ -113,6 +119,15 @@ const en: MessageTree = {
       cta: "Pay as agreed",
       changeHint: "Need to change a term?",
       leave: "Leave checkout",
+      nextTitle: "Payment options after confirmation",
+      cardOption: "Card — buy USDC through Stripe using your card.",
+      walletOption: "Pay directly from your wallet.",
+      walletHint:
+        "Connect MetaMask, Coinbase Wallet, or another supported wallet on the next step.",
+      confirmHint:
+        "This confirms the terms only. You choose how to pay next; no payment is sent yet.",
+      incomplete:
+        "Some agreed details are missing. Return to the negotiation to complete them before choosing how to pay.",
     },
   },
   negotiation: {
@@ -147,7 +162,7 @@ const ko: DeepPartial<MessageTree> = {
   checkout: {
     fullAgreement: {
       title: "합의 내용 확인",
-      subtitle: "결제 전에 Soft 합의 전체를 확인하세요. 카드/지갑은 확인 후에만 열립니다.",
+      subtitle: "합의한 내용 전체를 확인하세요. 확인 후 결제 수단을 선택하고 지갑을 연결합니다.",
       price: "합의 가격",
       address: "주소",
       fulfillment: "배송 / 픽업",
@@ -168,6 +183,14 @@ const ko: DeepPartial<MessageTree> = {
       cta: "이대로 결제",
       changeHint: "내용을 바꿔야 하나요?",
       leave: "결제 나가기",
+      nextTitle: "합의 확인 후 선택할 결제 수단",
+      cardOption: "카드 — Stripe에서 카드로 USDC를 구매합니다.",
+      walletOption: "내 지갑에서 직접 결제합니다.",
+      walletHint: "다음 단계에서 MetaMask, Coinbase Wallet 또는 지원되는 다른 지갑을 연결합니다.",
+      confirmHint:
+        "합의 내용을 확인하는 단계입니다. 다음 단계에서 결제 수단을 선택하며, 아직 결제가 전송되지 않습니다.",
+      incomplete:
+        "합의 정보가 일부 빠져 있습니다. 협상 화면으로 돌아가 내용을 완성하면 결제 수단을 선택할 수 있습니다.",
     },
   },
   negotiation: {

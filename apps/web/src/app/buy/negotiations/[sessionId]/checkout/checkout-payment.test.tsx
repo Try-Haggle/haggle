@@ -81,8 +81,10 @@ describe("CheckoutPayment Soft-before-rail", () => {
     expect(screen.getByTestId("checkout-full-agreement")).toBeInTheDocument();
     expect(screen.getByTestId("checkout-pay-as-agreed")).toBeInTheDocument();
     expect(screen.queryByTestId("checkout-payment-rail")).not.toBeInTheDocument();
-    expect(screen.queryByText(/Direct/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Direct/i })).not.toBeInTheDocument();
     expect(MockWalletPaymentClient).not.toHaveBeenCalled();
+    expect(screen.getByText(/Connect MetaMask, Coinbase Wallet/)).toBeInTheDocument();
+    expect(screen.getByText(/no payment is sent yet/)).toBeInTheDocument();
 
     await user.click(screen.getByTestId("checkout-pay-as-agreed"));
 
@@ -90,6 +92,7 @@ describe("CheckoutPayment Soft-before-rail", () => {
     expect(screen.queryByTestId("checkout-full-agreement")).not.toBeInTheDocument();
     expect(screen.getByTestId("soft-ack-hash")).toHaveTextContent("sha256:soft-before-rail-test");
     expect(MockWalletPaymentClient).toHaveBeenCalled();
+    expect(screen.getByTestId("checkout-payment-panel")).toHaveFocus();
   });
 
   it("keeps Soft panel without rail when Soft agreement is incomplete", async () => {
@@ -103,6 +106,7 @@ describe("CheckoutPayment Soft-before-rail", () => {
     expect(screen.getByTestId("checkout-full-agreement")).toBeInTheDocument();
     const cta = screen.getByTestId("checkout-pay-as-agreed");
     expect(cta).toBeDisabled();
+    expect(screen.getByText(/Some agreed details are missing/)).toBeInTheDocument();
     await user.click(cta);
     expect(screen.queryByTestId("checkout-payment-rail")).not.toBeInTheDocument();
     expect(screen.getByTestId("checkout-full-agreement")).toBeInTheDocument();
