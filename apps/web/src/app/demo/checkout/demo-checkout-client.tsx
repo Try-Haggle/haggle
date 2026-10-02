@@ -16,6 +16,7 @@ function SetupForm({ onStart }: { onStart: (p: DemoCheckoutPayload) => void }) {
   const [agreed, setAgreed] = useState(String(DEFAULT_DEMO_CHECKOUT.price / 100));
   const [market, setMarket] = useState(String(DEFAULT_DEMO_CHECKOUT.market / 100));
   const [rounds, setRounds] = useState(String(DEFAULT_DEMO_CHECKOUT.rounds));
+  const [imageUrl, setImageUrl] = useState<string>(DEFAULT_DEMO_CHECKOUT.imageUrl);
   const field = { padding: "8px 10px", border: "1px solid #d9d6cc", borderRadius: 8, fontSize: 14 };
   return (
     <form
@@ -27,6 +28,7 @@ function SetupForm({ onStart }: { onStart: (p: DemoCheckoutPayload) => void }) {
             listingPriceUsd: Number(market),
             item,
             rounds: Number(rounds),
+            imageUrl,
           }),
         );
       }}
@@ -36,6 +38,10 @@ function SetupForm({ onStart }: { onStart: (p: DemoCheckoutPayload) => void }) {
       <label style={{ display: "grid", gap: 4, fontSize: 12 }}>
         Item
         <input style={field} value={item} onChange={(e) => setItem(e.target.value)} />
+      </label>
+      <label style={{ display: "grid", gap: 4, fontSize: 12 }}>
+        Photo URL
+        <input style={field} value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} />
       </label>
       <label style={{ display: "grid", gap: 4, fontSize: 12 }}>
         Agreed price (USD)
