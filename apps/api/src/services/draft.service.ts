@@ -825,6 +825,7 @@ export async function listPublishedListings(
   const where = [
     eq(listingDrafts.status, "published"),
     or(isNull(listingDrafts.sellingDeadline), gt(listingDrafts.sellingDeadline, now)),
+    isNotNull(listingDrafts.userId),
   ];
 
   if (opts.categories && opts.categories.length > 0) {
@@ -947,6 +948,7 @@ export async function getPublishedPriceBuckets(
   const where = [
     eq(listingDrafts.status, "published"),
     or(isNull(listingDrafts.sellingDeadline), gt(listingDrafts.sellingDeadline, now)),
+    isNotNull(listingDrafts.userId),
     isNotNull(listingDrafts.targetPrice),
   ];
 
@@ -1021,6 +1023,7 @@ export async function getPublishedPriceRange(
   const where = [
     eq(listingDrafts.status, "published"),
     or(isNull(listingDrafts.sellingDeadline), gt(listingDrafts.sellingDeadline, now)),
+    isNotNull(listingDrafts.userId),
     isNotNull(listingDrafts.targetPrice),
   ];
 

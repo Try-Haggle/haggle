@@ -145,6 +145,30 @@ describe("startBuyerNegotiation buyerCriteria gate", () => {
     listingFixture();
   });
 
+  it("returns LISTING_UNCLAIMED with a buyer-safe message and no claim instructions for seller-less listings", async () => {
+    getPublishedListingByRef.mockResolvedValue({
+      id: "listing-2",
+      publicId: "anon0001",
+      sellerId: null,
+    });
+    const result = await startBuyerNegotiation({} as never, {
+      body: { listing_public_id: "anon0001", negotiation_agent_preset_id: "balancer" },
+      buyerId: "buyer-1",
+      isGuest: false,
+      driver: "mcp",
+      allowGuest: false,
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      status: 409,
+      body: { error: "LISTING_UNCLAIMED" },
+    });
+    const message = (result.body as { message?: string }).message ?? "";
+    expect(message.length).toBeGreaterThan(20);
+    expect(message).not.toMatch(/haggle_claim|claim/i);
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
   it("rejects MCP start from listing snapshot required checks when buyerCriteria is empty", async () => {
     const result = await startBuyerNegotiation({} as never, {
       body: {
