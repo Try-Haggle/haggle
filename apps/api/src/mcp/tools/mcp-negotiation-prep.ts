@@ -119,7 +119,6 @@ export function buildPrepareNegotiationView(
       condition: listing.condition,
       asking_price: Number.isFinite(askMajor) ? askMajor : null,
       photo_url: listing.photoUrl ?? null,
-      image_markdown: listingImageMarkdown(listing.title, listing.photoUrl),
     },
     required_criteria: required.map((c) => ({ ...c, must_answer: true })),
     tag_questions: listingTagQuestions(listing),
