@@ -36,7 +36,11 @@ test("preserves UUIDs and wallet addresses", () => {
   const uuid = "123e4567-e89b-12d3-a456-426614174000";
   const wallet = "0x1234567890123456789012345678901234567890";
   const masked = JSON.stringify(
-    maskTrace({ session_id: uuid, wallet_address: wallet, note: `session ${uuid} wallet ${wallet}` }),
+    maskTrace({
+      session_id: uuid,
+      wallet_address: wallet,
+      note: `session ${uuid} wallet ${wallet}`,
+    }),
   );
   assert.ok(masked.includes(uuid));
   assert.ok(masked.includes(wallet));

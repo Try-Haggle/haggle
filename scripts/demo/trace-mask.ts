@@ -8,7 +8,8 @@ const PII_KEYS =
 const ADDRESS_CONTAINER_KEYS =
   /^(shipping|billing|mailing|home|delivery|recipient)?_?address(es)?$|^ship_to$|^(shipping|billing)_?(info|details)$/i;
 // Name-like fields that identify a person once they sit under an address/recipient object.
-const NAME_KEYS = /^(name|first_name|last_name|given_name|family_name|full_name|company|recipient)$/i;
+const NAME_KEYS =
+  /^(name|first_name|last_name|given_name|family_name|full_name|company|recipient)$/i;
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 // Not preceded/followed by word chars, dots or dashes so UUID tails and 0x addresses survive.
 const PHONE = /(?<![\w.-])\+?\d[\d\s().-]{8,}\d(?![\w.-])/g;
