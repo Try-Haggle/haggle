@@ -65,6 +65,7 @@ ChatGPT는 경로형 메타데이터(`/.well-known/oauth-protected-resource/mcp`
 | 증상 | 확인 |
 |------|------|
 | 커넥터 생성 시 OAuth 오류 | `curl https://api.staging.tryhaggle.ai/.well-known/oauth-protected-resource/mcp`가 200인지 |
+| Codex 앱 "인증" 후 "연결할 수 없습니다" | `/.well-known/oauth-authorization-server`의 `authorization_endpoint`가 issuer와 같은 origin(`/oauth/authorize`)인지. Codex는 다른 origin이면 로그인을 거부한다 |
 | `/connect`에서 멈춤 | 구매자 계정으로 staging 웹에 로그인되어 있는지 |
 | `INSUFFICIENT_SCOPE` | 커넥터를 다시 연결하고 모든 권한을 허용 |
 | `BUYER_CRITERIA_REQUIRED` | 리스팅의 `required_criteria` 질문에 사용자 답을 받아 다시 시작 |

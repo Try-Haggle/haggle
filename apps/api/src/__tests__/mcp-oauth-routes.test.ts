@@ -51,6 +51,13 @@ describe("MCP OAuth routes", () => {
     });
   });
 
+  it("keeps the authorization endpoint on the issuer origin", async () => {
+    const res = await app.inject({ method: "GET", url: "/.well-known/oauth-authorization-server" });
+    const meta = res.json();
+    expect(new URL(meta.authorization_endpoint).origin).toBe(new URL(meta.issuer).origin);
+    expect(new URL(meta.authorization_endpoint).pathname).toBe("/oauth/authorize");
+  });
+
   it("serves path-inserted metadata for the /mcp resource", async () => {
     const root = await app.inject({ method: "GET", url: "/.well-known/oauth-protected-resource" });
     const suffixed = await app.inject({
