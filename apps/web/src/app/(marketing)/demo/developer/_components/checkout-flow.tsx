@@ -6031,8 +6031,11 @@ const OnChain = ({
                       }}
                     >
                       <span style={{ fontSize: 12, fontWeight: 600, color: C.redFg }}>
-                        <Ic.freeze size={13} style={{ display: "inline-block", verticalAlign: -2, marginRight: 4 }} />$
-                        {sel.toFixed(2)} FROZEN · dispute in progress
+                        <Ic.freeze
+                          size={13}
+                          style={{ display: "inline-block", verticalAlign: -2, marginRight: 4 }}
+                        />
+                        ${sel.toFixed(2)} FROZEN · dispute in progress
                       </span>
                     </div>
                   )}
@@ -6049,8 +6052,11 @@ const OnChain = ({
                       }}
                     >
                       <span style={{ fontSize: 11, fontWeight: 600, color: C.emFg }}>
-                        <Ic.refund size={12} style={{ display: "inline-block", verticalAlign: -2, marginRight: 4 }} />$
-                        {s.amount.toFixed(2)} → buyer refund
+                        <Ic.refund
+                          size={12}
+                          style={{ display: "inline-block", verticalAlign: -2, marginRight: 4 }}
+                        />
+                        ${s.amount.toFixed(2)} → buyer refund
                       </span>
                     </div>
                   )}
@@ -6127,8 +6133,11 @@ const OnChain = ({
                         }}
                       >
                         <span style={{ fontSize: 10, fontWeight: 600, color: C.emFg }}>
-                          <Ic.check size={12} style={{ display: "inline-block", verticalAlign: -2, marginRight: 4 }} />$
-                          {sel.toFixed(2)} → seller released
+                          <Ic.check
+                            size={12}
+                            style={{ display: "inline-block", verticalAlign: -2, marginRight: 4 }}
+                          />
+                          ${sel.toFixed(2)} → seller released
                         </span>
                       </div>
                       <div
@@ -6177,8 +6186,11 @@ const OnChain = ({
                       }}
                     >
                       <span style={{ fontSize: 12, fontWeight: 600, color: C.violetFg }}>
-                        <Ic.lock size={13} style={{ display: "inline-block", verticalAlign: -2, marginRight: 4 }} />$
-                        {s.amount.toFixed(2)} locked in Settlement Router
+                        <Ic.lock
+                          size={13}
+                          style={{ display: "inline-block", verticalAlign: -2, marginRight: 4 }}
+                        />
+                        ${s.amount.toFixed(2)} locked in Settlement Router
                       </span>
                     </div>
                   )}
