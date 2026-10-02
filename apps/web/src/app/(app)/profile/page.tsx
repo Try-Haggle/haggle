@@ -7,6 +7,7 @@ import { CreditBalanceChip } from "@/components/credit-balance/credit-balance-ch
 import { ListRow } from "@/components/ui";
 import { useCreditBalance } from "@/hooks/use-credit-balance";
 import { createClient } from "@/lib/supabase/client";
+import { getUserDisplayName } from "@/lib/user-display-name";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -21,12 +22,7 @@ export default function ProfilePage() {
         router.push("/sign-in");
         return;
       }
-      setDisplayName(
-        (user.user_metadata?.full_name ||
-          user.user_metadata?.name ||
-          user.email?.split("@")[0] ||
-          "User") as string,
-      );
+      setDisplayName(getUserDisplayName(user) || user.email?.split("@")[0] || "User");
       setEmail(user.email ?? "");
     });
   }, [router]);
