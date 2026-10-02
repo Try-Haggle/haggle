@@ -49,11 +49,7 @@ export function registerMcpOauthRoutes(app: FastifyInstance, db: Database) {
     },
   );
 
-  app.get("/.well-known/oauth-authorization-server", async (request) =>
-    authorizationServerMetadata(request),
-  );
-
-  app.get("/.well-known/oauth-protected-resource", async (request) => {
+  const protectedResourceMetadata = async (request: FastifyRequest) => {
     const api = publicApiBaseUrl(request);
     return {
       resource: `${api}/mcp`,
@@ -61,7 +57,18 @@ export function registerMcpOauthRoutes(app: FastifyInstance, db: Database) {
       scopes_supported: ["agents", "listings", "negotiate", "orders", "disputes", "offline_access"],
       bearer_methods_supported: ["header"],
     };
-  });
+  };
+
+  // Clients such as ChatGPT probe the path-inserted form (RFC 9728 / RFC 8414)
+  // for the `/mcp` resource before falling back to the root documents.
+  app.get("/.well-known/oauth-authorization-server", async (request) =>
+    authorizationServerMetadata(request),
+  );
+  app.get("/.well-known/oauth-authorization-server/mcp", async (request) =>
+    authorizationServerMetadata(request),
+  );
+  app.get("/.well-known/oauth-protected-resource", protectedResourceMetadata);
+  app.get("/.well-known/oauth-protected-resource/mcp", protectedResourceMetadata);
 
   app.post("/oauth/register", { preHandler: [oauthRegisterRateLimit] }, async (request, reply) => {
     const parsed = registerSchema.safeParse(request.body ?? {});

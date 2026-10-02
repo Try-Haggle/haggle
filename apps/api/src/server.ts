@@ -85,6 +85,7 @@ export const API_CORS_ALLOWED_HEADERS = [
   "Accept-Language",
   "Idempotency-Key",
   "mcp-session-id",
+  "mcp-protocol-version",
   "x-haggle-actor-id",
   "x-haggle-actor-role",
   "x-haggle-x402-signature",
