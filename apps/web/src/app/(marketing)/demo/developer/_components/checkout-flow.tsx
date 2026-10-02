@@ -5305,6 +5305,7 @@ const EE = ({
   lx,
   ly,
   flow,
+  tokenFlow,
 }: {
   d: string;
   tone: "cyan" | "violet" | "em" | "slate";
@@ -5312,6 +5313,7 @@ const EE = ({
   lx?: number;
   ly?: number;
   flow: boolean;
+  tokenFlow: boolean;
 }) => {
   const g =
     tone === "cyan"
@@ -5348,7 +5350,7 @@ const EE = ({
           style={{ animation: "haggle-dash 1.6s linear infinite" }}
         />
       )}
-      {flow && (
+      {tokenFlow && (
         // USDC token travelling along the edge
         <g>
           <animateMotion dur="2.4s" repeatCount="indefinite" path={d} />
@@ -5415,6 +5417,8 @@ const OnChain = ({
     disputeMode === "resolved_seller";
   // Flow animation: stop when disputed (frozen), resume when resolved
   const flow = (settling || curStep >= 4) && (!inDispute || isResolved);
+  // USDC tokens travel only while the settle call is actually running
+  const tokenFlow = settling && (!inDispute || isResolved);
   return (
     <div
       style={{
@@ -5556,6 +5560,7 @@ const OnChain = ({
               lx={275}
               ly={132}
               flow={flow}
+              tokenFlow={tokenFlow}
             />
             <EE
               d="M 550 125 C 620 120, 630 70, 690 63"
@@ -5564,6 +5569,7 @@ const OnChain = ({
               lx={615}
               ly={87}
               flow={flow}
+              tokenFlow={tokenFlow}
             />
             <EE
               d="M 550 160 C 620 170, 630 190, 690 193"
@@ -5572,6 +5578,7 @@ const OnChain = ({
               lx={615}
               ly={190}
               flow={flow}
+              tokenFlow={tokenFlow}
             />
           </>
         ) : (
@@ -5646,6 +5653,7 @@ const OnChain = ({
               lx={175}
               ly={132}
               flow={flow}
+              tokenFlow={tokenFlow}
             />
             <EE
               d="M 340 125 C 365 90, 380 60, 395 46"
@@ -5654,6 +5662,7 @@ const OnChain = ({
               lx={360}
               ly={82}
               flow={flow}
+              tokenFlow={tokenFlow}
             />
             <EE
               d="M 340 155 C 365 160, 380 165, 395 165"
@@ -5662,6 +5671,7 @@ const OnChain = ({
               lx={365}
               ly={180}
               flow={flow}
+              tokenFlow={tokenFlow}
             />
             <EE
               d="M 555 150 C 620 150, 640 105, 700 103"
@@ -5670,6 +5680,7 @@ const OnChain = ({
               lx={620}
               ly={122}
               flow={flow}
+              tokenFlow={tokenFlow}
             />
             <EE
               d="M 555 180 C 620 190, 640 200, 700 203"
@@ -5678,6 +5689,7 @@ const OnChain = ({
               lx={620}
               ly={210}
               flow={flow}
+              tokenFlow={tokenFlow}
             />
           </>
         )}
@@ -6019,7 +6031,7 @@ const OnChain = ({
                       }}
                     >
                       <span style={{ fontSize: 12, fontWeight: 600, color: C.redFg }}>
-                        <Ic.freeze size={13} style={{ verticalAlign: -2, marginRight: 4 }} />$
+                        <Ic.freeze size={13} style={{ display: "inline-block", verticalAlign: -2, marginRight: 4 }} />$
                         {sel.toFixed(2)} FROZEN · dispute in progress
                       </span>
                     </div>
@@ -6037,7 +6049,7 @@ const OnChain = ({
                       }}
                     >
                       <span style={{ fontSize: 11, fontWeight: 600, color: C.emFg }}>
-                        <Ic.refund size={12} style={{ verticalAlign: -2, marginRight: 4 }} />$
+                        <Ic.refund size={12} style={{ display: "inline-block", verticalAlign: -2, marginRight: 4 }} />$
                         {s.amount.toFixed(2)} → buyer refund
                       </span>
                     </div>
@@ -6115,7 +6127,7 @@ const OnChain = ({
                         }}
                       >
                         <span style={{ fontSize: 10, fontWeight: 600, color: C.emFg }}>
-                          <Ic.check size={12} style={{ verticalAlign: -2, marginRight: 4 }} />$
+                          <Ic.check size={12} style={{ display: "inline-block", verticalAlign: -2, marginRight: 4 }} />$
                           {sel.toFixed(2)} → seller released
                         </span>
                       </div>
@@ -6165,7 +6177,7 @@ const OnChain = ({
                       }}
                     >
                       <span style={{ fontSize: 12, fontWeight: 600, color: C.violetFg }}>
-                        <Ic.lock size={13} style={{ verticalAlign: -2, marginRight: 4 }} />$
+                        <Ic.lock size={13} style={{ display: "inline-block", verticalAlign: -2, marginRight: 4 }} />$
                         {s.amount.toFixed(2)} locked in Settlement Router
                       </span>
                     </div>
