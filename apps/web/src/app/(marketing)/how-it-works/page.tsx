@@ -37,13 +37,13 @@ const FLOW_STEPS = [
     details: [
       "Browse listings or set WaitingIntent",
       "AI notifies when matching item appears",
-      "See market price & savings potential",
+      "See the listing price and terms",
       "Start negotiation with one click",
     ],
     demo: {
       label: "Buyer sees listing",
-      savings: "Potential savings: $50-80 vs eBay",
-      fee: "eBay 13.25% → Haggle 1.5%",
+      savings: "Demo: negotiate the price with the seller's AI",
+      fee: "Illustrative Haggle fee assumption: 1.5% (not a quote)",
     },
   },
   {
@@ -101,18 +101,22 @@ const FLOW_STEPS = [
     color: "text-action-primary",
     bg: "bg-action-primary/10 border-action-primary/20",
     details: [
-      "💳 Card: Stripe Onramp → USDC on Base (3% total)",
-      "🔗 USDC: Direct from wallet (1.5% total)",
+      "💳 Card: Stripe Onramp → USDC on Base (Demo: illustrative 3% total)",
+      "🔗 USDC: Direct from wallet (Demo: illustrative 1.5% assumption)",
       "Seller receives same amount either way",
       "Gas paid by Haggle (~$0.001)",
       "Smart contract escrow — non-custodial",
     ],
     demo: {
-      card: { label: "Pay with Card", total: "$602.78", fee: "Stripe 1.5% + Haggle 1.5%" },
+      card: {
+        label: "Pay with Card",
+        total: "$602.78",
+        fee: "Demo: illustrative Stripe 1.5% + Haggle 1.5%",
+      },
       usdc: {
         label: "Pay with USDC",
         total: "$585.00",
-        fee: "Haggle 1.5% only",
+        fee: "Demo: illustrative Haggle 1.5% only",
         recommended: true,
       },
     },
@@ -132,8 +136,8 @@ const FLOW_STEPS = [
       "Dispute? → HaggleDisputeRegistry.sol",
     ],
     demo: {
-      seller: "$576.23 received (after 1.5% fee)",
-      buyer: "Saved $41 vs eBay price",
+      seller: "Demo: $576.23 received (illustrative 1.5% fee)",
+      buyer: "Demo: final price agreed with the seller",
       platform: "Haggle earned $8.78",
     },
   },
@@ -142,7 +146,7 @@ const FLOW_STEPS = [
 // ─── Stats ────────────────────────────────────────────────────────────
 
 const STATS = [
-  { label: "Platform Fee", value: "1.5%", sub: "vs eBay 13.25%" },
+  { label: "Platform Fee", value: "1.5%", sub: "illustrative demo assumption, not a quote" },
   { label: "AI Cost/Session", value: "$0.003", sub: "Grok-fast" },
   { label: "Gas/Transaction", value: "$0.001", sub: "Haggle pays" },
   { label: "Languages", value: "7", sub: "auto-detect" },
@@ -166,7 +170,7 @@ export default function HowItWorksPage() {
         </Link>
         <h1 className="mt-4 text-3xl font-bold text-ink sm:text-4xl">How Haggle Works</h1>
         <p className="mt-2 text-lg text-ink-secondary">
-          AI negotiates. Smart contracts settle. 1.5% fee.
+          AI negotiates. Smart contracts settle. Demo: illustrative 1.5% fee assumption.
         </p>
       </div>
 
@@ -346,7 +350,7 @@ export default function HowItWorksPage() {
                         <span className="text-lg">{opt.icon}</span>
                         <div className="flex-1">
                           <div className="text-xs text-ink font-medium">{opt.label}</div>
-                          <div className="text-[10px] text-ink-muted">{opt.fee}</div>
+                          <div className="text-xs text-ink">{opt.fee}</div>
                         </div>
                         <div className="text-sm font-bold text-ink">{opt.total}</div>
                         {"recommended" in opt && opt.recommended && (

@@ -10,7 +10,6 @@ interface PriceChartProps {
   priceHistory: PricePoint[];
 }
 
-const MARKET_PRICE = 920;
 const PADDING = { top: 20, right: 50, bottom: 30, left: 50 };
 const HEIGHT = 180;
 
@@ -19,7 +18,6 @@ export function PriceChart({ priceHistory }: PriceChartProps) {
 
   // Compute bounds
   const allPrices = priceHistory.flatMap((p) => [p.buyer, p.seller]);
-  allPrices.push(MARKET_PRICE);
   const minPrice = Math.floor(Math.min(...allPrices) / 50) * 50 - 50;
   const maxPrice = Math.ceil(Math.max(...allPrices) / 50) * 50 + 50;
   const maxRound = Math.max(...priceHistory.map((p) => p.round), 1);
@@ -34,8 +32,6 @@ export function PriceChart({ priceHistory }: PriceChartProps) {
 
   const buyerPoints = priceHistory.map((p) => `${scaleX(p.round)},${scaleY(p.buyer)}`).join(" ");
   const sellerPoints = priceHistory.map((p) => `${scaleX(p.round)},${scaleY(p.seller)}`).join(" ");
-
-  const marketY = scaleY(MARKET_PRICE);
 
   const lastBuyer = priceHistory[priceHistory.length - 1];
   const lastSeller = priceHistory[priceHistory.length - 1];
@@ -56,26 +52,6 @@ export function PriceChart({ priceHistory }: PriceChartProps) {
         preserveAspectRatio="xMidYMid meet"
         aria-hidden="true"
       >
-        {/* Market price dashed line */}
-        <line
-          x1={PADDING.left}
-          y1={marketY}
-          x2={PADDING.left + chartW}
-          y2={marketY}
-          stroke={AXIS_COLOR}
-          strokeWidth="0.5"
-          strokeDasharray="4 3"
-        />
-        <text
-          x={PADDING.left + chartW + 4}
-          y={marketY + 3}
-          fill={AXIS_COLOR}
-          fontSize="8"
-          fontFamily="monospace"
-        >
-          $920
-        </text>
-
         {/* Buyer line (info) */}
         <polyline
           points={buyerPoints}

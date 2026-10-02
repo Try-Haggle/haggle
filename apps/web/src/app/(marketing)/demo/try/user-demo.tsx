@@ -13,8 +13,6 @@ import { TypingIndicator } from "./_components/typing-indicator";
 
 /* ── Constants ────────────────────────────────── */
 
-const MARKET_PRICE = 920;
-
 const LANGUAGES = [
   { code: "en", label: "English" },
   { code: "ko", label: "한국어" },
@@ -36,7 +34,6 @@ interface PricePoint {
 interface DealResult {
   accepted: boolean;
   finalPrice: number;
-  savings: number;
 }
 
 /* ── Helpers ──────────────────────────────────── */
@@ -96,7 +93,7 @@ export function UserDemo() {
       setMessages([
         createMsg(
           "system",
-          "Haggle's AI buyer is interested in your iPhone 15 Pro 256GB. The Swappa market price is $920. How much will you sell it for?",
+          "Haggle's AI buyer is interested in your iPhone 15 Pro 256GB. The demo listing price is $920. How much will you sell it for?",
         ),
         createMsg(
           "system",
@@ -179,18 +176,14 @@ export function UserDemo() {
 
           const accepted = action === "ACCEPT" || action === "CONFIRM";
           const finalDollars = accepted ? decisionPrice : 0;
-          const savings = accepted ? MARKET_PRICE - finalDollars : 0;
 
-          setDealResult({ accepted, finalPrice: finalDollars, savings });
+          setDealResult({ accepted, finalPrice: finalDollars });
 
           if (accepted) {
             setShowCelebration(true);
             setMessages((prev) => [
               ...prev,
-              createMsg(
-                "system",
-                `Deal closed at $${finalDollars}! That's $${savings} below market price.`,
-              ),
+              createMsg("system", `Deal closed at $${finalDollars}! (Demo)`),
             ]);
           } else {
             setMessages((prev) => [

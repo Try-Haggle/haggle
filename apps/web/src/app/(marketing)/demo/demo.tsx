@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { EbayComparisonNotice } from "@/components/ebay-comparison-notice";
+import { describeFeeDifference, ebayFeeEstimate } from "@/components/ebay-fee-terms";
 import { WaitlistForm } from "@/components/waitlist-form";
 import {
   computeCounterOffer,
@@ -958,23 +960,23 @@ export function Demo() {
   /* Result calculations */
   const savings = finalPrice ? selectedItem.listPrice - finalPrice : 0;
   const savingsPercent = finalPrice ? ((savings / selectedItem.listPrice) * 100).toFixed(1) : "0";
-  const ebayFee = finalPrice ? finalPrice * 0.156 + 0.3 : 0;
+  const ebayFee = finalPrice ? ebayFeeEstimate(finalPrice) : 0;
   const haggleFee = finalPrice ? finalPrice * 0.015 : 0;
   const sellerNetEbay = finalPrice ? finalPrice - ebayFee : 0;
   const sellerNetHaggle = finalPrice ? finalPrice - haggleFee : 0;
-  const sellerBenefit = sellerNetHaggle - sellerNetEbay;
+  const feeDiff = describeFeeDifference(sellerNetHaggle - sellerNetEbay);
   const failed = simState === "done" && finalPrice === null;
 
   const handleShare = useCallback(() => {
     if (!finalPrice) return;
     const text = isBuyer
-      ? `AI negotiated ${savingsPercent}% off a ${selectedItem.name} on @tryhaggle!\n$${selectedItem.listPrice} → $${finalPrice}\nTry it:`
-      : `Sold ${selectedItem.name} for $${finalPrice} on @tryhaggle. Kept $${sellerNetHaggle.toFixed(0)} vs $${sellerNetEbay.toFixed(0)} on eBay.\nTry it:`;
+      ? `Demo: negotiated from a sample listing price of $${selectedItem.listPrice} to $${finalPrice} ($${savings} below the demo listing price). No purchase was made.\nTry it:`
+      : `Demo scenario: a sample ${selectedItem.name} negotiated to $${finalPrice}. No sale was made; figures are illustrative, not a quote or realized savings.\nTry it:`;
     window.open(
       `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent("https://tryhaggle.ai/demo")}`,
       "_blank",
     );
-  }, [isBuyer, savingsPercent, selectedItem, finalPrice, sellerNetHaggle, sellerNetEbay]);
+  }, [isBuyer, selectedItem, finalPrice, savings]);
 
   return (
     <div className="min-h-screen">
@@ -1226,7 +1228,7 @@ export function Demo() {
               </p>
               {isBuyer ? (
                 <>
-                  <p className="text-3xl font-bold text-ink mb-1">${savings} saved</p>
+                  <p className="text-3xl font-bold text-ink mb-1">Demo: ${savings} below list</p>
                   <p className="text-ink-secondary">
                     {selectedItem.name}: ${selectedItem.listPrice} → ${finalPrice} ({savingsPercent}
                     % off) in {rounds.length - 1} rounds
@@ -1234,7 +1236,7 @@ export function Demo() {
                 </>
               ) : (
                 <>
-                  <p className="text-3xl font-bold text-ink mb-1">Sold for ${finalPrice}</p>
+                  <p className="text-3xl font-bold text-ink mb-1">Demo: agreed at ${finalPrice}</p>
                   <p className="text-ink-secondary">
                     {selectedItem.name} — {rounds.length - 1} rounds of negotiation
                   </p>
@@ -1244,15 +1246,15 @@ export function Demo() {
             <div className="grid grid-cols-2 gap-3 mb-6">
               <div className="rounded-lg bg-surface-sunken p-3 text-center">
                 <p className="text-xs text-ink-secondary mb-1">
-                  {isBuyer ? "eBay (no negotiation)" : "You'd keep on eBay"}
+                  {isBuyer ? "Demo listing price" : "Demo est. you'd keep on eBay"}
                 </p>
                 <p className="text-sm text-error font-medium">
-                  {isBuyer ? `$${selectedItem.listPrice}` : `$${sellerNetEbay.toFixed(0)}`}
+                  {isBuyer ? `$${selectedItem.listPrice}` : `~$${sellerNetEbay.toFixed(0)}`}
                 </p>
               </div>
               <div className="rounded-lg bg-[color-mix(in_srgb,var(--action-primary)_10%,transparent)] p-3 text-center">
                 <p className="text-xs text-ink-secondary mb-1">
-                  {isBuyer ? "Haggle (AI negotiated)" : "You keep on Haggle"}
+                  {isBuyer ? "Demo negotiated price" : "Illustrative: keep at 1.5% fee"}
                 </p>
                 <p className="text-sm text-action-primary font-medium">
                   {isBuyer ? `$${finalPrice}` : `$${sellerNetHaggle.toFixed(0)}`}
@@ -1261,12 +1263,25 @@ export function Demo() {
             </div>
             <div className="rounded-lg bg-success-soft border border-success/20 p-4 text-center mb-6">
               <p className="text-xs text-success mb-1">
-                {isBuyer ? "You save vs list price" : "Extra money vs eBay"}
+                {isBuyer ? "Demo: below the demo listing price" : "Demo est. seller fee vs eBay"}
               </p>
               <p className="text-2xl font-bold text-success">
-                ${isBuyer ? savings : sellerBenefit.toFixed(0)}
+                {isBuyer ? `$${savings}` : feeDiff.label}
               </p>
             </div>
+            {isBuyer ? (
+              <p className="text-xs text-ink-secondary text-center mb-6">
+                Demo: sample listing price, no purchase made. The listing price is not a real eBay
+                price.
+              </p>
+            ) : (
+              <EbayComparisonNotice
+                variant="demo"
+                terms
+                testId="demo-ebay-notice"
+                className="mb-6"
+              />
+            )}
             <div className="flex flex-col sm:flex-row gap-3">
               <button
                 type="button"

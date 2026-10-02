@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { EbayComparisonNotice } from "@/components/ebay-comparison-notice";
+import { describeFeeDifference, ebayFeeEstimate } from "@/components/ebay-fee-terms";
 
 interface SavingsCardProps {
   finalPrice: number;
@@ -8,16 +10,10 @@ interface SavingsCardProps {
   onRestart: () => void;
 }
 
-const MARKET_PRICE = 920;
-const EBAY_FEE_RATE = 0.156;
-const EBAY_FIXED_FEE = 0.3;
 const HAGGLE_FEE_RATE = 0.015;
 
 export function SavingsCard({ finalPrice, accepted, onRestart }: SavingsCardProps) {
-  const savings = MARKET_PRICE - finalPrice;
-  const savingsPercent = ((savings / MARKET_PRICE) * 100).toFixed(1);
-
-  const ebayFee = finalPrice * EBAY_FEE_RATE + EBAY_FIXED_FEE;
+  const ebayFee = ebayFeeEstimate(finalPrice);
   const haggleFee = finalPrice * HAGGLE_FEE_RATE;
   const keepOnEbay = finalPrice - ebayFee;
   const keepOnHaggle = finalPrice - haggleFee;
@@ -46,29 +42,30 @@ export function SavingsCard({ finalPrice, accepted, onRestart }: SavingsCardProp
       <div className="text-center mb-6">
         <p className="text-sm text-success mb-2">Deal Closed!</p>
         <p className="text-3xl font-bold text-ink mb-1">${finalPrice.toLocaleString()}</p>
-        <p className="text-ink-secondary">
-          Savings vs market: ${savings} ({savingsPercent}% off ${MARKET_PRICE})
-        </p>
+        <p className="text-ink-secondary">Demo result · no sale was made</p>
       </div>
 
       {/* Fee comparison */}
       <div className="grid grid-cols-2 gap-3 mb-6">
         <div className="rounded-lg bg-surface-raised p-3 text-center">
-          <p className="text-xs text-ink-secondary mb-1">You&apos;d keep on eBay</p>
-          <p className="text-sm text-error font-medium">${keepOnEbay.toFixed(0)}</p>
-          <p className="text-[10px] text-ink-muted mt-0.5">15.6% + $0.30 fee</p>
+          <p className="text-xs text-ink-secondary mb-1">Est. you&apos;d keep on eBay (Demo)</p>
+          <p className="text-sm text-error font-medium">~${keepOnEbay.toFixed(0)}</p>
+          <p className="text-[10px] text-ink-muted mt-0.5">13.6% + $0.40 fee (est.)</p>
         </div>
         <div className="rounded-lg bg-[color-mix(in_srgb,var(--action-primary)_10%,transparent)] p-3 text-center">
-          <p className="text-xs text-ink-secondary mb-1">You keep on Haggle</p>
+          <p className="text-xs text-ink-secondary mb-1">Illustrative: keep at 1.5% fee</p>
           <p className="text-sm text-action-primary font-medium">${keepOnHaggle.toFixed(0)}</p>
-          <p className="text-[10px] text-ink-muted mt-0.5">1.5% fee</p>
+          <p className="text-[10px] text-ink-muted mt-0.5">assumption, not a quote</p>
         </div>
       </div>
 
       <div className="rounded-lg bg-success-soft border border-success/20 p-4 text-center mb-6">
-        <p className="text-xs text-success mb-1">Extra you keep vs eBay</p>
-        <p className="text-2xl font-bold text-success">${(keepOnHaggle - keepOnEbay).toFixed(0)}</p>
+        <p className="text-xs text-success mb-1">Demo est. seller fee vs eBay</p>
+        <p className="text-2xl font-bold text-success">
+          {describeFeeDifference(keepOnHaggle - keepOnEbay).label}
+        </p>
       </div>
+      <EbayComparisonNotice variant="demo" terms testId="savings-ebay-notice" className="mb-6" />
 
       <div className="flex flex-col sm:flex-row gap-3">
         <Link
