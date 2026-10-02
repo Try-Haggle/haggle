@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { safeNextPath } from "@/lib/safe-redirect";
 import { createClient } from "@/lib/supabase/server";
 
 async function triggerSignedUpNotification(userId: string, createdAt: string) {
@@ -28,7 +29,11 @@ export async function GET(request: Request) {
   const code = searchParams.get("code");
   const tokenHash = searchParams.get("token_hash");
   const type = searchParams.get("type");
-  const next = searchParams.get("next") ?? "/sell/dashboard";
+  // `next` is appended to our origin, so it must be a path on this site:
+  // unchecked, "@evil.com" would turn "https://app" + next into a redirect to
+  // evil.com straight after a successful sign-in.
+  const requestedNext = safeNextPath(searchParams.get("next"));
+  const next = requestedNext ?? "/sell/dashboard";
 
   const supabase = await createClient();
 
@@ -68,6 +73,10 @@ export async function GET(request: Request) {
     }
   }
 
-  // Auth error — redirect to claim page with error
-  return NextResponse.redirect(`${origin}/?error=auth_failed`);
+  // Auth error — back to sign-in, which shows the error at the top of the form
+  // (the home page only bounced to /sign-in and dropped it). Keep `next` so a
+  // retry still lands where the person was going.
+  const retry = new URLSearchParams({ error: "auth_failed" });
+  if (requestedNext) retry.set("next", requestedNext);
+  return NextResponse.redirect(`${origin}/sign-in?${retry}`);
 }
