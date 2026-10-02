@@ -38,6 +38,30 @@ export const haggleStartNegotiationInputShape = {
     .describe(
       "Start-wizard answers for seller required criteria (IMEI/완납/침수/Find My). Each item is {checkId, stance?}. Required when the listing has those checks.",
     ),
+  builder_memory: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe(
+      "Same as the web negotiation_agent_builder_memory: {budgetMax, targetPrice (WHOLE DOLLARS), mustHave[], avoid[], categoryCriteria[], ...}. Pass the memory from haggle_builder_chat_turn or the user's answers from haggle_prepare_negotiation. Without budgetMax the walk-away price defaults to the asking price.",
+    ),
+  agent_weights: z
+    .record(z.string(), z.number())
+    .optional()
+    .describe("Optional strategy weights {w_p, w_t, w_r, w_s} (web agent_weights)."),
+  agent_overrides: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe("Optional sparse engine overrides (web agent_overrides), e.g. {alpha, beta}."),
+  buyer_control_mode: z
+    .enum(["auto", "manual"])
+    .optional()
+    .describe("manual = consult mode (decide each round with the user); auto = delegate."),
+  fulfillment: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe(
+      "Fulfillment preference, e.g. {methods:['carrier'], preferred:'carrier'}. See fulfillment_choices from haggle_prepare_negotiation.",
+    ),
 };
 
 export const haggleStartNegotiationInputSchema = z.strictObject(haggleStartNegotiationInputShape);

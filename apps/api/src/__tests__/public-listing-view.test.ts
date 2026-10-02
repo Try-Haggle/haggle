@@ -180,3 +180,22 @@ describe("MCP publicListingView", () => {
     expect(view.required_criteria).toEqual([]);
   });
 });
+
+describe("image_markdown", () => {
+  const base = {
+    publicId: "abc",
+    title: "Pixel [8]",
+    category: null,
+    condition: null,
+    targetPrice: "100",
+  };
+
+  it("renders a Markdown image when photo_url is set", () => {
+    const view = publicListingView({ ...base, photoUrl: "https://img.example/a.jpg" });
+    expect(view.image_markdown).toBe("![Pixel  8](https://img.example/a.jpg)");
+  });
+
+  it("is null without a photo", () => {
+    expect(publicListingView({ ...base, photoUrl: null }).image_markdown).toBeNull();
+  });
+});

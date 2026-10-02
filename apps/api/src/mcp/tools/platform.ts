@@ -25,6 +25,7 @@ import {
   SELLER_CRITERIA_PAUSE_MARKER,
   unresolvedBuyerPauseAsks,
 } from "../../negotiation/phase/seller-criteria-pause.js";
+import { getNotificationUserInfo } from "../../notification/get-user-info.js";
 import { mcpConnectHint } from "../../routes/mcp-oauth.js";
 import { evaluateDisputeOpeningEligibility } from "../../services/dispute-opening-eligibility.service.js";
 import { describeDisputeOrderGate } from "../../services/dispute-order-gate.service.js";
@@ -73,10 +74,20 @@ import {
   normalizeGetNegotiationExpand,
 } from "./mcp-get-negotiation-schema.js";
 import { haggleGetListingInputSchema, haggleGetListingOutputSchema } from "./mcp-listing-schema.js";
+import {
+  advisorInputFromListing,
+  buildPrepareNegotiationView,
+  defaultBuilderMemory,
+  listingImageMarkdown,
+  MCP_MODE_GUIDANCE,
+  negotiationSummaryMarkdown,
+  summarizeTranscript,
+} from "./mcp-negotiation-prep.js";
 import { hagglePlayNextInputSchema } from "./mcp-play-next-schema.js";
 import { haggleStartNegotiationInputSchema } from "./mcp-start-schema.js";
 import {
   buildMcpGetNegotiationExpandView,
+  expandMcpTranscript,
   mcpNegotiationTranscript,
   mcpStartNextActions,
   negotiationSayToUser,
@@ -122,32 +133,70 @@ function requireScopedActor(scope: "agents" | "listings" | "negotiate" | "orders
   return requireActorWithScope(scope);
 }
 
-async function resolveBuyerPresetId(
+type ResolvedBuyerAgent = {
+  presetId: string;
+  /** Stored builderChatMemory of a saved agent (web: savedMemory[savedId]). */
+  memory?: Record<string, unknown>;
+  weights?: Record<string, number>;
+};
+
+async function resolveBuyerAgent(
   db: Database,
   actor: AuthUser,
   agentId: string | undefined,
-): Promise<string> {
+): Promise<ResolvedBuyerAgent> {
+  const fallback = { presetId: DEFAULT_NEGOTIATION_AGENT_PRESET_ID };
   const raw = agentId?.trim() || DEFAULT_NEGOTIATION_AGENT_PRESET_ID;
-  if (getNegotiationAgentPreset(raw)) return raw;
+  if (getNegotiationAgentPreset(raw)) return { presetId: raw };
   if (!isListingId(raw)) {
     const byName = raw.toLowerCase();
-    if (getNegotiationAgentPreset(byName)) return byName;
-    return DEFAULT_NEGOTIATION_AGENT_PRESET_ID;
+    if (getNegotiationAgentPreset(byName)) return { presetId: byName };
+    return fallback;
   }
   const [agent] = await db
     .select()
     .from(negotiationAgents)
     .where(eq(negotiationAgents.id, raw))
     .limit(1);
-  if (!agent || (!agent.isSystem && agent.userId !== actor.id)) {
-    return DEFAULT_NEGOTIATION_AGENT_PRESET_ID;
-  }
-  const config = agent.negotiationAgentConfig ?? {};
-  const fromConfig = [config.basePresetId, config.negotiationAgentPresetId, agent.name].find(
-    (value): value is string =>
-      typeof value === "string" && Boolean(getNegotiationAgentPreset(value)),
-  );
-  return fromConfig ?? DEFAULT_NEGOTIATION_AGENT_PRESET_ID;
+  if (!agent || (!agent.isSystem && agent.userId !== actor.id)) return fallback;
+  const config = (agent.negotiationAgentConfig ?? {}) as Record<string, unknown>;
+  const presetId =
+    [config.basePresetId, config.negotiationAgentPresetId, agent.name].find(
+      (value): value is string =>
+        typeof value === "string" && Boolean(getNegotiationAgentPreset(value)),
+    ) ?? DEFAULT_NEGOTIATION_AGENT_PRESET_ID;
+  const memory = config.builderChatMemory;
+  const weights = config.weights;
+  return {
+    presetId,
+    ...(memory && typeof memory === "object" && !Array.isArray(memory)
+      ? { memory: memory as Record<string, unknown> }
+      : {}),
+    ...(weights && typeof weights === "object" && !Array.isArray(weights)
+      ? { weights: weights as Record<string, number> }
+      : {}),
+  };
+}
+
+type RoundRow = Awaited<ReturnType<typeof getRoundsBySessionId>>[number];
+
+function toTranscriptRounds(rounds: RoundRow[]) {
+  return rounds.map((round) => {
+    const meta = (round.metadata as Record<string, unknown> | null) ?? null;
+    const heldQuestions = Array.isArray(meta?.pause_questions)
+      ? meta.pause_questions.filter((q): q is string => typeof q === "string")
+      : [];
+    return {
+      roundNo: round.roundNo,
+      senderRole: round.senderRole,
+      message: round.message,
+      decision: round.decision,
+      priceminor: round.priceminor,
+      counterPriceMinor: round.counterPriceMinor,
+      heldForCriteriaPause: isSellerCriteriaPauseReasoning(meta?.reasoning),
+      pauseQuestions: heldQuestions,
+    };
+  });
 }
 
 export function publicListingView(listing: {
@@ -169,6 +218,7 @@ export function publicListingView(listing: {
     condition: listing.condition,
     target_price: listing.targetPrice,
     photo_url: listing.photoUrl,
+    image_markdown: listingImageMarkdown(listing.title, listing.photoUrl),
     claimed: listing.sellerId === undefined ? undefined : Boolean(listing.sellerId),
     listing_url: listing.publicId ? `${publicAppBaseUrl()}/l/${listing.publicId}` : null,
     required_criteria: buyerVisibleRequiredCriteria(listing.negotiationAgentSnapshot),
@@ -204,25 +254,35 @@ export function registerPlatformTools(
 ) {
   server.tool(
     "haggle_whoami",
-    "Show the connected Haggle account. If no account is connected, returns sign-in and sign-up URLs.",
+    "Show the connected Haggle account (own email, display name, my_deals_url). If no account is connected, returns sign-in and sign-up URLs.",
     {},
     async () => {
       const actor = requireActor();
       if (!actor) {
         return mcpJson({ connected: false, ...mcpConnectHint() });
       }
+      // Only the connected actor's own account data.
+      let info: { email: string; displayName: string } | null = null;
+      try {
+        info = await getNotificationUserInfo(db, actor.id);
+      } catch {
+        info = null;
+      }
       return mcpJson({
         connected: true,
         user_id: actor.id,
         role: actor.role ?? "user",
         scopes: effectiveMcpScopes(actor),
+        email: info?.email ?? actor.email ?? null,
+        display_name: info?.displayName ?? null,
+        my_deals_url: `${publicAppBaseUrl()}/buy/dashboard`,
       });
     },
   );
 
   server.tool(
     "haggle_search_listings",
-    "Search published Haggle listings. Public — no account required.",
+    "Search published Haggle listings. Public — no account required. When presenting a listing, show image_markdown (a Markdown image) when it is not null.",
     {
       q: z.string().optional(),
       category: z.string().optional(),
@@ -244,7 +304,7 @@ export function registerPlatformTools(
     "haggle_get_listing",
     {
       description:
-        "Get a published listing by its public id (the /l/:publicId slug). Returns required_criteria as {checkId, ask}[] from extractSellerRequiredCriteria(listing.negotiationAgentSnapshot) — same source as the web start wizard. Empty when the seller has no required checks. Do not assume IMEI/완납/침수/Find My.",
+        "Get a published listing by its public id (the /l/:publicId slug). Returns required_criteria as {checkId, ask}[] from extractSellerRequiredCriteria(listing.negotiationAgentSnapshot) — same source as the web start wizard. Empty when the seller has no required checks. Do not assume IMEI/완납/침수/Find My. When presenting a listing, show image_markdown (a Markdown image) when it is not null.",
       inputSchema: haggleGetListingInputSchema,
       outputSchema: haggleGetListingOutputSchema,
     },
@@ -500,17 +560,61 @@ export function registerPlatformTools(
   );
 
   server.tool(
+    "haggle_prepare_negotiation",
+    "Step 1 of a guided buyer negotiation (same path as the web start wizard). Returns required_criteria (must_answer), tag_questions with options, price_questions (targetPrice / budgetMax in whole dollars), presets, the user's saved agents, fulfillment_choices and an instruction. Ask the must-answers first, offer a strategy chat (haggle_builder_chat_turn with public_id), then ask consult vs delegate before haggle_start_negotiation. When presenting the listing, show listing.image_markdown (a Markdown image) when it is not null.",
+    { public_id: z.string().min(1).describe("Listing slug (jc6r2T3d) or full /l/... URL") },
+    async ({ public_id }) => {
+      const scoped = requireScopedActor("negotiate");
+      if (!scoped.ok) return scoped.error;
+      const actor = scoped.actor;
+      const listing = await getPublishedListingByPublicId(db, public_id);
+      if (!listing) return mcpError("LISTING_NOT_FOUND", { public_id });
+      const agents = await db
+        .select()
+        .from(negotiationAgents)
+        .where(and(eq(negotiationAgents.userId, actor.id), eq(negotiationAgents.isSystem, false)));
+      return mcpJson(
+        buildPrepareNegotiationView(
+          listing,
+          agents
+            .filter((a) => a.role === "buyer" || a.role === "both")
+            .map((a) => ({ id: a.id, name: a.name, description: a.description })),
+        ),
+      );
+    },
+  );
+
+  server.tool(
     "haggle_builder_chat_turn",
-    "One Agent Studio builder turn. Same pipeline as POST /negotiations/agents/builder/chat-turn. Persists builderChatMemory when agent_id is a user-owned agent.",
+    "One buyer-strategy builder turn. Same pipeline as POST /negotiations/agents/builder/chat-turn. Pass public_id and the server fills the listing (price, tags, seller required criteria); omit previous_memory on the first turn and pass back builder_memory from the previous result on later turns so you can discuss strategy over several turns. builder_memory is accepted as-is by haggle_start_negotiation. Persists builderChatMemory when agent_id is a user-owned agent.",
     {
       ...negotiationAgentBuilderTurnBodySchema.omit({ user_id: true }).shape,
+      public_id: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("Listing slug or /l/... URL; server-fills listings and seller_required_criteria"),
+      previous_memory: negotiationAgentBuilderTurnBodySchema.shape.previous_memory.optional(),
     },
-    async (args) => {
+    async ({ public_id, previous_memory, ...args }) => {
       const scoped = requireScopedActor("agents");
       if (!scoped.ok) return scoped.error;
       const actor = scoped.actor;
+      let listingInput: ReturnType<typeof advisorInputFromListing> | undefined;
+      let fallbackMemory: ReturnType<typeof defaultBuilderMemory> | undefined;
+      if (public_id) {
+        const listing = await getPublishedListingByPublicId(db, public_id);
+        if (!listing) return mcpError("LISTING_NOT_FOUND", { public_id });
+        listingInput = advisorInputFromListing(listing);
+        fallbackMemory = defaultBuilderMemory(listing);
+      }
       const parsed = negotiationAgentBuilderTurnBodySchema.safeParse({
         ...args,
+        ...(listingInput && !args.listings?.length ? { listings: listingInput.listings } : {}),
+        ...(listingInput && !args.seller_required_criteria?.length
+          ? { seller_required_criteria: listingInput.seller_required_criteria }
+          : {}),
+        previous_memory: previous_memory ?? fallbackMemory,
         user_id: actor.id,
       });
       if (!parsed.success) {
@@ -538,7 +642,15 @@ export function registerPlatformTools(
               .where(eq(negotiationAgents.id, existing.id));
           }
         }
-        return mcpJson({ agent_id: args.agent_id ?? null, ...result });
+        return mcpJson({
+          agent_id: args.agent_id ?? null,
+          ...result,
+          // Start accepts this directly as builder_memory; pass it back as previous_memory next turn.
+          builder_memory: result.memory,
+          next_actions: ["haggle_builder_chat_turn", "haggle_start_negotiation"],
+          instruction:
+            "Relay the reply to the user. Continue the strategy chat with previous_memory = builder_memory, or start with builder_memory.",
+        });
       } catch {
         return mcpError("CHAT_TURN_FAILED");
       }
@@ -549,20 +661,38 @@ export function registerPlatformTools(
     "haggle_start_negotiation",
     {
       description:
-        "Start a buyer negotiation on a published listing. Same as POST /negotiations/start. Requires a connected account that is not the seller. public_id may be the slug (jc6r2T3d) or the full /l/... URL. agent_id is optional — use a preset (hunter, balancer, closer, verifier), an id from haggle_list_agents, or omit it to use balancer. Call haggle_get_listing first and answer required_criteria ({checkId, ask}) via buyerCriteria ({checkId, stance?}). Empty start is 409 BUYER_CRITERIA_REQUIRED with required_criteria {checkId, ask}[] (and required_check_ids) and no session. Do not assume IMEI/완납/침수/Find My. Do not use answer_pause. Do not invent user IDs.",
+        "Start a buyer negotiation on a published listing. Same as POST /negotiations/start. Requires a connected account that is not the seller. public_id may be the slug (jc6r2T3d) or the full /l/... URL. agent_id is optional — use a preset (hunter, balancer, closer, verifier), an id from haggle_list_agents, or omit it to use balancer. Call haggle_get_listing first and answer required_criteria ({checkId, ask}) via buyerCriteria ({checkId, stance?}). Empty start is 409 BUYER_CRITERIA_REQUIRED with required_criteria {checkId, ask}[] (and required_check_ids) and no session. Do not assume IMEI/완납/침수/Find My. Do not use answer_pause. Do not invent user IDs. Web parity: call haggle_prepare_negotiation first, then pass the user's answers as buyerCriteria and builder_memory {budgetMax, targetPrice} (whole dollars) — without budgetMax the walk-away price is the asking price. A saved agent_id applies its stored memory and weights. Optional agent_weights, agent_overrides, fulfillment, buyer_control_mode (manual = consult, auto = delegate). After start: consult = haggle_play_next each round with the user; delegate = haggle_play_until.",
       inputSchema: haggleStartNegotiationInputSchema,
     },
-    async ({ public_id, agent_id, deadline_hours, buyerCriteria }) => {
+    async ({
+      public_id,
+      agent_id,
+      deadline_hours,
+      buyerCriteria,
+      builder_memory,
+      agent_weights,
+      agent_overrides,
+      buyer_control_mode,
+      fulfillment,
+    }) => {
       const scoped = requireScopedActor("negotiate");
       if (!scoped.ok) return scoped.error;
       const actor = scoped.actor;
       try {
-        const presetId = await resolveBuyerPresetId(db, actor, agent_id);
+        const agent = await resolveBuyerAgent(db, actor, agent_id);
+        // Web parity: this call's briefing wins, else the saved agent's memory/weights.
+        const memory = builder_memory ?? agent.memory;
+        const weights = agent_weights ?? agent.weights;
         const parsed = parseStartBuyerNegotiationBody({
           listing_public_id: public_id,
-          negotiation_agent_preset_id: presetId,
+          negotiation_agent_preset_id: agent.presetId,
           deadline_hours,
           ...(buyerCriteria ? { buyerCriteria } : {}),
+          ...(memory ? { negotiation_agent_builder_memory: memory } : {}),
+          ...(weights ? { agent_weights: weights } : {}),
+          ...(agent_overrides ? { agent_overrides } : {}),
+          ...(buyer_control_mode ? { buyer_control_mode } : {}),
+          ...(fulfillment ? { fulfillment } : {}),
         });
         if (!parsed.ok) {
           return mcpError(parsed.body.error, {
@@ -601,9 +731,11 @@ export function registerPlatformTools(
           status: started.body.status,
           driver: "mcp",
           chat_url: negotiationChatUrl(started.body.session_id),
+          buyer_control_mode: buyer_control_mode ?? "auto",
           next_actions: mcpStartNextActions(false),
+          mode_guidance: MCP_MODE_GUIDANCE,
           message:
-            "Negotiation started. Call haggle_play_next to advance a round. Open chat_url to watch on the web.",
+            "Negotiation started. Consult mode: call haggle_play_next each round, show the counterpart line and price, decide the next move with the user. Delegate mode: call haggle_play_until. Open chat_url to watch on the web.",
         });
       } catch (error) {
         return mcpError("START_NEGOTIATION_FAILED", {
@@ -617,7 +749,7 @@ export function registerPlatformTools(
     "haggle_get_negotiation",
     {
       description:
-        "Read the live negotiation. Immediately quote say_to_user to the human — that is the counterpart's line. If pause_questions are present, ask those next; do not treat them as the seller's bargain line. Do not stop silently. Default response includes full transcript + offers (plus recent_messages). expand is optional if you only need a subset.",
+        "Read the live negotiation. Immediately quote say_to_user to the human — that is the counterpart's line. If pause_questions are present, ask those next; do not treat them as the seller's bargain line. Do not stop silently. Default response includes full transcript + offers (plus recent_messages). expand is optional if you only need a subset. Show summary_markdown (round table with seller offer / my offer / note, status, chat_url link) to the user instead of dumping every message; the structured fields remain for follow-up.",
       inputSchema: haggleGetNegotiationInputSchema,
     },
     async ({ session_id, expand }) => {
@@ -709,6 +841,11 @@ export function registerPlatformTools(
         ...(foldView.offers ? { offers: foldView.offers } : {}),
         pause_questions: pauseAsks.map((c) => c.ask),
         pause_check_ids: pauseAsks.map((c) => c.checkId),
+        summary_markdown: negotiationSummaryMarkdown(
+          foldView.transcript ?? recent,
+          session.status,
+          negotiationChatUrl(session.id),
+        ),
         next_actions: nextActions,
         ...talk,
         instruction:
@@ -721,7 +858,7 @@ export function registerPlatformTools(
     "haggle_play_next",
     {
       description:
-        "Advance one Haggle auto-play round (DeepSeek plays a side). After the tool returns, immediately quote say_to_user. If ask_user asked for a price/accept, pass the user's counter as price_minor (integer cents, 42000 = $420) and optional message — same as the web counter, not hnp_submit_offer. Omit both fields to autoplay. Rejected with BUYER_CRITERIA_REQUIRED if seller required criteria exist and buyerCriteria was not provided at start — do not start auto-play and do not use answer_pause.",
+        "Advance one Haggle auto-play round (DeepSeek plays a side). After the tool returns, immediately quote say_to_user. If ask_user asked for a price/accept, pass the user's counter as price_minor (integer cents, 42000 = $420) and optional message — same as the web counter, not hnp_submit_offer. Omit both fields to autoplay. Consult mode: call this once per round and discuss each counterpart line and price with the user. Rejected with BUYER_CRITERIA_REQUIRED if seller required criteria exist and buyerCriteria was not provided at start — do not start auto-play and do not use answer_pause. Show summary_markdown (round table with seller offer / my offer / note, status, chat_url link) to the user instead of dumping every message; the structured fields remain for follow-up.",
       inputSchema: hagglePlayNextInputSchema,
     },
     async ({ session_id, price_minor, message }) => {
@@ -743,22 +880,7 @@ export function registerPlatformTools(
       const latest = rounds.at(-1);
       const latestMeta = (latest?.metadata as Record<string, unknown> | null) ?? null;
       const transcript = mcpNegotiationTranscript(
-        rounds.map((round) => {
-          const meta = (round.metadata as Record<string, unknown> | null) ?? null;
-          const heldQuestions = Array.isArray(meta?.pause_questions)
-            ? meta.pause_questions.filter((q): q is string => typeof q === "string")
-            : [];
-          return {
-            roundNo: round.roundNo,
-            senderRole: round.senderRole,
-            message: round.message,
-            decision: round.decision,
-            priceminor: round.priceminor,
-            counterPriceMinor: round.counterPriceMinor,
-            heldForCriteriaPause: isSellerCriteriaPauseReasoning(meta?.reasoning),
-            pauseQuestions: heldQuestions,
-          };
-        }),
+        toTranscriptRounds(rounds),
         Number(played.body.current_round ?? latest?.roundNo ?? 0),
       );
       const lastMsg = transcript.recent_messages.at(-1);
@@ -795,6 +917,11 @@ export function registerPlatformTools(
         message: spoken,
         current_round: transcript.current_round,
         recent_messages: transcript.recent_messages,
+        summary_markdown: negotiationSummaryMarkdown(
+          expandMcpTranscript(toTranscriptRounds(rounds)),
+          typeof played.body.session_status === "string" ? played.body.session_status : null,
+          negotiationChatUrl(session_id),
+        ),
         ...talk,
         instruction: "Speak say_to_user now. Ask ask_user. Do not stop silently.",
       });
@@ -803,7 +930,7 @@ export function registerPlatformTools(
 
   server.tool(
     "haggle_play_until",
-    "Advance auto-play rounds until the session is terminal, paused, or the round cap is hit.",
+    "Delegate mode: advance auto-play rounds until the session is terminal, paused, or the round cap is hit. Returns transcript_summary (per round: who, price_minor, one line) and chat_url. For consult mode use haggle_play_next each round instead. Show summary_markdown (round table with seller offer / my offer / note, status, chat_url link) to the user instead of dumping every message; the structured fields remain for follow-up.",
     {
       session_id: z.string().uuid(),
       max_rounds: z.number().int().min(1).max(8).optional(),
@@ -814,6 +941,8 @@ export function registerPlatformTools(
       const actor = scoped.actor;
       const cap = max_rounds ?? 8;
       const steps: unknown[] = [];
+      let last: Record<string, unknown> = { complete: false, message: "Stopped at max_rounds" };
+      let failed = false;
       for (let i = 0; i < cap; i += 1) {
         const played = await executeAutoPlayNext(db, {
           sessionId: session_id,
@@ -823,10 +952,29 @@ export function registerPlatformTools(
         });
         steps.push(played.body);
         if (!played.ok || played.body.complete || played.body.paused_for_buyer) {
-          return mcpJson({ steps, ...played.body }, !played.ok);
+          last = played.body;
+          failed = !played.ok;
+          break;
         }
       }
-      return mcpJson({ steps, complete: false, message: "Stopped at max_rounds" });
+      const rounds = await getRoundsBySessionId(db, session_id);
+      const transcript = buildMcpGetNegotiationExpandView(toTranscriptRounds(rounds), 0, [
+        "transcript",
+      ]).transcript;
+      return mcpJson(
+        {
+          steps,
+          ...last,
+          transcript_summary: summarizeTranscript(transcript ?? []),
+          summary_markdown: negotiationSummaryMarkdown(
+            transcript ?? [],
+            typeof last.session_status === "string" ? last.session_status : null,
+            negotiationChatUrl(session_id),
+          ),
+          chat_url: negotiationChatUrl(session_id),
+        },
+        failed,
+      );
     },
   );
 
