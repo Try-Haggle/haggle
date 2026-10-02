@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { type Database, sql } from "@haggle/db";
+import { buildCategoryCriteriaScaffold } from "@haggle/shared";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { callLLM } from "../negotiation/adapters/deepseek-client.js";
@@ -10,6 +11,7 @@ import {
   buildAdvisorCandidatePlan,
 } from "../services/advisor-candidate-planner.service.js";
 import { generateTextEmbedding } from "../services/embedding.service.js";
+import { reconcileCategoryCriteria } from "../services/negotiation-agent-builder-chat.service.js";
 import { saveNegotiationAgentBuilderMemorySnapshot } from "../services/negotiation-agent-builder-memory.service.js";
 import {
   compilePresetTuningDraft,
@@ -199,6 +201,17 @@ const negotiationAgentBuilderMemorySchema = z.object({
   openingTactic: z.enum(["condition_anchor", "fair_market_anchor", "speed_close"]),
   questions: z.array(z.string()).default([]),
   source: z.array(z.string()).default([]),
+  categoryCriteria: z
+    .array(
+      z.object({
+        checkId: z.string(),
+        questionKo: z.string().default(""),
+        enforcement: z.enum(["hard", "soft"]).default("soft"),
+        requirement: z.enum(["required", "optional"]).default("optional"),
+        stance: z.string().optional(),
+      }),
+    )
+    .default([]),
   structured: structuredNegotiationAgentBuilderMemorySchema.optional(),
 });
 
@@ -1067,6 +1080,14 @@ ${formatCandidatePlanForPrompt(initialCandidatePlan)}`,
     ),
     input.previous_memory,
   );
+  // Developer scenarios use the same check-id answers as the listing builder.
+  memory.categoryCriteria = reconcileCategoryCriteria(
+    buildCategoryCriteriaScaffold(
+      input.listings.flatMap((listing) => [listing.category ?? "", ...listing.tags]),
+    ),
+    parsed.memory.categoryCriteria,
+    input.previous_memory.categoryCriteria,
+  );
   const finalRequirementPlan = buildAdvisorRequirementPlan({
     memory,
     listings: input.listings,
@@ -1150,6 +1171,7 @@ function formatAdvisorListingsForPrompt(
 }
 
 function hasAdvisorBuyerPreference(memory: NegotiationAgentBuilderMemory): boolean {
+  if (memory.categoryCriteria.some((c) => Boolean(c.stance?.trim()))) return true;
   if (memory.mustHave.length > 0 || memory.avoid.length > 0) return true;
   if (hasGeneralNoPreference(memoryTextFromNegotiationAgentBuilderMemory(memory))) return true;
   if (memory.riskStyle !== "balanced") return true;
@@ -1189,6 +1211,12 @@ function chooseNextAdvisorQuestions(
     hasGeneralNoPreference(memoryTextFromNegotiationAgentBuilderMemory(memory))
   ) {
     return [];
+  }
+  if (
+    requirementPlan.nextSlot &&
+    isScopedConditionConfirmationQuestion(requirementPlan.nextSlot.questionKo)
+  ) {
+    return [requirementPlan.nextSlot.questionKo];
   }
   if (candidatePlan.nextAction.question) return [candidatePlan.nextAction.question];
   if (
@@ -1254,6 +1282,19 @@ function buildAdvisorReplyAfterPlanning(input: {
   agentProfileName: string;
 }): string {
   if (input.nextQuestions.length > 0) {
+    if (
+      input.nextQuestions.some((question) =>
+        input.requirementPlan.missingSlots.some(
+          (slot) => slot.tagPath === "taxonomy" && slot.questionKo === question,
+        ),
+      )
+    ) {
+      const acknowledgement =
+        stripAdvisorQuestions(input.parsedReply) || "Your settings are saved.";
+      return sanitizeAdvisorReply(
+        `${acknowledgement} ${formatBundledAdvisorQuestions(input.nextQuestions)}`,
+      );
+    }
     return sanitizeAdvisorReply(
       mergeAdvisorQuestion(
         input.parsedReply,
@@ -1308,6 +1349,9 @@ function mergeAdvisorQuestion(
   const trimmedReply = reply.trim();
   if (!trimmedReply) return question;
   if (trimmedReply.includes(question)) return trimmedReply;
+  if (isScopedConditionConfirmationQuestion(question)) {
+    return `${stripAdvisorQuestions(trimmedReply) || "Your settings are saved."} ${question}`;
+  }
   if (requirementPlan.hasBlockingMissingSlots) {
     if (
       requirementPlan.nextSlot &&
@@ -1534,10 +1578,16 @@ function applyPendingSlotAnswerScope(
   latestMessage: string,
   previousMemory: NegotiationAgentBuilderMemory,
 ): NegotiationAgentBuilderMemory {
+  const kinds = pendingQuestionKinds(previousMemory.questions.join(" "));
   const pendingSlot = previousMemory.structured?.pendingSlots
     .slice()
     .reverse()
-    .find((slot) => slot.productScope && slot.enforcement === "hard");
+    .find(
+      (slot) =>
+        slot.productScope &&
+        ((slot.slotId === "battery_health" && kinds.includes("battery")) ||
+          (slot.slotId === "carrier_lock" && kinds.includes("carrier"))),
+    );
   if (!pendingSlot?.productScope) return memory;
 
   if (pendingSlot.slotId === "battery_health") {
@@ -3053,6 +3103,7 @@ function buildNegotiationAgentBuilderMemoryFromStoredCards(
     openingTactic: "fair_market_anchor",
     questions: [],
     source: [],
+    categoryCriteria: [],
   };
   let foundUsefulMemory = false;
 

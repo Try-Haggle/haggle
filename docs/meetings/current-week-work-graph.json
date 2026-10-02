@@ -530,8 +530,8 @@
         "테스트"
       ],
       "outcome": "같은 상품이라도 상태·저장공간 같은 사실이 타결가와 대사에 드러나고, 사용자가 전략이 있다고 느낄 수 있다.",
-      "nextAction": "인오가 용량별 다른 호가와 retail-msrp 스킬로 타결가·대사를 재측한다. 같은 호가에서 용량만 다른 민감도는 한계로 두고 모든 조합을 돌리지 않는다. 리뷰어는 proposed.",
-      "reviewBrief": "저장공간만 다른 두 케이스가 같은 가격으로 끝나지 않는지, 대사가 단순 반복이 아닌지, 지연이 더 나빠지지 않았는지 본다.",
+      "nextAction": "인오가 용량별 다른 호가와 retail-msrp 스킬로 타결가·대사를 재측한다. 같은 호가에서 용량만 다른 민감도는 한계로 두고 모든 조합을 돌리지 않는다. 리뷰어는 proposed. 2026-10-01 태그 질문 계약 수정 slice의 CI와 desktop/mobile 검증을 확인하고 인오 리뷰어 확정·단일 승인을 받는다. 작업 카드 docs/wip/builder-tag-question-contract.md. PR #200과 같은 builder 파일을 수정하므로 먼저 병합된 변경 뒤 rebase·동일 SHA 재검증한다.",
+      "reviewBrief": "저장공간만 다른 두 케이스가 같은 가격으로 끝나지 않는지, 대사가 단순 반복이 아닌지, 지연이 더 나빠지지 않았는지 본다. 추가 slice는 정확한 리스팅 태그/부모가 여는 질문과 Quick Setup이 같은 check ID·선택지·HARD/SOFT를 쓰는지, 모델 중복 질문 제거와 상품/조건 재확인이 함께 유지되는지 판단한다.",
       "evidence": [
         "동일 시나리오 전후 로그",
         "타결가 비교",
@@ -580,7 +580,9 @@
         "2026-08-29 정행: Decide 기본 타임아웃 180s(상한 300s). 웹 라운드 abort 200s, stall 210s. 예전 클라이언트 75s가 서버 120s보다 짧아 라운드를 잘랐다.",
         "2026-08-29 정행: 그룹 F Flash 3건 staging-F-2026-08-30T010821664Z. Anker $22→$17 ACCEPTED, Kindle $55→$47 ACCEPTED, AirPods $80 REJECT(IMEI). 모델 deepseek-v4-flash. 21라운드, 추정 $0.109. 건당 약 $0.053 / $0.028 / $0.027.",
         "2026-08-29 정행: AirPods에는 IMEI가 없다. electronics-knowledge HARD를 열린 태그 체크로 바꿈. 랩은 열린 HARD를 전부 채움. 판매자 발행·구매자 Start는 미답 HARD를 막음.",
-        "2026-08-29 정행: 같은 호가면 용량 사다리를 강제하기 어렵다고 말했다. 고정 타결표는 협상 가치를 떨어뜨리므로 정가 스킬만 주고 모델이 판단하게 둔다. 인오에게는 호가를 나눠 재측해 달라고 했다."
+        "2026-08-29 정행: 같은 호가면 용량 사다리를 강제하기 어렵다고 말했다. 고정 타결표는 협상 가치를 떨어뜨리므로 정가 스킬만 주고 모델이 판단하게 둔다. 인오에게는 호가를 나눠 재측해 달라고 했다.",
+        "2026-10-01 정행: staging dTJW3ejj의 electronics/iphone-15-pro와 docs/engine/tag-spec-fewshot.md·criteria-and-issues.md를 대조. 별도 아이폰 표가 배터리/언락을 HARD로 바꿔 공유 선택지와 어긋남을 확인. W2026-08-22-02 독립 slice로 canonical 질문/선택지와 Quick Setup check ID 전달을 수정. 작업 카드 docs/wip/builder-tag-question-contract.md. 구현 중, reviewer proposed 유지. work:me는 기존 W2026-08-31-01 리뷰어 누락으로 실패; 무관한 배정 변경 없음.",
+        "2026-10-01 정행: 태그 질문 계약 slice 로컬 검증 API 3463 passed/기존 live 2 skip, Web 402 passed, 양측 typecheck/build, 변경 파일 Biome·diff 검사 통과. Playwright 실제 builder + mock API desktop/mobile 2 passed: 예산·일반 응답 check ID 포커스, unknown ID 무시, 선택 무호출 저장/다음 요청 보존. reviewer proposed 유지, done/리뷰 요청/staging 배포 없음."
       ],
       "remainingGaps": [
         "용량별 다른 호가 + retail-msrp 재측. 리뷰어는 proposed",

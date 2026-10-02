@@ -1178,7 +1178,7 @@ ${
 - targetPrice should be slightly below budgetMax when reasonable.
 - Do not decide required follow-up slots from intuition. Tag Garden requirement slots below are authoritative.
 - Slots marked enforcement=hard are blocking: ask missing hard slots before recommending, starting negotiation, or asking softer preference questions.
-- To reduce slow back-and-forth, bundle up to three related missing questions in one turn when the buyer can answer them together.
+- Checks listed in Canonical Quick Setup are answered through the UI. Never ask them again in reply or memory.questions. Ask at most one missing check without choices in chat.
 - Slots marked enforcement=soft are helpful but should not block recommendation when stronger candidate-planner work is ready.
 - Store each bundled question separately in memory.questions.
 - Ask only for the next missing advisor_recommendation slot from Tag Garden requirements.
@@ -1254,7 +1254,17 @@ Strategy tuning:
 - Envelopes: alpha,beta in [0.3,3.0]; u_threshold,u_aspiration in [0.3,0.85] with u_aspiration > u_threshold. weights each in [0,1] and sum to ~1.0.
 - Higher beta = concedes faster; higher u_threshold/u_aspiration = pickier (walks away more). Raise w_p for price focus, w_t for speed, w_r for counterparty risk, w_s for relationship.`;
 
-  const advisorUserPrompt = `Current strategy:
+  const advisorUserPrompt = `Canonical Quick Setup checks (do not ask these in reply or memory.questions; the user answers them by tapping below):
+${
+  usePlanner
+    ? initialRequirementPlan.requiredSlots
+        .filter((slot) => slot.answerOptions?.length)
+        .map((slot) => `${slot.slotId}: ${slot.questionKo} [${slot.answerOptions!.join(" | ")}]`)
+        .join("\n")
+    : "None"
+}
+
+Current strategy:
 ${input.current_strategy ? JSON.stringify(input.current_strategy) : "(none — use sensible defaults if you must)"}
 
 Previous memory:
@@ -1351,6 +1361,24 @@ ${usePlanner ? formatCandidatePlanForPrompt(initialCandidatePlan) : "None — no
     ),
     input.previous_memory,
   );
+  // Phase G: reconcile category criteria deterministically — the taxonomy scaffold
+  // owns the check set + ids; only requirement/stance flow from the LLM (this turn)
+  // or previous memory. Keeps the structured layer trustworthy for Flow 2 (mirror)
+  // and Flow 3 (pause) regardless of what the LLM echoes back. When a turn arrives
+  // WITHOUT listing context (empty scaffold — e.g. the web sends listings:[] when the
+  // price is momentarily absent), PRESERVE the criteria captured on earlier turns
+  // instead of wiping them to [].
+  memory.categoryCriteria =
+    criteriaScaffold.length > 0
+      ? reconcileCategoryCriteria(
+          criteriaScaffold,
+          parsed.memory.categoryCriteria,
+          input.previous_memory.categoryCriteria,
+        )
+      : // No scaffold this turn: preserve prior criteria, but still enforce the
+        // "only real taxonomy check ids" invariant so a client-crafted
+        // previous_memory can't smuggle fabricated criteria onto the agent.
+        input.previous_memory.categoryCriteria.filter((c) => isTaxonomyCheckId(c.checkId));
   // The seller side and standalone (no-listing) buyer agents have no buyer
   // requirement slots (budget, buyer priority, …), so feed an empty plan into
   // the structured-memory + question-plan builders. Otherwise buyer-only slots
@@ -1382,24 +1410,6 @@ ${usePlanner ? formatCandidatePlanForPrompt(initialCandidatePlan) : "None — no
     ...memory,
     questions: nextQuestions,
   };
-  // Phase G: reconcile category criteria deterministically — the taxonomy scaffold
-  // owns the check set + ids; only requirement/stance flow from the LLM (this turn)
-  // or previous memory. Keeps the structured layer trustworthy for Flow 2 (mirror)
-  // and Flow 3 (pause) regardless of what the LLM echoes back. When a turn arrives
-  // WITHOUT listing context (empty scaffold — e.g. the web sends listings:[] when the
-  // price is momentarily absent), PRESERVE the criteria captured on earlier turns
-  // instead of wiping them to [].
-  finalMemory.categoryCriteria =
-    criteriaScaffold.length > 0
-      ? reconcileCategoryCriteria(
-          criteriaScaffold,
-          parsed.memory.categoryCriteria,
-          input.previous_memory.categoryCriteria,
-        )
-      : // No scaffold this turn: preserve prior criteria, but still enforce the
-        // "only real taxonomy check ids" invariant so a client-crafted
-        // previous_memory can't smuggle fabricated criteria onto the agent.
-        input.previous_memory.categoryCriteria.filter((c) => isTaxonomyCheckId(c.checkId));
   finalMemory.structured = buildStructuredNegotiationAgentBuilderMemory({
     memory: finalMemory,
     previousMemory: input.previous_memory,
@@ -1422,22 +1432,40 @@ ${usePlanner ? formatCandidatePlanForPrompt(initialCandidatePlan) : "None — no
   // seller marked required — one per turn, ask-once. This makes mirroring reliable
   // instead of relying on the LLM to volunteer the [SELLER REQUIRES] question, so the
   // buyer actually sets a stance on every seller requirement before closing.
+  let sellerMirrorSlot: TagRequirementSlot | undefined;
   if (
     usePlanner &&
     !conflictQuestion &&
     !finalRequirementPlan.hasBlockingMissingSlots &&
     input.seller_required_criteria.length > 0
   ) {
-    const mirrorQuestion = pickSellerMirrorQuestion(
-      input.seller_required_criteria,
-      finalMemory.categoryCriteria,
-      input.previous_memory.questions,
+    sellerMirrorSlot = finalRequirementPlan.missingSlots.find(
+      (slot) =>
+        slot.answerOptions?.length &&
+        input.seller_required_criteria.some((criterion) => criterion.checkId === slot.slotId),
     );
+    const mirrorQuestion = sellerMirrorSlot
+      ? null
+      : pickSellerMirrorQuestion(
+          input.seller_required_criteria,
+          finalMemory.categoryCriteria,
+          input.previous_memory.questions,
+        );
     if (mirrorQuestion) {
       nextQuestions = [mirrorQuestion];
       finalMemory.questions = nextQuestions;
     }
+    if (sellerMirrorSlot) {
+      nextQuestions = [];
+      finalMemory.questions = nextQuestions;
+    }
   }
+  const quickSetupSlot =
+    usePlanner && !conflictQuestion && nextQuestions.length === 0
+      ? (sellerMirrorSlot ??
+        finalRequirementPlan.blockingSlots.find((slot) => slot.answerOptions?.length) ??
+        finalRequirementPlan.missingSlots.find((slot) => slot.answerOptions?.length))
+      : undefined;
   finalMemory.structured.questionPlan = buildStructuredQuestionPlan({
     nextQuestions,
     requirementPlan: finalRequirementPlan,
@@ -1454,6 +1482,7 @@ ${usePlanner ? formatCandidatePlanForPrompt(initialCandidatePlan) : "None — no
         previousMemory: input.previous_memory,
         memory: finalMemory,
         agentProfileName: agentProfile.name,
+        quickSetupSlot,
       });
 
   return {
@@ -1461,12 +1490,13 @@ ${usePlanner ? formatCandidatePlanForPrompt(initialCandidatePlan) : "None — no
     memory: finalMemory,
     reply,
     strategy: parsed.strategy ? clampChatStrategy(parsed.strategy) : undefined,
+    quick_setup_check_id: quickSetupSlot?.slotId,
     tag_requirements: finalRequirementPlan,
     advisor_plan: finalCandidatePlan,
     turn_cost: buildNegotiationAgentBuilderTurnCost(turnUsage),
     learning_observations: collectLearningObservations({
       // ONLY the LLM's own generative questions. Planner-authored questions (universal
-      // buyer slots, hardcoded tag requirements, mirror/conflict prompts) are ours, not
+      // buyer slots, taxonomy requirements, mirror/conflict prompts) are ours, not
       // evidence of a taxonomy gap — recording them would promote "예산 범위는?" into a
       // permanent "learned check" and then re-observe itself every turn.
       questions: parsed.memory.questions ?? [],
@@ -1581,6 +1611,7 @@ function formatAdvisorListingsForPrompt(
 }
 
 function hasAdvisorBuyerPreference(memory: NegotiationAgentBuilderMemory): boolean {
+  if (memory.categoryCriteria.some((criterion) => Boolean(criterion.stance?.trim()))) return true;
   if (memory.mustHave.length > 0 || memory.avoid.length > 0) return true;
   if (hasGeneralNoPreference(memoryTextFromNegotiationAgentBuilderMemory(memory))) return true;
   if (memory.riskStyle !== "balanced") return true;
@@ -1598,12 +1629,15 @@ function chooseNextAdvisorQuestions(
   memory: NegotiationAgentBuilderMemory,
 ): string[] {
   if (requirementPlan.blockingSlots.length > 0) {
-    const firstBlockingQuestion = requirementPlan.blockingSlots[0]?.questionKo;
+    const chatBlockingSlots = requirementPlan.blockingSlots.filter(
+      (slot) => !slot.answerOptions?.length,
+    );
+    const firstBlockingQuestion = chatBlockingSlots[0]?.questionKo;
     if (firstBlockingQuestion && isScopedConditionConfirmationQuestion(firstBlockingQuestion)) {
       return [firstBlockingQuestion];
     }
 
-    const questions = requirementPlan.blockingSlots
+    const questions = chatBlockingSlots
       .slice(0, ADVISOR_MAX_QUESTIONS_PER_TURN)
       .map((slot, index) =>
         index === 0 &&
@@ -1621,6 +1655,13 @@ function chooseNextAdvisorQuestions(
   ) {
     return [];
   }
+  if (requirementPlan.nextSlot?.answerOptions?.length) return [];
+  if (
+    requirementPlan.nextSlot &&
+    isScopedConditionConfirmationQuestion(requirementPlan.nextSlot.questionKo)
+  ) {
+    return [requirementPlan.nextSlot.questionKo];
+  }
   if (candidatePlan.nextAction.question) return [candidatePlan.nextAction.question];
   if (
     candidatePlan.nextAction.action === "recommend" &&
@@ -1629,7 +1670,11 @@ function chooseNextAdvisorQuestions(
   ) {
     return [];
   }
-  return requirementPlan.question ? [requirementPlan.question] : [];
+  return requirementPlan.nextSlot?.answerOptions?.length
+    ? []
+    : requirementPlan.question
+      ? [requirementPlan.question]
+      : [];
 }
 
 function isScopedConditionConfirmationQuestion(question: string): boolean {
@@ -1683,8 +1728,30 @@ function buildAdvisorReplyAfterPlanning(input: {
   previousMemory: NegotiationAgentBuilderMemory;
   memory: NegotiationAgentBuilderMemory;
   agentProfileName: string;
+  quickSetupSlot?: TagRequirementSlot;
 }): string {
+  if (input.quickSetupSlot) {
+    const acknowledgement = stripAdvisorQuestions(input.parsedReply) || "Your settings are saved.";
+    const guidance =
+      input.quickSetupSlot.enforcement === "hard"
+        ? "Choose your remaining required conditions in Quick Setup below."
+        : "You can tune additional preferences in Quick Setup below.";
+    return sanitizeAdvisorReply(`${acknowledgement} ${guidance}`);
+  }
   if (input.nextQuestions.length > 0) {
+    if (
+      input.nextQuestions.some((question) =>
+        input.requirementPlan.missingSlots.some(
+          (slot) => slot.tagPath === "taxonomy" && slot.questionKo === question,
+        ),
+      )
+    ) {
+      const acknowledgement =
+        stripAdvisorQuestions(input.parsedReply) || "Your settings are saved.";
+      return sanitizeAdvisorReply(
+        `${acknowledgement} ${formatBundledAdvisorQuestions(input.nextQuestions)}`,
+      );
+    }
     return sanitizeAdvisorReply(
       mergeAdvisorQuestion(
         input.parsedReply,
@@ -1703,7 +1770,11 @@ function buildAdvisorReplyAfterPlanning(input: {
     return buildNoPreferenceAcknowledgement(input.memory, input.agentProfileName);
   }
 
-  return sanitizeAdvisorReply(input.parsedReply);
+  // The planner owns listing questions. A model-authored follow-up must not
+  // re-open a taxonomy choice that has already been answered.
+  return sanitizeAdvisorReply(
+    stripAdvisorQuestions(input.parsedReply) || "Your settings are saved.",
+  );
 }
 
 function buildNegotiationAgentBuilderTurnCost(usage: {
@@ -1739,6 +1810,9 @@ function mergeAdvisorQuestion(
   const trimmedReply = reply.trim();
   if (!trimmedReply) return question;
   if (trimmedReply.includes(question)) return trimmedReply;
+  if (isScopedConditionConfirmationQuestion(question)) {
+    return `${stripAdvisorQuestions(trimmedReply) || "Your settings are saved."} ${question}`;
+  }
   if (requirementPlan.hasBlockingMissingSlots) {
     if (
       requirementPlan.nextSlot &&
@@ -1965,10 +2039,16 @@ function applyPendingSlotAnswerScope(
   latestMessage: string,
   previousMemory: NegotiationAgentBuilderMemory,
 ): NegotiationAgentBuilderMemory {
+  const kinds = pendingQuestionKinds(previousMemory.questions.join(" "));
   const pendingSlot = previousMemory.structured?.pendingSlots
     .slice()
     .reverse()
-    .find((slot) => slot.productScope && slot.enforcement === "hard");
+    .find(
+      (slot) =>
+        slot.productScope &&
+        ((slot.slotId === "battery_health" && kinds.includes("battery")) ||
+          (slot.slotId === "carrier_lock" && kinds.includes("carrier"))),
+    );
   if (!pendingSlot?.productScope) return memory;
 
   if (pendingSlot.slotId === "battery_health") {
