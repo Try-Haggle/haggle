@@ -165,7 +165,7 @@ export function MessagesShell({ currentUserId }: MessagesShellProps) {
     >
       <div
         className={cn(
-          "flex overflow-hidden border-line bg-surface md:h-[calc(100dvh-8rem)] md:rounded-2xl md:border md:shadow-sm",
+          "flex overflow-hidden border-line bg-surface md:h-[calc(100dvh-var(--spacing-header)-4rem)] md:rounded-2xl md:border md:shadow-sm",
           selectedId ? "h-[100dvh]" : "h-[calc(100dvh-4rem)]",
         )}
       >

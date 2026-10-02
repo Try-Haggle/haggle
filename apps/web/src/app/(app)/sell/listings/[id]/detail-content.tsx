@@ -130,7 +130,7 @@ export function DetailContent({
   const bestOffer = offers.length > 0 ? Math.max(...offers) : null;
 
   return (
-    <main className="mx-auto min-h-[calc(100vh-4rem)] max-w-7xl px-4 py-6 sm:p-6">
+    <main className="mx-auto min-h-[calc(100vh-var(--spacing-header))] max-w-7xl px-4 py-6 sm:p-6">
       <BackLink href="/sell/dashboard" className="mb-6">
         Dashboard
       </BackLink>

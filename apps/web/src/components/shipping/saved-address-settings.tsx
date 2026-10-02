@@ -11,12 +11,10 @@ import {
   writeBuyerFulfillmentDefaults,
 } from "@/lib/fulfillment-options";
 import {
-  clearPendingDefaultAddress,
   EMPTY_SHIPPING_ADDRESS,
   formatAddressLine,
   isCompleteShippingAddress,
   isDefaultSavedAddress,
-  readPendingDefaultAddress,
   type SavedAddress,
   type ShippingAddressInput,
   toApiAddress,
@@ -60,26 +58,11 @@ export function SavedAddressSettings() {
       const res = await api.get<{ addresses: SavedAddress[] }>("/users/me/addresses");
       if (!cancelled) setAddresses(res.addresses ?? []);
     };
-    (async () => {
-      try {
-        const pending = readPendingDefaultAddress();
-        if (pending) {
-          await api.post("/users/me/addresses", {
-            ...toApiAddress(pending),
-            label: "home",
-            is_default: true,
-          });
-          clearPendingDefaultAddress();
-        }
-        await load();
-      } catch {
-        await load().catch(() => {
-          if (!cancelled) {
-            setMessage({ type: "error", text: "Could not load saved addresses." });
-          }
-        });
+    load().catch(() => {
+      if (!cancelled) {
+        setMessage({ type: "error", text: "Could not load saved addresses." });
       }
-    })();
+    });
     return () => {
       cancelled = true;
     };
@@ -112,7 +95,11 @@ export function SavedAddressSettings() {
   const defaultAddress = addresses.find(isDefaultSavedAddress) ?? addresses[0] ?? null;
 
   return (
-    <section className="rounded-xl border border-line bg-surface-raised p-4 sm:p-6 mb-6">
+    <section
+      // Linked from the buyer dashboard's "Add address" card.
+      id="delivery-address"
+      className="mb-6 scroll-mt-[calc(var(--spacing-header)+1rem)] rounded-xl border border-line bg-surface-raised p-4 sm:p-6"
+    >
       <h2 className="text-base sm:text-lg font-semibold text-ink mb-1">Default delivery address</h2>
       <p className="text-sm text-ink-muted mb-4">
         Used before negotiation so shipping can be priced into the deal. You can still enter a

@@ -2,59 +2,46 @@
 
 import { MessageSquare, Search } from "lucide-react";
 import Link from "next/link";
+import type { ComponentProps } from "react";
 import { NegotiationRosterRow } from "@/components/negotiations/negotiation-roster-row";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ListRow } from "@/components/ui/list-row";
 import { Price } from "@/components/ui/price";
 import { formatCondition, formatTimeAgo } from "@/lib/format";
+import { GetStarted } from "./get-started";
 import type { ActiveNegotiation, ViewedListing } from "./page";
 import { RecommendedForYou } from "./recommended";
 
 const RECENTLY_VIEWED_INITIAL_SHOW = 4;
 
 export function BuyerDashboardContent({
+  getStarted,
   userId,
+  firstName,
   viewedListings,
   activeNegotiations,
 }: {
+  getStarted: ComponentProps<typeof GetStarted>;
   userId: string;
+  firstName: string | null;
   viewedListings: ViewedListing[];
   activeNegotiations: ActiveNegotiation[];
 }) {
   return (
-    <main className="mx-auto min-h-[calc(100vh-4rem)] max-w-7xl px-4 py-6 sm:p-6">
-      {/* Header */}
-      <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-        <div>
-          <div className="mb-1 flex items-center gap-2">
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 24 24"
-              width="24"
-              height="24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="shrink-0 text-action-primary"
-            >
-              <circle cx="8" cy="21" r="1" />
-              <circle cx="19" cy="21" r="1" />
-              <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
-            </svg>
-            <h1 className="font-bold text-2xl text-ink">Buyer Dashboard</h1>
-          </div>
-          <p className="text-ink-secondary text-sm">Browse listings and track your negotiations</p>
-        </div>
-      </div>
+    <main className="mx-auto min-h-[calc(100vh-var(--spacing-header))] max-w-7xl px-4 py-6 sm:p-6">
+      {/* One line of greeting; the sections below say what the page is for. */}
+      <h1 className="mb-8 font-bold text-3xl text-ink tracking-tight">
+        {firstName ? `Welcome back, ${firstName}!` : "Welcome back!"}
+      </h1>
+
+      <GetStarted {...getStarted} />
 
       {/* Recommended for You */}
       <RecommendedForYou userId={userId} />
 
       {/* Recently Viewed Listings */}
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="font-bold text-ink text-lg">Recently Viewed</h2>
+        <h2 className="text-ink text-section">Recently viewed</h2>
         {viewedListings.length > RECENTLY_VIEWED_INITIAL_SHOW && (
           <Link
             href="/buy/dashboard/recently-viewed"
@@ -81,7 +68,7 @@ export function BuyerDashboardContent({
       )}
 
       {/* Active Negotiations */}
-      <h2 className="mb-4 font-bold text-ink text-lg">Active Negotiations</h2>
+      <h2 className="mb-4 text-ink text-section">Active negotiations</h2>
       {activeNegotiations.length === 0 ? (
         <EmptyState
           icon={<MessageSquare className="size-6" />}

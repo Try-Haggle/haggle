@@ -15,8 +15,10 @@ import {
   Select,
   StatusBadge,
   Textarea,
+  textLinkVariants,
 } from "@/components/ui";
 import { api } from "@/lib/api-client";
+import { cn } from "@/lib/cn";
 import { clearSessionDraft, readSessionDraft, writeSessionDraft } from "@/lib/session-draft";
 import { AdvisorChat } from "./_components/advisor-chat";
 import type { Dispute, DisputeEvidence } from "./page";
@@ -367,7 +369,7 @@ function EvidenceItem({ evidence }: { evidence: DisputeEvidence }) {
           href={evidence.uri}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-1 inline-block break-all text-action-primary text-xs hover:text-action-primary-hover"
+          className={cn(textLinkVariants(), "mt-1 inline-block break-all text-xs")}
         >
           View attachment
         </a>
@@ -621,7 +623,7 @@ export function DisputeDetail({
   }
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-3xl mx-auto">
+    <main className="min-h-[calc(100vh-var(--spacing-header))] px-4 py-6 sm:p-6 max-w-3xl mx-auto">
       <BackLink href={`/orders/${dispute.order_id}`} className="mb-6">
         Back to order
       </BackLink>

@@ -1,3 +1,5 @@
+import { TextLink, textLinkVariants } from "@/components/ui/text-link";
+
 export const metadata = {
   title: "Privacy Policy | Haggle",
   description: "Haggle Privacy Policy",
@@ -15,12 +17,9 @@ export default function PrivacyPage() {
           <p>
             Haggle LLC (&ldquo;Haggle,&rdquo; &ldquo;we,&rdquo; &ldquo;us,&rdquo; or
             &ldquo;our&rdquo;), a Delaware limited liability company, operates{" "}
-            <a
-              href="https://tryhaggle.ai"
-              className="text-action-primary hover:text-action-primary-hover"
-            >
+            <TextLink href="https://tryhaggle.ai" variant="inline">
               tryhaggle.ai
-            </a>
+            </TextLink>
             . This Privacy Policy explains how we collect, use, store, and share information about
             you when you use our Service. We are committed to handling your data with care and
             transparency.
@@ -207,7 +206,7 @@ export default function PrivacyPage() {
             To exercise your rights, contact us at{" "}
             <a
               href="mailto:privacy@tryhaggle.ai"
-              className="text-action-primary hover:text-action-primary-hover"
+              className={textLinkVariants({ variant: "inline" })}
             >
               privacy@tryhaggle.ai
             </a>
@@ -257,7 +256,7 @@ export default function PrivacyPage() {
             personal information, contact us at{" "}
             <a
               href="mailto:privacy@tryhaggle.ai"
-              className="text-action-primary hover:text-action-primary-hover"
+              className={textLinkVariants({ variant: "inline" })}
             >
               privacy@tryhaggle.ai
             </a>{" "}
@@ -291,7 +290,7 @@ export default function PrivacyPage() {
           <p className="mt-2">
             <a
               href="mailto:privacy@tryhaggle.ai"
-              className="text-action-primary hover:text-action-primary-hover"
+              className={textLinkVariants({ variant: "inline" })}
             >
               privacy@tryhaggle.ai
             </a>

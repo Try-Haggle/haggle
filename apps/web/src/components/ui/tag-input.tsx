@@ -55,7 +55,7 @@ export function TagInput({
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-1.5 rounded-[10px] border bg-surface-overlay px-2.5 py-2 focus-within:border-focus focus-within:ring-4 focus-within:ring-action-primary/20",
+        "flex flex-wrap items-center gap-1.5 rounded-[10px] border bg-surface-overlay px-2.5 py-2 focus-within:border-ink focus-within:ring-1 focus-within:ring-ink",
         invalid ? "border-error" : "border-line",
         disabled && "pointer-events-none opacity-50",
         className,
@@ -73,7 +73,7 @@ export function TagInput({
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={onKeyDown}
         placeholder={value.length ? "" : placeholder}
-        className="min-w-[6rem] flex-1 bg-transparent text-ink text-sm outline-none placeholder:text-ink-muted"
+        className="min-w-[6rem] flex-1 bg-transparent text-ink text-sm outline-none placeholder:text-ink-placeholder"
       />
     </div>
   );

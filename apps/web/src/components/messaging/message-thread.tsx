@@ -164,7 +164,7 @@ export function MessageThread({
                   className={cn(
                     "w-fit break-words rounded-2xl px-3.5 py-2.5 text-sm",
                     mine
-                      ? "rounded-br-sm bg-action-primary text-on-ink"
+                      ? "rounded-br-sm bg-cta text-on-cta"
                       : "rounded-bl-sm border border-line bg-surface-sunken text-ink",
                   )}
                 >

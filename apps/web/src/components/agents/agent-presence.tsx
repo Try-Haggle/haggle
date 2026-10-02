@@ -40,7 +40,7 @@ const STATE_STYLE: Record<
     fade: 1,
     grey: false,
   },
-  deal: { ring: "solid", badge: { glyph: "check", tone: "#3e8e5a" }, fade: 1, grey: false },
+  deal: { ring: "solid", badge: { glyph: "check", tone: "#10b981" }, fade: 1, grey: false },
   walked: { ring: "none", badge: { glyph: "cross", tone: "#c8412e" }, fade: 0.55, grey: true },
 };
 

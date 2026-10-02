@@ -1,7 +1,7 @@
 "use client";
 
 import { Chip } from "@/components/ui/chip";
-import { Input } from "@/components/ui/input";
+import { Input, RequiredMark } from "@/components/ui/input";
 import {
   type ListingParcelInput,
   listingParcelToInput,
@@ -28,7 +28,7 @@ export function ListingParcelFields({
     <div className="space-y-3">
       <div>
         <p className="text-xs font-semibold uppercase tracking-wider text-ink-secondary">
-          Parcel {required ? <span className="text-warning">*</span> : null}
+          Parcel {required ? <RequiredMark /> : null}
         </p>
         <p className="mt-1 text-xs text-ink-muted">
           Skip the tape measure. Pick the closest box, or guess within a couple of inches. Carriers

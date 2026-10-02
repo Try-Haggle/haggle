@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { apiServerFireAndForget, serverApi } from "@/lib/api-server";
 import { createClient } from "@/lib/supabase/server";
+import { getUserDisplayName } from "@/lib/user-display-name";
 import { BuyerLanding } from "./buyer-landing";
 import { BuyerLandingV2 } from "./buyer-landing-v2";
 import { SimilarListings } from "./similar-listings";
@@ -93,9 +94,7 @@ export default async function BuyerListingPage({
     ? {
         id: user.id,
         email: user.email ?? "",
-        name: (user.user_metadata?.display_name || user.user_metadata?.name || null) as
-          | string
-          | null,
+        name: getUserDisplayName(user),
         avatarUrl: (user.user_metadata?.custom_avatar_url ||
           user.user_metadata?.avatar_url ||
           null) as string | null,

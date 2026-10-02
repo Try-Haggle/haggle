@@ -112,7 +112,7 @@ export default async function BrowsePage({
   }
 
   return (
-    <main className="min-h-[calc(100vh-4rem)]">
+    <main className="min-h-[calc(100vh-var(--spacing-header))]">
       <div className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>

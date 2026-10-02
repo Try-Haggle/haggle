@@ -63,7 +63,7 @@ export function WaitlistForm({ source = "landing", compact = false }: WaitlistFo
         onChange={(e) => setEmail(e.target.value)}
         placeholder="your@email.com"
         required
-        className={`flex-1 rounded-xl border border-line bg-surface-overlay px-4 text-ink outline-none transition placeholder:text-ink-muted focus:border-focus focus:ring-2 focus:ring-action-primary/20 ${compact ? "py-2.5 text-sm" : "py-3"}`}
+        className={`flex-1 rounded-xl border border-line bg-surface-overlay px-4 text-ink outline-none transition placeholder:text-ink-placeholder focus:border-focus focus:ring-2 focus:ring-action-primary/20 ${compact ? "py-2.5 text-sm" : "py-3"}`}
       />
       <Button
         type="submit"

@@ -1,6 +1,9 @@
 import { BottomNav } from "@/components/bottom-nav";
 import { Nav } from "@/components/nav";
+import { BROWSED_MARKETPLACE_KEY } from "@/lib/buyer-onboarding";
 import { createClient } from "@/lib/supabase/server";
+import { getUserDisplayName } from "@/lib/user-display-name";
+import { MarkMarketplaceVisited } from "./_components/mark-marketplace-visited";
 
 export default async function BrowseLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -8,9 +11,7 @@ export default async function BrowseLayout({ children }: { children: React.React
     data: { user },
   } = await supabase.auth.getUser();
 
-  const userName = user
-    ? ((user.user_metadata?.display_name || user.user_metadata?.name || null) as string | null)
-    : null;
+  const userName = getUserDisplayName(user);
   const userAvatarUrl = user
     ? ((user.user_metadata?.custom_avatar_url || user.user_metadata?.avatar_url || null) as
         | string
@@ -19,6 +20,8 @@ export default async function BrowseLayout({ children }: { children: React.React
 
   return (
     <>
+      {/* Only until the first visit is on record, so it writes once. */}
+      {user && !user.user_metadata?.[BROWSED_MARKETPLACE_KEY] && <MarkMarketplaceVisited />}
       {user ? (
         <Nav userEmail={user.email ?? ""} userName={userName} userAvatarUrl={userAvatarUrl} />
       ) : (
@@ -41,7 +44,7 @@ export default async function BrowseLayout({ children }: { children: React.React
       )}
 
       {user ? (
-        <div className="pb-16 md:pt-16 md:pb-0">{children}</div>
+        <div className="pb-16 md:pt-header md:pb-0">{children}</div>
       ) : (
         <div style={{ paddingTop: "56px" }}>{children}</div>
       )}

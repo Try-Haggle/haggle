@@ -104,7 +104,7 @@ export function Composer({ onSend, disabled, className }: ComposerProps) {
           }}
           className={cn(
             "h-5 w-full resize-none overflow-y-hidden bg-transparent pr-2.5 text-ink text-sm leading-5 outline-none",
-            "placeholder:text-ink-muted",
+            "placeholder:text-ink-placeholder",
           )}
         />
       </div>

@@ -214,7 +214,10 @@ export function PlaybackArena({
   }, [engine.status]);
 
   return (
-    <div className="min-h-[calc(100vh-4rem)]" style={{ background: "var(--bg-primary)" }}>
+    <div
+      className="min-h-[calc(100vh-var(--spacing-header))]"
+      style={{ background: "var(--bg-primary)" }}
+    >
       {/* Subtle ambient backdrop */}
       <BackgroundOrbs />
 

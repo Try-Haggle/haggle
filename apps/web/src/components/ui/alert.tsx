@@ -3,7 +3,10 @@ import { AlertTriangle, CheckCircle2, Info, X, XCircle } from "lucide-react";
 import type { HTMLAttributes } from "react";
 import { cn } from "@/lib/cn";
 
-export const alertVariants = cva("flex items-start gap-3 rounded-xl p-4 text-sm", {
+// 16px text: an alert is usually the most important line on screen and must
+// not be the smallest. py-3 keeps it visibly shorter than a 52px field, so a
+// form-level alert reads as a message rather than one more input.
+export const alertVariants = cva("flex items-start gap-3 rounded-xl px-4 py-3 text-base", {
   variants: {
     tone: {
       success: "bg-success-soft text-success",

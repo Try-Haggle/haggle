@@ -134,7 +134,7 @@ export default function DisputesListPage() {
   const currentPage = Math.floor(offset / limit) + 1;
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-4xl mx-auto">
+    <main className="min-h-[calc(100vh-var(--spacing-header))] px-4 py-6 sm:p-6 max-w-4xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>

@@ -15,14 +15,11 @@ import {
   toggleMethod,
 } from "@/lib/fulfillment-options";
 import {
-  clearPendingDefaultAddress,
   EMPTY_SHIPPING_ADDRESS,
   formatAddressConfirmPreview,
   isDefaultSavedAddress,
-  readPendingDefaultAddress,
   type SavedAddress,
   savedAddressToInput,
-  toApiAddress,
 } from "@/lib/shipping-address";
 import { useLocale } from "@/providers/locale-provider";
 import { CarrierPriorityPicker } from "./carrier-priority-picker";
@@ -59,20 +56,8 @@ export function PreNegotiationFulfillment({
 
   useEffect(() => {
     if (!signedIn) return;
-    const pending = readPendingDefaultAddress();
-    const persistPending = pending
-      ? api
-          .post("/users/me/addresses", {
-            ...toApiAddress(pending),
-            label: "home",
-            is_default: true,
-          })
-          .then(() => clearPendingDefaultAddress())
-          .catch(() => undefined)
-      : Promise.resolve();
-
-    persistPending
-      .then(() => api.get<{ addresses: SavedAddress[] }>("/users/me/addresses"))
+    api
+      .get<{ addresses: SavedAddress[] }>("/users/me/addresses")
       .then((res) => {
         const addresses = res.addresses ?? [];
         setSavedAddresses(addresses);

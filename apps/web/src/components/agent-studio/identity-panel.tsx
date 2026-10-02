@@ -244,7 +244,7 @@ export function AgentIdentityPanel({
                   aria-labelledby={`${avatarLabelId} ${avatarValueId}`}
                   className={cn(
                     "flex h-11 w-full cursor-pointer items-center gap-2.5 rounded-[10px] border border-line bg-surface-overlay px-3.5 text-left transition",
-                    "hover:border-line-strong focus-visible:border-focus focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-action-primary/20",
+                    "hover:border-line-strong focus-visible:border-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ink",
                   )}
                 >
                   <span className="flex size-6 shrink-0 items-center justify-center text-[16px]">

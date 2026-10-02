@@ -1412,7 +1412,7 @@ export function NegotiationAgentBuilderChat({
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={!hasAgentSelected || isLoading}
-            className="flex-1 bg-transparent text-[13px] text-ink placeholder:text-ink-muted outline-none disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex-1 bg-transparent text-[13px] text-ink placeholder:text-ink-placeholder outline-none disabled:cursor-not-allowed disabled:opacity-40"
           />
           <IconButton
             variant="solid"

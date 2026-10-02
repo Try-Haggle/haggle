@@ -15,6 +15,7 @@ import {
   type ActivityEvent as FeedEvent,
   Spinner,
   StatusBadge,
+  TextLink,
 } from "@/components/ui";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
@@ -1069,12 +1070,9 @@ function DisputeSection({
               ))}
             </div>
           )}
-          <Link
-            href={`/disputes/${dispute.id}`}
-            className="block text-center text-sm text-action-primary hover:text-action-primary-hover transition-colors pt-1"
-          >
+          <TextLink href={`/disputes/${dispute.id}`} className="block pt-1 text-center text-sm">
             View Full Dispute
-          </Link>
+          </TextLink>
           {canCreateReturnLabel && (
             <ActionButton
               label="Create Return Label"
@@ -1374,7 +1372,7 @@ function TextInput({
       maxLength={maxLength}
       inputMode={inputMode}
       onChange={(event) => onChange(event.target.value)}
-      className={`min-w-0 rounded-md border border-line bg-surface-sunken px-2.5 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-focus focus:outline-none ${className}`}
+      className={`min-w-0 rounded-md border border-line bg-surface-sunken px-2.5 py-2 text-sm text-ink placeholder:text-ink-placeholder focus:border-focus focus:outline-none ${className}`}
     />
   );
 }
@@ -2087,7 +2085,7 @@ function OrderDetailContent() {
   // ─── Render ─────────────────────────────────────────────────
   if (initialLoading) {
     return (
-      <main className="min-h-[calc(100vh-4rem)] flex items-center justify-center gap-2 text-ink-secondary text-sm">
+      <main className="min-h-[calc(100vh-var(--spacing-header))] flex items-center justify-center gap-2 text-ink-secondary text-sm">
         <Spinner size="sm" />
         Loading order...
       </main>
@@ -2097,7 +2095,7 @@ function OrderDetailContent() {
   const timelineSteps = getTimelineSteps();
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-4xl mx-auto">
+    <main className="min-h-[calc(100vh-var(--spacing-header))] px-4 py-6 sm:p-6 max-w-4xl mx-auto">
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div>

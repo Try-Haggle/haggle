@@ -354,7 +354,7 @@ export default function DisputeBuyerPage() {
                   <input
                     type="text"
                     placeholder="Ask your AI Advocate..."
-                    className="flex-1 border-none bg-transparent py-1.5 text-[14px] outline-none placeholder:text-ink-muted"
+                    className="flex-1 border-none bg-transparent py-1.5 text-[14px] outline-none placeholder:text-ink-placeholder"
                     readOnly
                   />
                   <span className="rounded border border-line bg-surface-sunken px-[5px] py-[2px] font-mono text-[10px] text-ink-muted">
