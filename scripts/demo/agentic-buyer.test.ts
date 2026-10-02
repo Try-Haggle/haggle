@@ -37,17 +37,27 @@ function fakeServer() {
     async () => json({ listings: [{ public_id: "abc123", title: "Phone" }] }),
   );
   server.tool("haggle_get_listing", { public_id: z.string() }, async () =>
-    json({ required_criteria: [{ checkId: "imei_verification" }] }),
+    json({
+      listing: { public_id: "abc123", required_criteria: [{ checkId: "imei_verification" }] },
+    }),
   );
   server.tool(
     "haggle_start_negotiation",
     { public_id: z.string(), buyerCriteria: z.array(z.any()).optional() },
-    async () =>
-      json({
-        session_id: "11111111-1111-4111-8111-111111111111",
-        chat_url:
-          "https://app.staging.tryhaggle.ai/buy/negotiations/11111111-1111-4111-8111-111111111111",
-      }),
+    async ({ buyerCriteria }) =>
+      buyerCriteria?.length
+        ? json({
+            session_id: "11111111-1111-4111-8111-111111111111",
+            chat_url:
+              "https://app.staging.tryhaggle.ai/buy/negotiations/11111111-1111-4111-8111-111111111111",
+          })
+        : json(
+            {
+              error: "BUYER_CRITERIA_REQUIRED",
+              required_criteria: [{ checkId: "imei_verification" }],
+            },
+            true,
+          ),
   );
   server.tool("haggle_play_next", { session_id: z.string() }, async () =>
     json({ complete: false }),
@@ -106,6 +116,10 @@ test("runner: search -> negotiate -> checkout denied, trace masked", async () =>
   const text = await readFile(join(dir, file), "utf8");
   assert.ok(text.includes("INSUFFICIENT_SCOPE"));
   assert.ok(text.includes("/checkout"));
+  assert.ok(
+    !text.includes("BUYER_CRITERIA_REQUIRED"),
+    "nested required_criteria must be read up front",
+  );
   assert.ok(!text.includes(TOKEN));
   assert.ok(!text.includes("buyer@example.com"));
   assert.match(text, /"outcome": "passed"/);
