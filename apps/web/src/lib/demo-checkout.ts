@@ -138,13 +138,16 @@ export interface PresenterView {
   delayed: boolean;
 }
 
-/** Jump to a payment step (0-4) with all earlier steps completed. */
+/**
+ * Jump to a payment step (0-4) with all earlier steps completed. The settle step (4)
+ * renders the settled receipt on arrival, so it is marked done too (wallet debited).
+ */
 export function presenterJumpStep(idx: number): PresenterView {
   const i = Math.max(0, Math.min(6, Math.floor(idx)));
   return {
     idx: i,
     shipSub: "labelPending",
-    done: Array.from({ length: i }, (_, k) => k),
+    done: Array.from({ length: i === 4 ? 5 : i }, (_, k) => k),
     delayed: false,
   };
 }
