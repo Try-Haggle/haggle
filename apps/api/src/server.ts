@@ -75,6 +75,7 @@ import { registerTrustRoutes } from "./routes/trust.js";
 import { registerWalletRoutes } from "./routes/wallets.js";
 import { registerResendWebhookRoute } from "./routes/webhooks/resend.js";
 import { registerWebSocketAuthRoutes } from "./routes/websocket-auth.js";
+import { ensureDemoListings } from "./services/demo-listings.service.js";
 import { resolveMcpAccessToken } from "./services/mcp-oauth.service.js";
 import { registerWebSocketRoutes } from "./ws/negotiation-ws.js";
 import { registerNotificationWsRoute } from "./ws/notification-ws.js";
@@ -146,6 +147,7 @@ export async function createServer() {
 
   // ─── Database ──────────────────────────────────────────────
   const db = createDb(runtimeConfig.databaseUrl);
+  await ensureDemoListings(db, process.env, app.log);
   setMcpAccessTokenResolver((token) => resolveMcpAccessToken(db, token));
 
   // ─── Notification Bus ─────────────────────────────────────

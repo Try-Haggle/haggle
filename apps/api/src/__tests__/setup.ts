@@ -63,6 +63,8 @@ function createMockSelect() {
 }
 
 vi.mock("@haggle/db", () => ({
+  listingDrafts: { id: "id" },
+  listingsPublished: { id: "id", publicId: "publicId" },
   createDb: vi.fn(() => ({
     query: createMockQueryProxy(),
     select: createMockSelect(),

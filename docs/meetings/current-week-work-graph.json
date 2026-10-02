@@ -66,6 +66,21 @@
         "Inoh Pak",
         "inohpak"
       ]
+    },
+    {
+      "id": "paperclip-engineer-1",
+      "displayName": "Engineer 1",
+      "aliases": ["Engineer 1", "Paperclip Engineer 1"]
+    },
+    {
+      "id": "paperclip-engineer-2",
+      "displayName": "Engineer 2",
+      "aliases": ["Engineer 2", "Paperclip Engineer 2"]
+    },
+    {
+      "id": "paperclip-qa-2",
+      "displayName": "QA 2",
+      "aliases": ["QA 2", "Paperclip QA 2"]
     }
   ],
   "tasks": [
@@ -1100,6 +1115,26 @@
       ],
       "dueDate": null,
       "sourceNote": "Paperclip HAGA-88. HAGA-86 사용자 스크린샷(2026-10-01)에서 발견. HAGA-86 결제 핸드오프 증거와 별개 작업이다."
+    },
+    {
+      "id": "HAGA-157",
+      "title": "데모용 협상 리스팅 10개 staging 시드 (Demo 표시)",
+      "status": "in_progress",
+      "ownerId": "paperclip-engineer-1",
+      "reviewerId": "paperclip-qa-2",
+      "reviewerAssignmentStatus": "confirmed",
+      "reviewerReason": "이슈에서 지정된 QA 2가 staging 표시, 중복 방지, 구매자 협상 흐름을 독립 검증한다.",
+      "assignmentConfidence": "confirmed",
+      "domains": ["API", "리스팅", "협상", "staging"],
+      "outcome": "staging dogfood 게이트가 켜지면 협상 가능한 데모 리스팅 10개가 한 번만 게시된다.",
+      "nextAction": "PR·CI 후 QA 2가 staging 페이지와 협상 반대 제안을 확인한다.",
+      "reviewBrief": "production 또는 게이트 꺼짐에서 쓰기 0건, 재시작 중복 0건, 사진·Demo 표시와 협상 응답을 검증한다.",
+      "evidence": ["게이트·멱등성 테스트", "API 타입 검사", "staging 페이지·협상 검증"],
+      "verifiedEvidence": [],
+      "remainingGaps": ["staging 배포와 QA 2 검증 전"],
+      "dependsOn": [],
+      "dueDate": null,
+      "sourceNote": "Paperclip HAGA-157 사용자 요청의 Engineer 1 담당 및 QA 2 리뷰 배정."
     }
   ],
   "reviewPolicy": {
