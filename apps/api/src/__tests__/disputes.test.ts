@@ -4879,6 +4879,84 @@ describe("Dispute routes", () => {
     await queueApp.close();
   });
 
+  it("GET /disputes reads postgres-js array results for total and page", async () => {
+    const row = {
+      id: "dsp_pg_1",
+      order_id: "ord_pg_1",
+      reason_code: "ITEM_NOT_AS_DESCRIBED",
+      status: "OPEN",
+      opened_by: "buyer",
+      opened_at: new Date().toISOString(),
+      metadata: null,
+      resolution_summary: null,
+      buyer_id: "buyer-1",
+      seller_id: "seller-1",
+      amount_minor: "100000",
+      order_snapshot: null,
+      final_amount_minor: null,
+      terms_snapshot: { item_name: "Phone" },
+      refund_amount_minor: null,
+      resolution_outcome: null,
+    };
+    const execute = vi
+      .fn()
+      .mockResolvedValueOnce([{ total: "7" }])
+      .mockResolvedValueOnce([row]);
+    const listApp = Fastify();
+    listApp.addHook("onRequest", async (request) => {
+      request.user = { id: "seller-1", email: "s@haggle.ai", role: "authenticated" };
+    });
+    registerDisputeRoutes(listApp, { execute } as unknown as Database);
+
+    const res = await listApp.inject({ method: "GET", url: "/disputes?limit=1&offset=0" });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.total).toBe(7);
+    expect(body.disputes).toHaveLength(1);
+    expect(body.disputes[0]).toMatchObject({ id: "dsp_pg_1" });
+    await listApp.close();
+  });
+
+  it("GET /admin/disputes/appeals reads postgres-js array results", async () => {
+    const now = Date.now();
+    const execute = vi.fn().mockResolvedValue([
+      {
+        id: "dsp_pg_appeal",
+        order_id: "ord_pg_appeal",
+        status: "UNDER_REVIEW",
+        reason_code: "ITEM_NOT_AS_DESCRIBED",
+        opened_at: new Date(now - 60_000).toISOString(),
+        amount_minor: "100000",
+        metadata: {
+          appeal_review: {
+            id: "apl_pg",
+            status: "OPEN",
+            appealed_by: "buyer",
+            appealed_by_user_id: "buyer-1",
+            reason: "Needs review",
+            evidence_ids: [],
+            client_request_id: "req-pg",
+            created_at: new Date(now - 60_000).toISOString(),
+            priority: "normal",
+            sla_due_at: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
+          },
+        },
+      },
+    ]);
+    const queueApp = Fastify();
+    queueApp.addHook("onRequest", async (request) => {
+      request.user = { id: "test-admin-001", email: "admin@haggle.ai", role: "admin" };
+    });
+    registerDisputeRoutes(queueApp, { execute } as unknown as Database);
+
+    const res = await queueApp.inject({ method: "GET", url: "/admin/disputes/appeals" });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().items).toMatchObject([{ dispute_id: "dsp_pg_appeal" }]);
+    await queueApp.close();
+  });
+
   // POST /disputes/deposits/expire (requireAdmin)
   it("POST /disputes/deposits/expire returns 200 with forfeited count", async () => {
     const res = await app.inject({
