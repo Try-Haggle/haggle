@@ -212,3 +212,7 @@ pnpm build        # turbo build (전체)
 pnpm test         # turbo test
 pnpm typecheck    # turbo typecheck
 ```
+
+## 외부 MCP 구매자 데모 러너
+
+staging/local 전용 외부 에이전트 데모(검색→협상→결제 직전 중단, checkout 권한 거부 trace)는 [scripts/demo/README.md](./scripts/demo/README.md)를 따른다.
