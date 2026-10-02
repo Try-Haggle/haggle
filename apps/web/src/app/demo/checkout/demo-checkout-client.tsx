@@ -102,6 +102,7 @@ function CheckoutInner() {
       agreedPrice={data.price / 100}
       marketPrice={data.market / 100}
       itemTitle={data.item}
+      itemImageUrl={data.imageUrl}
       rounds={data.rounds}
       presenter={presenter}
       onComplete={() => {

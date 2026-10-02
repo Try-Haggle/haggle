@@ -30,6 +30,33 @@ describe("demo checkout handoff payload", () => {
     });
   });
 
+  it("carries a safe listing photo URL and drops unsafe ones", () => {
+    const p = buildDemoCheckoutPayload({
+      agreedPriceUsd: 408,
+      listingPriceUsd: 450,
+      item: "MacBook Air",
+      rounds: 8,
+      imageUrl: "https://cdn.example.com/a.webp",
+    });
+    expect(p.imageUrl).toBe("https://cdn.example.com/a.webp");
+    expect(parseDemoCheckoutPayload(JSON.stringify(p)).imageUrl).toBe(
+      "https://cdn.example.com/a.webp",
+    );
+    for (const bad of ["javascript:alert(1)", "data:image/png;base64,AA", "not a url", 7]) {
+      const raw = JSON.stringify({ price: 100, item: "X", rounds: 1, imageUrl: bad });
+      expect(parseDemoCheckoutPayload(raw)).not.toHaveProperty("imageUrl");
+    }
+    expect(
+      buildDemoCheckoutPayload({
+        agreedPriceUsd: 1,
+        listingPriceUsd: 1,
+        item: "X",
+        rounds: 1,
+        imageUrl: null,
+      }),
+    ).not.toHaveProperty("imageUrl");
+  });
+
   it("falls back to preset for null / malformed / invalid input", () => {
     expect(parseDemoCheckoutPayload(null)).toEqual(DEFAULT_DEMO_CHECKOUT);
     expect(parseDemoCheckoutPayload("{nope")).toEqual(DEFAULT_DEMO_CHECKOUT);

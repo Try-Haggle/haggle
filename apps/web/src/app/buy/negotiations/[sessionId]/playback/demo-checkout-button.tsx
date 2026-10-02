@@ -15,6 +15,7 @@ export function DemoCheckoutButton(props: {
   listingPriceUsd: number;
   item: string;
   rounds: number;
+  imageUrl?: string | null;
 }) {
   const router = useRouter();
   return (
