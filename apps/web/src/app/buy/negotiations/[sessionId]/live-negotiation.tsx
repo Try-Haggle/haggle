@@ -527,7 +527,7 @@ function BuyerManualActionBar({
             value={offer}
             onChange={(e) => setOffer(e.target.value)}
             inputMode="decimal"
-            placeholder="Your Soft Manual offer"
+            placeholder="Your offer (Manual)"
             aria-label="Manual offer price"
             className="min-w-40 flex-1"
           />

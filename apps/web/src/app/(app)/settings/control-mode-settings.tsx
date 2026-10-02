@@ -49,18 +49,17 @@ export function ControlModeSettings() {
     >
       <h2 className="text-base sm:text-lg font-semibold text-ink mb-1">Negotiation control mode</h2>
       <p className="text-sm text-ink-muted mb-4">
-        Default Soft Auto/Manual for future sessions. New negotiations start with this preference
-        (default Auto ON) — you are never forced to choose at start. You can still toggle
-        mid-session.
+        Choose how new negotiations start. Auto: Haggle AI writes your messages. Manual: you reply
+        yourself. The default is Auto, and you can switch at any time during a negotiation.
       </p>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-medium text-ink">
-            {autoOn ? "Auto (Haggle AI Soft turns)" : "Manual (you drive Soft turns)"}
+            {autoOn ? "Auto (Haggle AI writes your messages)" : "Manual (you reply yourself)"}
           </p>
           <p className="text-xs text-ink-muted">
-            Hard Authority, fees, and settlement are unchanged.
+            Fees and payment are not affected by this setting.
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -71,7 +70,7 @@ export function ControlModeSettings() {
             checked={autoOn}
             disabled={!hydrated}
             onCheckedChange={(checked) => update(checked ? "auto" : "manual")}
-            aria-label="Default Soft control mode Auto"
+            aria-label="Start new negotiations in Auto mode"
           />
           <span className={`text-xs font-semibold ${!autoOn ? "text-warning" : "text-ink-muted"}`}>
             Manual

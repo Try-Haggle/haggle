@@ -82,7 +82,7 @@ describe("ControlModePanel", () => {
 
     expect(patch).not.toHaveBeenCalled();
     expect(screen.getByTestId("control-mode-handoff")).toHaveTextContent(
-      /Switching to Manual after current turn/i,
+      /Switching to Manual after the current message/i,
     );
   });
 

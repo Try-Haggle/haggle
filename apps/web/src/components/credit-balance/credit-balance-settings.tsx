@@ -21,8 +21,8 @@ export function CreditBalanceSettings() {
         {CREDIT_BALANCE_UI.sectionTitle}
       </h2>
       <p className="text-sm text-ink-muted mb-4">
-        Haggle credits meter Haggle-hosted Soft turns only. Hard Authority, fees, and settlement are
-        unchanged. Server ledger is source of truth — this UI does not invent credit math.
+        Credits are used only when Haggle AI writes a negotiation message for you (Auto). They are
+        separate from transaction fees and payment.
       </p>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -33,7 +33,7 @@ export function CreditBalanceSettings() {
           <p className="text-xs text-ink-muted">
             {balance.unlimited
               ? CREDIT_BALANCE_UI.unlimitedLabel
-              : "Shown for Soft AI start and Auto ON charges."}
+              : "Used when Haggle AI writes your messages in Auto."}
           </p>
         </div>
         <Badge
