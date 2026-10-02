@@ -1,4 +1,4 @@
-import { resolveChecks } from "@haggle/shared";
+import { CATEGORY_TAXONOMY, matchedCategoryPaths, resolveChecks } from "@haggle/shared";
 
 export type RequirementStage = "advisor_recommendation" | "pre_close_verification";
 export type RequirementEnforcement = "hard" | "soft";
@@ -95,63 +95,6 @@ const UNIVERSAL_BUYER_SLOTS: TagRequirementSlot[] = [
   },
 ];
 
-const TAG_REQUIREMENTS: Record<string, TagRequirementSlot[]> = {
-  "electronics/phones/iphone": [
-    {
-      slotId: "battery_health",
-      tagPath: "electronics/phones/iphone",
-      label: "battery health",
-      questionKo:
-        "중고폰은 배터리 성능에 따라 가격이 꽤 달라져요. 90% 이상만 볼까요, 85% 이상이면 괜찮을까요, 아니면 가격이 좋으면 80%대도 괜찮을까요?",
-      stage: "advisor_recommendation",
-      enforcement: "hard",
-      priority: 40,
-      aliases: ["battery", "battery health", "battery_health", "배터리", "성능"],
-      answerOptions: ["90% 이상만", "85% 이상까지 허용", "80%대도 가격 좋으면 허용", "상관없음"],
-    },
-    {
-      slotId: "carrier_lock",
-      tagPath: "electronics/phones/iphone",
-      label: "carrier lock status",
-      questionKo: "언락 모델이 필수인가요?",
-      stage: "advisor_recommendation",
-      enforcement: "hard",
-      priority: 50,
-      aliases: [
-        "unlocked",
-        "locked",
-        "carrier",
-        "carrier_lock",
-        "factory unlocked",
-        "언락",
-        "잠금",
-        "통신사",
-      ],
-      answerOptions: ["언락 필수", "통신사 잠금도 가능", "상관없음"],
-    },
-    {
-      slotId: "imei_verification",
-      tagPath: "electronics/phones/iphone",
-      label: "clean IMEI verification",
-      questionKo: "거래 확정 전에는 IMEI가 깨끗한지 확인해야 합니다.",
-      stage: "pre_close_verification",
-      enforcement: "hard",
-      priority: 80,
-      aliases: ["imei", "clean imei", "blacklist", "블랙리스트"],
-    },
-    {
-      slotId: "find_my_status",
-      tagPath: "electronics/phones/iphone",
-      label: "Find My disabled",
-      questionKo: "거래 확정 전에는 Find My 비활성화 여부를 확인해야 합니다.",
-      stage: "pre_close_verification",
-      enforcement: "hard",
-      priority: 90,
-      aliases: ["find my", "activation lock", "icloud", "아이클라우드", "나의 찾기"],
-    },
-  ],
-};
-
 const SLOT_ALIASES: Record<string, string> = {
   product_identity: "shopping_intent",
   budget_boundary: "max_budget",
@@ -196,18 +139,28 @@ const GENERIC_REQUIREMENT_SLOTS: TagRequirementSlot[] = [
   },
 ];
 
-const ALL_REQUIREMENT_SLOTS = [
-  ...UNIVERSAL_BUYER_SLOTS,
-  ...GENERIC_REQUIREMENT_SLOTS,
-  ...Object.values(TAG_REQUIREMENTS).flat(),
-];
+const ALL_REQUIREMENT_SLOTS = [...UNIVERSAL_BUYER_SLOTS, ...GENERIC_REQUIREMENT_SLOTS];
 
 export function resolveTagGardenQuestionForSlot(
   slotId: string,
 ): TagGardenQuestionResolution | null {
   const canonicalSlotId = SLOT_ALIASES[slotId] ?? slotId;
   const slot = ALL_REQUIREMENT_SLOTS.find((candidate) => candidate.slotId === canonicalSlotId);
-  if (!slot) return null;
+  if (!slot) {
+    const check = CATEGORY_TAXONOMY.flatMap((node) => node.checks).find(
+      (c) => c.id === canonicalSlotId,
+    );
+    if (!check) return null;
+    return {
+      question: check.questionKo,
+      slotId: check.id,
+      tagPath: "taxonomy",
+      stage: "advisor_recommendation",
+      enforcement: check.enforcement,
+      answerOptions: check.sellerOptions?.map((option) => option.label),
+      source: "tag_garden",
+    };
+  }
 
   return {
     question: slot.questionKo,
@@ -237,8 +190,7 @@ export const EMPTY_TAG_REQUIREMENT_PLAN: TagRequirementPlan = {
 
 /**
  * Derive requirement slots from the shared category taxonomy for a listing's
- * category + tags. This is the generalized "what to ask per category" source that
- * replaces the iPhone-only hardcoded map for every other category.
+ * category + tags. Buyer UI and server consume the same inherited definitions.
  */
 /** Minimal shape of a promoted learned check (avoids a @haggle/shared type import here). */
 export interface LearnedCheckForRequirements {
@@ -288,16 +240,10 @@ function taxonomyCategorySlots(
       // the runtime/seller; here the buyer configures what their agent should insist on.
       questionKo: c.buyerAskKo ?? c.questionKo,
       stage: "advisor_recommendation" as const,
-      // Respect the taxonomy check's own hard/soft. A HARD taxonomy check (vehicle
-      // title, clothing authenticity, iPhone IMEI/Find My) becomes a blocking slot so
-      // the builder actually asks it — but ONLY because it now has a satisfaction path:
-      // `memorySatisfiesSlot` clears a taxonomy slot when its answerHints match OR the
-      // buyer waves it off (no-preference). A hard check WITHOUT answerHints would have
-      // no satisfaction path and wedge the flow, so we fall back to soft for those.
-      enforcement:
-        c.enforcement === "hard" && (c.answerHints?.length ?? 0) > 0
-          ? ("hard" as const)
-          : ("soft" as const),
+      // Preserve HARD/SOFT exactly; an explicit stance satisfies every check,
+      // even one that has no free-text answer hints.
+      enforcement: c.enforcement,
+      answerOptions: c.answerOptions?.map((option) => option.label),
       priority: c.enforcement === "hard" ? 65 : 70,
       aliases: c.answerHints ?? [],
     })),
@@ -309,8 +255,8 @@ export function buildAdvisorRequirementPlan(input: {
   memory: NegotiationAgentBuilderMemoryForRequirements;
   listings: ListingForRequirements[];
   /**
-   * Questions asked on the PREVIOUS turn. A taxonomy gate already asked is treated as
-   * addressed and not re-asked (see memorySatisfiesSlot "ask once"). Defaults to none.
+   * Questions asked on the previous turn. Ask-once applies only to free-text
+   * checks; canonical choices require an explicit answer. Defaults to none.
    */
   askedQuestions?: readonly string[];
   /**
@@ -320,16 +266,13 @@ export function buildAdvisorRequirementPlan(input: {
    */
   learnedChecks?: readonly LearnedCheckForRequirements[];
 }): TagRequirementPlan {
-  const matchedTags = resolveMatchedTags(input.memory, input.listings);
-  const tagSlots = matchedTags.flatMap((tag) => TAG_REQUIREMENTS[tag] ?? []);
-  // Category questions come from the shared taxonomy for every category the
-  // hardcoded TAG_REQUIREMENTS map doesn't already cover (currently iPhone only).
-  // This generalizes "what to ask" beyond phones without disturbing the rich,
-  // test-pinned iPhone slots.
-  const categorySlots =
-    tagSlots.length > 0
-      ? tagSlots
-      : taxonomyCategorySlots(input.listings, input.learnedChecks ?? []);
+  // Only the listing's resolved category/tags open questions. Chat memory
+  // must not infer a second category tree or override the shared definitions.
+  const tags = input.listings.flatMap((listing) =>
+    [listing.category, ...listing.tags].filter((tag): tag is string => Boolean(tag)),
+  );
+  const matchedTags = matchedCategoryPaths(tags);
+  const categorySlots = taxonomyCategorySlots(input.listings, input.learnedChecks ?? []);
   const requiredSlots = [...UNIVERSAL_BUYER_SLOTS, ...categorySlots].sort(
     (a, b) => a.priority - b.priority,
   );
@@ -340,7 +283,7 @@ export function buildAdvisorRequirementPlan(input: {
     if (activeScope && activeScopeSatisfiesSlot(input.memory, slot, activeScope)) return [];
     if (activeScope && hasScopedConditionRejection(input.memory, slot, activeScope)) return [slot];
 
-    const scopeMismatch = getHardSlotScopeMismatch(input.memory, slot, activeScope);
+    const scopeMismatch = getSlotScopeMismatch(input.memory, slot, activeScope);
     if (scopeMismatch) return [buildScopeConfirmationSlot(slot, scopeMismatch)];
 
     return memorySatisfiesSlot(input.memory, slot, input.askedQuestions ?? []) ? [] : [slot];
@@ -372,46 +315,6 @@ export function formatTagRequirementPlanForPrompt(plan: TagRequirementPlan): str
   ].join("\n");
 }
 
-function resolveMatchedTags(
-  memory: NegotiationAgentBuilderMemoryForRequirements,
-  listings: ListingForRequirements[],
-): string[] {
-  const memoryText = [
-    memory.categoryInterest,
-    ...memory.mustHave,
-    ...memory.avoid,
-    ...memory.source,
-  ]
-    .join(" ")
-    .toLowerCase();
-  const matched = new Set<string>();
-
-  if (/iphone|아이폰/.test(memoryText)) {
-    matched.add("electronics/phones/iphone");
-  }
-
-  const intentMatchedListings = listings.filter((listing) =>
-    listingMatchesMemoryIntent(listing, memoryText),
-  );
-  for (const tag of Object.keys(TAG_REQUIREMENTS)) {
-    if (intentMatchedListings.some((listing) => listing.tags.includes(tag))) matched.add(tag);
-  }
-
-  return Array.from(matched);
-}
-
-function listingMatchesMemoryIntent(listing: ListingForRequirements, memoryText: string): boolean {
-  if (!hasShoppingIntent(memoryText)) return false;
-
-  const listingText = [listing.title, listing.condition, ...listing.tags].join(" ").toLowerCase();
-
-  return memoryText
-    .split(/[\s,.;:!?()[\]{}"'`/\\|<>~@#$%^&*+=]+/)
-    .map((term) => term.trim())
-    .filter((term) => term.length >= 4 && !["중고", "제품", "상품", "조건"].includes(term))
-    .some((term) => listingText.includes(term));
-}
-
 function memorySatisfiesSlot(
   memory: NegotiationAgentBuilderMemoryForRequirements,
   slot: TagRequirementSlot,
@@ -433,9 +336,20 @@ function memorySatisfiesSlot(
     return (
       memory.mustHave.length > 0 ||
       memory.avoid.length > 0 ||
-      hasNoAdditionalRequirements(memoryText)
+      hasNoAdditionalRequirements(memoryText) ||
+      (memory.categoryCriteria ?? []).some((criterion) => Boolean(criterion.stance?.trim()))
     );
   }
+  // A Quick Setup answer is authoritative by check id, including "Any".
+  // Do this before text-based battery/carrier handling so taps are never re-asked.
+  if (
+    slot.tagPath === "taxonomy" &&
+    (memory.categoryCriteria ?? []).some(
+      (criterion) => criterion.checkId === slot.slotId && Boolean(criterion.stance?.trim()),
+    )
+  )
+    return true;
+
   if (slot.slotId === "battery_health") {
     return hasBatteryThreshold(memoryText) || hasBatteryNoPreference(memoryText);
   }
@@ -443,32 +357,13 @@ function memorySatisfiesSlot(
     return hasCarrierDecision(memoryText) || hasCarrierNoPreference(memoryText);
   }
 
-  // Taxonomy-sourced gates (vehicle title, clothing authenticity, iPhone IMEI/Find My)
-  // are satisfied when EITHER:
-  //  (a) the buyer volunteered/addressed the topic — an answerHint keyword matches, OR
-  //  (b) the gate was already asked on a PREVIOUS turn (its question is in
-  //      askedQuestions). The buyer had their turn to answer, so we treat it as
-  //      addressed and never badger with the same gate twice — whatever they replied
-  //      ("rebuilt is okay", "sure", a Korean phrase, …). Keyword matching alone
-  //      re-asks whenever the answer lacks the exact topic word, which contradicts the
-  //      buyer; this "ask once" signal fixes that.
-  // A blanket no-preference is deliberately NOT accepted (it would fail-open every
-  // still-unasked gate at once). The flow can never wedge: a gate is force-asked
-  // exactly once, then satisfied.
+  // Free-text checks can use topic evidence or the previous question. A
+  // canonical choice remains pending until an answer is captured; displaying
+  // its question alone cannot satisfy a gate.
   if (slot.tagPath === "taxonomy") {
-    // A structured categoryCriteria stance on this check id counts as addressed —
-    // keeps the planner consistent with the Phase G deterministic layer so the buyer
-    // is not re-asked a taxonomy check they already answered via categoryCriteria.
-    const answeredInCriteria = (memory.categoryCriteria ?? []).some(
-      (criterion) =>
-        criterion.checkId === slot.slotId &&
-        typeof criterion.stance === "string" &&
-        criterion.stance.trim().length > 0,
-    );
     return (
-      answeredInCriteria ||
       slot.aliases.some((alias) => memoryText.includes(alias.toLowerCase())) ||
-      askedQuestions.includes(slot.questionKo)
+      (!slot.answerOptions?.length && askedQuestions.includes(slot.questionKo))
     );
   }
 
@@ -480,12 +375,12 @@ type ProductScope = {
   label: string;
 };
 
-function getHardSlotScopeMismatch(
+function getSlotScopeMismatch(
   memory: NegotiationAgentBuilderMemoryForRequirements,
   slot: TagRequirementSlot,
   activeScope: ProductScope | null,
 ): { memoryScope: ProductScope; activeScope: ProductScope } | null {
-  if (slot.enforcement !== "hard" || !activeScope || !memorySatisfiesSlot(memory, slot))
+  if (slot.tagPath !== "taxonomy" || !activeScope || !memorySatisfiesSlot(memory, slot))
     return null;
   if (slot.slotId === "shopping_intent" || slot.slotId === "max_budget") return null;
 
@@ -521,7 +416,6 @@ function hasScopedConditionRejection(
   slot: TagRequirementSlot,
   activeScope: ProductScope,
 ): boolean {
-  if (slot.enforcement !== "hard") return false;
   const latestDecision = latestScopedConditionDecision(memory, slot, activeScope);
   return latestDecision?.decision === "rejected";
 }
@@ -562,6 +456,9 @@ function buildScopeConfirmationSlot(
 
   return {
     ...slot,
+    // Applying a prior product's preference is a separate confirmation, not
+    // a canonical answer to the current listing's check.
+    answerOptions: undefined,
     questionKo: `전에 ${mismatch.memoryScope.label}에서 말한 ${conditionName}을 ${mismatch.activeScope.label}에도 그대로 적용할까요, 아니면 다시 정할까요?`,
   };
 }

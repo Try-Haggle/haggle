@@ -321,7 +321,7 @@ describe("buyer builder turn — mirrors the seller's required criteria (Flow 2)
     expect(systemPrompt).toContain("Should the agent only consider clean-title vehicles?");
   });
 
-  it("DETERMINISTICALLY asks the buyer about an unaddressed seller requirement (Flow 2 mirror)", async () => {
+  it("surfaces an unanswered seller requirement in Quick Setup even when the LLM omits it", async () => {
     // The LLM volunteers nothing about the seller's requirement; the deterministic
     // mirror must still force the buyer to be asked (ask-once).
     mockLLMReturn({ categoryInterest: "buying a car", budgetMax: 15000, mustHave: ["reliable"] });
@@ -334,10 +334,9 @@ describe("buyer builder turn — mirrors the seller's required criteria (Flow 2)
       previous_memory: memory({ categoryInterest: "buying a car", budgetMax: 15000 }),
       listings: [VEHICLE_LISTING],
     });
-    // The buyer is asked the seller's required check even though the LLM didn't.
-    expect(result.memory.questions).toContain(
-      "Should the agent only consider clean-title vehicles?",
-    );
+    expect(result.memory.questions).toEqual([]);
+    expect(result.quick_setup_check_id).toBe("title_status");
+    expect(result.reply).toContain("Quick Setup");
   });
 
   it("does NOT re-ask a seller requirement the buyer already answered", async () => {

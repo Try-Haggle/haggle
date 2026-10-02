@@ -943,6 +943,7 @@ export function NegotiationAgentBuilderChat({
           memory?: NegotiationAgentBuilderMemory;
           reply?: string;
           strategy?: ChatStrategy;
+          quick_setup_check_id?: string;
         }>("/negotiations/agents/builder/chat-turn", {
           method: "POST",
           body: JSON.stringify({
@@ -960,6 +961,10 @@ export function NegotiationAgentBuilderChat({
         setMemory(updatedMemory);
         onNegotiationAgentBuilderMemoryUpdate?.(updatedMemory);
         if (data.strategy) onStrategyUpdate?.(data.strategy);
+        const setupIndex = choiceQuestions.findIndex(
+          (question) => question.checkId === data.quick_setup_check_id,
+        );
+        if (setupIndex >= 0) setChoiceIndex(setupIndex);
 
         const agentMsg: ChatMessage = {
           id: `agent-${Date.now()}`,
@@ -1019,6 +1024,7 @@ export function NegotiationAgentBuilderChat({
       buildAdvisorListings,
       buildCurrentStrategy,
       sellerRequiredCriteria,
+      choiceQuestions,
     ],
   );
 
@@ -1125,6 +1131,7 @@ export function NegotiationAgentBuilderChat({
           memory?: NegotiationAgentBuilderMemory;
           reply?: string;
           strategy?: ChatStrategy;
+          quick_setup_check_id?: string;
         }>("/negotiations/agents/builder/chat-turn", {
           method: "POST",
           body: JSON.stringify({
@@ -1143,6 +1150,10 @@ export function NegotiationAgentBuilderChat({
         setMemory(updatedMemory);
         onNegotiationAgentBuilderMemoryUpdate?.(updatedMemory);
         if (data.strategy) onStrategyUpdate?.(data.strategy);
+        const setupIndex = choiceQuestions.findIndex(
+          (question) => question.checkId === data.quick_setup_check_id,
+        );
+        if (setupIndex >= 0) setChoiceIndex(setupIndex);
 
         const agentMsg: ChatMessage = {
           id: `agent-${Date.now()}`,
@@ -1201,6 +1212,7 @@ export function NegotiationAgentBuilderChat({
       buildAdvisorListings,
       buildCurrentStrategy,
       sellerRequiredCriteria,
+      choiceQuestions,
     ],
   );
 

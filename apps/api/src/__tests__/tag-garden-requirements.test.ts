@@ -1,3 +1,4 @@
+import { buildBuyerChoiceQuestions, resolveChecks } from "@haggle/shared";
 import { describe, expect, it } from "vitest";
 import {
   buildAdvisorRequirementPlan,
@@ -22,6 +23,22 @@ function memory(
     source: [],
     ...overrides,
   };
+}
+
+const phoneChoices = buildBuyerChoiceQuestions(["iphone"]);
+const hardAnswers = phoneChoices
+  .filter((q) => q.enforcement === "hard")
+  .map((q) => ({ checkId: q.checkId, stance: q.options[0]!.stance }));
+function phoneReadyMemory(overrides: Parameters<typeof memory>[0] = {}) {
+  return memory({
+    mustHave: ["price matters"],
+    categoryCriteria: [
+      ...hardAnswers,
+      { checkId: "working_status", stance: "working units" },
+      { checkId: "cosmetic_grade", stance: "any cosmetic condition" },
+    ],
+    ...overrides,
+  });
 }
 
 describe("Tag Garden advisor requirements", () => {
@@ -140,16 +157,15 @@ describe("Tag Garden advisor requirements", () => {
     expect(answered.blockingSlots.map((s) => s.slotId)).not.toContain("authenticity");
   });
 
-  it("does NOT re-ask a taxonomy gate already asked last turn, whatever the buyer replied (ask once)", () => {
-    // Buyer answered the title gate with "rebuilt is okay" — a real answer that lacks
-    // the topic keyword. Without ask-once, keyword matching would re-ask "clean title?"
-    // and contradict them. askedQuestions carries the gate's question from last turn.
+  it("keeps a choice gate unanswered until an explicit stance is captured", () => {
+    // Merely asking a canonical choice cannot answer it on the buyer's behalf.
+    // The exact stance must be captured before the mandatory gate clears.
     const plan = buildAdvisorRequirementPlan({
       memory: memory({ categoryInterest: "중고차", budgetMax: 10000, source: ["rebuilt is okay"] }),
       listings: [vehicleListing],
       askedQuestions: ["Should the agent only consider clean-title vehicles?"],
     });
-    expect(plan.blockingSlots.map((s) => s.slotId)).not.toContain("title_status");
+    expect(plan.blockingSlots.map((s) => s.slotId)).toContain("title_status");
   });
 
   it("STILL asks a taxonomy gate that was never asked (ask-once does not suppress the first ask)", () => {
@@ -196,13 +212,20 @@ describe("Tag Garden advisor requirements", () => {
     stillBlocks(iphoneTaxonomyListing, "find_my_status", ["통신사 잠금 해제된 걸로"]);
   });
 
-  it("preserves the rich iPhone slots (taxonomy does not override the hardcoded map)", () => {
+  it("uses the same inherited phone checks and options as Quick Setup", () => {
     const plan = buildAdvisorRequirementPlan({
       memory: memory({ budgetMax: 500, source: ["아이폰 예산 500"] }),
       listings: iphoneListings,
     });
     expect(plan.requiredSlots.map((s) => s.slotId)).toContain("battery_health");
-    expect(plan.requiredSlots.every((s) => s.tagPath !== "taxonomy")).toBe(true);
+    for (const check of resolveChecks(iphoneListings[0]!.tags)) {
+      expect(plan.requiredSlots.find((s) => s.slotId === check.id)).toMatchObject({
+        slotId: check.id,
+        questionKo: check.buyerAskKo ?? check.questionKo,
+        enforcement: check.enforcement,
+        answerOptions: check.answerOptions?.map((o) => o.label),
+      });
+    }
   });
 
   it("starts with broad shopping intent before budget or model details", () => {
@@ -229,7 +252,7 @@ describe("Tag Garden advisor requirements", () => {
     expect(plan.missingSlots[0]?.slotId).toBe("max_budget");
   });
 
-  it("does not apply iPhone required slots just because an iPhone exists in available listings", () => {
+  it("uses listing tags rather than re-inferring a different tree from memory", () => {
     const plan = buildAdvisorRequirementPlan({
       memory: memory({
         categoryInterest: "MacBook 중고",
@@ -237,13 +260,13 @@ describe("Tag Garden advisor requirements", () => {
       listings: iphoneListings,
     });
 
-    expect(plan.matchedTags).toEqual([]);
+    expect(plan.matchedTags).toContain("electronics/phones/iphone");
     expect(plan.question).toBe("대략적인 예산 범위는 어느 정도인가요?");
   });
 
   it("does not treat box preference as satisfying iPhone battery or carrier slots", () => {
     const plan = buildAdvisorRequirementPlan({
-      memory: memory({
+      memory: phoneReadyMemory({
         budgetMax: 500,
         mustHave: ["original box included"],
         source: ["최대 예산은 500 달러고 박스가 있으면 좋겠어"],
@@ -251,23 +274,19 @@ describe("Tag Garden advisor requirements", () => {
       listings: iphoneListings,
     });
 
-    expect(plan.question).toBe(
-      "중고폰은 배터리 성능에 따라 가격이 꽤 달라져요. 90% 이상만 볼까요, 85% 이상이면 괜찮을까요, 아니면 가격이 좋으면 80%대도 괜찮을까요?",
-    );
+    expect(plan.question).toBe("What minimum battery health do you want?");
     expect(plan.missingSlots.map((slot) => slot.slotId)).toEqual([
       "battery_health",
       "carrier_lock",
+      "storage_capacity",
     ]);
-    expect(plan.blockingSlots.map((slot) => slot.slotId)).toEqual([
-      "battery_health",
-      "carrier_lock",
-    ]);
-    expect(plan.hasBlockingMissingSlots).toBe(true);
+    expect(plan.blockingSlots).toEqual([]);
+    expect(plan.hasBlockingMissingSlots).toBe(false);
   });
 
   it("requires an actual battery threshold, not just a vague battery mention", () => {
     const plan = buildAdvisorRequirementPlan({
-      memory: memory({
+      memory: phoneReadyMemory({
         budgetMax: 500,
         mustHave: ["battery condition matters"],
         source: ["배터리가 중요해"],
@@ -275,9 +294,7 @@ describe("Tag Garden advisor requirements", () => {
       listings: iphoneListings,
     });
 
-    expect(plan.question).toBe(
-      "중고폰은 배터리 성능에 따라 가격이 꽤 달라져요. 90% 이상만 볼까요, 85% 이상이면 괜찮을까요, 아니면 가격이 좋으면 80%대도 괜찮을까요?",
-    );
+    expect(plan.question).toBe("What minimum battery health do you want?");
   });
 
   it("prioritizes hard iPhone slots before soft buyer-priority prompts", () => {
@@ -292,20 +309,16 @@ describe("Tag Garden advisor requirements", () => {
       })),
     });
 
-    expect(plan.missingSlots.map((slot) => `${slot.slotId}:${slot.enforcement}`)).toEqual([
-      "buyer_priority:soft",
-      "battery_health:hard",
-      "carrier_lock:hard",
-    ]);
-    expect(plan.nextSlot?.slotId).toBe("battery_health");
-    expect(plan.question).toBe(
-      "중고폰은 배터리 성능에 따라 가격이 꽤 달라져요. 90% 이상만 볼까요, 85% 이상이면 괜찮을까요, 아니면 가격이 좋으면 80%대도 괜찮을까요?",
+    expect(plan.nextSlot?.slotId).toBe("imei_verification");
+    expect(plan.blockingSlots.map((slot) => slot.slotId)).toEqual(
+      hardAnswers.map((a) => a.checkId),
     );
+    expect(plan.missingSlots.find((s) => s.slotId === "battery_health")?.enforcement).toBe("soft");
   });
 
   it("moves to carrier slot after a battery threshold is known", () => {
     const plan = buildAdvisorRequirementPlan({
-      memory: memory({
+      memory: phoneReadyMemory({
         budgetMax: 500,
         mustHave: ["battery >= 90%"],
         source: ["배터리는 90% 이상이면 좋겠어"],
@@ -313,12 +326,12 @@ describe("Tag Garden advisor requirements", () => {
       listings: iphoneListings,
     });
 
-    expect(plan.question).toBe("언락 모델이 필수인가요?");
+    expect(plan.question).toBe("Is an unlocked model required?");
   });
 
-  it("does not let carrier no-preference evidence satisfy the battery hard slot", () => {
+  it("does not let carrier no-preference evidence satisfy the battery preference", () => {
     const plan = buildAdvisorRequirementPlan({
-      memory: memory({
+      memory: phoneReadyMemory({
         categoryInterest: "iPhone 16 Pro 중고",
         budgetMax: 900,
         mustHave: ["carrier no preference"],
@@ -335,16 +348,15 @@ describe("Tag Garden advisor requirements", () => {
 
     expect(plan.nextSlot).toMatchObject({
       slotId: "battery_health",
-      questionKo:
-        "중고폰은 배터리 성능에 따라 가격이 꽤 달라져요. 90% 이상만 볼까요, 85% 이상이면 괜찮을까요, 아니면 가격이 좋으면 80%대도 괜찮을까요?",
+      questionKo: "What minimum battery health do you want?",
     });
     expect(plan.missingSlots.map((slot) => slot.slotId)).toContain("battery_health");
     expect(plan.missingSlots.map((slot) => slot.slotId)).not.toContain("carrier_lock");
   });
 
-  it("does not let broad no-additional-requirements evidence satisfy product hard slots", () => {
+  it("does not let broad no-additional-requirements evidence satisfy product checks", () => {
     const plan = buildAdvisorRequirementPlan({
-      memory: memory({
+      memory: phoneReadyMemory({
         categoryInterest: "iPhone 16 Pro 중고",
         budgetMax: 900,
         source: ["no additional requirements"],
@@ -362,15 +374,16 @@ describe("Tag Garden advisor requirements", () => {
     expect(plan.missingSlots.map((slot) => slot.slotId)).toEqual([
       "battery_health",
       "carrier_lock",
+      "storage_capacity",
     ]);
     expect(plan.nextSlot).toMatchObject({
       slotId: "battery_health",
     });
   });
 
-  it("reconfirms hard slot memory when the product scope changed", () => {
+  it("reconfirms preference memory when the product scope changed", () => {
     const plan = buildAdvisorRequirementPlan({
-      memory: memory({
+      memory: phoneReadyMemory({
         categoryInterest: "iPhone 15 Pro 중고",
         budgetMax: 700,
         mustHave: ["battery >= 90%"],
@@ -382,9 +395,9 @@ describe("Tag Garden advisor requirements", () => {
       })),
     });
 
-    expect(plan.blockingSlots[0]).toMatchObject({
+    expect(plan.missingSlots.find((s) => s.slotId === "battery_health")).toMatchObject({
       slotId: "battery_health",
-      enforcement: "hard",
+      enforcement: "soft",
       questionKo:
         "전에 iPhone 13 Pro에서 말한 배터리 조건을 iPhone 15 Pro에도 그대로 적용할까요, 아니면 다시 정할까요?",
     });
@@ -392,7 +405,7 @@ describe("Tag Garden advisor requirements", () => {
 
   it("uses the latest source product as active scope when category interest contains multiple models", () => {
     const plan = buildAdvisorRequirementPlan({
-      memory: memory({
+      memory: phoneReadyMemory({
         categoryInterest: "iPhone 13 Pro, iPhone 15 Pro",
         budgetMax: 700,
         mustHave: ["battery >= 90%"],
@@ -419,9 +432,9 @@ describe("Tag Garden advisor requirements", () => {
     });
   });
 
-  it("returns to the original hard slot question after scoped condition reuse is rejected", () => {
+  it("returns to the original preference question after scoped condition reuse is rejected", () => {
     const plan = buildAdvisorRequirementPlan({
-      memory: memory({
+      memory: phoneReadyMemory({
         categoryInterest: "iPhone 13 Pro, iPhone 15 Pro",
         budgetMax: 700,
         mustHave: ["battery >= 90%"],
@@ -453,14 +466,13 @@ describe("Tag Garden advisor requirements", () => {
 
     expect(plan.nextSlot).toMatchObject({
       slotId: "battery_health",
-      questionKo:
-        "중고폰은 배터리 성능에 따라 가격이 꽤 달라져요. 90% 이상만 볼까요, 85% 이상이면 괜찮을까요, 아니면 가격이 좋으면 80%대도 괜찮을까요?",
+      questionKo: "What minimum battery health do you want?",
     });
   });
 
   it("lets the latest scoped condition decision override an older rejection", () => {
     const plan = buildAdvisorRequirementPlan({
-      memory: memory({
+      memory: phoneReadyMemory({
         categoryInterest: "iPhone 13 Pro, iPhone 15 Pro",
         budgetMax: 700,
         mustHave: ["battery >= 90%"],
@@ -501,12 +513,12 @@ describe("Tag Garden advisor requirements", () => {
     });
 
     expect(plan.missingSlots.map((slot) => slot.slotId)).not.toContain("battery_health");
-    expect(plan.question).toBe("언락 모델이 필수인가요?");
+    expect(plan.question).toBe("Is an unlocked model required?");
   });
 
   it("lets direct active-scope evidence override an older scoped rejection", () => {
     const plan = buildAdvisorRequirementPlan({
-      memory: memory({
+      memory: phoneReadyMemory({
         categoryInterest: "iPhone 13 Pro, iPhone 15 Pro",
         budgetMax: 700,
         mustHave: ["battery >= 90%"],
@@ -541,12 +553,12 @@ describe("Tag Garden advisor requirements", () => {
     });
 
     expect(plan.missingSlots.map((slot) => slot.slotId)).not.toContain("battery_health");
-    expect(plan.question).toBe("언락 모델이 필수인가요?");
+    expect(plan.question).toBe("Is an unlocked model required?");
   });
 
   it("lets a newer product source override an older scoped condition decision", () => {
     const plan = buildAdvisorRequirementPlan({
-      memory: memory({
+      memory: phoneReadyMemory({
         categoryInterest: "iPhone 13 Pro, iPhone 15 Pro, iPhone 16 Pro",
         budgetMax: 900,
         mustHave: ["battery >= 90%"],
@@ -587,9 +599,9 @@ describe("Tag Garden advisor requirements", () => {
     });
   });
 
-  it("does not reconfirm hard slot memory when the product scope matches", () => {
+  it("does not reconfirm preference memory when the product scope matches", () => {
     const plan = buildAdvisorRequirementPlan({
-      memory: memory({
+      memory: phoneReadyMemory({
         categoryInterest: "iPhone 15 Pro 중고",
         budgetMax: 700,
         mustHave: ["battery >= 90%"],
@@ -602,19 +614,19 @@ describe("Tag Garden advisor requirements", () => {
     });
 
     expect(plan.missingSlots.map((slot) => slot.slotId)).not.toContain("battery_health");
-    expect(plan.question).toBe("언락 모델이 필수인가요?");
+    expect(plan.question).toBe("Is an unlocked model required?");
   });
 
   it("resolves negotiation missing-info slots to Tag Garden questions", () => {
     expect(resolveTagGardenQuestionForSlot("battery_health")).toMatchObject({
-      question:
-        "중고폰은 배터리 성능에 따라 가격이 꽤 달라져요. 90% 이상만 볼까요, 85% 이상이면 괜찮을까요, 아니면 가격이 좋으면 80%대도 괜찮을까요?",
+      question: "배터리 성능(%)은 얼마인가요?",
       slotId: "battery_health",
-      enforcement: "hard",
+      enforcement: "soft",
+      answerOptions: ["90%+", "80–89%", "Below 80%", "Not checked"],
       source: "tag_garden",
     });
     expect(resolveTagGardenQuestionForSlot("verification_status")).toMatchObject({
-      question: "거래 확정 전에는 IMEI가 깨끗한지 확인해야 합니다.",
+      question: "IMEI가 깨끗한지(블랙리스트 아님) 확인 가능한가요?",
       slotId: "imei_verification",
       source: "tag_garden",
     });

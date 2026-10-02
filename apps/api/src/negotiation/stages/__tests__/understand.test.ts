@@ -100,21 +100,15 @@ describe("Stage 1: understand", () => {
         expect.arrayContaining([
           expect.objectContaining({
             slot: "battery_health",
-            question:
-              "중고폰은 배터리 성능에 따라 가격이 꽤 달라져요. 90% 이상만 볼까요, 85% 이상이면 괜찮을까요, 아니면 가격이 좋으면 80%대도 괜찮을까요?",
+            question: "배터리 성능(%)은 얼마인가요?",
             question_source: "tag_garden",
             tag_slot_id: "battery_health",
-            enforcement: "hard",
-            answer_options: [
-              "90% 이상만",
-              "85% 이상까지 허용",
-              "80%대도 가격 좋으면 허용",
-              "상관없음",
-            ],
+            enforcement: "soft",
+            answer_options: ["90%+", "80–89%", "Below 80%", "Not checked"],
           }),
           expect.objectContaining({
             slot: "carrier_lock",
-            question: "언락 모델이 필수인가요?",
+            question: "통신사 언락 상태인가요?",
             question_source: "tag_garden",
             tag_slot_id: "carrier_lock",
           }),
