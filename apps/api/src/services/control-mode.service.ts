@@ -92,6 +92,24 @@ function asMode(value: unknown, fallback: SoftControlMode = "auto"): SoftControl
   return isSoftControlMode(value) ? value : fallback;
 }
 
+function isMappedControlModeRow(
+  row: Record<string, unknown> | ControlModeSessionRow,
+): row is ControlModeSessionRow {
+  return (
+    typeof (row as ControlModeSessionRow).buyerControlMode === "string" &&
+    typeof (row as ControlModeSessionRow).sellerControlMode === "string" &&
+    !("buyer_control_mode" in row)
+  );
+}
+
+/** Snake_case locked `SELECT *` row, or an already-mapped control-mode row. */
+export function controlModeFromLockedRow(
+  locked: Record<string, unknown> | ControlModeSessionRow,
+): ControlModeSessionRow {
+  if (isMappedControlModeRow(locked)) return locked;
+  return mapLockedRow(locked);
+}
+
 function mapLockedRow(raw: Record<string, unknown>): ControlModeSessionRow {
   return {
     id: String(raw.id),
@@ -512,6 +530,158 @@ export async function markSoftAiInflight(
     )
     .returning({ id: negotiationSessions.id });
   return Boolean(row);
+}
+
+export type ClaimSoftAiInflightResult =
+  | { ok: true; version: number }
+  | { ok: false; reason: "manual"; session: ControlModeSessionRow }
+  | { ok: false; reason: "concurrent" | "not_found" };
+
+/**
+ * Claim Soft AI in-flight under the same row lock as `setPartyControlMode`
+ * (`SELECT * FROM negotiation_sessions WHERE id = $1 FOR UPDATE`).
+ *
+ * In-lock re-read of that party's control mode (SoT §3 handoff, §12). Manual,
+ * or pending Manual, returns without writing so auto-play can answer
+ * `SOFT_MANUAL_WAITING` before a round or a Haggle-credit charge. Only a
+ * version mismatch, or the guarded UPDATE returning no row, is `concurrent`.
+ * An existing inflight marker does not block the claim: `markSoftAiInflight`
+ * did not reject one, and a stale marker left by a crashed or restarted
+ * process must not block auto-play for that session forever. Concurrent POSTs
+ * are still serialized by the version guard.
+ */
+export async function claimSoftAiInflightUnderLock(
+  db: Database,
+  input: { sessionId: string; party: ControlModeParty; expectedVersion: number },
+): Promise<ClaimSoftAiInflightResult> {
+  return db.transaction(async (tx) => {
+    const session = await lockSession(tx as unknown as TxDb, input.sessionId);
+    if (!session) return { ok: false, reason: "not_found" };
+
+    const mode = input.party === "buyer" ? session.buyerControlMode : session.sellerControlMode;
+    const pending =
+      input.party === "buyer" ? session.buyerPendingControlMode : session.sellerPendingControlMode;
+    // In-lock re-read: committed Manual, or Manual queued during an in-flight
+    // Soft AI draft, must not start another round (SoT §3 / §12).
+    if (mode === "manual" || pending === "manual") {
+      return { ok: false, reason: "manual", session };
+    }
+    if (session.version !== input.expectedVersion) {
+      return { ok: false, reason: "concurrent" };
+    }
+
+    const [row] = await (tx as unknown as TxDb)
+      .update(negotiationSessions)
+      .set({
+        softAiInflightParty: input.party,
+        version: session.version + 1,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(negotiationSessions.id, session.id),
+          eq(negotiationSessions.version, session.version),
+        ),
+      )
+      .returning();
+    if (!row) return { ok: false, reason: "concurrent" };
+    return { ok: true, version: row.version };
+  });
+}
+
+/**
+ * Whether Haggle AI must not draft a Soft round for `party` under the locked row.
+ *
+ * Committed Manual always blocks. Pending Manual blocks unless this call already
+ * holds that party's in-flight claim (SoT §3: the claimed draft finishes, Manual
+ * applies after). The claim is caller-supplied — never read off the row — so a
+ * stale inflight marker cannot authorize a draft.
+ */
+export function softAiDraftBlockedUnderLock(
+  locked: Record<string, unknown> | ControlModeSessionRow,
+  party: ControlModeParty,
+  opts?: { inflightClaim?: ControlModeParty | null },
+): boolean {
+  const session = controlModeFromLockedRow(locked);
+  const mode = party === "buyer" ? session.buyerControlMode : session.sellerControlMode;
+  const pending =
+    party === "buyer" ? session.buyerPendingControlMode : session.sellerPendingControlMode;
+  if (mode === "manual") return true;
+  if (pending === "manual" && opts?.inflightClaim !== party) return true;
+  return false;
+}
+
+export class SoftManualWaitingError extends Error {
+  readonly party: ControlModeParty;
+  readonly buyerControlMode: SoftControlMode;
+  readonly sellerControlMode: SoftControlMode;
+  readonly sessionStatus: string;
+  readonly currentRound: number;
+
+  constructor(input: {
+    party: ControlModeParty;
+    buyerControlMode: SoftControlMode;
+    sellerControlMode: SoftControlMode;
+    sessionStatus: string;
+    currentRound: number;
+  }) {
+    super(`SOFT_MANUAL_WAITING: ${input.party}`);
+    this.name = "SoftManualWaitingError";
+    this.party = input.party;
+    this.buyerControlMode = input.buyerControlMode;
+    this.sellerControlMode = input.sellerControlMode;
+    this.sessionStatus = input.sessionStatus;
+    this.currentRound = input.currentRound;
+  }
+}
+
+export function softManualWaitingBodyFromError(err: SoftManualWaitingError): {
+  error: "SOFT_MANUAL_WAITING";
+  waiting_for_manual: true;
+  party: ControlModeParty;
+  buyer_control_mode: SoftControlMode;
+  seller_control_mode: SoftControlMode;
+  session_status: string;
+  current_round: number;
+} {
+  return {
+    error: "SOFT_MANUAL_WAITING",
+    waiting_for_manual: true,
+    party: err.party,
+    buyer_control_mode: err.buyerControlMode,
+    seller_control_mode: err.sellerControlMode,
+    session_status: err.sessionStatus,
+    current_round: err.currentRound,
+  };
+}
+
+/**
+ * `SOFT_MANUAL_WAITING` body from a row read under `lockSession`.
+ * The locked-row mapper has no `currentRound`; pass it from the unlocked read.
+ * Shape matches `SoftManualWaitingBody`.
+ */
+export function softManualWaitingBodyFromLockedRow(
+  session: Pick<ControlModeSessionRow, "buyerControlMode" | "sellerControlMode" | "status">,
+  party: ControlModeParty,
+  currentRound: number,
+): {
+  error: "SOFT_MANUAL_WAITING";
+  waiting_for_manual: true;
+  party: ControlModeParty;
+  buyer_control_mode: SoftControlMode;
+  seller_control_mode: SoftControlMode;
+  session_status: string;
+  current_round: number;
+} {
+  return {
+    error: "SOFT_MANUAL_WAITING",
+    waiting_for_manual: true,
+    party,
+    buyer_control_mode: session.buyerControlMode,
+    seller_control_mode: session.sellerControlMode,
+    session_status: session.status,
+    current_round: currentRound,
+  };
 }
 
 /**

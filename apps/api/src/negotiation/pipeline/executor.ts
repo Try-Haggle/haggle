@@ -18,6 +18,11 @@ import type { EventDispatcher, PipelineEvent } from "../../lib/event-dispatcher.
 import type { RoundExecutionInput, RoundExecutionResult } from "../../lib/negotiation-executor.js";
 import { mapRawToDbSession } from "../../lib/negotiation-executor.js";
 import type { DbRound, DbSession } from "../../lib/session-reconstructor.js";
+import {
+  controlModeFromLockedRow,
+  SoftManualWaitingError,
+  softAiDraftBlockedUnderLock,
+} from "../../services/control-mode.service.js";
 import { recordRoundConversationSignals } from "../../services/conversation-signal-sink.js";
 import { loadEvermemoBrief } from "../../services/evermemo-bridge.service.js";
 import { getL5SignalsProvider } from "../../services/l5-signals.service.js";
@@ -88,6 +93,75 @@ registerSkill(new RetailMsrpSkill());
 const roundFactSink = new PgRoundFactSink();
 
 const TERMINAL_STATUSES = new Set(["ACCEPTED", "REJECTED", "EXPIRED", "SUPERSEDED"]);
+
+const ZERO_UTILITY = { u_total: 0, v_p: 0, v_t: 0, v_r: 0, v_s: 0 };
+
+/** Offer-only spam reject. Body is only this code — no prices or strategy. */
+export class OfferRejectedSpamError extends Error {
+  constructor() {
+    super("OFFER_REJECTED_SPAM");
+    this.name = "OfferRejectedSpamError";
+  }
+}
+
+function counterpartOfSender(senderRole: "BUYER" | "SELLER"): "buyer" | "seller" {
+  return senderRole === "BUYER" ? "seller" : "buyer";
+}
+
+function partyIsManual(
+  modes: ReturnType<typeof controlModeFromLockedRow>,
+  party: "buyer" | "seller",
+): boolean {
+  const mode = party === "buyer" ? modes.buyerControlMode : modes.sellerControlMode;
+  const pending =
+    party === "buyer" ? modes.buyerPendingControlMode : modes.sellerPendingControlMode;
+  return mode === "manual" || pending === "manual";
+}
+
+/** Acting party first, then the claimed party. Null when neither is Manual. */
+function firstManualParty(
+  modes: ReturnType<typeof controlModeFromLockedRow>,
+  parties: Array<"buyer" | "seller">,
+): "buyer" | "seller" | null {
+  for (const party of parties) {
+    if (partyIsManual(modes, party)) return party;
+  }
+  return null;
+}
+
+function awaitingPartyFromRound(round: { metadata?: unknown }): "buyer" | "seller" | undefined {
+  const metadata = round.metadata;
+  if (!metadata || typeof metadata !== "object") return undefined;
+  const party = (metadata as Record<string, unknown>).awaiting_manual_counterpart;
+  return party === "buyer" || party === "seller" ? party : undefined;
+}
+
+function isOfferOnlyRound(round: {
+  decision?: string | null;
+  counterPriceMinor?: string | null;
+  metadata?: unknown;
+}): boolean {
+  if (awaitingPartyFromRound(round)) return true;
+  const noDecision = round.decision == null || round.decision === "";
+  const noCounter = round.counterPriceMinor == null || round.counterPriceMinor === "";
+  return noDecision && noCounter;
+}
+
+function softManualWaitingFromLocked(
+  lockedRow: Record<string, unknown>,
+  dbSession: ReturnType<typeof mapRawToDbSession>,
+  party: "buyer" | "seller",
+): SoftManualWaitingError {
+  const lockedModes = controlModeFromLockedRow(lockedRow);
+  const currentRound = Number(dbSession.currentRound);
+  return new SoftManualWaitingError({
+    party,
+    buyerControlMode: lockedModes.buyerControlMode,
+    sellerControlMode: lockedModes.sellerControlMode,
+    sessionStatus: dbSession.status || lockedModes.status,
+    currentRound: Number.isFinite(currentRound) ? currentRound : 0,
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Default StageConfig
@@ -175,6 +249,47 @@ export async function executeStagedNegotiationRound(
     if (!lockedRow) throw new Error(`SESSION_NOT_FOUND: ${input.sessionId}`);
 
     const dbSession = mapRawToDbSession(lockedRow);
+    const actingParty = dbSession.role === "SELLER" ? "seller" : "buyer";
+
+    // A claim is only valid when this call still holds the locked in-flight marker.
+    // Mismatch never falls through to an AI round or an offer-only save.
+    if (
+      input.softAiInflightClaim &&
+      lockedRow.soft_ai_inflight_party !== input.softAiInflightClaim
+    ) {
+      const lockedModes = controlModeFromLockedRow(lockedRow);
+      const manualParty = firstManualParty(lockedModes, [actingParty, input.softAiInflightClaim]);
+      if (manualParty) {
+        throw softManualWaitingFromLocked(lockedRow, dbSession, manualParty);
+      }
+      throw new Error(
+        "CONCURRENT_MODIFICATION: soft AI in-flight claim does not match the locked row",
+      );
+    }
+
+    // External own-offer (no claim): if the counterpart is Manual, save the offer
+    // and do not draft. The mode is read only from this locked row.
+    if (
+      !input.softAiInflightClaim &&
+      partyIsManual(controlModeFromLockedRow(lockedRow), counterpartOfSender(input.senderRole))
+    ) {
+      const saved = await persistOfferOnlyForManualCounterpart(
+        tx as unknown as Database,
+        dbSession,
+        input,
+      );
+      return { early: saved };
+    }
+
+    // Acting party is the locked session role (set by setSessionPerspective), not the
+    // offer sender. Re-read that party's mode before any write or LLM work.
+    if (
+      softAiDraftBlockedUnderLock(lockedRow, actingParty, {
+        inflightClaim: input.softAiInflightClaim,
+      })
+    ) {
+      throw softManualWaitingFromLocked(lockedRow, dbSession, actingParty);
+    }
 
     // 2. Terminal check
     if (TERMINAL_STATUSES.has(dbSession.status)) {
@@ -637,7 +752,8 @@ export async function executeStagedNegotiationRound(
   });
 
   // --- Post-commit: dispatch pipeline events ---
-  if (eventDispatcher && !result.idempotent) {
+  // Offer-only returns before this. Never emit an agreement for that result.
+  if (eventDispatcher && !result.idempotent && !result.awaitingManualCounterpart) {
     const finalSession = await getSessionById(db, input.sessionId);
     const terminalEvent = buildTerminalEvent(
       input.sessionId,
@@ -1124,6 +1240,116 @@ function mapActionToMessageType(
   }
 }
 
+function idempotentFieldsFromRound(
+  existingRound: Record<string, unknown>,
+): Pick<
+  RoundExecutionResult,
+  "decision" | "outgoingPrice" | "utility" | "awaitingManualCounterpart"
+> {
+  const awaiting = awaitingPartyFromRound(existingRound);
+  return {
+    decision: (existingRound.decision as string) ?? (awaiting ? "AWAITING_COUNTERPART" : "COUNTER"),
+    outgoingPrice: Number(existingRound.counterPriceMinor ?? existingRound.priceminor),
+    utility: (existingRound.utility as RoundExecutionResult["utility"]) ?? ZERO_UTILITY,
+    ...(awaiting ? { awaitingManualCounterpart: awaiting } : {}),
+  };
+}
+
+/**
+ * Message-pattern screen only. Trust score and price deviation are omitted,
+ * and there is no synthetic price line. Those inputs read the caller's
+ * r_score and the locked snapshot target, so spam versus accept would be an
+ * oracle for the Manual counterpart's private price.
+ *
+ * No message text is not spam. A hit must not insert a row. The normal AI
+ * path still screens with trust and deviation and persists a REJECT round;
+ * that path is unchanged.
+ */
+function offerOnlyScreenIsSpam(input: RoundExecutionInput): boolean {
+  if (!input.messageText) return false;
+  return screenMessage({ messageText: input.messageText }).is_spam;
+}
+
+/**
+ * Same locked transaction as the Phase-1 read. Saves the sender's offer and
+ * sets role to that sender, so the next AI draft is for them when the Manual
+ * side answers. No LLM. Status changes only CREATED → ACTIVE.
+ */
+async function persistOfferOnlyForManualCounterpart(
+  tx: Database,
+  dbSession: DbSession,
+  input: RoundExecutionInput,
+): Promise<RoundExecutionResult> {
+  if (TERMINAL_STATUSES.has(dbSession.status)) {
+    throw new Error(`SESSION_TERMINAL: ${dbSession.status}`);
+  }
+  if (dbSession.expiresAt && dbSession.expiresAt.getTime() < input.nowMs) {
+    await updateSessionState(tx, input.sessionId, dbSession.version, { status: "EXPIRED" });
+    throw new Error("SESSION_EXPIRED");
+  }
+  const maxRounds = extractNum(dbSession.negotiationAgentSnapshot, "max_rounds") ?? 15;
+  if (dbSession.currentRound >= maxRounds) {
+    await updateSessionState(tx, input.sessionId, dbSession.version, { status: "REJECTED" });
+    throw new Error("ROUND_LIMIT_EXCEEDED");
+  }
+
+  const existingInTx = await getRoundByIdempotencyKey(tx, input.sessionId, input.idempotencyKey);
+  if (existingInTx) {
+    return buildIdempotentResultFromRound(existingInTx, dbSession);
+  }
+
+  const counterpart = counterpartOfSender(input.senderRole);
+  const dbRounds = (await getRoundsBySessionId(tx, input.sessionId)) as DbRound[];
+  const latest = dbRounds.at(-1);
+  // Locked role is the side awaiting a reply. With a history, that side is off-turn.
+  // Zero rounds stays an opening offer, same as before this check.
+  if (dbRounds.length > 0 && input.senderRole === dbSession.role) {
+    throw new Error("NOT_YOUR_TURN");
+  }
+  if (latest && isOfferOnlyRound(latest) && latest.senderRole === input.senderRole) {
+    throw new Error("NOT_YOUR_TURN");
+  }
+
+  if (offerOnlyScreenIsSpam(input)) {
+    throw new OfferRejectedSpamError();
+  }
+
+  const nextRound = dbSession.currentRound + 1;
+  const createdRound = await createRound(tx, {
+    sessionId: input.sessionId,
+    roundNo: nextRound,
+    senderRole: input.senderRole,
+    messageType: nextRound === 1 ? "OFFER" : "COUNTER",
+    priceminor: String(input.offerPriceMinor),
+    metadata: {
+      awaiting_manual_counterpart: counterpart,
+      ...(input.protocol ? { protocol: { hnp: input.protocol } } : {}),
+    },
+    idempotencyKey: input.idempotencyKey,
+  });
+
+  const updated = await updateSessionState(tx, input.sessionId, dbSession.version, {
+    ...(dbSession.status === "CREATED" ? { status: "ACTIVE" as const } : {}),
+    role: input.senderRole,
+    currentRound: nextRound,
+    lastOfferPriceMinor: String(input.offerPriceMinor),
+  });
+  if (!updated) {
+    throw new Error("CONCURRENT_MODIFICATION: session version conflict");
+  }
+
+  return {
+    idempotent: false,
+    roundId: createdRound.id,
+    roundNo: nextRound,
+    decision: "AWAITING_COUNTERPART",
+    outgoingPrice: input.offerPriceMinor,
+    utility: ZERO_UTILITY,
+    sessionStatus: updated.status,
+    awaitingManualCounterpart: counterpart,
+  };
+}
+
 async function buildIdempotentResult(
   existingRound: Record<string, unknown>,
   db: Database,
@@ -1134,15 +1360,7 @@ async function buildIdempotentResult(
     idempotent: true,
     roundId: existingRound.id as string,
     roundNo: existingRound.roundNo as number,
-    decision: (existingRound.decision as string) ?? "COUNTER",
-    outgoingPrice: Number(existingRound.counterPriceMinor ?? existingRound.priceminor),
-    utility: (existingRound.utility as RoundExecutionResult["utility"]) ?? {
-      u_total: 0,
-      v_p: 0,
-      v_t: 0,
-      v_r: 0,
-      v_s: 0,
-    },
+    ...idempotentFieldsFromRound(existingRound),
     sessionStatus: session?.status ?? "ACTIVE",
   };
 }
@@ -1155,15 +1373,7 @@ function buildIdempotentResultFromRound(
     idempotent: true,
     roundId: existingRound.id as string,
     roundNo: existingRound.roundNo as number,
-    decision: (existingRound.decision as string) ?? "COUNTER",
-    outgoingPrice: Number(existingRound.counterPriceMinor ?? existingRound.priceminor),
-    utility: (existingRound.utility as RoundExecutionResult["utility"]) ?? {
-      u_total: 0,
-      v_p: 0,
-      v_t: 0,
-      v_r: 0,
-      v_s: 0,
-    },
+    ...idempotentFieldsFromRound(existingRound),
     sessionStatus: dbSession.status,
   };
 }

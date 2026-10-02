@@ -31,6 +31,7 @@ import {
   SELLER_CRITERIA_PAUSE_MARKER,
   unresolvedBuyerPauseAsks,
 } from "../negotiation/phase/seller-criteria-pause.js";
+import { OfferRejectedSpamError } from "../negotiation/pipeline/executor.js";
 import { getNotificationUserInfo } from "../notification/get-user-info.js";
 import type { NotificationBus } from "../notification/index.js";
 import {
@@ -40,13 +41,16 @@ import {
   isAttemptControlRateLimited,
 } from "../services/attempt-control.service.js";
 import {
+  claimSoftAiInflightUnderLock,
   clearSoftAiInflightAndApplyPending,
   controlModeFromSessionRecord,
   isSellerManualTimedOut,
-  markSoftAiInflight,
   partyForActor,
   resumeSellerSoftAutoAfterTimeout,
+  SoftManualWaitingError,
   setPartyControlMode,
+  softManualWaitingBodyFromError,
+  softManualWaitingBodyFromLockedRow,
 } from "../services/control-mode.service.js";
 import {
   getListingPlaybackSummariesByInternalIds,
@@ -596,6 +600,9 @@ export function registerNegotiationRoutes(
           escalation: result.escalation
             ? { type: result.escalation.type, context: result.escalation.context }
             : undefined,
+          ...(result.awaitingManualCounterpart
+            ? { awaiting_manual_counterpart: result.awaitingManualCounterpart }
+            : {}),
         };
 
         // LLM engine extensions (present when NEGOTIATION_ENGINE=llm)
@@ -622,8 +629,10 @@ export function registerNegotiationRoutes(
         }
 
         // ── Notification: negotiation.session.concluded (NEAR_DEAL → buyer)
+        // Offer-only keeps NEAR_DEAL but is not an agreement.
         if (
           !result.idempotent &&
+          !result.awaitingManualCounterpart &&
           result.sessionStatus === "NEAR_DEAL" &&
           result.outgoingPrice != null
         ) {
@@ -655,6 +664,9 @@ export function registerNegotiationRoutes(
 
         return reply.code(result.idempotent ? 200 : 201).send(responseBody);
       } catch (err) {
+        if (err instanceof SoftManualWaitingError) {
+          return reply.code(409).send(softManualWaitingBodyFromError(err));
+        }
         const message = err instanceof Error ? err.message : String(err);
 
         if (message.startsWith("SESSION_NOT_FOUND")) {
@@ -675,6 +687,12 @@ export function registerNegotiationRoutes(
           return reply
             .code(409)
             .send({ error: "CONCURRENT_MODIFICATION", message: "Please retry" });
+        }
+        if (message.startsWith("NOT_YOUR_TURN")) {
+          return reply.code(409).send({ error: "NOT_YOUR_TURN" });
+        }
+        if (err instanceof OfferRejectedSpamError || message.startsWith("OFFER_REJECTED_SPAM")) {
+          return reply.code(422).send({ error: "OFFER_REJECTED_SPAM" });
         }
 
         throw err;
@@ -1207,16 +1225,30 @@ export function registerNegotiationRoutes(
       // Soft AI handoff lock only when Haggle AI drafts (not user-specified counter).
       const softAiDraft = !userCounter;
       if (softAiDraft) {
-        const inflightClaimed = await markSoftAiInflight(
-          db,
-          liveSession.id,
-          responderParty,
-          liveSession.version,
-        );
-        if (!inflightClaimed) {
+        const claim = await claimSoftAiInflightUnderLock(db, {
+          sessionId: liveSession.id,
+          party: responderParty,
+          expectedVersion: liveSession.version,
+        });
+        if (!claim.ok) {
+          if (claim.reason === "manual") {
+            return reply
+              .code(409)
+              .send(
+                softManualWaitingBodyFromLockedRow(
+                  claim.session,
+                  responderParty,
+                  liveSession.currentRound,
+                ),
+              );
+          }
+          if (claim.reason === "not_found") {
+            return reply.code(404).send({ error: "SESSION_NOT_FOUND" });
+          }
           return reply.code(409).send({ error: "CONCURRENT_MODIFICATION" });
         }
-        liveSession = (await getSessionById(db, liveSession.id)) ?? liveSession;
+        const refreshed = await getSessionById(db, liveSession.id);
+        liveSession = refreshed ?? { ...liveSession, version: claim.version };
       }
 
       const claimed = await setSessionPerspective(
@@ -1249,6 +1281,8 @@ export function registerNegotiationRoutes(
           messageText: plan.messageText,
           eventDispatcher,
           requireSignature: false,
+          // Only after claimSoftAiInflightUnderLock succeeded. Not taken from the request.
+          ...(softAiDraft ? { softAiInflightClaim: responderParty } : {}),
         });
         if (!submitted.ok) {
           if (softAiDraft) {
@@ -1306,7 +1340,13 @@ export function registerNegotiationRoutes(
             sessionId: liveSession.id,
             party: responderParty,
             haggleEnv: process.env.HAGGLE_ENV,
-          }).catch(() => undefined);
+          }).catch((cleanupErr) => {
+            const cleanupMessage =
+              cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr);
+            console.warn(
+              `[soft-ai] inflight cleanup failed session=${liveSession.id} party=${responderParty} error=${cleanupMessage}`,
+            );
+          });
         }
         const message = err instanceof Error ? err.message : String(err);
         if (message.startsWith("SESSION_NOT_FOUND")) {
@@ -1346,6 +1386,9 @@ export function registerNegotiationRoutes(
         }
         if (message.startsWith("CONCURRENT_MODIFICATION")) {
           return reply.code(409).send({ error: "CONCURRENT_MODIFICATION" });
+        }
+        if (message.startsWith("NOT_YOUR_TURN")) {
+          return reply.code(409).send({ error: "NOT_YOUR_TURN" });
         }
         request.log.error({ err, sessionId: session.id }, "auto-play round failed");
         return reply.code(502).send({ error: "AUTO_PLAY_ROUND_FAILED" });

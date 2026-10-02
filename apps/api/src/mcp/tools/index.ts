@@ -602,6 +602,9 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
                 session_status: result.sessionStatus,
                 idempotent: result.idempotent,
                 proposal_hash: result.proposalHash,
+                ...(result.awaitingManualCounterpart
+                  ? { awaiting_manual_counterpart: result.awaitingManualCounterpart }
+                  : {}),
               }),
             },
           ],

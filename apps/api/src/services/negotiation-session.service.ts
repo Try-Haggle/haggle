@@ -111,6 +111,8 @@ export async function updateSessionState(
   expectedVersion: number,
   updates: Partial<{
     status: SessionStatus;
+    /** Whose reply Haggle AI drafts next. Offer-only sets this to the sender. */
+    role: SessionRole;
     currentRound: number;
     roundsNoConcession: number;
     lastOfferPriceMinor: string;

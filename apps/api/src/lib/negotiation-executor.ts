@@ -61,6 +61,13 @@ export interface RoundExecutionInput {
   /** Per-round situational data (trust score, elapsed time, etc.) from API layer */
   roundData: Partial<RoundData>;
   nowMs: number;
+  /**
+   * Party whose Soft AI in-flight claim this call already holds.
+   * Set only by auto-play after `claimSoftAiInflightUnderLock` succeeds.
+   * Never copied from request input. Pending Manual for that party may finish;
+   * committed Manual still rejects.
+   */
+  softAiInflightClaim?: "buyer" | "seller";
 }
 
 export interface RoundExecutionResult {
@@ -72,6 +79,11 @@ export interface RoundExecutionResult {
   outgoingPrice: number;
   utility: { u_total: number; v_p: number; v_t: number; v_r: number; v_s: number };
   sessionStatus: string;
+  /**
+   * Set when the counterpart is Manual and this call saved the sender's offer
+   * without an AI reply. Not taken from request input.
+   */
+  awaitingManualCounterpart?: "buyer" | "seller";
   /**
    * The respond-stage message that was persisted for this round. The auto-play
    * loop uses this as the *incoming* messageText for the next round so the

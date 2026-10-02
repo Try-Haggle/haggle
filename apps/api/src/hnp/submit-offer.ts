@@ -1,6 +1,11 @@
 import type { Database } from "@haggle/db";
 import type { EventDispatcher } from "../lib/event-dispatcher.js";
 import { getExecutor } from "../lib/executor-factory.js";
+import { OfferRejectedSpamError } from "../negotiation/pipeline/executor.js";
+import {
+  SoftManualWaitingError,
+  softManualWaitingBodyFromError,
+} from "../services/control-mode.service.js";
 import { validateHnpIngress } from "../services/hnp-ingress.service.js";
 import type { HnpOfferEnvelope } from "./envelope-schema.js";
 import { normalizeSubmitOffer } from "./normalize-offer.js";
@@ -16,6 +21,7 @@ export type SubmitHnpOfferResult =
       idempotent: boolean;
       proposalHash?: string;
       utility: unknown;
+      awaitingManualCounterpart?: "buyer" | "seller";
       escalation?: { type: string; context?: unknown };
     }
   | { ok: false; status: number; body: Record<string, unknown> };
@@ -27,6 +33,11 @@ export async function submitHnpOffer(
     messageText?: string;
     eventDispatcher?: EventDispatcher;
     requireSignature?: boolean;
+    /**
+     * Set only by auto-play after claimSoftAiInflightUnderLock succeeds.
+     * Not read from the envelope or any other request field.
+     */
+    softAiInflightClaim?: "buyer" | "seller";
   },
 ): Promise<SubmitHnpOfferResult> {
   const nowMs = Date.now();
@@ -44,20 +55,41 @@ export async function submitHnpOffer(
     return { ok: false, status: hnpIngress.status, body: hnpIngress.body };
   }
 
-  const result = await getExecutor()(
-    db,
-    {
-      sessionId: envelope.session_id,
-      offerPriceMinor: normalized.offerPriceMinor,
-      messageText: options?.messageText,
-      senderRole: normalized.senderRole,
-      idempotencyKey: normalized.idempotencyKey,
-      protocol: normalized.protocol,
-      roundData: {},
-      nowMs,
-    },
-    options?.eventDispatcher,
-  );
+  let result: Awaited<ReturnType<ReturnType<typeof getExecutor>>>;
+  try {
+    result = await getExecutor()(
+      db,
+      {
+        sessionId: envelope.session_id,
+        offerPriceMinor: normalized.offerPriceMinor,
+        messageText: options?.messageText,
+        senderRole: normalized.senderRole,
+        idempotencyKey: normalized.idempotencyKey,
+        protocol: normalized.protocol,
+        roundData: {},
+        nowMs,
+        ...(options?.softAiInflightClaim
+          ? { softAiInflightClaim: options.softAiInflightClaim }
+          : {}),
+      },
+      options?.eventDispatcher,
+    );
+  } catch (err) {
+    if (err instanceof SoftManualWaitingError) {
+      return { ok: false, status: 409, body: softManualWaitingBodyFromError(err) };
+    }
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.startsWith("NOT_YOUR_TURN")) {
+      return { ok: false, status: 409, body: { error: "NOT_YOUR_TURN" } };
+    }
+    if (err instanceof OfferRejectedSpamError || message.startsWith("OFFER_REJECTED_SPAM")) {
+      return { ok: false, status: 422, body: { error: "OFFER_REJECTED_SPAM" } };
+    }
+    if (message.startsWith("CONCURRENT_MODIFICATION")) {
+      return { ok: false, status: 409, body: { error: "CONCURRENT_MODIFICATION" } };
+    }
+    throw err;
+  }
 
   return {
     ok: true,
@@ -69,6 +101,9 @@ export async function submitHnpOffer(
     idempotent: result.idempotent,
     proposalHash: normalized.protocol?.proposalHash,
     utility: result.utility,
+    ...(result.awaitingManualCounterpart
+      ? { awaitingManualCounterpart: result.awaitingManualCounterpart }
+      : {}),
     escalation: result.escalation
       ? { type: result.escalation.type, context: result.escalation.context }
       : undefined,
