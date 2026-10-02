@@ -199,7 +199,7 @@ export function Field({ label, hint, error, required, htmlFor, className, childr
         </Label>
       )}
       {children}
-      {error && <FieldError>{error}</FieldError>}
+      {error && <FieldError id={htmlFor ? `${htmlFor}-error` : undefined}>{error}</FieldError>}
       {!error && hint && <p className="mt-1.5 text-ink-secondary text-sm">{hint}</p>}
     </div>
   );

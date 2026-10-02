@@ -32,6 +32,7 @@ export * from "./popover";
 export * from "./position-panel";
 export * from "./price";
 export * from "./progress-bar";
+export * from "./progress-ring";
 export * from "./promo-banner";
 export * from "./radar";
 export * from "./result-state";

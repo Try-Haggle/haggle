@@ -11,15 +11,21 @@ import { useCallback, useState } from "react";
  * inputs' ids, in form order. `clear` drops one message as soon as that
  * field is edited.
  */
-export function useFieldErrors<Field extends string>() {
+export function useFieldErrors<Field extends string>(
+  /** Maps a field key to its input id, when they differ. */
+  idFor: (field: Field) => string = (field) => field,
+) {
   const [errors, setErrors] = useState<Partial<Record<Field, string>>>({});
 
-  const report = useCallback((next: Partial<Record<Field, string>>) => {
-    setErrors(next);
-    const first = Object.keys(next)[0];
-    if (first) document.getElementById(first)?.focus();
-    return first === undefined;
-  }, []);
+  const report = useCallback(
+    (next: Partial<Record<Field, string>>) => {
+      setErrors(next);
+      const first = Object.keys(next)[0];
+      if (first) document.getElementById(idFor(first as Field))?.focus();
+      return first === undefined;
+    },
+    [idFor],
+  );
 
   const clear = useCallback((field: Field) => {
     setErrors((current) => {

@@ -31,10 +31,10 @@ export function SectionHeader({
   }
   return (
     <div className={cn("flex items-center justify-between gap-3", className)}>
-      <h2 className="font-semibold text-ink text-lg">
+      <h2 className="text-ink text-section">
         {title}
         {count != null && (
-          <span className="ml-2 font-normal text-ink-muted text-sm">({count})</span>
+          <span className="ml-2 font-normal text-base text-ink-muted">({count})</span>
         )}
       </h2>
       {action && <div className="shrink-0">{action}</div>}
