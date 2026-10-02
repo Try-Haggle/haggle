@@ -57,7 +57,7 @@ export function RecommendedForYou({ userId }: { userId: string }) {
     <section className="mb-8">
       {loading ? (
         <>
-          <h2 className="mb-4 font-bold text-ink text-lg">Recommended For You</h2>
+          <h2 className="mb-4 text-ink text-section">Recommended for you</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {["s1", "s2", "s3", "s4"].map((key) => (
               <ListingCardSkeleton key={key} imageAspect="square" />
@@ -66,7 +66,7 @@ export function RecommendedForYou({ userId }: { userId: string }) {
         </>
       ) : listings.length === 0 ? (
         <>
-          <h2 className="mb-4 font-bold text-ink text-lg">Recommended For You</h2>
+          <h2 className="mb-4 text-ink text-section">Recommended for you</h2>
           <EmptyState
             icon={<Search className="size-6" />}
             title={

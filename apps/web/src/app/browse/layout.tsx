@@ -1,7 +1,9 @@
 import { BottomNav } from "@/components/bottom-nav";
 import { Nav } from "@/components/nav";
+import { BROWSED_MARKETPLACE_KEY } from "@/lib/buyer-onboarding";
 import { createClient } from "@/lib/supabase/server";
 import { getUserDisplayName } from "@/lib/user-display-name";
+import { MarkMarketplaceVisited } from "./_components/mark-marketplace-visited";
 
 export default async function BrowseLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -18,6 +20,8 @@ export default async function BrowseLayout({ children }: { children: React.React
 
   return (
     <>
+      {/* Only until the first visit is on record, so it writes once. */}
+      {user && !user.user_metadata?.[BROWSED_MARKETPLACE_KEY] && <MarkMarketplaceVisited />}
       {user ? (
         <Nav userEmail={user.email ?? ""} userName={userName} userAvatarUrl={userAvatarUrl} />
       ) : (
