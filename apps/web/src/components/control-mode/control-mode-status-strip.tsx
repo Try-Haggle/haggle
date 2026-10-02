@@ -43,7 +43,7 @@ export function ControlModeStatusStrip({
       )}
     >
       <span className="font-semibold text-ink-secondary tracking-wide uppercase text-[10px]">
-        Soft control
+        Negotiation mode
       </span>
       <Badge
         tone={ownMode === "auto" ? "info" : "warning"}
@@ -64,7 +64,7 @@ export function ControlModeStatusStrip({
       </Badge>
       {handoff && pendingTarget && (
         <span className="text-ink-muted" data-testid="control-mode-handoff">
-          Switching to {pendingTarget === "auto" ? "Auto" : "Manual"} after current turn…
+          Switching to {pendingTarget === "auto" ? "Auto" : "Manual"} after the current message…
         </span>
       )}
       {stubbed && (

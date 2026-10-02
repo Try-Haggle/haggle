@@ -34,7 +34,7 @@ export const CREDIT_BALANCE_UI = {
   /** Insufficient gate title */
   insufficientTitle: "Insufficient Haggle credits",
   /** Insufficient next step — Soft Manual is protocol name (keep) */
-  insufficientNext: "Add credits or switch Soft to Manual, then try again.",
+  insufficientNext: "Add credits or switch to Manual to reply yourself, then try again.",
   /** Stub tolerance note */
   stubNote: "Balance preview — ledger API when C1 lands",
   /** Loading */

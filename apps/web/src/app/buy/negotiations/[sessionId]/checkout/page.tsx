@@ -115,7 +115,7 @@ export default async function NegotiationCheckoutPage({
         <PageHeader
           icon={<LockKeyhole className="size-6" />}
           title="Secure checkout"
-          subtitle="Confirm the full Soft agreement, then pay as agreed."
+          subtitle="Confirm the full agreement, then pay as agreed."
           backHref={`/buy/negotiations/${sessionId}`}
           backLabel="Back to negotiation"
           actions={

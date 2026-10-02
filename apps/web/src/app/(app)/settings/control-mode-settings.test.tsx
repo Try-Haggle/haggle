@@ -38,7 +38,7 @@ describe("ControlModeSettings", () => {
     await waitFor(() => {
       expect(screen.getByRole("switch")).toHaveAttribute("aria-checked", "false");
     });
-    expect(screen.getByText(/Manual \(you drive Soft turns\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Manual \(you reply yourself\)/i)).toBeInTheDocument();
     unmount();
 
     render(<ControlModeSettings />);
@@ -46,6 +46,6 @@ describe("ControlModeSettings", () => {
       expect(screen.getByRole("switch")).toHaveAttribute("aria-checked", "false");
     });
     expect(readDefaultControlModePreference()).toBe("manual");
-    expect(screen.getByText(/Manual \(you drive Soft turns\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Manual \(you reply yourself\)/i)).toBeInTheDocument();
   });
 });

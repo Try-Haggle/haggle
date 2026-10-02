@@ -92,7 +92,7 @@ const en: MessageTree = {
     fullAgreement: {
       title: "Confirm agreed terms",
       subtitle:
-        "Review the full Soft deal before payment. Card or wallet opens only after you confirm.",
+        "Review the full deal before payment. Card or wallet opens only after you confirm.",
       price: "Agreed price",
       address: "Address",
       fulfillment: "Shipping / pickup",
@@ -147,7 +147,7 @@ const ko: DeepPartial<MessageTree> = {
   checkout: {
     fullAgreement: {
       title: "합의 내용 확인",
-      subtitle: "결제 전에 Soft 합의 전체를 확인하세요. 카드/지갑은 확인 후에만 열립니다.",
+      subtitle: "결제 전에 합의 전체를 확인하세요. 카드/지갑은 확인 후에만 열립니다.",
       price: "합의 가격",
       address: "주소",
       fulfillment: "배송 / 픽업",
