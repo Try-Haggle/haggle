@@ -9,7 +9,7 @@
 
 import { NEGOTIATION_AGENT_PRESETS } from "@haggle/shared";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api-client";
 
 const mocks = vi.hoisted(() => ({ apiClient: vi.fn() }));
@@ -52,11 +52,56 @@ async function sendMessage(text: string) {
 }
 
 beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
   mocks.apiClient.mockReset();
   window.localStorage.clear();
 });
 
+afterEach(() => vi.unstubAllGlobals());
+
 describe("builder chat — failed turn recovery", () => {
+  it("retries a failed budget submission with the chosen prices and one user bubble", async () => {
+    mocks.apiClient
+      .mockRejectedValueOnce(new ApiError(502, "CHAT_TURN_FAILED", "Advisor failed."))
+      .mockRejectedValueOnce(new ApiError(502, "CHAT_TURN_FAILED", "Advisor failed."))
+      .mockResolvedValueOnce({ reply: "Your budget is saved." });
+    render(
+      <NegotiationAgentBuilderChat
+        agent={NEGOTIATION_AGENT_PRESETS[0]!}
+        listingPublicId="listing-budget-retry-test"
+        listingTitle="iPhone 15 Pro"
+        listingCategory="electronics"
+        listingPrice="850"
+        listingTags={["iphone"]}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Set budget" }));
+    const userText = "My target price is $680, and my max budget is $850.";
+
+    fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(mocks.apiClient).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getAllByText("Advisor failed.")).toHaveLength(1));
+    fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
+
+    expect(await screen.findByText("Your budget is saved.")).toBeInTheDocument();
+    expect(screen.queryByText("Advisor failed.")).not.toBeInTheDocument();
+    expect(screen.getAllByText(userText)).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Set budget" })).not.toBeInTheDocument();
+    for (const [, options] of mocks.apiClient.mock.calls) {
+      expect(JSON.parse(options.body)).toMatchObject({
+        message: userText,
+        previous_memory: { targetPrice: 680, budgetMax: 850 },
+      });
+    }
+  });
+
   it("offers a retry on the failed turn instead of losing the message", async () => {
     mocks.apiClient.mockRejectedValueOnce(
       new ApiError(

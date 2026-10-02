@@ -93,7 +93,8 @@
         "결제·배송 receipt",
         "양쪽 분쟁 결과",
         "재시도·중복 요청 결과",
-        "docs/wip/dispute-tier-review-implementation.md"
+        "docs/wip/dispute-tier-review-implementation.md",
+        "docs/wip/builder-staging-structured-response-fix.md"
       ],
       "verifiedEvidence": [
         "2026-08-12 commerce-core 147개 테스트 통과",
@@ -114,7 +115,8 @@
         "2026-08-29 정행: EasyPost·USPS Ground로 테스트 물건이 집까지 도착. 스탬프·도착 시간 확인. 캐리어는 일단 USPS만으로 시작해도 된다고 말했다.",
         "2026-09-26 T2/T3 로컬 slice: API 관련 148개, dispute-core 159개, 웹 컴포넌트 7개, mocked API Playwright 데스크톱·390px 모바일 4개 통과. migration journal 158개·schema·DB invariants 통과. 실제 PostgreSQL 경합·staging·담보 및 정산 검증과 reviewer confirmed는 남음.",
         "2026-10-01 양측 예치·누적 비용 로컬 검증: 계약 10개, dispute-core 152개, API 전체 3431개(2 skip), 웹 전체 377개, mocked API Playwright 데스크톱·모바일 4개, API/웹 빌드·타입 검사, migration journal 159개·DB 불변식·변경 파일 Biome 통과. 실제 체인·공유 DB·staging 검증은 미실시.",
-        "2026-10-01 staging 통합 전 병합 검증: staging 9f2203d3 반영 후 전체 29개 test task 통과(API 3449개·2 skip), 전체 32개 typecheck task·18개 build task, Playwright public smoke 3개, migration journal 159개·DB 불변식, production dependency audit 신규 critical/high 0건 통과. T1 미예치 비용 0 정책에 맞춰 거래 리허설 기대값을 수정. 실제 staging CI·공유 DB·온체인 검증은 아직 미실시."
+        "2026-10-01 staging 통합 전 병합 검증: staging 9f2203d3 반영 후 전체 29개 test task 통과(API 3449개·2 skip), 전체 32개 typecheck task·18개 build task, Playwright public smoke 3개, migration journal 159개·DB 불변식, production dependency audit 신규 critical/high 0건 통과. T1 미예치 비용 0 정책에 맞춰 거래 리허설 기대값을 수정. 실제 staging CI·공유 DB·온체인 검증은 아직 미실시.",
+        "2026-10-01 협상 빌더 예산 입력 slice: 19:40 MDT staging req-1j 로그에서 structured.pendingSlots 문자열로 인한 ZodError 확인. 선택적 모델 내부 메모만 복구하고 요청·핵심 메모 검증 유지. API 3459개(기존 live 2 skip), 웹 402개, API/웹 typecheck·빌드, mocked API Playwright 데스크톱·390px 모바일 2개, 변경 파일 Biome 통과. 실제 staging 반영·동일 SHA CI·인오 리뷰어 확인은 남음."
       ],
       "remainingGaps": [
         "분쟁 리허설과 양쪽 승소 receipt",
@@ -128,7 +130,8 @@
         "2026-10-01 누적 요금은 정행이 확정했고 양측 별도 USDC 예치·입금 확인 후 배정·미실시 단계 비용 0·최종 승소자 보증금 반환은 로컬 구현했다. 실제 계약 배포·온체인 end-to-end·공유 DB migration·staging 검증은 미완료. T1 비용 재원, T3 번복 시 이전 보수·DS, 구매자/양측 미납 정책은 남음.",
         "2026-09-27 법적 검토: 다수파만 보수·패소자 비용·미예치 종료의 적용 법률과 집행 가능성, signer/pause를 포함한 금융업 분류를 실자금 출시 전에 확인. 크레딧 합산 표시·출처 복원 방향은 합의했으나 유료 판매·환산/담보 재원·해외 리뷰어 고용/세금/제재 처리는 미완료. 후속 구현 담당자는 임의 배정하지 않음.",
         "2026-09-27 상세 초안 후속: 실제 자기 이용료와 공동 심사비의 귀속 확인, 취소/합의·재심 기한·부분 환불 비용 결정이 남음. 크레딧 hold/capture/release 및 회사 담보는 C0 후속 범위이며 다수/소수별 USDC/크레딧 보수는 법적 해결책으로 확정하지 않음. 리뷰어 실제 지급은 2026-10-01 정행 결정으로 보류.",
-        "2026-09-29 유타 운영안: 선택형/필수 절차 결정, 정확한 보수식·소수파 DS의 사건별 고지·동의, 미동의/미응답과 미납의 분리, 실제 대체 절차·기한·비용·자금 보존/반환, 익명 증거·독립 투표 검증, T2/T3 적용 범위 및 보수·DS 확정이 남음. 유타 준거법·중재지의 유효성 및 CA Standard 16 적용 여부와 Delaware 약관 소스 불일치도 정비 대상. 동일 보수식 승인 판례·인허가 취득·실자금 출시를 확인한 것은 아님."
+        "2026-09-29 유타 운영안: 선택형/필수 절차 결정, 정확한 보수식·소수파 DS의 사건별 고지·동의, 미동의/미응답과 미납의 분리, 실제 대체 절차·기한·비용·자금 보존/반환, 익명 증거·독립 투표 검증, T2/T3 적용 범위 및 보수·DS 확정이 남음. 유타 준거법·중재지의 유효성 및 CA Standard 16 적용 여부와 Delaware 약관 소스 불일치도 정비 대상. 동일 보수식 승인 판례·인허가 취득·실자금 출시를 확인한 것은 아님.",
+        "협상 빌더 slice: feature/w2026-08-08-01-builder-structured-response, staging a1c8b381의 HAGA-88 다음에 병합. 2026-10-01 사용자 반영 요청으로 커밋·push·draft PR 진행. reviewer proposed 유지, 단일 리뷰어 확정·승인, 동일 SHA CI 및 staging 실제 AI 검증은 남음. 작업 조회는 기존 MCP 항목의 리뷰어 누락으로 실패; 배정을 임의 변경하지 않음."
       ],
       "dependsOn": [],
       "dueDate": "2026-09-05",

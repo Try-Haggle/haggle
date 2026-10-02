@@ -501,7 +501,13 @@ const looseChatStrategySchema = z.object({
 });
 
 export const negotiationAgentBuilderTurnResultSchema = z.object({
-  memory: negotiationAgentBuilderMemorySchema,
+  memory: negotiationAgentBuilderMemorySchema.extend({
+    // This optional scratchpad is rebuilt below from validated facts and the
+    // requirement plan. A malformed model echo must not reject an otherwise
+    // usable turn; fall back to previous structured memory before rebuilding.
+    // Keep the request schema and all durable memory fields strict.
+    structured: structuredNegotiationAgentBuilderMemorySchema.optional().catch(undefined),
+  }),
   reply: z.string().min(1),
   reasoning_summary: z.string().optional(),
   /** Optional adjusted radar numbers. Absent when the turn implies no change. */
@@ -1221,6 +1227,7 @@ ${
 - CRITICAL: write the ENTIRE "reply" in English only — never output Korean (or any non-English) characters. Requirement/candidate questions may be provided to you in Korean; translate them into natural English before asking. The reply must contain zero Korean text.
 
 Return valid JSON only:
+Do not return memory.structured; the server rebuilds it from the updated memory.
 {
   "memory": {
     "categoryInterest": string,
