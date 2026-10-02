@@ -46,3 +46,6 @@ apps/web/.vercel/
 .claude/worktrees/
 .claude/settings.local.json
 test-results/
+
+# Agentic buyer demo traces (masked, local only)
+output/agentic-buyer-demo/

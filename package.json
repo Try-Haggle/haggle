@@ -42,6 +42,8 @@
     "verify:db-schema": "node scripts/verify-db-schema-ownership.mjs && node scripts/verify-transaction-relations.mjs && pnpm --filter @haggle/db db:check",
     "verify:db-invariants": "node scripts/verify-db-invariants.mjs",
     "audit:prod": "node scripts/audit-production-dependencies.mjs",
+    "demo:agentic-buyer": "tsx scripts/demo/agentic-buyer.ts",
+    "test:demo-runner": "tsx --test scripts/demo/*.test.ts",
     "work:me": "node scripts/query-weekly-work-graph.mjs",
     "db:preflight:compat": "pnpm --filter @haggle/db db:preflight:compat",
     "db:audit:relations": "pnpm --filter @haggle/db db:audit:relations",
@@ -54,11 +56,13 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.16",
+    "@modelcontextprotocol/sdk": "^1.12.0",
     "@playwright/test": "^1.63.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.7",
     "next": "^15.5.25",
     "playwright": "^1.63.0",
+    "tsx": "^4.19.0",
     "turbo": "^2.4.0",
     "typescript": "^5.7.0"
   }
