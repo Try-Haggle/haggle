@@ -88,9 +88,11 @@ async function obtainTokenViaOauth(apiBase: URL, trace: TraceEntry[], secrets: s
       res
         .writeHead(ok ? 200 : 400, { "content-type": "text/plain" })
         .end(ok ? "Haggle demo authorized. Close this tab." : "Invalid callback.");
+      // A stray loopback request (e.g. a stale tab) must not abort the wait;
+      // state validation stays strict, we just keep listening.
+      if (!ok) return;
       server.close();
-      if (ok) resolveCode(u.searchParams.get("code") as string);
-      else reject(new Error("OAuth callback state mismatch"));
+      resolveCode(u.searchParams.get("code") as string);
     });
     server.listen(LOOPBACK_PORT, "127.0.0.1");
     setTimeout(() => {
@@ -196,18 +198,29 @@ async function main() {
 
     // 2. start negotiation (answer seller-required criteria generically)
     const listing = await call("haggle_get_listing", { public_id: slug });
-    const required: Array<{ checkId: string }> = listing.json.required_criteria ?? [];
-    const started = await call("haggle_start_negotiation", {
-      public_id: slug,
-      ...(required.length
+    // Real response is { listing: { required_criteria } }; tolerate a flat shape too.
+    const listingView = (listing.json.listing ?? listing.json) as {
+      required_criteria?: Array<{ checkId: string }>;
+    };
+    const toBuyerCriteria = (rows: Array<{ checkId: string }>) =>
+      rows.length
         ? {
-            buyerCriteria: required.map((r) => ({
+            buyerCriteria: rows.map((r) => ({
               checkId: r.checkId,
               stance: "Demo buyer will provide verification.",
             })),
           }
-        : {}),
+        : {};
+    let started = await call("haggle_start_negotiation", {
+      public_id: slug,
+      ...toBuyerCriteria(listingView.required_criteria ?? []),
     });
+    if (started.json.error === "BUYER_CRITERIA_REQUIRED") {
+      started = await call("haggle_start_negotiation", {
+        public_id: slug,
+        ...toBuyerCriteria(started.json.required_criteria ?? []),
+      });
+    }
     const sessionId: string | undefined = started.json.session_id;
     if (!sessionId)
       throw new Error(`Negotiation did not start: ${JSON.stringify(started.json).slice(0, 300)}`);
