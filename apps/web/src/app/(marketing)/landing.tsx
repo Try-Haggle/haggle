@@ -552,7 +552,7 @@ export function Landing() {
       const rcv = p - fee;
       const cls = pl.highlight ? ' class="row-hg"' : "";
       return `<tr${cls}>
-        <td><div class="plat-cell"><span class="plat-dot ${pl.dot}"></span>${pl.highlight ? "<strong>" + pl.name + "</strong> (illustrative)" : pl.dot === "ebay" ? pl.name + " (Demo est.)" : pl.name}</div></td>
+        <td><div class="plat-cell"><span class="plat-dot ${pl.dot}"></span>${pl.highlight ? "<strong>" + pl.name + '</strong> <span class="plat-note">(illustrative)</span>' : pl.dot === "ebay" ? pl.name + " (Demo est.)" : pl.name}</div></td>
         <td class="num">${pl.pct}%</td>
         <td class="num ${pl.highlight ? "saved" : ""}">$${fmtDollar(rcv).slice(1)}</td>
         <td class="num ${pl.highlight ? "" : "lost"}">${pl.highlight ? "$" + fmtDollar(fee).slice(1) : "−$" + fmtDollar(fee).slice(1)}</td>
