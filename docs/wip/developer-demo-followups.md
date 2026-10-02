@@ -24,10 +24,10 @@ Show this flow in the developer demo:
   - Use the memory for ranking/recommendation copy.
   - Re-read/apply the memory at negotiation initialization time.
 - Do not recompute full negotiation strategy on every product click in production browsing. Treat normal clicks as lightweight browse signals. Create a strategy only when the buyer starts negotiation, and cache the resulting session strategy.
-- Add MCP listing discovery tools so a GPT app can search listings, select one, then call `haggle_create_negotiation_session`.
+- Add MCP listing discovery tools so a GPT app can search listings, select one, then call `haggle_start_negotiation`. `haggle_search_listings` exists. See [mcp-buyer-deal-sot.md](./mcp-buyer-deal-sot.md).
 - Keep MCP direct negotiation path available for power users:
-  - `haggle_create_negotiation_session`
-  - `haggle_submit_offer`
+  - `haggle_start_negotiation`
+  - `hnp_submit_offer`
 
 ## Demo-safe explanation
 

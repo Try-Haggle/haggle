@@ -507,6 +507,7 @@ Soft Preference
 ```
 
 - Hard Authority는 결정론적 policy/referee가 강제한다.
+- MCP buyer cap and confirm-before-payment enforcement (staging): [mcp-buyer-deal-sot.md](./mcp-buyer-deal-sot.md).
 - Soft Preference 안에서는 모델과 전략이 자유롭게 발전한다.
 - **Soft control mode (Auto / Manual):** 당사자별 Soft 턴을 Haggle AI가 돌릴지(Manual이면 사람·외부 에이전트)는 Soft Preference 층이다. Hard Authority·1.5% 수수료는 모드와 무관. 잠긴 제품 SoT: [auto-manual-control-mode-sot.md](./auto-manual-control-mode-sot.md) (Eng1 M0; API/UI는 M1/M2).
 - HNP는 제안과 합의 결과를 표현하며 내부 range 전체를 공개하지 않는다.
@@ -602,6 +603,8 @@ search listings
 - `haggle_approve_agreement`
 - `haggle_create_checkout`
 - `haggle_get_order`
+
+Current MCP start/search contract: [mcp-buyer-deal-sot.md](./mcp-buyer-deal-sot.md).
 
 보안 원칙:
 
