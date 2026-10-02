@@ -980,7 +980,7 @@
         "협상"
       ],
       "outcome": "publicId로 시작해 웹과 같은 start/auto-play를 돌린다.",
-      "nextAction": "시도 제한과 guest 금지를 리뷰한다. 2026-10-02 정행 사용자 요청: staging 협상 횟수 제한 해제 slice를 docs/wip/staging-unlimited-negotiation-attempts.md에 연결. 담당 jeonghaeng, 리뷰 선택 사항. 같은 매물 동시 협상·라운드 제한 유지. 로컬 관련 테스트 23개·API typecheck·Biome 통과; push 후 최종 CI와 staging 반영 확인은 남음.",
+      "nextAction": "시도 제한과 guest 금지를 리뷰한다. 2026-10-02 정행 사용자 요청: staging 협상 횟수 제한 해제 slice를 docs/wip/staging-unlimited-negotiation-attempts.md에 연결. 담당 jeonghaeng, 리뷰 선택 사항. 같은 매물 동시 협상·라운드 제한 유지. 로컬 관련 테스트 23개·API typecheck·Biome 통과; push 후 최종 CI와 staging 반영 확인은 남음. 2026-10-02 정행 후속 요청: 설정의 저장 기본 배송지를 MCP start에서 못 읽는 문제 확인. 같은 담당의 saved-address slice로 서버 주소 조회·배송비 사전 견적 연결을 수정; docs/wip/saved-delivery-address-start.md 참고.",
       "reviewBrief": "MCP가 guest buyer를 만들지 않는지, start가 웹 서비스인지 본다.",
       "evidence": [
         "start-buyer-negotiation 서비스",
