@@ -20,7 +20,7 @@
     "@stripe/crypto": "^1.1.3",
     "@stripe/stripe-js": "^1.46.0",
     "@supabase/ssr": "^0.12.4",
-    "@supabase/supabase-js": "^2.99.0",
+    "@supabase/supabase-js": "^2.116.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@tanstack/react-query": "5",
     "canvas-confetti": "^1.9.4",
