@@ -51,6 +51,28 @@ describe("MCP OAuth routes", () => {
     });
   });
 
+  it("serves path-inserted metadata for the /mcp resource", async () => {
+    const root = await app.inject({ method: "GET", url: "/.well-known/oauth-protected-resource" });
+    const suffixed = await app.inject({
+      method: "GET",
+      url: "/.well-known/oauth-protected-resource/mcp",
+    });
+    expect(suffixed.statusCode).toBe(200);
+    expect(suffixed.json()).toEqual(root.json());
+    expect(suffixed.json().resource).toMatch(/\/mcp$/);
+
+    const asRoot = await app.inject({
+      method: "GET",
+      url: "/.well-known/oauth-authorization-server",
+    });
+    const asSuffixed = await app.inject({
+      method: "GET",
+      url: "/.well-known/oauth-authorization-server/mcp",
+    });
+    expect(asSuffixed.statusCode).toBe(200);
+    expect(asSuffixed.json()).toEqual(asRoot.json());
+  });
+
   it("registers a public client", async () => {
     mocks.registerMcpOauthClient.mockResolvedValue({
       ok: true,
