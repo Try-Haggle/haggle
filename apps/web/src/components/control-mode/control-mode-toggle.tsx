@@ -35,11 +35,11 @@ export function ControlModeToggle({
       )}
     >
       <div className="min-w-0">
-        <p className="text-sm font-medium text-ink">Haggle AI Soft turns</p>
+        <p className="text-sm font-medium text-ink">Negotiation mode</p>
         <p className="text-xs text-ink-muted">
           {autoOn
-            ? "Auto — Haggle AI negotiates Soft Preference turns for you."
-            : "Manual — you drive Soft turns; Haggle AI pauses for your side."}
+            ? "Auto — Haggle AI negotiates for you."
+            : "Manual — you or your own agent negotiate."}
         </p>
       </div>
       <div className="flex items-center gap-2 shrink-0">
