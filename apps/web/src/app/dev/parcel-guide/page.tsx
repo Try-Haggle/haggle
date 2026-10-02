@@ -5,6 +5,7 @@ import { useState } from "react";
 import { FulfillmentOfferEditor } from "@/components/shipping/fulfillment-offer-editor";
 import { ListingParcelFields } from "@/components/shipping/listing-parcel-fields";
 import { Button } from "@/components/ui/button";
+import { RequiredMark } from "@/components/ui/input";
 import {
   DEFAULT_SELLER_OFFER,
   EMPTY_LISTING_PARCEL,
@@ -36,7 +37,7 @@ export default function ParcelGuidePreviewPage() {
 
         <div>
           <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-ink-secondary">
-            How can the buyer get it <span className="text-warning">*</span>
+            How can the buyer get it <RequiredMark />
           </span>
           <p className="mb-3 text-xs text-ink-muted">
             MVP ships with a carrier. Pickup, porch drop, and meetup will reconnect later. A close

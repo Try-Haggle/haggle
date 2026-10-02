@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { textLinkVariants } from "@/components/ui/text-link";
+import { cn } from "@/lib/cn";
 import { isImeComposing } from "@/lib/keyboard";
 
 interface OfferInputProps {
@@ -60,7 +62,7 @@ export function OfferInput({
             type="button"
             onClick={handleSplit}
             disabled={disabled}
-            className="text-xs text-action-primary hover:text-action-primary-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className={cn(textLinkVariants(), "text-xs disabled:cursor-not-allowed")}
           >
             Split the Difference (${splitPrice})
           </button>

@@ -1,3 +1,5 @@
+import { TextLink, textLinkVariants } from "@/components/ui/text-link";
+
 export const metadata = {
   title: "Terms of Service | Haggle",
   description: "Haggle Terms of Service",
@@ -17,12 +19,9 @@ export default function TermsPage() {
             platform (&ldquo;Service&rdquo;), operated by Haggle LLC, a Delaware limited liability
             company (&ldquo;Haggle,&rdquo; &ldquo;we,&rdquo; &ldquo;us,&rdquo; or &ldquo;our&rdquo;)
             at{" "}
-            <a
-              href="https://tryhaggle.ai"
-              className="text-action-primary hover:text-action-primary-hover"
-            >
+            <TextLink href="https://tryhaggle.ai" variant="inline">
               tryhaggle.ai
-            </a>
+            </TextLink>
             . By accessing or using the Service, you agree to be bound by these Terms. If you do not
             agree, you may not use the Service.
           </p>
@@ -257,10 +256,7 @@ export default function TermsPage() {
           <h2 className="text-xl font-semibold text-ink mb-3">15. Contact</h2>
           <p>
             For questions about these Terms, contact us at:{" "}
-            <a
-              href="mailto:legal@tryhaggle.ai"
-              className="text-action-primary hover:text-action-primary-hover"
-            >
+            <a href="mailto:legal@tryhaggle.ai" className={textLinkVariants({ variant: "inline" })}>
               legal@tryhaggle.ai
             </a>
             <br />

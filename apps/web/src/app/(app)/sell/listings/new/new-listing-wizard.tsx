@@ -27,6 +27,7 @@ import {
   IconButton,
   Input,
   Modal,
+  RequiredMark,
   Spinner,
   Textarea,
 } from "@/components/ui";
@@ -1067,7 +1068,7 @@ export function NewListingWizard({
                     htmlFor="wf-2"
                     className="mb-2 block font-semibold text-ink-secondary text-xs uppercase tracking-wider"
                   >
-                    Title <span className="text-warning">*</span>
+                    Title <RequiredMark />
                   </label>
                   <Input
                     id="wf-2"
@@ -1216,7 +1217,7 @@ export function NewListingWizard({
                 {/* Asking price */}
                 <div>
                   <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-ink-secondary">
-                    Asking Price <span className="text-warning">*</span>
+                    Asking Price <RequiredMark />
                   </span>
                   <Input
                     inputMode="numeric"
@@ -1256,7 +1257,7 @@ export function NewListingWizard({
                     htmlFor="wf-4"
                     className="mb-2 block font-semibold text-ink-secondary text-xs uppercase tracking-wider"
                   >
-                    Selling Deadline <span className="text-warning">*</span>
+                    Selling Deadline <RequiredMark />
                   </label>
                   <Input
                     id="wf-4"
@@ -1273,7 +1274,7 @@ export function NewListingWizard({
 
                 <div>
                   <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-ink-secondary">
-                    How can the buyer get it <span className="text-warning">*</span>
+                    How can the buyer get it <RequiredMark />
                   </span>
                   <p className="mb-3 text-xs text-ink-muted">
                     MVP ships with a carrier. Pickup, porch drop, and meetup will reconnect later. A

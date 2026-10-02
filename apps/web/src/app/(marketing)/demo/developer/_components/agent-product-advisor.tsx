@@ -2680,7 +2680,7 @@ export function AgentProductAdvisor({
                 }
               }}
               placeholder="예: 대학원에서 쓸 가벼운 노트북 찾고 있어"
-              className="min-w-0 flex-1 rounded-lg border border-line bg-surface-overlay px-3 py-2 text-sm text-ink outline-none transition-colors placeholder:text-ink-muted focus:border-focus"
+              className="min-w-0 flex-1 rounded-lg border border-line bg-surface-overlay px-3 py-2 text-sm text-ink outline-none transition-colors placeholder:text-ink-placeholder focus:border-focus"
             />
             <button
               type="button"

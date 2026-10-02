@@ -557,7 +557,7 @@ export default function DisputesPage() {
             <div className="group relative flex items-center rounded-[10px] border border-line bg-surface-raised px-3.5 py-2.5 pl-[38px] text-[13px] text-ink-muted transition-colors focus-within:border-ink focus-within:bg-surface-raised">
               <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
               <input
-                className="flex-1 border-none bg-transparent text-[13px] text-ink outline-none placeholder:text-ink-muted"
+                className="flex-1 border-none bg-transparent text-[13px] text-ink outline-none placeholder:text-ink-placeholder"
                 placeholder="Search by case ID, item, or counterparty…"
               />
               <kbd className="rounded-[5px] border border-line bg-surface-sunken px-1.5 py-0.5 font-mono text-[10px] text-ink-muted">

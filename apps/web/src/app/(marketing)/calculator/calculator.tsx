@@ -228,7 +228,7 @@ export function Calculator() {
               type="number"
               value={price}
               onChange={(e) => setPrice(Math.max(0, Number(e.target.value)))}
-              className="w-full rounded-xl border border-line bg-surface-overlay pl-8 pr-4 py-3 text-lg text-ink placeholder:text-ink-muted focus:border-focus focus:outline-none focus:ring-1 focus:ring-focus"
+              className="w-full rounded-xl border border-line bg-surface-overlay pl-8 pr-4 py-3 text-lg text-ink placeholder:text-ink-placeholder focus:border-focus focus:outline-none focus:ring-1 focus:ring-focus"
               placeholder="Sale price"
               min={0}
             />

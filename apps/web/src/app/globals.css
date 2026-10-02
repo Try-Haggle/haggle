@@ -58,15 +58,20 @@
   --color-neutral-900: #25231d;
 
   /* Semantic scales */
-  --color-success-50: #eaf4ed;
-  --color-success-100: #c9e3d0;
-  --color-success-500: #3e8e5a;
-  --color-success-700: #285f3d;
+  /* Success is emerald — the earlier forest green (#285f3d / #3e8e5a) read
+     as muddy olive against the warm cream. */
+  --color-success-50: #ecfdf5;
+  --color-success-100: #dffced;
+  --color-success-500: #10b981;
+  --color-success-600: #059669;
+  --color-success-700: #047857;
 
-  --color-error-50: #fbe9e7;
-  --color-error-100: #f5c9c3;
-  --color-error-500: #c8412e;
-  --color-error-700: #8e2b1f;
+  /* Error reads as unmistakably red (the earlier brick #8e2b1f read as brown
+     against the warm palette). */
+  --color-error-50: #fef2f2;
+  --color-error-100: #fee2e2;
+  --color-error-500: #dc2626;
+  --color-error-700: #b91c1c;
 
   --color-warning-50: #fef3e0;
   --color-warning-100: #fcdfaa;
@@ -90,6 +95,11 @@
   --ease-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
   --ease-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
   --ease-select: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  /* Layout · the fixed top bar (SiteHeader) → h-header, pt-header, top-header.
+     Anything that sits under or beside the bar offsets by this token, never by
+     a literal, so the bar's height is changed here and only here. */
+  --spacing-header: 4.5rem;
 }
 
 /* ----------------------------------------------------------------
@@ -196,7 +206,12 @@
   /* Text / Ink */
   --text-primary: #1b2a4a;
   --text-secondary: #6b6759;
-  --text-muted: #9a9079;
+  --text-muted: #7a7260; /* 4.5:1 on bg-primary */
+  /* Lighter than muted on purpose: a hint must not read as an entered value. */
+  --text-placeholder: #a59c87;
+  /* Link text: rests in the brand gold, deepens on hover. */
+  --text-link: var(--action-primary);
+  --text-link-hover: var(--color-gold-700);
   --text-on-accent: #ffffff;
   --text-on-ink: #fbf9f5;
   --ink-strong: #0f1830;
@@ -216,7 +231,7 @@
 
   /* Border */
   --border-subtle: #f0ede5;
-  --border-default: #ddd3c2;
+  --border-default: #c9bfac;
   --border-strong: #1b2a4a;
   --border-focus: #d69a4c;
 
@@ -225,10 +240,11 @@
   --badge-text: #9a6a24;
 
   /* Feedback (bg / fg pairs) */
-  --fb-success-bg: #eaf4ed;
-  --fb-success-fg: #285f3d;
-  --fb-error-bg: #fbe9e7;
-  --fb-error-fg: #8e2b1f;
+  --fb-success-bg: var(--color-success-100);
+  /* 700, not 600: #059669 is only 3.6:1 as text on cream; #047857 is 5.2:1. */
+  --fb-success-fg: var(--color-success-700);
+  --fb-error-bg: var(--color-error-100);
+  --fb-error-fg: var(--color-error-700);
   --fb-warning-bg: #fef3e0;
   --fb-warning-fg: #9b4e10;
   --fb-info-bg: #e8f0fb;
@@ -280,7 +296,10 @@
 
   --text-primary: #f1eee6;
   --text-secondary: #9aa3b4;
-  --text-muted: #6b7488;
+  --text-muted: #7f889b; /* 4.5:1 on bg-overlay */
+  --text-placeholder: #636c80;
+  --text-link: var(--action-primary);
+  --text-link-hover: var(--action-primary-hover);
   --text-on-accent: #ffffff;
   --text-on-ink: #f1eee6;
   --ink-strong: #ffffff;
@@ -297,17 +316,17 @@
   --cta-on: var(--color-navy-900);
 
   --border-subtle: rgba(241, 238, 230, 0.06);
-  --border-default: rgba(241, 238, 230, 0.14);
+  --border-default: rgba(241, 238, 230, 0.22);
   --border-strong: rgba(241, 238, 230, 0.32);
   --border-focus: #d9a45e;
 
   --badge-bg: rgba(217, 164, 94, 0.16);
   --badge-text: #e6bc74;
 
-  --fb-success-bg: rgba(62, 142, 90, 0.16);
-  --fb-success-fg: #8fcfa1;
-  --fb-error-bg: rgba(200, 65, 46, 0.16);
-  --fb-error-fg: #f0a99e;
+  --fb-success-bg: rgba(16, 185, 129, 0.16);
+  --fb-success-fg: #34d399;
+  --fb-error-bg: rgba(220, 38, 38, 0.16);
+  --fb-error-fg: #f87171;
   --fb-warning-bg: rgba(224, 122, 31, 0.16);
   --fb-warning-fg: #f1b27a;
   --fb-info-bg: rgba(46, 111, 214, 0.16);
@@ -354,6 +373,9 @@
   --color-ink: var(--text-primary);
   --color-ink-secondary: var(--text-secondary);
   --color-ink-muted: var(--text-muted);
+  --color-ink-placeholder: var(--text-placeholder);
+  --color-link: var(--text-link);
+  --color-link-hover: var(--text-link-hover);
   --color-ink-strong: var(--ink-strong);
   --color-on-accent: var(--text-on-accent);
   --color-on-ink: var(--text-on-ink);
@@ -533,6 +555,33 @@ input[type="number"] {
 button:not(:disabled),
 [role="button"]:not([aria-disabled="true"]) {
   cursor: pointer;
+}
+button:disabled:not([aria-busy="true"]),
+[role="button"][aria-disabled="true"] {
+  cursor: not-allowed;
+}
+/* A loading button is disabled but busy, not unavailable. */
+button[aria-busy="true"] {
+  cursor: progress;
+}
+
+/* Chrome paints autofilled fields a fixed light blue (#e8f0fe) that ignores
+   the palette, and on a sign-in page autofill is the common case. The fill
+   cannot be overridden with background-color, so an inset shadow covers it.
+   That shadow also replaces the `ring-1` focus ring (rings are box-shadows),
+   so the focused rule draws the 1px ink ring back in. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover {
+  -webkit-text-fill-color: var(--text-primary);
+  caret-color: var(--text-primary);
+  box-shadow: 0 0 0 1000px var(--bg-overlay) inset;
+}
+input:-webkit-autofill:focus:not([data-adorned]) {
+  -webkit-text-fill-color: var(--text-primary);
+  caret-color: var(--text-primary);
+  box-shadow:
+    0 0 0 1px var(--text-primary),
+    0 0 0 1000px var(--bg-overlay) inset;
 }
 
 /* Date input calendar icon — invert only in dark theme.

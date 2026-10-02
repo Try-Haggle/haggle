@@ -59,7 +59,10 @@ export function NavTab({
     <Link
       href={href}
       onClick={onClick}
-      className={cn("relative px-3 py-1 font-medium text-ink text-sm transition-colors", className)}
+      className={cn(
+        "relative px-3 py-1 font-medium text-[15px] text-ink transition-colors",
+        className,
+      )}
     >
       {/* The dot hangs off the label's top-right corner, the same way it hangs
           off the icon in the stacked variant. In the text flow it read as a
