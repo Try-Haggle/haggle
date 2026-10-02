@@ -190,6 +190,16 @@ async function main() {
     // 1. whoami + search
     const who = await call("haggle_whoami", {});
     summary.grantedScopes = who.json.scopes ?? who.json.granted_scopes ?? null;
+    const role = who.json.role;
+    summary.role = typeof role === "string" ? role : null;
+    // account boundary: only a regular (non-admin) user may run the demo; unknown role fails closed
+    if (typeof role !== "string" || role.trim().toLowerCase() === "admin") {
+      throw new Error(
+        typeof role !== "string"
+          ? "haggle_whoami returned no string role; refusing to continue (fail closed). Use a regular buyer account."
+          : 'Token belongs to an "admin" account; refusing to continue. Use a regular buyer account.',
+      );
+    }
     const search = await call("haggle_search_listings", { q: query, limit: 5 });
     const listings: Array<{ public_id?: string; title?: string }> = search.json.listings ?? [];
     const slug = listingSlug ?? listings.find((l) => l.public_id)?.public_id;
@@ -234,7 +244,13 @@ async function main() {
     summary.finalStatus = status;
     summary.pausedForBuyer = Boolean(until.json.paused_for_buyer);
 
-    // 4. scope boundary: minimal token must NOT reach checkout
+    // 4. scope boundary: never call checkout when the token already carries "orders"
+    if (Array.isArray(summary.grantedScopes) && summary.grantedScopes.includes("orders")) {
+      throw new Error(
+        'Token carries the "orders" scope; refusing to call haggle_create_checkout. Use a listings+negotiate token.',
+      );
+    }
+    // scope boundary: minimal token must NOT reach checkout
     const checkout = await call("haggle_create_checkout", { session_id: sessionId });
     const denied = checkout.isError && checkout.json.error === "INSUFFICIENT_SCOPE";
     summary.checkoutDenied = denied;

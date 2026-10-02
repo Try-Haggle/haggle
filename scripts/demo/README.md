@@ -29,6 +29,8 @@ HAGGLE_API_URL=https://<staging-api-host> HAGGLE_MCP_TOKEN=<token> pnpm demo:age
 HAGGLE_API_URL=http://localhost:3001 pnpm demo:agentic-buyer -- --oauth
 ```
 
+The runner aborts before `haggle_create_checkout` if `haggle_whoami` returns an `admin` or missing/non-string `role` (recorded in the trace summary).
+
 Options: `--listing <public_id>` (skip search), `--query <text>`, `--trace-dir <dir>`.
 The buyer account must not be the listing seller. Exit code is 0 only when the denial was observed.
 

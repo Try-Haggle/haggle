@@ -4,8 +4,15 @@ const SECRET_KEYS =
   /^(access_token|refresh_token|id_token|code|code_verifier|client_secret|authorization|token)$/i;
 const PII_KEYS =
   /^(email|phone|phone_number|address|street|street1|street2|postal_code|zip|full_name|recipient|recipient_name|ship_to)$/i;
+// Whole value is redacted (shipping_address, billing_address, ship_to, ...). Wallet addresses stay.
+const ADDRESS_CONTAINER_KEYS =
+  /^(shipping|billing|mailing|home|delivery|recipient)?_?address(es)?$|^ship_to$|^(shipping|billing)_?(info|details)$/i;
+// Name-like fields that identify a person once they sit under an address/recipient object.
+const NAME_KEYS =
+  /^(name|first_name|last_name|given_name|family_name|full_name|company|recipient)$/i;
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
-const PHONE = /(?<![\d.])\+?\d[\d\s().-]{8,}\d(?![\d.])/g;
+// Not preceded/followed by word chars, dots or dashes so UUID tails and 0x addresses survive.
+const PHONE = /(?<![\w.-])\+?\d[\d\s().-]{8,}\d(?![\w.-])/g;
 const BEARER = /Bearer\s+[A-Za-z0-9._~+/=-]+/gi;
 const JWT = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*/g;
 const URL_SECRET_PARAMS = /([?&](?:code|access_token|refresh_token|code_verifier)=)[^&\s"]+/gi;
@@ -23,25 +30,35 @@ export function maskString(value: string, knownSecrets: readonly string[] = []):
     .replace(PHONE, "[PHONE]");
 }
 
-export function maskTrace(value: unknown, knownSecrets: readonly string[] = []): unknown {
+export function maskTrace(
+  value: unknown,
+  knownSecrets: readonly string[] = [],
+  underAddress = false,
+): unknown {
   if (typeof value === "string") {
     // MCP tool results are JSON encoded inside content[].text; mask structurally when possible.
     const trimmed = value.trim();
     if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
       try {
-        return JSON.stringify(maskTrace(JSON.parse(trimmed), knownSecrets));
+        return JSON.stringify(maskTrace(JSON.parse(trimmed), knownSecrets, underAddress));
       } catch {
         // fall through to string masking
       }
     }
     return maskString(value, knownSecrets);
   }
-  if (Array.isArray(value)) return value.map((item) => maskTrace(item, knownSecrets));
+  if (Array.isArray(value)) return value.map((item) => maskTrace(item, knownSecrets, underAddress));
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [key, item] of Object.entries(value)) {
-      out[key] =
-        SECRET_KEYS.test(key) || PII_KEYS.test(key) ? REDACTED : maskTrace(item, knownSecrets);
+      const redact =
+        SECRET_KEYS.test(key) ||
+        PII_KEYS.test(key) ||
+        ADDRESS_CONTAINER_KEYS.test(key) ||
+        (underAddress && NAME_KEYS.test(key));
+      out[key] = redact
+        ? REDACTED
+        : maskTrace(item, knownSecrets, underAddress || /address|ship_to|recipient/i.test(key));
     }
     return out;
   }
