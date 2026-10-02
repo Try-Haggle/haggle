@@ -310,7 +310,7 @@ export function registerPlatformTools(
     },
     async ({ public_id }) => {
       const listing = await getPublishedListingByPublicId(db, public_id);
-      if (!listing) return mcpError("LISTING_NOT_FOUND", { public_id });
+      if (!listing?.sellerId) return mcpError("LISTING_NOT_FOUND", { public_id });
       const view = { listing: publicListingView(listing) };
       return { ...mcpJson(view), structuredContent: view };
     },
@@ -713,15 +713,17 @@ export function registerPlatformTools(
             {
               ...started.body,
               hint:
-                started.body.error === "BUYER_IS_SELLER"
-                  ? "The connected account owns this listing. Connect a different Haggle user as the buyer."
-                  : started.body.error === "LISTING_NOT_FOUND"
-                    ? "Pass the listing slug or https://app.staging.tryhaggle.ai/l/<slug>."
-                    : started.body.error === "INSUFFICIENT_SCOPE"
-                      ? "Reconnect and allow the negotiate permission."
-                      : started.body.error === "BUYER_CRITERIA_REQUIRED"
-                        ? "Ask the user each required_criteria.ask from this error or haggle_get_listing, then pass buyerCriteria ({checkId, stance?}). Do not invent checkIds. Do not use haggle_answer_pause."
-                        : undefined,
+                started.body.error === "LISTING_UNCLAIMED"
+                  ? "This listing has no seller connected yet, so it is not open for negotiation. Choose a different listing."
+                  : started.body.error === "BUYER_IS_SELLER"
+                    ? "The connected account owns this listing. Connect a different Haggle user as the buyer."
+                    : started.body.error === "LISTING_NOT_FOUND"
+                      ? "Pass the listing slug or https://app.staging.tryhaggle.ai/l/<slug>."
+                      : started.body.error === "INSUFFICIENT_SCOPE"
+                        ? "Reconnect and allow the negotiate permission."
+                        : started.body.error === "BUYER_CRITERIA_REQUIRED"
+                          ? "Ask the user each required_criteria.ask from this error or haggle_get_listing, then pass buyerCriteria ({checkId, stance?}). Do not invent checkIds. Do not use haggle_answer_pause."
+                          : undefined,
             },
             true,
           );

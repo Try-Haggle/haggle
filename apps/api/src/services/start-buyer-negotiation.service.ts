@@ -233,7 +233,15 @@ export async function startBuyerNegotiation(
     return { ok: false, status: 404, body: { error: "LISTING_NOT_FOUND" } };
   }
   if (!listing.sellerId) {
-    return { ok: false, status: 409, body: { error: "LISTING_UNCLAIMED" } };
+    return {
+      ok: false,
+      status: 409,
+      body: {
+        error: "LISTING_UNCLAIMED",
+        message:
+          "This listing doesn't have a seller connected yet, so it isn't open for negotiation. Please choose a different listing.",
+      },
+    };
   }
   if (!input.isGuest && listing.sellerId === buyer.id) {
     return { ok: false, status: 403, body: { error: "BUYER_IS_SELLER" } };

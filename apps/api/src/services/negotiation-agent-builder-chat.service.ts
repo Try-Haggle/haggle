@@ -621,6 +621,7 @@ async function _listAdvisorDemoListings(
     JOIN listing_drafts ld ON ld.id = lp.draft_id
     WHERE ld.status = 'published'
       AND (ld.selling_deadline IS NULL OR ld.selling_deadline > now())
+      AND ld.user_id IS NOT NULL
     ORDER BY lp.published_at DESC
     LIMIT 120
   `)) as unknown as Array<{
@@ -710,6 +711,7 @@ async function rankAdvisorListingsByEmbedding(
     JOIN listing_embeddings le ON le.published_listing_id = lp.id
     WHERE ld.status = 'published'
       AND (ld.selling_deadline IS NULL OR ld.selling_deadline > now())
+      AND ld.user_id IS NOT NULL
       AND le.status = 'completed'
       AND le.text_embedding IS NOT NULL
     ORDER BY le.text_embedding <=> ${embeddingStr}::vector

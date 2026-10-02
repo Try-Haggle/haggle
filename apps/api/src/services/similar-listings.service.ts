@@ -269,6 +269,7 @@ export async function findSimilarListings(
       ${viewedFilter}
       ${categoryFilter}
       AND ld.status = 'published'
+      AND ld.user_id IS NOT NULL
       AND (ld.selling_deadline > NOW() OR ld.selling_deadline IS NULL)
       AND le.text_embedding IS NOT NULL
       AND le.status = 'completed'

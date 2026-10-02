@@ -234,7 +234,8 @@ export function registerPublicListingRoutes(app: FastifyInstance, db: Database) 
 
     const listing = await getPublishedListingByPublicId(db, publicId);
 
-    if (!listing) {
+    // Seller-less (unclaimed) listings are not buyer-visible.
+    if (!listing?.sellerId) {
       return reply.status(404).send({
         ok: false,
         error: "not_found",
