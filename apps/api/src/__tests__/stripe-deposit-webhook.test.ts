@@ -22,10 +22,11 @@ import { completeWebhookEvent } from "../services/webhook-event-claim.service.js
 
 const stripeEvent = {
   id: "evt_stripe_deposit_1",
-  type: "crypto.onramp_session.fulfillment_complete",
+  type: "crypto.onramp_session.updated",
   data: {
     object: {
       id: "cos_deposit_1",
+      status: "fulfillment_complete",
       metadata: {
         payment_intent_id: "deposit_dep_1",
       } as Record<string, string>,
@@ -43,17 +44,6 @@ vi.mock("../payments/providers.js", () => ({
   getRealStripeAdapterOrNull: vi.fn(() => ({
     constructWebhookEvent: vi.fn(() => stripeEvent),
   })),
-}));
-
-vi.mock("../payments/real-stripe-adapter.js", () => ({
-  RealStripeAdapter: {
-    isOnrampFulfillmentComplete: vi.fn(
-      (event: { type: string }) => event.type === "crypto.onramp_session.fulfillment_complete",
-    ),
-    extractPaymentIntentId: vi.fn(
-      (event: typeof stripeEvent) => event.data.object.metadata.payment_intent_id,
-    ),
-  },
 }));
 
 vi.mock("../services/dispute-deposit.service.js", () => ({
@@ -171,6 +161,7 @@ describe("stripe deposit webhook", () => {
     vi.clearAllMocks();
     stripeEvent.id = "evt_stripe_deposit_1";
     stripeEvent.data.object.id = "cos_deposit_1";
+    stripeEvent.data.object.status = "fulfillment_complete";
     stripeEvent.data.object.metadata = {
       payment_intent_id: "deposit_dep_1",
     };
@@ -242,12 +233,33 @@ describe("stripe deposit webhook", () => {
           reason: "validated_webhook_received",
           metadata: expect.objectContaining({
             provider: "stripe",
-            event_type: "crypto.onramp_session.fulfillment_complete",
+            event_type: "crypto.onramp_session.updated",
           }),
         }),
       }),
     );
     expect(mockCompleteWebhookEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    "initialized",
+    "requires_payment",
+    "fulfillment_processing",
+    "rejected",
+  ])("does not confirm deposits or funding on an updated onramp with status %s", async (status) => {
+    stripeEvent.data.object.status = status;
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/webhooks/stripe",
+      headers: { "stripe-signature": "sig" },
+      payload: { ignored: true },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ accepted: true, action: "processed" });
+    expect(mockGetDepositById).not.toHaveBeenCalled();
+    expect(mockUpdateDepositStatus).not.toHaveBeenCalled();
+    expect(mockSetPaymentIntentProviderContext).not.toHaveBeenCalled();
+    expect(mockCreatePaymentSettlementRecord).not.toHaveBeenCalled();
   });
 
   it("records Stripe onramp fulfillment without treating it as contract settlement", async () => {

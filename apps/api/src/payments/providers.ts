@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import {
   type BuyerAuthorizationMode,
   DisabledSettlementRouterContract,
@@ -74,9 +75,9 @@ function createStripeAdapterFromEnv() {
     throw new Error("STRIPE_MODE=real requires STRIPE_WEBHOOK_SECRET");
   }
 
-  // Dynamic import avoided — stripe is a direct dependency of apps/api
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const Stripe = require("stripe").default ?? require("stripe");
+  // Load the SDK lazily without depending on a CommonJS global in the ESM API.
+  const stripeModule = createRequire(import.meta.url)("stripe");
+  const Stripe = stripeModule.default ?? stripeModule;
   const stripe = new Stripe(secretKey, { apiVersion: "2025-04-30.basil" });
 
   return new RealStripeAdapter({
