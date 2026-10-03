@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildDemoCheckoutPayload,
+  calculateDemoApvSettlement,
   DEFAULT_DEMO_CHECKOUT,
   deriveDemoChainIds,
   isDemoCheckoutEnabled,
@@ -70,6 +71,32 @@ describe("demo checkout handoff payload", () => {
     expect(isDemoCheckoutEnabled({ HAGGLE_ENV: "staging", VERCEL_ENV: "production" })).toBe(false);
     expect(isDemoCheckoutEnabled({ HAGGLE_ENV: "staging" })).toBe(true);
     expect(isDemoCheckoutEnabled({})).toBe(true);
+  });
+});
+
+describe("simulated APV reconciliation", () => {
+  it("releases the full hold when carrier weight matches", () => {
+    expect(calculateDemoApvSettlement(150, 0)).toEqual({
+      sellerReleaseCents: 150,
+      appliedFromBufferCents: 0,
+      uncollectedClaimCents: 0,
+    });
+  });
+
+  it("splits a small adjustment and never releases more than the hold", () => {
+    expect(calculateDemoApvSettlement(150, 75)).toEqual({
+      sellerReleaseCents: 75,
+      appliedFromBufferCents: 75,
+      uncollectedClaimCents: 0,
+    });
+  });
+
+  it("caps the hold and leaves any excess as an uncollected claim", () => {
+    expect(calculateDemoApvSettlement(150, 312)).toEqual({
+      sellerReleaseCents: 0,
+      appliedFromBufferCents: 150,
+      uncollectedClaimCents: 162,
+    });
   });
 });
 

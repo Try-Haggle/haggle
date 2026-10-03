@@ -4,6 +4,7 @@ import Link from "next/link";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Logo } from "@/components/ui";
 import {
+  calculateDemoApvSettlement,
   type DemoChainIds,
   deriveDemoChainIds,
   presenterJumpShip,
@@ -87,7 +88,7 @@ const KEYFRAMES = `
 @media (max-width: 800px) {
   .haggle-demo-main-grid { grid-template-columns: minmax(0, 1fr) !important; }
   .haggle-demo-timeline { overflow-x: auto; }
-  .haggle-demo-timeline > div { min-width: 680px; }
+  .haggle-demo-timeline > div { min-width: 760px; }
   .haggle-demo-release-phases { grid-template-columns: minmax(0, 1fr) !important; }
 }
 `;
@@ -2284,6 +2285,38 @@ const WEIGHT_TIERS = [
   { tier: "T4", range: "3.0 – 5.0 lb", rate: 11.0, nextRate: 14.0, buffer: 3.0 },
 ];
 
+const DEMO_APV_SCENARIOS = [
+  {
+    id: "match",
+    label: "Weight matched",
+    actual: "≤ 1.00 lb",
+    band: "T1 match",
+    adjustmentCents: 0,
+  },
+  {
+    id: "tier2",
+    label: "Tier 2 overage",
+    actual: "1.01 – 3.00 lb",
+    band: "T1 → T2",
+    adjustmentCents: Math.round(WEIGHT_TIERS[0].rate * 0.52 * 100),
+  },
+  {
+    id: "tier3",
+    label: "Tier 3 overage",
+    actual: "3.01 – 5.00 lb",
+    band: "T1 → T3",
+    adjustmentCents: Math.round(WEIGHT_TIERS[0].rate * 1.32 * 100),
+  },
+  {
+    id: "buffer",
+    label: "Buffer exhausted",
+    actual: "> 5.00 lb",
+    band: "T1 → T4+",
+    adjustmentCents: Math.round((WEIGHT_TIERS[3].nextRate - WEIGHT_TIERS[0].rate) * 100),
+  },
+] as const;
+type DemoApvScenario = (typeof DEMO_APV_SCENARIOS)[number]["id"];
+
 const visibleEvents = (sub: string) => {
   const maxIdx = PHASE_ORDER.indexOf(sub);
   return SHIP_EVENTS.filter((e) => PHASE_ORDER.indexOf(e.phase) <= maxIdx);
@@ -3605,6 +3638,8 @@ const Step7 = ({
   onDispute,
   phase,
   onPhaseChange,
+  apvOutcome,
+  onApvOutcome,
   onComplete,
 }: {
   s: SessionState;
@@ -3613,6 +3648,8 @@ const Step7 = ({
   onDispute: (mode: DisputeMode) => void;
   phase: DeliveredPhase;
   onPhaseChange: (phase: DeliveredPhase) => void;
+  apvOutcome: DemoApvScenario | null;
+  onApvOutcome: (outcome: DemoApvScenario) => void;
   onComplete: () => void;
 }) => {
   const hf = s.amount * 0.015;
@@ -3622,6 +3659,10 @@ const Step7 = ({
   const phase1Amt = sel - phase2Amt;
   const phase1Released =
     !disputeMode && phase !== "delivered" && phase !== "confirming" && phase !== "dispute";
+  const apvScenario = DEMO_APV_SCENARIOS.find((row) => row.id === apvOutcome);
+  const apvSettlement = apvScenario
+    ? calculateDemoApvSettlement(Math.round(phase2Amt * 100), apvScenario.adjustmentCents)
+    : null;
 
   // Presenter panel can set the dispute stage directly.
   const stepTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -3677,39 +3718,16 @@ const Step7 = ({
     later(() => onPhaseChange("complete"), 3600);
   }
 
-  const apvScenarios = [
-    {
-      actual: "≤ 1.00 lb",
-      band: "T1 match",
-      adjustment: 0,
-      status: "no_change",
-    },
-    {
-      actual: "1.01 – 3.00 lb",
-      band: "T1 → T2",
-      adjustment: -(tier.rate * 0.52),
-      status: "partial",
-    },
-    {
-      actual: "3.01 – 5.00 lb",
-      band: "T1 → T3",
-      adjustment: -(tier.rate * 1.32),
-      status: "significant",
-    },
-    {
-      actual: "> 5.00 lb",
-      band: "T1 → T4+",
-      adjustment: -phase2Amt,
-      status: "full_claim",
-    },
-  ];
-
   return (
     <div style={{ animation: "haggle-fadeup 0.35s ease both" }}>
       <SH
-        eb="STEP 07 · DELIVERED"
-        title="Package delivered ✓"
-        sub="Buyer review window runs for 24 hours. Weight-buffer APV holds for 14 days while USPS posts its carrier-scanned weight."
+        eb={apvSettlement ? "STEP 10 · APV RECONCILED" : "STEP 07 · DELIVERED"}
+        title={apvSettlement ? "APV reconciliation complete ✓" : "Package delivered ✓"}
+        sub={
+          apvSettlement
+            ? "The simulated D+14 carrier weight check has resolved the weight buffer."
+            : "Buyer review window runs for 24 hours. Weight-buffer APV holds for 14 days while USPS posts its carrier-scanned weight."
+        }
       />
 
       {/* delivered hero */}
@@ -3790,14 +3808,31 @@ const Step7 = ({
           />
           <PhaseBig
             n="2"
-            lbl="Weight buffer"
-            amt={phase2Amt}
-            pct={sel > 0 ? Math.round((phase2Amt / sel) * 100) : 1}
-            cond="USPS APV reconciliation · 14-day hold"
-            countdown="Releases in 13d 23h"
+            lbl={apvSettlement ? "Weight buffer released" : "Weight buffer"}
+            amt={apvSettlement ? apvSettlement.sellerReleaseCents / 100 : phase2Amt}
+            pct={
+              sel > 0
+                ? Math.round(
+                    ((apvSettlement?.sellerReleaseCents ?? Math.round(phase2Amt * 100)) /
+                      100 /
+                      sel) *
+                      100,
+                  )
+                : 0
+            }
+            cond={
+              apvSettlement
+                ? `USPS APV complete · $${(apvSettlement.appliedFromBufferCents / 100).toFixed(2)} applied to adjustment`
+                : "USPS APV reconciliation · 14-day hold"
+            }
+            countdown={
+              apvSettlement
+                ? `$${(apvSettlement.sellerReleaseCents / 100).toFixed(2)} released to seller · demo`
+                : "Releases in 13d 23h"
+            }
             deadline="May 4 · 14:33 CT"
             tone="violet"
-            status="HOLDING"
+            status={apvSettlement ? "RECONCILED" : "HOLDING"}
           />
         </div>
 
@@ -3842,7 +3877,7 @@ const Step7 = ({
                 position: "absolute",
                 top: 24,
                 left: 0,
-                width: "7.1%",
+                width: apvSettlement ? "100%" : "7.1%",
                 height: 3,
                 background: C.cyanFg,
                 borderRadius: 999,
@@ -3905,7 +3940,7 @@ const Step7 = ({
                   width: 10,
                   height: 10,
                   borderRadius: "50%",
-                  background: C.violet,
+                  background: apvSettlement ? C.emFg : C.violet,
                   margin: "0 0 4px auto",
                 }}
               />
@@ -4030,35 +4065,27 @@ const Step7 = ({
               </span>
             ))}
           </div>
-          {apvScenarios.map((row, i) => {
-            const neg = row.adjustment < 0;
-            const isFull = row.status === "full_claim";
-            const statusCol =
-              row.status === "no_change"
-                ? C.emFg
-                : row.status === "partial"
-                  ? C.amberFg
-                  : row.status === "significant"
-                    ? C.amberFg
-                    : C.redFg;
+          {DEMO_APV_SCENARIOS.map((row, i) => {
+            const result = calculateDemoApvSettlement(
+              Math.round(phase2Amt * 100),
+              row.adjustmentCents,
+            );
             const statusLbl =
-              row.status === "no_change"
+              row.adjustmentCents === 0
                 ? "Full release"
-                : row.status === "partial"
-                  ? "Partial clawback"
-                  : row.status === "significant"
-                    ? "Major clawback"
-                    : "Buffer exhausted";
+                : result.uncollectedClaimCents > 0
+                  ? "Buffer + claim"
+                  : "Buffer retained";
             return (
               <div
-                key={row.status}
+                key={row.id}
                 style={{
                   display: "grid",
                   gridTemplateColumns: "1.4fr 1fr 1fr 1fr",
                   padding: "11px 14px",
                   borderTop: i === 0 ? "none" : `1px solid ${C.line}`,
                   alignItems: "center",
-                  background: i === 0 ? C.emBg : isFull ? C.redBg : "transparent",
+                  background: row.id === apvOutcome ? C.violetBg : i === 0 ? C.emBg : "transparent",
                 }}
               >
                 <span
@@ -4085,19 +4112,21 @@ const Step7 = ({
                 <span
                   style={{
                     fontSize: 12.5,
-                    color: neg ? C.redFg : C.emFg,
+                    color: row.adjustmentCents > 0 ? C.redFg : C.emFg,
                     fontWeight: 600,
                     fontFamily:
                       "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
                     fontVariantNumeric: "tabular-nums",
                   }}
                 >
-                  {row.adjustment === 0 ? "±$0.00" : `-$${Math.abs(row.adjustment).toFixed(2)}`}
+                  {row.adjustmentCents === 0
+                    ? "±$0.00"
+                    : `-$${(row.adjustmentCents / 100).toFixed(2)}`}
                 </span>
                 <span
                   style={{
                     fontSize: 11.5,
-                    color: statusCol,
+                    color: row.adjustmentCents === 0 ? C.emFg : C.amberFg,
                     fontWeight: 600,
                   }}
                 >
@@ -4117,10 +4146,67 @@ const Step7 = ({
         >
           Adjustments are deducted from the{" "}
           <span style={{ color: C.violetFg }}>${phase2Amt.toFixed(2)} weight buffer</span> before
-          Phase 2 release. If a clawback exceeds the buffer, additional amounts are deducted from
-          seller&apos;s future payouts.
+          Phase 2 release. Any amount beyond the buffer is shown as an uncollected claim in this
+          demo.
         </div>
+        {phase1Released && !disputeMode && (
+          <div style={{ marginTop: 16, borderTop: `1px solid ${C.line}`, paddingTop: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
+              Simulate D+14 USPS weight check
+            </div>
+            <div style={{ fontSize: 11, color: C.mute, marginBottom: 10 }}>
+              Choose the carrier result to reconcile the held buffer. No real funds move.
+            </div>
+            <Row gap={8} wrap>
+              {DEMO_APV_SCENARIOS.map((row) => (
+                <Btn
+                  key={row.id}
+                  v={apvOutcome === row.id ? "violet" : "secondary"}
+                  size="sm"
+                  onClick={() => {
+                    onPhaseChange("done");
+                    onApvOutcome(row.id);
+                  }}
+                >
+                  {row.label}
+                </Btn>
+              ))}
+            </Row>
+          </div>
+        )}
       </Card>
+
+      {apvSettlement && !disputeMode && (
+        <Card
+          accent={apvSettlement.uncollectedClaimCents > 0 ? "amber" : "em"}
+          style={{ marginBottom: 14 }}
+        >
+          <div
+            data-testid="apv-complete"
+            style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}
+          >
+            {apvSettlement.uncollectedClaimCents > 0
+              ? "APV reconciled · additional claim pending"
+              : "APV reconciled · Phase 2 complete"}
+          </div>
+          <div style={{ fontSize: 12, color: C.dim, lineHeight: 1.7 }}>
+            <div>USPS result: {apvScenario?.label} · simulated D+14</div>
+            <div data-testid="apv-seller-release">
+              Buffer released to seller: ${(apvSettlement.sellerReleaseCents / 100).toFixed(2)}
+            </div>
+            <div data-testid="apv-buffer-applied">
+              Buffer applied to adjustment: $
+              {(apvSettlement.appliedFromBufferCents / 100).toFixed(2)}
+            </div>
+            {apvSettlement.uncollectedClaimCents > 0 && (
+              <div data-testid="apv-uncollected-claim" style={{ color: C.amberFg }}>
+                Additional claim, not collected in this demo: $
+                {(apvSettlement.uncollectedClaimCents / 100).toFixed(2)}
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
 
       {/* SLA result card */}
       <Card accent="em" style={{ marginBottom: 14 }}>
@@ -5443,12 +5529,14 @@ const OnChain = ({
   curStep,
   disputeMode,
   deliveredPhase,
+  apvOutcome,
 }: {
   s: SessionState;
   settling: boolean;
   curStep: number;
   disputeMode: DisputeMode;
   deliveredPhase: DeliveredPhase;
+  apvOutcome: DemoApvScenario | null;
 }) => {
   const hf = s.amount * 0.015;
   const sf = s.rail === "stripe" ? s.amount * 0.015 : 0;
@@ -5463,6 +5551,14 @@ const OnChain = ({
     deliveredPhase !== "confirming" &&
     deliveredPhase !== "dispute";
   const phase1Amount = sel - WEIGHT_TIERS[0].buffer;
+  const apvScenario = DEMO_APV_SCENARIOS.find((row) => row.id === apvOutcome);
+  const apvSettlement = apvScenario
+    ? calculateDemoApvSettlement(
+        Math.round(WEIGHT_TIERS[0].buffer * 100),
+        apvScenario.adjustmentCents,
+      )
+    : null;
+  const sellerPaid = phase1Amount + (apvSettlement?.sellerReleaseCents ?? 0) / 100;
   const sellerLabel = inDispute
     ? disputeMode === "resolved_buyer"
       ? "Seller payout"
@@ -5475,14 +5571,14 @@ const OnChain = ({
       ? "No seller payout"
       : "See dispute result"
     : released
-      ? `$${phase1Amount.toFixed(2)} paid`
+      ? `$${sellerPaid.toFixed(2)} paid`
       : `${curStep >= 5 ? "Escrow" : "Pending"} $${sel.toFixed(2)}`;
   const sellerEdge = inDispute
     ? disputeMode === "resolved_buyer"
       ? "Refunded"
       : "Payout paused"
     : released
-      ? `$${phase1Amount.toFixed(2)} released`
+      ? `$${sellerPaid.toFixed(2)} released`
       : `$${sel.toFixed(2)} held`;
   // Initial settlement and seller release animate separately; disputes never animate a payout.
   const flow = settling && !inDispute;
@@ -5874,8 +5970,8 @@ const OnChain = ({
               {
                 id: "done",
                 icon: <Ic.check size={16} />,
-                label: "Released",
-                sub: "Phase 1 paid",
+                label: apvSettlement ? "APV settled" : "Released",
+                sub: apvSettlement ? "Phase 2 done" : "Phase 1 paid",
                 col: C.emFg,
               },
             ];
@@ -6061,11 +6157,15 @@ const OnChain = ({
                         ? "Settlement executing"
                         : curStep === 5
                           ? "Awaiting delivery"
-                          : released
-                            ? "Phase 1 released · weight buffer held"
-                            : releasing
-                              ? "Releasing after buyer review"
-                              : "Buyer review period"}
+                          : apvSettlement
+                            ? apvSettlement.uncollectedClaimCents > 0
+                              ? "APV reconciled · claim pending"
+                              : "APV reconciled · Phase 2 complete"
+                            : released
+                              ? "Phase 1 released · weight buffer held"
+                              : releasing
+                                ? "Releasing after buyer review"
+                                : "Buyer review period"}
                 </span>
                 <div style={{ display: "flex", gap: 6 }}>
                   {(["EIP-712", "Non-custodial", "Atomic"] as const).map((t) => (
@@ -6314,10 +6414,13 @@ const OnChain = ({
                         }}
                       >
                         <span style={{ display: "inline-flex", color: C.violetFg }}>
-                          <Ic.lock size={11} />
+                          {apvSettlement ? <Ic.check size={11} /> : <Ic.lock size={11} />}
                         </span>
                         <span style={{ fontSize: 10, fontWeight: 600, color: C.violetFg }}>
-                          ${buf.toFixed(2)}
+                          $
+                          {(
+                            (apvSettlement?.sellerReleaseCents ?? Math.round(buf * 100)) / 100
+                          ).toFixed(2)}
                         </span>
                       </div>
                       <div
@@ -6391,13 +6494,18 @@ const OnChain = ({
                           marginBottom: 4,
                         }}
                       >
-                        PHASE 2 · 14D
+                        {apvSettlement ? "PHASE 2 · RECONCILED" : "PHASE 2 · 14D"}
                       </div>
                       <div style={{ fontSize: 14, fontWeight: 700, color: C.violetFg }}>
-                        ${buf.toFixed(2)}
+                        $
+                        {(
+                          (apvSettlement?.sellerReleaseCents ?? Math.round(buf * 100)) / 100
+                        ).toFixed(2)}
                       </div>
                       <div style={{ fontSize: 9.5, color: C.mute, marginTop: 3 }}>
-                        Weight APV check → seller (adj.)
+                        {apvSettlement
+                          ? `$${(apvSettlement.appliedFromBufferCents / 100).toFixed(2)} applied to APV adjustment`
+                          : "Weight APV check → seller (adj.)"}
                       </div>
                     </div>
                     <div
@@ -6909,6 +7017,7 @@ export default function CheckoutFlow({
     false | "open" | "t1" | "t2" | "resolved_buyer" | "resolved_partial" | "resolved_seller"
   >(false);
   const [deliveredPhase, setDeliveredPhase] = useState<DeliveredPhase>("delivered");
+  const [apvOutcome, setApvOutcome] = useState<DemoApvScenario | null>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [logOpen, setLogOpen] = useState(true);
   const [auto, setAuto] = useState(false);
@@ -7009,6 +7118,7 @@ export default function CheckoutFlow({
     setDelayed(false);
     setDisputeMode(false);
     setDeliveredPhase("delivered");
+    setApvOutcome(null);
   }, [cancelSettle]);
 
   const jump = useCallback(
@@ -7019,6 +7129,7 @@ export default function CheckoutFlow({
       if (i < 6) setShipSub("labelPending");
       setDisputeMode(false);
       setDeliveredPhase("delivered");
+      setApvOutcome(null);
     },
     [cancelSettle],
   );
@@ -7034,6 +7145,10 @@ export default function CheckoutFlow({
         else if (idx === 6 && !disputeMode && deliveredPhase === "delivered") {
           addLog("Buyer review completed (demo)", "simulated 24h review window");
           setDeliveredPhase("confirming");
+        } else if (idx === 6 && !disputeMode && deliveredPhase !== "confirming" && !apvOutcome) {
+          addLog("APV weight matched (demo)", "simulated D+14 carrier scan");
+          setDeliveredPhase("done");
+          setApvOutcome("match");
         } else {
           setAuto(false);
         }
@@ -7041,7 +7156,19 @@ export default function CheckoutFlow({
       settling ? 3400 / autoSpeed : 1200 / autoSpeed,
     );
     return () => clearTimeout(to);
-  }, [auto, idx, settling, done, next, shipAct, autoSpeed, disputeMode, deliveredPhase, addLog]);
+  }, [
+    auto,
+    idx,
+    settling,
+    done,
+    next,
+    shipAct,
+    autoSpeed,
+    disputeMode,
+    deliveredPhase,
+    apvOutcome,
+    addLog,
+  ]);
 
   const renderStep = () => {
     const k = STEPS[idx].k;
@@ -7068,9 +7195,17 @@ export default function CheckoutFlow({
           s={s}
           reset={reset}
           disputeMode={disputeMode}
-          onDispute={setDisputeMode}
+          onDispute={(mode) => {
+            setDisputeMode(mode);
+            setApvOutcome(null);
+          }}
           phase={deliveredPhase}
           onPhaseChange={setDeliveredPhase}
+          apvOutcome={apvOutcome}
+          onApvOutcome={(outcome) => {
+            setApvOutcome(outcome);
+            addLog("APV reconciled (demo)", outcome);
+          }}
           onComplete={onComplete}
         />
       );
@@ -7100,17 +7235,25 @@ export default function CheckoutFlow({
             : "Released",
       ep: "—",
     },
+    ...(!disputeMode ? [{ k: "apv", lbl: "APV resolved", ep: "—" }] : []),
   ];
   const displayIdx =
-    idx < 6 ? idx : normalReleased || disputeResolved || deliveredPhase === "confirming" ? 8 : 7;
+    idx < 6
+      ? idx
+      : apvOutcome && !disputeMode
+        ? 9
+        : normalReleased || disputeResolved || deliveredPhase === "confirming"
+          ? 8
+          : 7;
   const displayDone =
     idx < 6
       ? done
       : [
           ...done,
           6,
-          ...(displayIdx === 8 ? [7] : []),
+          ...(displayIdx >= 8 ? [7] : []),
           ...(normalReleased || disputeResolved ? [8] : []),
+          ...(apvOutcome && !disputeMode ? [9] : []),
         ];
   const displayStep = displaySteps[displayIdx];
   const market = Math.max(marketPrice ?? s.amount, s.amount);
@@ -7131,6 +7274,7 @@ export default function CheckoutFlow({
       setDelayed(v.delayed);
       setDisputeMode(false);
       setDeliveredPhase("delivered");
+      setApvOutcome(null);
       addLog("Presenter jump", STEPS[v.idx].ep);
     },
     [addLog, cancelSettle],
@@ -7341,17 +7485,19 @@ export default function CheckoutFlow({
                 fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
               }}
             >
-              {displayIdx === 7
-                ? disputeMode
-                  ? "Dispute review · demo"
-                  : "Buyer review · 24h demo window"
-                : displayIdx === 8
+              {displayIdx === 9
+                ? "Phase 2 APV reconciliation · demo"
+                : displayIdx === 7
                   ? disputeMode
-                    ? "Dispute outcome · demo"
-                    : "Phase 1 seller payout · demo"
-                  : cur.ep !== "—"
-                    ? `next: ${cur.ep}`
-                    : "rail selection"}
+                    ? "Dispute review · demo"
+                    : "Buyer review · 24h demo window"
+                  : displayIdx === 8
+                    ? disputeMode
+                      ? "Dispute outcome · demo"
+                      : "Phase 1 seller payout · demo"
+                    : cur.ep !== "—"
+                      ? `next: ${cur.ep}`
+                      : "rail selection"}
             </div>
           </div>
         </Row>
@@ -7547,6 +7693,7 @@ export default function CheckoutFlow({
           curStep={idx}
           disputeMode={disputeMode}
           deliveredPhase={deliveredPhase}
+          apvOutcome={apvOutcome}
         />
       </div>
 
@@ -7580,6 +7727,7 @@ export default function CheckoutFlow({
             }
             setDisputeMode(m);
             setDeliveredPhase("dispute");
+            setApvOutcome(null);
           }}
           onReview={() => {
             applyView(presenterJumpShip("delivered"));
@@ -7588,6 +7736,7 @@ export default function CheckoutFlow({
             if (idx !== 6 || disputeMode) applyView(presenterJumpShip("delivered"));
             setDisputeMode(false);
             setDeliveredPhase("done");
+            setApvOutcome(null);
             addLog("Phase 1 released (demo)", "buyer review → seller payout");
           }}
           onReset={reset}
