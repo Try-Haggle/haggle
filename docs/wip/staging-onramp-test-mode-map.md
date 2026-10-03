@@ -16,7 +16,7 @@ Negotiation ACCEPTED
   → POST /payments/{intentId}/onramp/session { destination_wallet }
   → Stripe Crypto Onramp widget (client_secret + publishable key)
   → User enters card inside Stripe UI (4242… only in Stripe test/sandbox keys)
-  → Webhook crypto.onramp_session.fulfillment_complete
+  → Webhook crypto.onramp_session.updated (status=fulfillment_complete)
   → providerContext.stripe_onramp.status = ONRAMP_FUNDED
   → buyer funds conditional settlement with USDC
 ```
@@ -169,7 +169,7 @@ If auth-gated `test_cards_expected` is false on staging (or Onramp returns `STAG
 
 1. Set `STRIPE_MODE=real`.
 2. Set `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY` to **test** keys (`sk_test_` / `pk_test_`). Live keys are hard-blocked on staging.
-3. Point `STRIPE_WEBHOOK_SECRET` at a staging webhook subscribed to `crypto.onramp_session.fulfillment_complete` (and processing events as needed).
+3. Point `STRIPE_WEBHOOK_SECRET` at a staging webhook subscribed to `crypto.onramp_session.updated` (process funding only when `data.object.status=fulfillment_complete`) (and processing events as needed).
 4. Keep `HAGGLE_ENABLE_STAGING_MOCK_PAYMENTS=false` for Onramp dogfood.
 5. Redeploy API; re-check public `/payments/onramp/status` (`available=true`) and auth-gated `/tools/payment-test/runtime` (`stripe_key_mode=test`).
 

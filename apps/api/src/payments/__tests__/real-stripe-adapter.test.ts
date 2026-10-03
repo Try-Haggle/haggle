@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { RealStripeAdapter, type RealStripeAdapterConfig } from "../real-stripe-adapter.js";
 import type { PaymentIntent, Refund } from "@haggle/payment-core";
+import { describe, expect, it, vi } from "vitest";
+import { RealStripeAdapter, type RealStripeAdapterConfig } from "../real-stripe-adapter.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -245,6 +245,30 @@ describe("RealStripeAdapter", () => {
   });
 
   describe("static helpers", () => {
+    it("recognizes Stripe's updated event only after fulfillment completes", () => {
+      expect(
+        RealStripeAdapter.isOnrampFulfillmentComplete({
+          type: "crypto.onramp_session.updated",
+          data: { object: { status: "fulfillment_complete" } },
+        } as any),
+      ).toBe(true);
+    });
+
+    it.each([
+      "initialized",
+      "requires_payment",
+      "fulfillment_processing",
+      "rejected",
+      undefined,
+    ])("does not treat an updated onramp with status %s as funded", (status) => {
+      expect(
+        RealStripeAdapter.isOnrampFulfillmentComplete({
+          type: "crypto.onramp_session.updated",
+          data: { object: { status } },
+        } as any),
+      ).toBe(false);
+    });
+
     it("isOnrampFulfillmentComplete detects correct event type", () => {
       expect(
         RealStripeAdapter.isOnrampFulfillmentComplete({
@@ -292,9 +316,7 @@ describe("RealStripeAdapter — graceful fallback", () => {
     // The adapter itself doesn't validate config — that's done in providers.ts.
     // But if Stripe SDK is instantiated with no key, the first API call fails.
     const mockStripe = createMockStripe();
-    mockStripe.rawRequest.mockRejectedValue(
-      new Error("Invalid API Key provided: undefined"),
-    );
+    mockStripe.rawRequest.mockRejectedValue(new Error("Invalid API Key provided: undefined"));
 
     const config: RealStripeAdapterConfig = {
       stripe: mockStripe as any,

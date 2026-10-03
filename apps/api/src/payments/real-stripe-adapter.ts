@@ -203,7 +203,13 @@ export class RealStripeAdapter implements PaymentProvider {
    * so we compare against the string value.
    */
   static isOnrampFulfillmentComplete(event: Stripe.Event): boolean {
-    return (event.type as string) === "crypto.onramp_session.fulfillment_complete";
+    const eventType = event.type as string;
+    if (eventType === "crypto.onramp_session.fulfillment_complete") return true;
+    const session = event.data?.object as unknown as { status?: string } | undefined;
+    // Stripe emits .updated for state changes; processing is not completed funding.
+    return (
+      eventType === "crypto.onramp_session.updated" && session?.status === "fulfillment_complete"
+    );
   }
 
   /**

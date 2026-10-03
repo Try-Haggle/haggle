@@ -4,7 +4,7 @@
 - 담당: 정행 (`jeonghaeng`), 사용자 별칭 `jeonghaengheo`
 - 브랜치: `feature/w2026-08-08-01-checkout-payment-discovery`
 - 사용자 지시: 실제 checkout의 한국어 혼선과 카드/USDC·MetaMask 선택 경로를 찾아 수정하고 staging에 push
-- 상태: 로컬 검증 중, 같은 head SHA 최종 CI 성공 후 staging 통합·배포
+- 상태: #220 staging 배포 완료. 통합 SHA `52537947`의 전체 CI 성공, Web 실제 alias READY·API SUCCESS 확인. 후속 카드 처리 검증은 [별도 slice](./stripe-onramp-provider-readiness.md).
 - 기존 인오 proposed 배정은 보존하며 리뷰 요청·승인은 이 slice의 필수 조건이 아니다.
 
 ## 사용자 결과와 기준
