@@ -140,6 +140,18 @@ export function deriveDemoChainIds(item: string, priceMinor: number): DemoChainI
   };
 }
 
+/** Reconcile the simulated APV hold in cents, without moving funds or collecting excess claims. */
+export function calculateDemoApvSettlement(bufferCents: number, adjustmentCents: number) {
+  const held = Math.max(0, Math.round(bufferCents));
+  const adjustment = Math.max(0, Math.round(adjustmentCents));
+  const appliedFromBuffer = Math.min(held, adjustment);
+  return {
+    sellerReleaseCents: held - appliedFromBuffer,
+    appliedFromBufferCents: appliedFromBuffer,
+    uncollectedClaimCents: adjustment - appliedFromBuffer,
+  };
+}
+
 /* ===== presenter panel transitions ===== */
 
 export type ShipPhase =

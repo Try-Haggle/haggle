@@ -22,6 +22,7 @@ test("presenter can show buyer review, phase 1 release, and a separate dispute o
   await expect(page.getByTestId("settlement-stage-review")).toHaveAttribute("data-state", "active");
   await expect(page.getByTestId("settlement-stage-done")).toHaveAttribute("data-state", "pending");
   await expect(page.getByText("Escrow $226.55")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Weight matched" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Confirm & release" }).click();
   await expect(page.getByTestId("demo-current-step")).toHaveText("Released");
@@ -30,7 +31,36 @@ test("presenter can show buyer review, phase 1 release, and a separate dispute o
   await expect(page.getByText("Released to seller · demo")).toBeVisible();
   await expect(page.getByText("$225.05 paid")).toBeVisible();
 
+  await page.getByRole("button", { name: "Weight matched" }).click();
+  await expect(page.getByTestId("demo-current-step")).toHaveText("APV resolved");
+  await expect(page.getByTestId("apv-seller-release")).toHaveText(
+    "Buffer released to seller: $1.50",
+  );
+  await expect(page.getByText("$226.55 paid")).toBeVisible();
+  await expect(page.getByTestId("apv-complete")).toHaveText("APV reconciled · Phase 2 complete");
+
+  await page.getByRole("button", { name: "Tier 2 overage" }).click();
+  await expect(page.getByTestId("apv-seller-release")).toHaveText(
+    "Buffer released to seller: $0.00",
+  );
+  await expect(page.getByTestId("apv-buffer-applied")).toHaveText(
+    "Buffer applied to adjustment: $1.50",
+  );
+  await expect(page.getByTestId("apv-uncollected-claim")).toHaveText(
+    "Additional claim, not collected in this demo: $1.62",
+  );
+  await expect(page.getByTestId("apv-complete")).toHaveText(
+    "APV reconciled · additional claim pending",
+  );
+  await expect(page.getByText("$225.05 paid")).toBeVisible();
+
+  await page.getByRole("button", { name: "Buffer exhausted" }).click();
+  await expect(page.getByTestId("apv-uncollected-claim")).toHaveText(
+    "Additional claim, not collected in this demo: $6.50",
+  );
+
   await page.getByRole("button", { name: "Buyer review" }).click();
+  await expect(page.getByTestId("apv-seller-release")).toHaveCount(0);
   await page.getByRole("button", { name: "Release phase 1" }).click();
   await expect(page.getByTestId("settlement-stage-done")).toHaveAttribute("data-state", "done");
   await expect(page.getByText("Phase 1 released · weight buffer held")).toBeVisible();
@@ -47,15 +77,20 @@ test("presenter can show buyer review, phase 1 release, and a separate dispute o
   expect(realMoneyRequests).toEqual([]);
 });
 
-test("auto-play reaches review and release without returning to setup", async ({ page }) => {
+test("auto-play reaches the final APV reconciliation without returning to setup", async ({
+  page,
+}) => {
   await startDemo(page);
   await page.getByRole("button", { name: "Auto-play demo" }).click();
 
-  await expect(page.getByTestId("settlement-stage-done")).toHaveAttribute("data-state", "done", {
-    timeout: 45_000,
-  });
-  await expect(page.getByTestId("demo-current-step")).toHaveText("Released");
-  await expect(page.getByText("Phase 1 released · weight buffer held")).toBeVisible();
+  await expect(page.getByTestId("apv-seller-release")).toHaveText(
+    "Buffer released to seller: $1.50",
+    {
+      timeout: 45_000,
+    },
+  );
+  await expect(page.getByTestId("demo-current-step")).toHaveText("APV resolved");
+  await expect(page.getByTestId("apv-complete")).toHaveText("APV reconciled · Phase 2 complete");
   await expect(page.getByRole("heading", { name: "Start checkout" })).toHaveCount(0);
 });
 
@@ -64,7 +99,8 @@ test("review and release fit a phone screen without horizontal page overflow", a
   await startDemo(page);
   await page.getByRole("button", { name: "Buyer review" }).click();
   await page.getByRole("button", { name: "Confirm & release" }).click();
-  await expect(page.getByTestId("demo-current-step")).toHaveText("Released");
+  await page.getByRole("button", { name: "Weight matched" }).click();
+  await expect(page.getByTestId("demo-current-step")).toHaveText("APV resolved");
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
     .toBeLessThanOrEqual(390);
