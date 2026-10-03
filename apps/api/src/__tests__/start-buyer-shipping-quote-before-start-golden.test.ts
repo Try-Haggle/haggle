@@ -170,6 +170,33 @@ describe("D2 startBuyerNegotiation shipping quote before start", () => {
     });
   });
 
+  it("MCP quotes shipping to the saved default and preserves manual control", async () => {
+    const findFirst = vi.fn().mockResolvedValue({ ...denver, street2: null, phone: null });
+    const result = await startBuyerNegotiation(
+      { query: { userSavedAddresses: { findFirst } } } as never,
+      {
+        body: {
+          listing_public_id: "jc6r2T3d",
+          negotiation_agent_preset_id: "balancer",
+          fulfillment: { methods: ["carrier"] },
+          buyer_control_mode: "manual",
+          negotiation_agent_builder_memory: { budgetMax: 160, targetPrice: 150 },
+        },
+        buyerId: "buyer-1",
+        isGuest: false,
+        driver: "mcp",
+        allowGuest: false,
+      },
+    );
+    expect(result.ok).toBe(true);
+    expect(quoteShippingBeforeStart).toHaveBeenCalledWith(
+      expect.objectContaining({ to_address: denver }),
+    );
+    expect(createSession.mock.calls[0]?.[1]).toMatchObject({ buyerControlMode: "manual" });
+    const quoteOrder = quoteShippingBeforeStart.mock.invocationCallOrder[0];
+    expect(quoteOrder).toBeLessThan(createSession.mock.invocationCallOrder[0]);
+  });
+
   it("physical carrier success: quotes before create and exposes amount", async () => {
     const result = await startBuyerNegotiation({} as never, {
       body: {
@@ -218,21 +245,26 @@ describe("D2 startBuyerNegotiation shipping quote before start", () => {
   });
 
   it("physical carrier without address rejects via D1 before quote (address gate first)", async () => {
-    const result = await startBuyerNegotiation({} as never, {
-      body: {
-        listing_public_id: "jc6r2T3d",
-        negotiation_agent_preset_id: "balancer",
-        fulfillment: {
-          methods: ["carrier"],
-          preferred: "carrier",
-          carrier_priority: "balanced",
+    const result = await startBuyerNegotiation(
+      {
+        query: { userSavedAddresses: { findFirst: vi.fn().mockResolvedValue(undefined) } },
+      } as never,
+      {
+        body: {
+          listing_public_id: "jc6r2T3d",
+          negotiation_agent_preset_id: "balancer",
+          fulfillment: {
+            methods: ["carrier"],
+            preferred: "carrier",
+            carrier_priority: "balanced",
+          },
         },
+        buyerId: "buyer-1",
+        isGuest: false,
+        driver: "web",
+        allowGuest: false,
       },
-      buyerId: "buyer-1",
-      isGuest: false,
-      driver: "web",
-      allowGuest: false,
-    });
+    );
 
     expect(result).toMatchObject({
       ok: false,

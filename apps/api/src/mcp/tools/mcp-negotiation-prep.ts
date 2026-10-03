@@ -101,7 +101,8 @@ export const MCP_MODE_GUIDANCE = {
 
 export const MCP_FULFILLMENT_CHOICES = MVP_ENABLED_FULFILLMENT_METHODS.map((method) => ({
   method,
-  label: "Carrier shipping (address is collected at checkout)",
+  label:
+    "Carrier shipping (uses your saved default delivery address; otherwise provide an address before starting)",
   start_arg: { fulfillment: { methods: [method], preferred: method } },
 }));
 

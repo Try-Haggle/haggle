@@ -17,9 +17,11 @@ import { z } from "zod";
 import {
   DELIVERY_ADDRESS_REQUIRED,
   deliveryAddressRequiredReject,
+  isPhysicalDeliveryAddressRequired,
 } from "../lib/delivery-address-start-gate.js";
 import {
   type BuyerShippingAddress,
+  buyerShippingAddressSchema,
   type FulfillmentPreference,
   fulfillmentPreferenceSchema,
   parseListingParcel,
@@ -464,6 +466,32 @@ export async function startBuyerNegotiation(
         ? { carrier_priority: fulfillment.carrier_priority ?? "balanced" }
         : {}),
     };
+  }
+  // MCP clients may omit the address stored by account settings. Resolve only
+  // the authenticated buyer's default, before address validation and quoting.
+  if (
+    !input.isGuest &&
+    fulfillment &&
+    !fulfillment.buyer_address &&
+    isPhysicalDeliveryAddressRequired(fulfillment, listingSnapshot)
+  ) {
+    const saved = await db.query.userSavedAddresses.findFirst({
+      where: (fields, ops) =>
+        ops.and(ops.eq(fields.userId, buyer.id), ops.eq(fields.isDefault, true)),
+    });
+    if (saved) {
+      const parsed = buyerShippingAddressSchema.safeParse({
+        name: saved.name,
+        street1: saved.street1,
+        street2: saved.street2 ?? undefined,
+        city: saved.city,
+        state: saved.state,
+        zip: saved.zip,
+        country: saved.country,
+        phone: saved.phone ?? undefined,
+      });
+      if (parsed.success) fulfillment = { ...fulfillment, buyer_address: parsed.data };
+    }
   }
   // D1: physical (carrier) starts need delivery address before createSession.
   // Digital / A4 no-shipment listings (fulfillment_type) stay exempt. Schema
