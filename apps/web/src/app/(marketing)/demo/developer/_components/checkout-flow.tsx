@@ -5462,7 +5462,29 @@ const OnChain = ({
     deliveredPhase !== "delivered" &&
     deliveredPhase !== "confirming" &&
     deliveredPhase !== "dispute";
-  // These edges represent the initial settlement, not a later seller payout or refund.
+  const phase1Amount = sel - WEIGHT_TIERS[0].buffer;
+  const sellerLabel = inDispute
+    ? disputeMode === "resolved_buyer"
+      ? "Seller payout"
+      : "Dispute hold"
+    : released
+      ? "Seller Wallet"
+      : "Seller share";
+  const sellerAmount = inDispute
+    ? disputeMode === "resolved_buyer"
+      ? "No seller payout"
+      : "See dispute result"
+    : released
+      ? `$${phase1Amount.toFixed(2)} paid`
+      : `${curStep >= 5 ? "Escrow" : "Pending"} $${sel.toFixed(2)}`;
+  const sellerEdge = inDispute
+    ? disputeMode === "resolved_buyer"
+      ? "Refunded"
+      : "Payout paused"
+    : released
+      ? `$${phase1Amount.toFixed(2)} released`
+      : `$${sel.toFixed(2)} held`;
+  // Initial settlement and seller release animate separately; disputes never animate a payout.
   const flow = settling && !inDispute;
   const tokenFlow = flow;
   return (
@@ -5582,8 +5604,8 @@ const OnChain = ({
               y={30}
               w={170}
               h={66}
-              lbl="Seller Wallet"
-              sub={`$${sel.toFixed(2)}`}
+              lbl={sellerLabel}
+              sub={sellerAmount}
               tone="em"
               ic="wallet"
               brand="usdc"
@@ -5611,11 +5633,11 @@ const OnChain = ({
             <EE
               d="M 550 125 C 620 120, 630 70, 690 63"
               tone="em"
-              lbl={`$${sel.toFixed(2)}`}
+              lbl={sellerEdge}
               lx={615}
               ly={87}
-              flow={flow}
-              tokenFlow={tokenFlow}
+              flow={releasing}
+              tokenFlow={releasing}
             />
             <EE
               d="M 550 160 C 620 170, 630 190, 690 193"
@@ -5675,8 +5697,8 @@ const OnChain = ({
               y={70}
               w={160}
               h={66}
-              lbl="Seller"
-              sub={`$${sel.toFixed(2)}`}
+              lbl={sellerLabel}
+              sub={sellerAmount}
               tone="em"
               ic="wallet"
               brand="usdc"
@@ -5722,11 +5744,11 @@ const OnChain = ({
             <EE
               d="M 555 150 C 620 150, 640 105, 700 103"
               tone="em"
-              lbl={`$${sel.toFixed(2)}`}
+              lbl={sellerEdge}
               lx={620}
               ly={122}
-              flow={flow}
-              tokenFlow={tokenFlow}
+              flow={releasing}
+              tokenFlow={releasing}
             />
             <EE
               d="M 555 180 C 620 190, 640 200, 700 203"

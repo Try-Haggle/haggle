@@ -21,12 +21,14 @@ test("presenter can show buyer review, phase 1 release, and a separate dispute o
   await expect(page.getByTestId("demo-current-step")).toHaveText("Review");
   await expect(page.getByTestId("settlement-stage-review")).toHaveAttribute("data-state", "active");
   await expect(page.getByTestId("settlement-stage-done")).toHaveAttribute("data-state", "pending");
+  await expect(page.getByText("Escrow $226.55")).toBeVisible();
 
   await page.getByRole("button", { name: "Confirm & release" }).click();
   await expect(page.getByTestId("demo-current-step")).toHaveText("Released");
   await expect(page.getByTestId("settlement-stage-done")).toHaveAttribute("data-state", "done");
   await expect(page.getByText("Phase 1 released · weight buffer held")).toBeVisible();
   await expect(page.getByText("Released to seller · demo")).toBeVisible();
+  await expect(page.getByText("$225.05 paid")).toBeVisible();
 
   await page.getByRole("button", { name: "Buyer review" }).click();
   await page.getByRole("button", { name: "Release phase 1" }).click();
@@ -41,6 +43,7 @@ test("presenter can show buyer review, phase 1 release, and a separate dispute o
   await expect(page.getByTestId("demo-current-step")).toHaveText("Refunded");
   await expect(page.getByTestId("settlement-stage-result")).toHaveAttribute("data-state", "active");
   await expect(page.getByText("Buyer wins · full refund")).toBeVisible();
+  await expect(page.getByText("No seller payout")).toBeVisible();
   expect(realMoneyRequests).toEqual([]);
 });
 
